@@ -1,0 +1,61 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+      args:
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    networks:
+      default:
+      pricememo_frontend:
+        aliases:
+          - ai-radar-api
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.prebuilt
+      args:
+        ALPINE_REPOSITORY_HOST: mirrors.aliyun.com
+    networks:
+      default:
+      pricememo_frontend:
+        aliases:
+          - ai-radar-web
+
+  crawler:
+    profiles: ["crawler"]
+    build:
+      context: ./crawler/ldxp
+      dockerfile: Dockerfile.remote
+      args:
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    init: true
+    shm_size: 1gb
+    environment:
+      HOME: /home/crawler
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes:
+      - ./crawler/ldxp/seeds.txt:/config/seeds.txt:ro
+      - ./data/crawler:/data
+
+  crawler-bootstrap:
+    profiles: ["bootstrap"]
+    build:
+      context: ./crawler/ldxp
+      dockerfile: Dockerfile.bootstrap
+      args:
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    init: true
+    shm_size: 1gb
+    environment:
+      HOME: /home/crawler
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ./data/crawler:/data
+
+networks:
+  pricememo_frontend:
+    external: true
+    name: pricememo_frontend

@@ -1,0 +1,29 @@
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright/python:v1.61.0-noble
+FROM ${PLAYWRIGHT_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    HOME=/home/crawler \
+    DISPLAY=:99
+
+WORKDIR /app
+COPY requirements.txt .
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PLAYWRIGHT_VERSION=1.61.0
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends novnc websockify x11vnc \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" "playwright==${PLAYWRIGHT_VERSION}" \
+    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt \
+    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin crawler
+
+COPY ldxp_gpt_crawler.py self_test.py seeds.txt ./
+COPY ldxp_crawler ./ldxp_crawler
+COPY bootstrap_vnc.sh ./
+RUN chmod 0755 /app/bootstrap_vnc.sh
+
+USER crawler
+EXPOSE 6080
+ENTRYPOINT ["/app/bootstrap_vnc.sh"]

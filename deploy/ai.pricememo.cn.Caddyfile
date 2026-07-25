@@ -1,0 +1,25 @@
+ai.pricememo.cn {
+    encode zstd gzip
+
+    @api path /api/* /docs* /openapi.json /health
+    handle @api {
+        reverse_proxy ai-radar-api:8000
+    }
+
+    handle {
+        reverse_proxy ai-radar-web:3000
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}

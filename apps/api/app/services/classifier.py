@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class Classification:
+    slug: str | None
+    tags: list[str]
+    risk_flags: list[str]
+    confidence: int
+
+
+BRAND_MARKERS = {
+    "chatgpt": ["chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus"],
+    "codex": ["codex"],
+    "claude": ["claude"],
+    "gemini": ["gemini", "google one ai"],
+    "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
+}
+
+CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
+CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
+CHATGPT_PRO_MARKERS = ["chatgpt pro", "gpt pro", "200刀"]
+CHATGPT_PLUS_MARKERS = ["chatgpt plus", "gpt plus", "chat plus", "plus", "puls", "plsu"]
+CHATGPT_GO_MARKERS = ["chatgpt go", "gpt go", "go会员", "go订阅"]
+CHATGPT_FREE_MARKERS = ["chatgpt free", "gpt free", "free账号", "free号", "免费账号", "普通账号", "普通号", "普号", "不含plus", "不含 plus"]
+CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指南", "攻略", "授权神器", "自动化授权"]
+CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
+IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
+NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
+RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率"]
+GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
+CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登"]
+CHATGPT_SERVICE_MARKERS = ["接码", "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"]
+CHATGPT_PRODUCT_MARKERS = ["成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值"]
+
+TAG_RULES = {
+    "Team": ["team", "团队", "车位"],
+    "Business": ["business"],
+    "K12": ["k12"],
+    "邀请": ["邀请", "自动拉", "拉入"],
+    "母号": ["母号"],
+    "子号": ["子号"],
+    "成品号": ["成品号", "账号密码", "普号", "白号"],
+    "代充": ["代充"],
+    "直充": ["直充"],
+    "卡密": ["卡密", "cdk", "兑换码"],
+    "API": ["api", "apikey", "api key"],
+    "自动发货": ["自动发货", "秒发"],
+    "月付": ["月卡", "一个月", "1个月", "30天"],
+    "年付": ["年卡", "一年", "12个月", "365天"],
+}
+
+RISK_RULES = {
+    "无售后": ["无售后", "不售后", "售出不退"],
+    "无质保": ["无质保", "不质保"],
+    "仅首登保障": ["质保首登", "仅首登", "首登售后"],
+    "账号密码交付": ["账号密码", "邮箱密码", "成品号"],
+    "团队席位": ["团队邀请", "车位", "自动拉", "拉入团队"],
+    "限制退款": ["买错不退", "不可退款", "售出不退"],
+}
+
+
+def normalize_title(value: str) -> str:
+    value = value.casefold()
+    value = re.sub(r"[\s_\-—|/\\]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _extract(mapping: dict[str, list[str]], text: str) -> list[str]:
+    result: list[str] = []
+    for label, needles in mapping.items():
+        if any(normalize_title(needle) in text for needle in needles):
+            result.append(label)
+    return result
+
+
+def _contains(text: str, needles: list[str]) -> bool:
+    return any(normalize_title(needle) in text for needle in needles)
+
+
+def _pro_multiplier(text: str) -> int | None:
+    compact = re.sub(r"\s+", "", text).replace("×", "x").replace("✖", "x").replace("倍", "x").replace("\ufe0f", "")
+    for multiplier in (20, 5):
+        value = str(multiplier)
+        if re.search(rf"pro.*?x?{value}x?(?!\d)|(?<!\d){value}x?.*?pro", compact):
+            return multiplier
+    return None
+
+
+def _chatgpt_tier(text: str) -> str | None:
+    if _contains(text, CHATGPT_K12_MARKERS):
+        return "chatgpt-k12"
+    multiplier = _pro_multiplier(text)
+    if multiplier == 20:
+        return "chatgpt-pro-20x"
+    if multiplier == 5:
+        return "chatgpt-pro-5x"
+    if _contains(text, CHATGPT_PRO_MARKERS):
+        return "chatgpt-pro"
+    if _contains(text, CHATGPT_PLUS_MARKERS):
+        return "chatgpt-plus"
+    return None
+
+
+def _explicit_brands(text: str) -> list[str]:
+    return [brand for brand, markers in BRAND_MARKERS.items() if _contains(text, markers)]
+
+
+def _first_title_brand(text: str) -> str | None:
+    if _contains(text, ["openai codex", "open ai codex"]):
+        return "codex"
+    positions: list[tuple[int, str]] = []
+    for brand, markers in BRAND_MARKERS.items():
+        for marker in markers:
+            position = text.find(normalize_title(marker))
+            if position >= 0:
+                positions.append((position, brand))
+    return min(positions)[1] if positions else None
+
+
+def _detect_brand(title_text: str, category_text: str) -> str | None:
+    title_brand = _first_title_brand(title_text)
+    if title_brand:
+        return title_brand
+
+    if "plus" in title_text and _contains(title_text, IMPLICIT_CHATGPT_MARKERS) and not _contains(title_text, NON_TARGET_PLUS_MARKERS):
+        return "chatgpt"
+
+    category_brands = _explicit_brands(category_text)
+    if len(category_brands) == 1:
+        if _contains(title_text, GENERIC_EMAIL_MARKERS):
+            return None
+        if _contains(title_text, CATEGORY_COMMERCE_MARKERS):
+            return category_brands[0]
+    if len(category_brands) > 1:
+        return None
+    return None
+
+
+def _classify_identity(title_text: str, category_text: str, description_text: str = "") -> tuple[str | None, bool]:
+    identity_text = normalize_title(" ".join([title_text, category_text]))
+    tier_text = normalize_title(" ".join([identity_text, description_text]))
+    if _contains(identity_text, RELAY_MARKERS) and _contains(identity_text, ["api", "key", "token", "额度"]):
+        return None, False
+    brand = _detect_brand(title_text, category_text)
+    if brand is None:
+        return None, False
+
+    if brand == "codex":
+        return "codex-access", True
+    if brand == "claude":
+        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+            return "claude-api-access", True
+        if _contains(identity_text, ["claude pro", "claude会员", "claude 会员"]):
+            return "claude-pro", True
+        return "claude-account", False
+    if brand == "gemini":
+        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+            return "gemini-api-access", True
+        if _contains(identity_text, ["gemini advanced", "gemini pro会员", "google one ai"]):
+            return "gemini-advanced", True
+        return "gemini-account", False
+    if brand == "grok":
+        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+            return "grok-api-access", True
+        if _contains(identity_text, ["supergrok", "super grok", "grok super"]):
+            return "grok-super", True
+        return "grok-account", False
+
+    if _contains(identity_text, CHATGPT_API_MARKERS):
+        if _contains(identity_text, ["中转", "倍率"]):
+            return None, False
+        return "openai-api-credit", True
+    if _contains(title_text, CHATGPT_NON_PRODUCT_MARKERS):
+        return None, False
+    if (_contains(title_text, CHATGPT_SERVICE_MARKERS) and not _contains(title_text, CHATGPT_PRODUCT_MARKERS)) or (
+        _contains(title_text, GENERIC_EMAIL_MARKERS) and not _contains(title_text, CHATGPT_PRODUCT_MARKERS)
+    ):
+        return "chatgpt-access-service", True
+    if _contains(title_text, CHATGPT_FREE_MARKERS):
+        return "chatgpt-account", True
+    if _contains(title_text, CHATGPT_GO_MARKERS):
+        return "chatgpt-go", True
+    title_tier = _chatgpt_tier(title_text)
+    if title_tier:
+        return title_tier, True
+    refined_tier = _chatgpt_tier(tier_text)
+    if refined_tier and refined_tier != "chatgpt-plus":
+        return refined_tier, True
+    if _contains(title_text, CHATGPT_AMBIGUOUS_CREDIT_MARKERS):
+        return None, False
+    if _contains(title_text, CHATGPT_PRODUCT_MARKERS):
+        return "chatgpt-account", False
+    return None, False
+
+
+def classify_product(title: str, category: str = "", description: str = "") -> Classification:
+    detail_text = normalize_title(" ".join([title, category, description]))
+    tags = _extract(TAG_RULES, detail_text)
+    risks = _extract(RISK_RULES, detail_text)
+    slug, specific_match = _classify_identity(normalize_title(title), normalize_title(category), normalize_title(description))
+    if slug != "chatgpt-k12":
+        tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
+    confidence = 88 if specific_match else 68 if slug else 0
+    return Classification(slug, tags, risks, confidence)
+
+
+def normalize_stock(value: str | None, stock_count: int | None) -> str:
+    text = normalize_title(value or "")
+    if any(word in text for word in ["有货", "in stock", "available"]):
+        return "in_stock"
+    if any(word in text for word in ["缺货", "售罄", "out of stock"]):
+        return "out_of_stock"
+    if any(word in text for word in ["下架", "不可用", "关闭", "暂停"]):
+        return "unavailable"
+    if stock_count is not None:
+        return "in_stock" if stock_count > 0 else "out_of_stock"
+    return "unknown"

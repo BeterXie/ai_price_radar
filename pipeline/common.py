@@ -1,0 +1,436 @@
+from __future__ import annotations
+
+import json
+import re
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, create_engine, select, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ImportLockUnavailable(RuntimeError):
+    pass
+
+
+@contextmanager
+def import_lock(db: Session):
+    """Serialize import transactions that target the same PostgreSQL database."""
+    if db.get_bind().dialect.name != "postgresql":
+        yield
+        return
+    acquired = db.execute(
+        text("SELECT pg_try_advisory_xact_lock(:key)"),
+        {"key": 0x415052494D504F52},
+    ).scalar_one()
+    if not acquired:
+        raise ImportLockUnavailable("another catalog import is already running")
+    yield
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Shop(Base):
+    __tablename__ = "shops"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    name: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[str] = mapped_column(Text)
+    platform: Mapped[str] = mapped_column(String(50), default="ldxp")
+    source_score: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(40), default="unknown")
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Product(Base):
+    __tablename__ = "products"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(160), unique=True)
+    platform: Mapped[str] = mapped_column(String(50))
+    display_name: Mapped[str] = mapped_column(Text)
+    subtitle: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    product_type: Mapped[str] = mapped_column(String(60), default="other")
+    search_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RawProduct(Base):
+    __tablename__ = "raw_products"
+    __table_args__ = (UniqueConstraint("shop_id", "source_product_key", name="uq_raw_shop_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"))
+    source_product_key: Mapped[str] = mapped_column(String(300))
+    original_name: Mapped[str] = mapped_column(Text)
+    original_category: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Offer(Base):
+    __tablename__ = "offers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    raw_product_id: Mapped[int] = mapped_column(ForeignKey("raw_products.id", ondelete="CASCADE"), unique=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"))
+    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="CNY")
+    stock_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stock_status: Mapped[str] = mapped_column(String(30), default="unknown")
+    auto_delivery: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    risk_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    classification_confidence: Mapped[int] = mapped_column(Integer, default=0)
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    approved: Mapped[bool] = mapped_column(Boolean, default=True)
+    hidden_reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OfferHistory(Base):
+    __tablename__ = "offer_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("offers.id", ondelete="CASCADE"))
+    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    stock_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stock_status: Mapped[str] = mapped_column(String(30), default="unknown")
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+BRAND_MARKERS = {
+    "chatgpt": ["chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus"],
+    "codex": ["codex"],
+    "claude": ["claude"],
+    "gemini": ["gemini", "google one ai"],
+    "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
+}
+CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
+CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
+CHATGPT_PRO_MARKERS = ["chatgpt pro", "gpt pro", "200刀"]
+CHATGPT_PLUS_MARKERS = ["chatgpt plus", "gpt plus", "chat plus", "plus", "puls", "plsu"]
+CHATGPT_GO_MARKERS = ["chatgpt go", "gpt go", "go会员", "go订阅"]
+CHATGPT_FREE_MARKERS = ["chatgpt free", "gpt free", "free账号", "free号", "免费账号", "普通账号", "普通号", "普号", "不含plus", "不含 plus"]
+CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指南", "攻略", "授权神器", "自动化授权"]
+CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
+IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
+NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
+RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率"]
+GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
+CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登"]
+CHATGPT_SERVICE_MARKERS = ["接码", "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"]
+CHATGPT_PRODUCT_MARKERS = ["成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值"]
+TAG_RULES = {
+    "Team": ["team", "团队", "车位"], "Business": ["business"], "K12": ["k12"],
+    "邀请": ["邀请", "自动拉", "拉入"], "母号": ["母号"], "子号": ["子号"],
+    "成品号": ["成品号", "账号密码", "普号", "白号"], "代充": ["代充"],
+    "直充": ["直充"], "卡密": ["卡密", "cdk", "兑换码"], "API": ["api", "apikey", "api key"],
+    "自动发货": ["自动发货", "秒发"], "月付": ["月卡", "一个月", "1个月", "30天"],
+}
+RISK_RULES = {
+    "无售后": ["无售后", "不售后", "售出不退"], "无质保": ["无质保", "不质保"],
+    "仅首登保障": ["质保首登", "仅首登", "首登售后"], "账号密码交付": ["账号密码", "邮箱密码", "成品号"],
+    "团队席位": ["团队邀请", "车位", "自动拉", "拉入团队"], "限制退款": ["买错不退", "不可退款", "售出不退"],
+}
+
+
+@dataclass(slots=True)
+class Classification:
+    slug: str | None
+    tags: list[str]
+    risks: list[str]
+    confidence: int
+
+
+def norm(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[\s_\-—|/\\]+", " ", (text or "").casefold())).strip()
+
+
+def contains(text: str, needles: list[str]) -> bool:
+    return any(norm(needle) in text for needle in needles)
+
+
+def pro_multiplier(text: str) -> int | None:
+    compact = re.sub(r"\s+", "", text).replace("×", "x").replace("✖", "x").replace("倍", "x").replace("\ufe0f", "")
+    for multiplier in (20, 5):
+        value = str(multiplier)
+        if re.search(rf"pro.*?x?{value}x?(?!\d)|(?<!\d){value}x?.*?pro", compact):
+            return multiplier
+    return None
+
+
+def chatgpt_tier(text: str) -> str | None:
+    if contains(text, CHATGPT_K12_MARKERS):
+        return "chatgpt-k12"
+    multiplier = pro_multiplier(text)
+    if multiplier == 20:
+        return "chatgpt-pro-20x"
+    if multiplier == 5:
+        return "chatgpt-pro-5x"
+    if contains(text, CHATGPT_PRO_MARKERS):
+        return "chatgpt-pro"
+    if contains(text, CHATGPT_PLUS_MARKERS):
+        return "chatgpt-plus"
+    return None
+
+
+def explicit_brands(text: str) -> list[str]:
+    return [name for name, markers in BRAND_MARKERS.items() if contains(text, markers)]
+
+
+def first_title_brand(text: str) -> str | None:
+    if contains(text, ["openai codex", "open ai codex"]):
+        return "codex"
+    positions: list[tuple[int, str]] = []
+    for brand, markers in BRAND_MARKERS.items():
+        for marker in markers:
+            position = text.find(norm(marker))
+            if position >= 0:
+                positions.append((position, brand))
+    return min(positions)[1] if positions else None
+
+
+def classify_identity(title_text: str, category_text: str, description_text: str = "") -> tuple[str | None, bool]:
+    identity_text = norm(" ".join([title_text, category_text]))
+    tier_text = norm(" ".join([identity_text, description_text]))
+    if contains(identity_text, RELAY_MARKERS) and contains(identity_text, ["api", "key", "token", "额度"]):
+        return None, False
+    brand = first_title_brand(title_text)
+    if brand is None:
+        if "plus" in title_text and contains(title_text, IMPLICIT_CHATGPT_MARKERS) and not contains(title_text, NON_TARGET_PLUS_MARKERS):
+            brand = "chatgpt"
+    if brand is None:
+        category_brands = explicit_brands(category_text)
+        if len(category_brands) > 1:
+            return None, False
+        if len(category_brands) == 1 and not contains(title_text, GENERIC_EMAIL_MARKERS) and contains(title_text, CATEGORY_COMMERCE_MARKERS):
+            brand = category_brands[0]
+    if brand is None:
+        return None, False
+    if brand == "codex":
+        return "codex-access", True
+    if brand == "claude":
+        if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+            return "claude-api-access", True
+        if contains(identity_text, ["claude pro", "claude会员", "claude 会员"]):
+            return "claude-pro", True
+        return "claude-account", False
+    if brand == "gemini":
+        if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+            return "gemini-api-access", True
+        if contains(identity_text, ["gemini advanced", "gemini pro会员", "google one ai"]):
+            return "gemini-advanced", True
+        return "gemini-account", False
+    if brand == "grok":
+        if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+            return "grok-api-access", True
+        if contains(identity_text, ["supergrok", "super grok", "grok super"]):
+            return "grok-super", True
+        return "grok-account", False
+    if contains(identity_text, CHATGPT_API_MARKERS):
+        if contains(identity_text, ["中转", "倍率"]):
+            return None, False
+        return "openai-api-credit", True
+    if contains(title_text, CHATGPT_NON_PRODUCT_MARKERS):
+        return None, False
+    if (contains(title_text, CHATGPT_SERVICE_MARKERS) and not contains(title_text, CHATGPT_PRODUCT_MARKERS)) or (
+        contains(title_text, GENERIC_EMAIL_MARKERS) and not contains(title_text, CHATGPT_PRODUCT_MARKERS)
+    ):
+        return "chatgpt-access-service", True
+    if contains(title_text, CHATGPT_FREE_MARKERS):
+        return "chatgpt-account", True
+    if contains(title_text, CHATGPT_GO_MARKERS):
+        return "chatgpt-go", True
+    title_tier = chatgpt_tier(title_text)
+    if title_tier:
+        return title_tier, True
+    refined_tier = chatgpt_tier(tier_text)
+    if refined_tier and refined_tier != "chatgpt-plus":
+        return refined_tier, True
+    if contains(title_text, CHATGPT_AMBIGUOUS_CREDIT_MARKERS):
+        return None, False
+    if contains(title_text, CHATGPT_PRODUCT_MARKERS):
+        return "chatgpt-account", False
+    return None, False
+
+
+def classify(title: str, category: str = "", raw: dict[str, Any] | None = None) -> Classification:
+    description_text = norm(str((raw or {}).get("description", "")))
+    detail_text = norm(" ".join([title, category, description_text]))
+    slug, specific_match = classify_identity(norm(title), norm(category), description_text)
+    tags = [label for label, words in TAG_RULES.items() if any(norm(x) in detail_text for x in words)]
+    risks = [label for label, words in RISK_RULES.items() if any(norm(x) in detail_text for x in words)]
+    if slug != "chatgpt-k12":
+        tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
+    return Classification(slug, tags, risks, 88 if specific_match else 68 if slug else 0)
+
+
+def parse_dt(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    text = str(value or "").strip().replace("Z", "+00:00")
+    try:
+        result = datetime.fromisoformat(text)
+        return result if result.tzinfo else result.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return utcnow()
+
+
+def parse_decimal(value: Any) -> Decimal | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def parse_json(value: Any, default: Any):
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value or "")
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def stock_status(value: str, count: int | None) -> str:
+    text = norm(value)
+    if any(x in text for x in ["有货", "in stock"]): return "in_stock"
+    if any(x in text for x in ["缺货", "售罄", "out of stock"]): return "out_of_stock"
+    if any(x in text for x in ["下架", "不可用", "暂停", "关闭"]): return "unavailable"
+    if count is not None: return "in_stock" if count > 0 else "out_of_stock"
+    return "unknown"
+
+
+def ensure_products(db: Session) -> dict[str, Product]:
+    definitions = [
+        ("chatgpt-account", "OpenAI", "ChatGPT Free", "Free 普号与基础账号", "account", "聚合公开售卖的 ChatGPT Free 普号和基础账号。"),
+        ("chatgpt-plus", "OpenAI", "ChatGPT Plus", "Plus 订阅、代充与成品号", "subscription", "聚合 ChatGPT Plus 的代充、直充、月付与成品号报价。"),
+        ("chatgpt-go", "OpenAI", "ChatGPT Go", "Go 订阅、充值与成品号", "subscription", "聚合标题明确标注为 ChatGPT Go 的订阅、充值与成品号公开报价。"),
+        ("chatgpt-k12", "OpenAI", "ChatGPT K12", "Team / Business、团队邀请与 K12", "subscription", "聚合 ChatGPT Team、Business、K12、团队邀请、车位和自动拉等公开报价。"),
+        ("chatgpt-pro-5x", "OpenAI", "ChatGPT Pro 5x", "Pro 5x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 5x 的公开报价。"),
+        ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x", "Pro 20x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 20x 的公开报价。"),
+        ("chatgpt-pro", "OpenAI", "ChatGPT Pro", "未注明 5x 或 20x 的 Pro", "subscription", "聚合未明确标注 5x 或 20x 倍率的 ChatGPT Pro 公开报价。"),
+        ("openai-api-credit", "OpenAI", "OpenAI API 额度", "API Key 与额度商品", "api", "聚合 OpenAI API 额度、余额和 Key 类商品。"),
+        ("chatgpt-access-service", "OpenAI", "ChatGPT / Codex 周边服务", "接码、验证与开通辅助商品", "service", "聚合明确用于 ChatGPT 或 Codex 的接码、验证与开通辅助商品。"),
+        ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "聚合 Codex 账号、订阅和访问类公开报价。"),
+        ("claude-pro", "Claude", "Claude Pro", "个人会员订阅", "subscription", "聚合 Claude Pro 公开报价。"),
+        ("claude-account", "Claude", "Claude 账号", "基础账号与访问类商品", "account", "聚合 Claude 基础账号与访问类公开报价。"),
+        ("claude-api-access", "Claude", "Claude API", "API Key、Token 与额度商品", "api", "聚合 Claude API Key、Token 与额度类公开报价。"),
+        ("gemini-advanced", "Gemini", "Gemini Advanced", "Google One AI 会员", "subscription", "聚合 Gemini Advanced 与 Google One AI 报价。"),
+        ("gemini-account", "Gemini", "Gemini 账号", "基础账号与访问类商品", "account", "聚合 Gemini 基础账号与访问类公开报价。"),
+        ("gemini-api-access", "Gemini", "Gemini API", "API Key、Token 与额度商品", "api", "聚合 Gemini API Key、Token 与额度类公开报价。"),
+        ("grok-super", "Grok", "SuperGrok", "SuperGrok 订阅与代充", "subscription", "聚合 SuperGrok 订阅与代充公开报价。"),
+        ("grok-account", "Grok", "Grok 账号", "基础账号与访问类商品", "account", "聚合 Grok 基础账号与访问类公开报价。"),
+        ("grok-api-access", "Grok", "Grok API", "API Key、Token 与额度商品", "api", "聚合 Grok API Key、Token 与额度类公开报价。"),
+    ]
+    existing = {x.slug: x for x in db.scalars(select(Product))}
+    for slug, platform, name, subtitle, product_type, description in definitions:
+        item = existing.get(slug)
+        if item is None:
+            item = Product(slug=slug)
+            db.add(item)
+            existing[slug] = item
+        item.platform = platform
+        item.display_name = name
+        item.subtitle = subtitle
+        item.description = description
+        item.product_type = product_type
+        item.search_keywords = [name, platform, product_type]
+    legacy_team = existing.get("chatgpt-team-business")
+    if legacy_team is not None:
+        legacy_team.is_visible = False
+    db.flush()
+    return existing
+
+
+def session_for(url: str):
+    engine = create_engine(url, pool_pre_ping=True)
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine, expire_on_commit=False)()
+
+
+def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Product]) -> tuple[bool, bool]:
+    token = str(record.get("token") or "").strip()
+    if not token:
+        raise ValueError("missing shop token")
+    shop = db.scalar(select(Shop).where(Shop.token == token))
+    observed_at = parse_dt(record.get("observed_at") or record.get("collected_at") or record.get("scanned_at"))
+    if shop is None:
+        shop = Shop(token=token, name=str(record.get("shop_name") or token), source_url=str(record.get("shop_url") or ""), platform="ldxp")
+        db.add(shop); db.flush()
+    shop.name = str(record.get("shop_name") or shop.name or token)
+    shop.source_url = str(record.get("shop_url") or shop.source_url)
+    shop.status = str(record.get("shop_status") or "success")
+    shop.last_seen_at = observed_at
+    shop.last_success_at = observed_at
+
+    key = str(record.get("product_key") or record.get("source_product_key") or record.get("product_url") or record.get("product_name") or "")[:300]
+    raw = db.scalar(select(RawProduct).where(RawProduct.shop_id == shop.id, RawProduct.source_product_key == key))
+    created = raw is None
+    raw_json = parse_json(record.get("raw_json"), {})
+    if raw is None:
+        raw = RawProduct(shop_id=shop.id, source_product_key=key, original_name=str(record.get("product_name") or ""), first_seen_at=observed_at)
+        db.add(raw); db.flush()
+    raw.original_name = str(record.get("product_name") or raw.original_name)
+    raw.original_category = str(record.get("category_name") or "")
+    raw.source_url = str(record.get("product_url") or "")
+    raw.raw_json = raw_json
+    raw.last_seen_at = observed_at
+
+    result = classify(raw.original_name, raw.original_category, raw_json)
+    offer = db.scalar(select(Offer).where(Offer.raw_product_id == raw.id))
+    price = parse_decimal(record.get("listed_price") if record.get("listed_price") not in (None, "") else record.get("price"))
+    count_raw = record.get("stock_count")
+    try: count = int(float(count_raw)) if count_raw not in (None, "") else None
+    except (TypeError, ValueError): count = None
+    status = stock_status(str(record.get("product_status") or record.get("stock_status") or ""), count)
+    changed = False
+    is_new_offer = offer is None
+    if offer is None:
+        offer = Offer(raw_product_id=raw.id, shop_id=shop.id)
+        db.add(offer); db.flush()
+        changed = True
+    elif offer.price != price or offer.stock_count != count or offer.stock_status != status:
+        changed = True
+    offer.product_id = products[result.slug].id if result.slug and result.slug in products else None
+    offer.price = price
+    offer.stock_count = count
+    offer.stock_status = status
+    delivery = str(record.get("auto_delivery") or "").strip()
+    offer.auto_delivery = True if delivery in {"是", "true", "True", "1"} else False if delivery in {"否", "false", "False", "0"} else None
+    offer.tags = result.tags
+    offer.risk_flags = result.risks
+    offer.classification_confidence = result.confidence
+    offer.source_url = raw.source_url
+    offer.observed_at = observed_at
+    if is_new_offer:
+        offer.active = True
+        offer.approved = result.slug is not None and result.confidence >= 60
+    offer.updated_at = utcnow()
+    if changed:
+        db.add(OfferHistory(offer_id=offer.id, price=price, stock_count=count, stock_status=status, observed_at=observed_at))
+    return created, changed

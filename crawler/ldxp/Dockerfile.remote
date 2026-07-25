@@ -1,0 +1,21 @@
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright/python:v1.61.0-noble
+FROM ${PLAYWRIGHT_IMAGE}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    HOME=/home/crawler
+
+WORKDIR /app
+COPY requirements.txt .
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PLAYWRIGHT_VERSION=1.61.0
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" "playwright==${PLAYWRIGHT_VERSION}" \
+    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt \
+    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin crawler
+
+COPY ldxp_gpt_crawler.py self_test.py ./
+COPY ldxp_crawler ./ldxp_crawler
+
+USER crawler
+ENTRYPOINT ["python", "ldxp_gpt_crawler.py"]

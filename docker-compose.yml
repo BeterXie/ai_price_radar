@@ -1,0 +1,92 @@
+name: ai-price-radar
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-price_radar}
+      POSTGRES_USER: ${POSTGRES_USER:-price_radar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-price_radar} -d ${POSTGRES_DB:-price_radar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-replace-with-a-long-random-string}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3000}
+      REPORT_RATE_LIMIT_COUNT: ${REPORT_RATE_LIMIT_COUNT:-5}
+      REPORT_RATE_LIMIT_WINDOW_SECONDS: ${REPORT_RATE_LIMIT_WINDOW_SECONDS:-3600}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-AI Price Radar}
+    restart: unless-stopped
+    environment:
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://api:8000}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-AI Price Radar}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  proxy:
+    profiles: ["production"]
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-http://localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+
+  importer:
+    profiles: ["tools"]
+    build:
+      context: ./pipeline
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace/pipeline
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AI Price Radar full candidate scan hourly
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+RandomizedDelaySec=2m
+Persistent=true
+Unit=ai-price-radar-refresh.service
+
+[Install]
+WantedBy=timers.target

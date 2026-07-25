@@ -1,0 +1,28 @@
+{
+  "name": "ai-price-radar-web",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@icons-pack/react-simple-icons": "12.0.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "geist": "^1.4.2",
+    "motion": "^12.23.12",
+    "next": "^15.4.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "^22.15.30",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3"
+  }
+}

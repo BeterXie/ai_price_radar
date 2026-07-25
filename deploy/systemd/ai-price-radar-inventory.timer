@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh AI Price Radar inventory every 10 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/10:00
+Persistent=true
+Unit=ai-price-radar-inventory.service
+
+[Install]
+WantedBy=timers.target

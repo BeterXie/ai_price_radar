@@ -1,0 +1,12 @@
+[Unit]
+Description=AI Price Radar scan and publish
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-price-radar-v3
+ExecStart=/usr/bin/bash /opt/ai-price-radar-v3/scripts/refresh_remote.sh scan
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=4h

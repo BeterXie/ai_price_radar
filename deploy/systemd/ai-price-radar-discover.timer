@@ -1,0 +1,11 @@
+[Unit]
+Description=Discover new AI Price Radar shops every 12 hours
+
+[Timer]
+OnCalendar=*-*-* 00,12:30:00
+RandomizedDelaySec=5m
+Persistent=true
+Unit=ai-price-radar-discover.service
+
+[Install]
+WantedBy=timers.target
