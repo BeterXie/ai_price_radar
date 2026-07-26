@@ -14,7 +14,7 @@ export function ProductCard({ product, index = 0 }: { product: ProductCardType; 
   };
   return (
     <Link
-      href={`/products?platform=${encodeURIComponent(product.platform)}&product=${encodeURIComponent(product.slug)}`}
+      href={`/products/${encodeURIComponent(product.slug)}`}
       className="group grid gap-4 border-t border-[color:var(--line)] py-6 lg:grid-cols-[40px_minmax(220px,1.4fr)_90px_100px_125px_115px_100px_24px] lg:items-center"
     >
       <div className="mono text-xs text-black/35">{String(index + 1).padStart(2, "0")}</div>

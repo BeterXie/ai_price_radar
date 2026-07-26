@@ -1,27 +1,37 @@
 import type { MetadataRoute } from "next";
-import { PRODUCT_SLUGS } from "@/lib/catalog";
+import { getProducts } from "@/lib/api";
+
+export const dynamic = "force-dynamic";
 
 const SITE_URL = "https://ai.pricememo.cn";
 
-function platformFor(slug: string) {
-  if (slug.startsWith("claude-")) return "Claude";
-  if (slug.startsWith("gemini-")) return "Gemini";
-  if (slug.startsWith("grok-")) return "Grok";
-  if (slug.startsWith("x-premium")) return "X";
-  return "OpenAI";
+function validDate(value: string | null) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
-  return [
-    { url: SITE_URL, lastModified, changeFrequency: "hourly", priority: 1 },
-    { url: `${SITE_URL}/products`, lastModified, changeFrequency: "hourly", priority: 0.9 },
-    { url: `${SITE_URL}/shops/submit`, lastModified, changeFrequency: "monthly", priority: 0.5 },
-    ...PRODUCT_SLUGS.map((slug) => ({
-      url: `${SITE_URL}/products?platform=${encodeURIComponent(platformFor(slug))}&product=${encodeURIComponent(slug)}`,
-      lastModified,
-      changeFrequency: "hourly" as const,
-      priority: 0.8,
-    })),
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const staticPages: MetadataRoute.Sitemap = [
+    { url: SITE_URL },
+    { url: `${SITE_URL}/products` },
+    { url: `${SITE_URL}/shops/submit` },
   ];
+  try {
+    const catalog = await getProducts("sort=price");
+    const snapshotAt = validDate(catalog.snapshot_at);
+    staticPages[0].lastModified = snapshotAt;
+    staticPages[1].lastModified = snapshotAt;
+    return [
+      ...staticPages,
+      ...catalog.items
+        .filter((product) => product.offer_count > 0)
+        .map((product) => ({
+          url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
+          lastModified: validDate(product.last_updated_at) || snapshotAt,
+        })),
+    ];
+  } catch {
+    return staticPages;
+  }
 }

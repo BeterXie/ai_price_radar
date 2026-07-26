@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CheckCircle, Clock, Database, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { SearchBox } from "@/components/search-box";
@@ -6,6 +7,25 @@ import { getProducts } from "@/lib/api";
 import { exactTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "AI 订阅价格对比与库存查询",
+  description: "聚合 ChatGPT、Claude、Gemini、Grok 与 X Premium 公开报价，比较价格、库存、交付方式、更新时间和来源。",
+  alternates: { canonical: "https://ai.pricememo.cn" },
+  openGraph: {
+    title: "AI 订阅价格对比与库存查询",
+    description: "聚合主流 AI 账号、订阅、充值与 API 服务的公开报价和库存。",
+    url: "https://ai.pricememo.cn",
+    siteName: "AI Price Radar",
+    locale: "zh_CN",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI 订阅价格对比与库存查询",
+    description: "比较主流 AI 商品的公开价格、库存、交付方式和来源。",
+  },
+};
 
 export default async function HomePage() {
   const data = await getProducts("sort=price");

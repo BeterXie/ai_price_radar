@@ -40,28 +40,3 @@ export const SCENARIO_LABELS: Record<string, string> = {
   api: "API",
   relay: "中转 / 反代",
 };
-
-export const PRODUCT_SLUGS = [
-  "chatgpt-account",
-  "chatgpt-plus",
-  "chatgpt-go",
-  "chatgpt-k12",
-  "chatgpt-pro-5x",
-  "chatgpt-pro-20x",
-  "chatgpt-pro",
-  "openai-api-credit",
-  "chatgpt-access-service",
-  "codex-access",
-  "claude-pro",
-  "claude-account",
-  "claude-api-access",
-  "gemini-advanced",
-  "gemini-account",
-  "gemini-api-access",
-  "grok-super",
-  "grok-account",
-  "grok-api-access",
-  "x-premium-basic",
-  "x-premium",
-  "x-premium-plus",
-];
