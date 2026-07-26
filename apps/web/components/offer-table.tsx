@@ -147,7 +147,7 @@ function OfferRow({ offer, group, productSlug, snapshotId }: { offer: Offer; gro
 
       <div className="flex flex-wrap gap-x-5 gap-y-2 border-t hairline px-5 py-3 text-xs text-black/45">
         <span className="flex items-center gap-1.5"><Clock size={14} />扫描于 {exactTime(group?.latest_observed_at || offer.observed_at)}</span>
-        <span>约 {relativeTime(group?.latest_observed_at || offer.observed_at)}更新</span>
+        <span suppressHydrationWarning>约 {relativeTime(group?.latest_observed_at || offer.observed_at)}更新</span>
         {offer.original_category && <span className="flex items-center gap-1.5"><Tag size={14} />{offer.original_category}</span>}
       </div>
     </details>
