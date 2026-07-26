@@ -1,19 +1,10 @@
 import Link from "next/link";
-import { Check, Clock, Package, Tag } from "@phosphor-icons/react/ssr";
+import { Check, Clock, Package, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
-import { PlatformIcon } from "@/components/platform-icon";
 import { PriceHistory } from "@/components/price-history";
 import { ReportForm } from "@/components/report-form";
-import { exactTime, money, relativeTime } from "@/lib/format";
+import { exactTime, relativeTime } from "@/lib/format";
 import type { ProductDetail } from "@/lib/types";
-
-const PRODUCT_TYPE_LABELS: Record<string, string> = {
-  subscription: "订阅 / 会员",
-  account: "成品账号",
-  api: "API / 额度",
-  service: "辅助服务",
-  team: "团队订阅",
-};
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
@@ -74,24 +65,11 @@ export function ProductWorkspace({
   return (
     <>
       {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
-      <section className="mt-5 rounded-[16px] border hairline bg-[color:var(--panel)] p-5">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center">
-          <div>
-            <div className="flex flex-wrap gap-2"><span className="flex items-center gap-2 rounded-full bg-black/6 px-3 py-1 text-xs"><PlatformIcon platform={product.platform} size={14} />{product.platform}</span>{product.in_stock_count > 0 && <span className="flex items-center gap-2 rounded-full border hairline px-3 py-1 text-xs"><span className="signal-dot" />有货</span>}</div>
-            <h1 className="mt-3 text-[clamp(2rem,4vw,3.5rem)] font-semibold leading-none tracking-[-.06em]">{product.display_name}</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-[color:var(--muted)]">{product.description}</p>
-          </div>
-          <aside className="border-t hairline pt-4 lg:border-t-0 lg:border-l lg:pl-6">
-            <p className="mono text-xs tracking-[.12em] text-black/45">可直接比较最低价</p>
-            <p className="mt-1 text-4xl font-semibold tracking-[-.06em]">{money(product.lowest_price)}</p>
-            {product.related_lowest_price && product.related_lowest_price !== product.lowest_price && <p className="mt-1 text-xs text-black/45">全部相关商品最低价 {money(product.related_lowest_price)}</p>}
-          </aside>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t hairline pt-3 text-xs text-black/50">
-          <p className="flex items-center gap-1.5"><Package size={15} />{product.in_stock_count} 条有货，{product.offer_count} 条有效报价</p>
-          <p className="flex items-center gap-1.5"><Clock size={15} />最近更新 {relativeTime(product.last_updated_at)}</p>
-          <p className="flex items-center gap-1.5"><Tag size={15} />{PRODUCT_TYPE_LABELS[product.product_type] || product.product_type}</p>
-        </div>
+      <h1 className="sr-only">{product.display_name}</h1>
+      <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label={`${product.display_name} 报价概况`}>
+        <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
+        <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条有效报价</p>
+        <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
       </section>
 
       <section className="py-5">
