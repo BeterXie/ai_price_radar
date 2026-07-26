@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CaretDown, CaretUp, MagnifyingGlass, Package, Stack } from "@phosphor-icons/react/ssr";
+import { CaretDown, CaretUp, Clock, MagnifyingGlass, Package, Stack } from "@phosphor-icons/react/ssr";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ProductCard } from "@/components/product-card";
 import { offerQuery, ProductWorkspace } from "@/components/product-workspace";
@@ -135,12 +135,11 @@ export default async function ProductsPage({ searchParams }: { searchParams: Sea
         />
       ) : data ? (
         <>
-          <section className="mt-6 grid border-y border-black sm:grid-cols-3" aria-label="当前筛选结果统计">
-            <div className="py-4 sm:border-r sm:border-black sm:px-5"><p className="text-3xl font-semibold tracking-[-.05em]">{data.total}</p><p className="mt-1 text-xs text-black/45">标准产品</p></div>
-            <div className="border-t border-black py-4 sm:border-t-0 sm:border-r sm:px-5"><p className="text-3xl font-semibold tracking-[-.05em]">{data.offer_count}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-black/45"><Stack size={14} />有效报价</p></div>
-            <div className="border-t border-black py-4 sm:border-t-0 sm:px-5"><p className="text-3xl font-semibold tracking-[-.05em]">{data.in_stock_count}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-black/45"><Package size={14} />有货报价</p></div>
+          <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label="目录报价概况">
+            <p className="flex items-center gap-1.5"><Package size={16} />{data.in_stock_count} 条有货报价</p>
+            <p className="flex items-center gap-1.5"><Stack size={16} />{data.offer_count} 条有效报价</p>
+            <p className="flex items-center gap-1.5"><Clock size={16} />更新时间 {exactTime(data.snapshot_at)}</p>
           </section>
-          <p className="mt-2 text-right text-xs text-black/35">数据快照 #{data.snapshot_id || "-"} · {exactTime(data.snapshot_at)}</p>
 
           <form className="mt-6 rounded-[14px] border border-black bg-white p-3">
             <fieldset className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_180px_150px_auto] md:items-end">
