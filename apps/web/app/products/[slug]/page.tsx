@@ -80,7 +80,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   return (
     <main id="main-content" className="shell py-8 md:py-10">
       {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
-      <Link href="/products" className="inline-flex items-center gap-2 text-sm text-black/55 hover:text-black"><ArrowLeft size={16} />返回报价目录</Link>
+      <Link href={`/products?platform=${encodeURIComponent(product.platform)}`} className="inline-flex items-center gap-2 text-sm text-black/55 hover:text-black"><ArrowLeft size={16} />返回 {product.platform} 报价目录</Link>
       <section className="mt-6 grid gap-8 rounded-[18px] border hairline bg-[color:var(--panel)] p-6 lg:grid-cols-[1.3fr_.7fr] lg:p-8">
         <div>
           <div className="flex flex-wrap gap-2"><span className="flex items-center gap-2 rounded-full bg-black/6 px-3 py-1 text-xs"><PlatformIcon platform={product.platform} size={14} />{product.platform}</span>{product.in_stock_count > 0 && <span className="flex items-center gap-2 rounded-full border hairline px-3 py-1 text-xs"><span className="signal-dot" />有货</span>}</div>

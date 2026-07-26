@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { CaretDown, CaretUp, MagnifyingGlass, Package, Stack } from "@phosphor-icons/react/ssr";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ProductCard } from "@/components/product-card";
@@ -54,12 +55,27 @@ const PRODUCT_TABS: Record<string, { label: string; slug: string }[]> = {
 export default async function ProductsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const single = (key: string) => Array.isArray(params[key]) ? String(params[key]?.at(-1) || "") : typeof params[key] === "string" ? String(params[key]) : "";
+  const activeProduct = single("product");
+
+  // A selected standard product is no longer rendered as a one-row catalog.
+  // Send the user straight to the product workspace where price breakdown,
+  // offer filters, grouped offers and history are available.
+  if (activeProduct) {
+    const detailQuery = new URLSearchParams();
+    ["delivery_type", "updated_within_hours", "comparable"].forEach((key) => {
+      const value = single(key);
+      if (value) detailQuery.set(key, value);
+    });
+    if (single("in_stock") === "true") detailQuery.set("in_stock", "true");
+    const suffix = detailQuery.toString();
+    redirect(`/products/${encodeURIComponent(activeProduct)}${suffix ? `?${suffix}` : ""}`);
+  }
+
   const query = new URLSearchParams();
   ["q", "platform", "product", "sort", "delivery_type", "updated_within_hours", "comparable"].forEach((key) => { const value = single(key); if (value) query.set(key, value); });
   if (single("in_stock") === "true") query.set("in_stock", "true");
   const data = await getProducts(query.toString());
   const activePlatform = single("platform");
-  const activeProduct = single("product");
   const currentSort = single("sort") || "price";
   const productTabPlatform = activePlatform || "OpenAI";
   const productTabs = PRODUCT_TABS[productTabPlatform] || [];
@@ -93,7 +109,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Sea
             全部商品
           </Link>
           {productTabs.map((product) => (
-            <Link key={product.slug} href={hrefFor({ platform: productTabPlatform, product: product.slug })} aria-current={activeProduct === product.slug ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-sm ${activeProduct === product.slug ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
+            <Link key={product.slug} href={`/products/${product.slug}`} className="shrink-0 rounded-full px-3 py-2 text-sm hover:bg-black/5">
               {product.label}
             </Link>
           ))}
