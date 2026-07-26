@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import math
+import re
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select, text
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
@@ -26,6 +28,8 @@ from ..schemas import (
     ReportCreate,
     ReportOut,
     ShopDetail,
+    ShopRequestCreate,
+    ShopRequestOut,
 )
 from ..services.catalog import (
     OfferFilters,
@@ -43,6 +47,8 @@ from ..services.catalog import (
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 settings = get_settings()
+LDXP_SHOP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
+LDXP_SHOP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 
 
 def _offer_filters(
@@ -129,6 +135,25 @@ def _enforce_report_rate_limit(request: Request, db: Session) -> None:
             headers={"Retry-After": str(retry_after)},
         )
     rate.request_count += 1
+
+
+def _normalize_ldxp_shop_url(value: object) -> tuple[str, str]:
+    parsed = urllib.parse.urlsplit(str(value))
+    host = (parsed.hostname or "").lower()
+    match = LDXP_SHOP_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host not in LDXP_SHOP_HOSTS or match is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="请提交有效的链动小铺公开店铺链接",
+        )
+    token = urllib.parse.unquote(match.group(1)).strip()
+    if not token or len(token) > 128 or re.fullmatch(r"[A-Za-z0-9._~-]+", token) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="店铺链接中的 token 无效",
+        )
+    normalized = f"https://pay.ldxp.cn/shop/{urllib.parse.quote(token, safe='._~-')}"
+    return token, normalized
 
 
 @router.get("/products", response_model=CatalogResponse)
@@ -380,3 +405,52 @@ def create_report(payload: ReportCreate, request: Request, db: Session = Depends
     db.commit()
     db.refresh(report)
     return report
+
+
+@router.post("/shop-requests", response_model=ShopRequestOut)
+def create_shop_request(
+    payload: ShopRequestCreate,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> ShopRequestOut:
+    token, shop_url = _normalize_ldxp_shop_url(payload.shop_url)
+    _enforce_report_rate_limit(request, db)
+
+    known_shop = db.scalar(select(Shop.id).where(func.lower(Shop.token) == token.lower()))
+    if known_shop is not None:
+        db.commit()
+        return ShopRequestOut(status="already_known", shop_token=token)
+
+    pending = db.scalar(
+        select(Report)
+        .where(
+            Report.kind == "shop_request",
+            Report.status.in_(("open", "reviewing")),
+            func.lower(Report.message).contains(f"店铺链接：{shop_url.lower()}"),
+        )
+        .order_by(Report.id.desc())
+    )
+    if pending is not None:
+        db.commit()
+        return ShopRequestOut(
+            status="already_pending",
+            request_id=pending.id,
+            shop_token=token,
+        )
+
+    lines = [f"店铺链接：{shop_url}"]
+    if payload.shop_name.strip():
+        lines.append(f"店铺名称：{payload.shop_name.strip()}")
+    if payload.note.strip():
+        lines.append(f"申请说明：{payload.note.strip()}")
+    report = Report(
+        kind="shop_request",
+        message="\n".join(lines),
+        contact=payload.contact.strip(),
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    response.status_code = status.HTTP_201_CREATED
+    return ShopRequestOut(status="submitted", request_id=report.id, shop_token=token)

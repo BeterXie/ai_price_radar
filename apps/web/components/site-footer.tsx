@@ -10,8 +10,9 @@ export function SiteFooter() {
         </div>
         <div className="text-sm leading-7 text-white/60">
           <p>本站仅聚合公开可访问的价格、库存、商品标题和来源链接，不参与交易、收款、交付或售后。</p>
-          <div className="mt-4 flex gap-5 text-white">
+          <div className="mt-4 flex flex-wrap gap-5 text-white">
             <Link href="/products">报价目录</Link>
+            <Link href="/shops/submit">申请店铺收录</Link>
           </div>
         </div>
       </div>

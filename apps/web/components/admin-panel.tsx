@@ -59,6 +59,14 @@ type Report = {
   created_at: string;
 };
 
+const REPORT_KIND_LABELS: Record<string, string> = {
+  correction: "报价纠错",
+  unavailable: "无法购买",
+  fraud_concern: "风险反馈",
+  shop_request: "店铺收录申请",
+  other: "其他反馈",
+};
+
 export function AdminPanel() {
   const [key, setKey] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
@@ -141,7 +149,7 @@ export function AdminPanel() {
             ["标准产品", stats.products],
             ["全部报价", stats.offers],
             ["公开报价", stats.public_offers],
-            ["待处理举报", stats.open_reports],
+            ["待处理申请 / 举报", stats.open_reports],
           ].map(([label, value]) => (
             <div key={String(label)} className="bg-[color:var(--panel)] p-5">
               <p className="mono text-xs text-black/40">{label}</p>
@@ -153,13 +161,13 @@ export function AdminPanel() {
 
       {reports.length > 0 && (
         <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
-          <div className="border-b hairline px-5 py-4 font-semibold">待处理举报</div>
+          <div className="border-b hairline px-5 py-4 font-semibold">待处理申请与举报</div>
           <div className="divide-y divide-[color:var(--line)]">
             {reports.map((report) => (
               <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
                 <div>
-                  <p className="mono text-xs uppercase text-black/40">{report.kind} · 报价 #{report.offer_id || "暂无"}</p>
-                  <p className="mt-2 text-sm leading-6">{report.message}</p>
+                  <p className="mono text-xs text-black/40">{REPORT_KIND_LABELS[report.kind] || report.kind}{report.offer_id ? ` / 报价 #${report.offer_id}` : ""}</p>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6">{report.message}</p>
                   {report.contact && <p className="mt-2 text-xs text-black/45">联系方式：{report.contact}</p>}
                 </div>
                 <div className="flex gap-2">

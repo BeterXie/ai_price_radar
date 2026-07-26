@@ -16,6 +16,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: SITE_URL, lastModified, changeFrequency: "hourly", priority: 1 },
     { url: `${SITE_URL}/products`, lastModified, changeFrequency: "hourly", priority: 0.9 },
+    { url: `${SITE_URL}/shops/submit`, lastModified, changeFrequency: "monthly", priority: 0.5 },
     ...PRODUCT_SLUGS.map((slug) => ({
       url: `${SITE_URL}/products?platform=${encodeURIComponent(platformFor(slug))}&product=${encodeURIComponent(slug)}`,
       lastModified,

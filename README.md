@@ -127,9 +127,12 @@ GET  /api/v1/snapshot
 GET  /api/v1/shops/{token}
 GET  /api/v1/meta
 POST /api/v1/reports
+POST /api/v1/shop-requests
 ```
 
 管理接口位于 `/api/v1/admin/*`，通过 `X-Admin-Key` 请求头保护。请勿在客户端代码、截图、日志或公开 Issue 中粘贴管理密钥。
+
+商家可通过 `/shops/submit` 提交链动小铺公开店铺链接。接口会校验来源域名、按店铺 token 去重，并复用举报限流与后台审核队列；申请通过抓取验证前不会进入公开报价。
 
 ## 公开报价规则
 

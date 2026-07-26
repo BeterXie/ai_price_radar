@@ -169,6 +169,19 @@ class ReportOut(BaseModel):
     created_at: datetime
 
 
+class ShopRequestCreate(BaseModel):
+    shop_url: HttpUrl
+    shop_name: str = Field(default="", max_length=120)
+    contact: str = Field(default="", max_length=200)
+    note: str = Field(default="", max_length=1000)
+
+
+class ShopRequestOut(BaseModel):
+    status: Literal["submitted", "already_pending", "already_known"]
+    request_id: int | None = None
+    shop_token: str
+
+
 class AdminOfferUpdate(BaseModel):
     approved: bool | None = None
     active: bool | None = None
