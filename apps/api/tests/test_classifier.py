@@ -182,3 +182,10 @@ def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
 )
 def test_x_premium_service_periods(title: str, period: str):
     assert classify_product(title).service_period == period
+
+
+def test_title_period_wins_over_fulfillment_time_in_description():
+    result = classify_product("X Premium 3个月官方直充", "Grok 充值", "下单后24小时内发货")
+    assert result.service_period == "three_months"
+    unspecified = classify_product("X（Twitter） Premium会员直充卡密", "Grok", "24小时内发货")
+    assert unspecified.service_period == "unknown"

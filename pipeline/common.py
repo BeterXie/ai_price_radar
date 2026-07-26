@@ -240,12 +240,12 @@ def delivery_form(text: str) -> str:
 
 
 def service_period(text: str) -> str:
-    if contains(text, ["日抛", "一天", "1天", "24小时", "24h"]): return "one_day"
-    if contains(text, ["周卡", "一周", "1周", "7天"]): return "one_week"
-    if contains(text, ["三个月", "3个月", "季度", "季卡"]): return "three_months"
-    if contains(text, ["六个月", "6个月", "半年", "半年卡"]): return "six_months"
-    if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]): return "one_month"
     if contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]): return "one_year"
+    if contains(text, ["六个月", "6个月", "半年", "半年卡"]): return "six_months"
+    if contains(text, ["三个月", "3个月", "季度", "季卡"]): return "three_months"
+    if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]): return "one_month"
+    if contains(text, ["周卡", "一周", "1周", "7天"]): return "one_week"
+    if contains(text, ["日抛", "一天", "1天", "24小时", "24h"]): return "one_day"
     return "unknown"
 
 
@@ -400,7 +400,11 @@ def classify(title: str, category: str = "", raw: dict[str, Any] | None = None) 
     delivery_type = delivery_form(norm(title))
     if delivery_type == "unknown":
         delivery_type = delivery_form(detail_text)
-    period = service_period(detail_text)
+    period = service_period(norm(title))
+    if period == "unknown":
+        described_period = service_period(detail_text)
+        if described_period not in {"one_day", "one_week"}:
+            period = described_period
     warranty = warranty_type(detail_text)
     return Classification(
         slug=slug,
