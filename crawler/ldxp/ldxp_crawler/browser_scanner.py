@@ -40,6 +40,8 @@ TARGET_BRAND_MARKERS = (
     "supergrok",
     "grok",
     "xai",
+    "xpremium",
+    "twitterblue",
 )
 IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登")
 NON_TARGET_PLUS_MARKERS = ("百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps")
@@ -54,7 +56,12 @@ def normalize_identity(value: str) -> str:
 def has_target_brand(title: str, category: str = "") -> bool:
     title_identity = normalize_identity(title)
     category_identity = normalize_identity(category)
-    if any(marker in title_identity for marker in TARGET_BRAND_MARKERS):
+    x_premium = (
+        "premium" in title_identity and "twitter" in title_identity
+    ) or (
+        "推特" in title_identity and any(marker in title_identity for marker in ("会员", "蓝v", "蓝标"))
+    )
+    if x_premium or any(marker in title_identity for marker in TARGET_BRAND_MARKERS):
         return True
     implicit_chatgpt = (
         "plus" in title_identity

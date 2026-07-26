@@ -11,7 +11,7 @@
 
 ## 功能
 
-- 聚合 ChatGPT、Codex、OpenAI API、Claude、Gemini、Grok 等公开商品报价
+- 聚合 ChatGPT、Codex、OpenAI API、Claude、Gemini、Grok、X Premium 等公开商品报价
 - 区分 ChatGPT Free、Plus、Go、K12 / Team、Pro 5x、Pro 20x 等标准商品
 - 展示原始商品标题、分类、描述、库存、价格、交付方式、更新时间与来源链接
 - 平台与标准商品 Tab 快速筛选，支持搜索、仅看有货和最低价排序

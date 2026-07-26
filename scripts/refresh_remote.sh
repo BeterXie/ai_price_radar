@@ -8,7 +8,7 @@ MODE="${1:-scan}"
 DATA_DIR="$ROOT/data/crawler"
 CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.pricememo.yml)
-KEYWORDS=(gpt chatgpt openai "open ai" codex claude gemini "google one ai" grok supergrok xai "x.ai" "chat plus" "gpt plus" "gpt team")
+KEYWORDS=(gpt chatgpt openai "open ai" codex claude gemini "google one ai" grok supergrok xai "x.ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
 
 mkdir -p "$DATA_DIR/output" "$DATA_DIR/backups"
 chown 10001:10001 "$DATA_DIR" "$DATA_DIR/output"

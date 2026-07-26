@@ -38,7 +38,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   };
 }
 
-const PLATFORM_TABS = ["OpenAI", "Claude", "Gemini", "Grok"];
+const PLATFORM_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 
 const PRODUCT_TABS: Record<string, { label: string; slug: string }[]> = {
   OpenAI: [
@@ -66,6 +66,11 @@ const PRODUCT_TABS: Record<string, { label: string; slug: string }[]> = {
     { label: "SuperGrok", slug: "grok-super" },
     { label: "Grok 账号", slug: "grok-account" },
     { label: "Grok API", slug: "grok-api-access" },
+  ],
+  X: [
+    { label: "Basic", slug: "x-premium-basic" },
+    { label: "Premium", slug: "x-premium" },
+    { label: "Premium+", slug: "x-premium-plus" },
   ],
 };
 

@@ -7,5 +7,6 @@ export function PlatformIcon({ platform, size = 16 }: { platform: string; size?:
   if (platform === "Claude") return <SiAnthropic {...props} />;
   if (platform === "Gemini") return <SiGooglegemini {...props} />;
   if (platform === "Grok") return <SiX {...props} />;
+  if (platform === "X") return <SiX {...props} />;
   return <SquaresFour aria-hidden size={size} className="shrink-0" />;
 }

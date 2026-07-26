@@ -30,6 +30,9 @@ PRODUCTS = [
     ("grok-super", "Grok", "SuperGrok", "SuperGrok 订阅与代充", "subscription", "聚合 SuperGrok 订阅与代充公开报价。"),
     ("grok-account", "Grok", "Grok 账号", "基础账号与访问类商品", "account", "聚合 Grok 基础账号与访问类公开报价。"),
     ("grok-api-access", "Grok", "Grok API", "API Key、Token 与额度商品", "api", "聚合 Grok API Key、Token 与额度类公开报价。"),
+    ("x-premium-basic", "X", "X Premium Basic", "Basic 订阅与充值", "subscription", "聚合 X Premium Basic 订阅与充值公开报价。"),
+    ("x-premium", "X", "X Premium", "Premium 订阅与充值", "subscription", "聚合 X Premium 订阅与充值公开报价。"),
+    ("x-premium-plus", "X", "X Premium+", "Premium+ 订阅与充值", "subscription", "聚合 X Premium+ 订阅与充值公开报价。"),
 ]
 
 DEMO_OFFERS = [
@@ -42,6 +45,7 @@ DEMO_OFFERS = [
     ("CLAUDEX", "Claude 交换所", "Claude Pro 一个月 成品号", "claude-pro", "109.00", 5, "in_stock", True, 14),
     ("GEMINIX", "双子补给", "Gemini Advanced Google One AI 1个月", "gemini-advanced", "79.00", 6, "in_stock", False, 21),
     ("GROKX", "Grok 补给站", "SuperGrok 代充值 一个月", "grok-super", "159.00", 4, "in_stock", False, 16),
+    ("XPREMIUM", "X 会员补给", "X Premium+ 12个月官方直充", "x-premium-plus", "1598.00", 3, "in_stock", False, 12),
 ]
 
 
@@ -103,6 +107,12 @@ def seed() -> None:
                 tags=classification.tags,
                 risk_flags=classification.risk_flags,
                 classification_confidence=classification.confidence,
+                delivery_type=classification.delivery_type,
+                is_comparable=classification.is_comparable,
+                service_period=classification.service_period,
+                warranty=classification.warranty,
+                use_scenarios=classification.use_scenarios,
+                item_fingerprint=classification.item_fingerprint,
                 source_url=raw.source_url,
                 observed_at=raw.last_seen_at,
                 active=True,

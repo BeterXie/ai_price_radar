@@ -7,6 +7,7 @@ function platformFor(slug: string) {
   if (slug.startsWith("claude-")) return "Claude";
   if (slug.startsWith("gemini-")) return "Gemini";
   if (slug.startsWith("grok-")) return "Grok";
+  if (slug.startsWith("x-premium")) return "X";
   return "OpenAI";
 }
 

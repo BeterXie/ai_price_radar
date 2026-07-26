@@ -15,6 +15,8 @@ export const DELIVERY_TYPE_LABELS: Record<string, string> = {
 export const PERIOD_LABELS: Record<string, string> = {
   one_day: "1 天 / 日抛",
   one_week: "1 周",
+  three_months: "3 个月",
+  six_months: "6 个月",
   one_month: "1 个月",
   one_year: "1 年",
   unknown: "期限未注明",
@@ -59,4 +61,7 @@ export const PRODUCT_SLUGS = [
   "grok-super",
   "grok-account",
   "grok-api-access",
+  "x-premium-basic",
+  "x-premium",
+  "x-premium-plus",
 ];

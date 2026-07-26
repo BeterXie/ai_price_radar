@@ -143,6 +143,7 @@ BRAND_MARKERS = {
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
+    "x": ["x premium", "xpremium", "twitter", "推特"],
 }
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
 CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
@@ -241,6 +242,8 @@ def delivery_form(text: str) -> str:
 def service_period(text: str) -> str:
     if contains(text, ["日抛", "一天", "1天", "24小时", "24h"]): return "one_day"
     if contains(text, ["周卡", "一周", "1周", "7天"]): return "one_week"
+    if contains(text, ["三个月", "3个月", "季度", "季卡"]): return "three_months"
+    if contains(text, ["六个月", "6个月", "半年", "半年卡"]): return "six_months"
     if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]): return "one_month"
     if contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]): return "one_year"
     return "unknown"
@@ -349,6 +352,16 @@ def classify_identity(title_text: str, category_text: str, description_text: str
         if contains(identity_text, ["supergrok", "super grok", "grok super"]):
             return "grok-super", True
         return "grok-account", False
+    if brand == "x":
+        if contains(identity_text, ["premium business", "premium organization", "premium organisation", "企业认证", "金标", "灰标"]):
+            return None, False
+        if contains(identity_text, ["premium+", "premium +", "premium plus", "premiumplus"]):
+            return "x-premium-plus", True
+        if contains(identity_text, ["basic", "基础版"]):
+            return "x-premium-basic", True
+        if contains(identity_text, ["premium", "twitter blue", "推特会员", "蓝v", "蓝标"]):
+            return "x-premium", True
+        return None, False
     if contains(identity_text, CHATGPT_API_MARKERS):
         if contains(identity_text, ["中转", "倍率"]):
             return None, False
@@ -462,6 +475,9 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("grok-super", "Grok", "SuperGrok", "SuperGrok 订阅与代充", "subscription", "聚合 SuperGrok 订阅与代充公开报价。"),
         ("grok-account", "Grok", "Grok 账号", "基础账号与访问类商品", "account", "聚合 Grok 基础账号与访问类公开报价。"),
         ("grok-api-access", "Grok", "Grok API", "API Key、Token 与额度商品", "api", "聚合 Grok API Key、Token 与额度类公开报价。"),
+        ("x-premium-basic", "X", "X Premium Basic", "Basic 订阅与充值", "subscription", "聚合 X Premium Basic 订阅与充值公开报价。"),
+        ("x-premium", "X", "X Premium", "Premium 订阅与充值", "subscription", "聚合 X Premium 订阅与充值公开报价。"),
+        ("x-premium-plus", "X", "X Premium+", "Premium+ 订阅与充值", "subscription", "聚合 X Premium+ 订阅与充值公开报价。"),
     ]
     existing = {x.slug: x for x in db.scalars(select(Product))}
     for slug, platform, name, subtitle, product_type, description in definitions:

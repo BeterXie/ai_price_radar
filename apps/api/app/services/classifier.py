@@ -25,6 +25,7 @@ BRAND_MARKERS = {
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
+    "x": ["x premium", "xpremium", "twitter", "推特"],
 }
 
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
@@ -143,6 +144,10 @@ def _service_period(text: str) -> str:
         return "one_day"
     if _contains(text, ["周卡", "一周", "1周", "7天"]):
         return "one_week"
+    if _contains(text, ["三个月", "3个月", "季度", "季卡"]):
+        return "three_months"
+    if _contains(text, ["六个月", "6个月", "半年", "半年卡"]):
+        return "six_months"
     if _contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]):
         return "one_month"
     if _contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]):
@@ -277,6 +282,16 @@ def _classify_identity(title_text: str, category_text: str, description_text: st
         if _contains(identity_text, ["supergrok", "super grok", "grok super"]):
             return "grok-super", True
         return "grok-account", False
+    if brand == "x":
+        if _contains(identity_text, ["premium business", "premium organization", "premium organisation", "企业认证", "金标", "灰标"]):
+            return None, False
+        if _contains(identity_text, ["premium+", "premium +", "premium plus", "premiumplus"]):
+            return "x-premium-plus", True
+        if _contains(identity_text, ["basic", "基础版"]):
+            return "x-premium-basic", True
+        if _contains(identity_text, ["premium", "twitter blue", "推特会员", "蓝v", "蓝标"]):
+            return "x-premium", True
+        return None, False
 
     if _contains(identity_text, CHATGPT_API_MARKERS):
         if _contains(identity_text, ["中转", "倍率"]):

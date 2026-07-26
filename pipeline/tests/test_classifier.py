@@ -51,6 +51,14 @@ from common import Product, classify, ensure_products, session_for
         ("Gemini 成品号", "AI账号", "gemini-account"),
         ("SuperGrok 代充值", "AI会员", "grok-super"),
         ("Grok Super 正规充值", "AI会员", "grok-super"),
+        ("X（Twitter） Premium会员直充卡密", "Grok", "x-premium"),
+        ("X Premium Basic 一个月官方直充", "AI会员", "x-premium-basic"),
+        ("X Premium+ 12个月官方直充", "Grok 充值", "x-premium-plus"),
+        ("Twitter Blue 月卡", "社交会员", "x-premium"),
+        ("X Premium 12个月，包含同时长 SuperGrok", "Grok 充值", "x-premium"),
+        ("SuperGrok 年卡，附赠 X Premium+", "Grok", "grok-super"),
+        ("Twitter 普通账号", "社交账号", None),
+        ("X Premium Business 企业认证", "企业服务", None),
         ("高级会员直充一个月", "Claude", "claude-account"),
     ],
 )
@@ -84,6 +92,8 @@ def test_product_catalog_groups_openai_and_retires_legacy_team_product():
         assert products["chatgpt-pro-5x"].display_name == "ChatGPT Pro 5x"
         assert products["chatgpt-pro-20x"].display_name == "ChatGPT Pro 20x"
         assert products["codex-access"].platform == "OpenAI"
+        assert products["x-premium-basic"].platform == "X"
+        assert products["x-premium-plus"].display_name == "X Premium+"
         assert legacy.is_visible is False
     finally:
         db.close()
@@ -120,3 +130,15 @@ def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
     assert first.warranty == "first_login"
     assert first.use_scenarios == ["web", "codex"]
     assert first.item_fingerprint == second.item_fingerprint
+
+
+@pytest.mark.parametrize(
+    ("title", "period"),
+    [
+        ("X Premium 3个月官方直充", "three_months"),
+        ("X Premium 六个月全程质保", "six_months"),
+        ("X Premium+ 12个月官方直充", "one_year"),
+    ],
+)
+def test_x_premium_service_periods(title: str, period: str):
+    assert classify(title).service_period == period

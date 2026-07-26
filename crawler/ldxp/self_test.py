@@ -45,6 +45,8 @@ def main() -> None:
     assert BrowserShopScanner._extract_items({"data": {"list": [{"id": 1}]}}) == [{"id": 1}]
     assert BrowserShopScanner._extract_total({"data": {"total": 12}}) == 12
     assert has_target_brand("SuperGrok 代充值")
+    assert has_target_brand("X（Twitter） Premium会员直充卡密")
+    assert not has_target_brand("Twitter 普通账号")
     assert has_target_brand("plus成品号", "chat plus 成品号")
     assert has_target_brand("谷歌邮件 成品 Plus", "全部")
     assert not has_target_brand("Google Gmail 老号", "谷歌账号")
@@ -59,12 +61,13 @@ def main() -> None:
             {"id": "2", "name": "StyleMe Chrome插件 API额度", "category_name": "浏览器插件"},
             {"id": "3", "name": "ChatGPT Plus 直充一个月"},
             {"id": "4", "name": "SuperGrok 代充值"},
+            {"id": "5", "name": "X Premium+ 12个月官方直充"},
         ],
-        ["gpt", "chatgpt", "openai", "grok", "supergrok"],
+        ["gpt", "chatgpt", "openai", "grok", "supergrok", "x premium"],
         "https://pay.ldxp.cn/shop/TEST01",
         False,
     )
-    assert [item.product_name for item in matches] == ["ChatGPT Plus 直充一个月", "SuperGrok 代充值"]
+    assert [item.product_name for item in matches] == ["ChatGPT Plus 直充一个月", "SuperGrok 代充值", "X Premium+ 12个月官方直充"]
     replay_headers = BrowserShopScanner._safe_replay_headers(
         {"User-Agent": "bad", "visitorid": "stable", "X-App": "ok", "Cookie": "secret"}
     )

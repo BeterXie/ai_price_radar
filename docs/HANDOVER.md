@@ -20,7 +20,7 @@ AI Price Radar v3 是一个聚合公开 AI 订阅商品报价的平台。系统�
 - PostgreSQL 16
 - LDXP 浏览器爬虫 v2
 - SQLite / CSV 导入
-- OpenAI 产品族（ChatGPT、Codex、OpenAI API）、Claude、Gemini、Grok 商品标准化
+- OpenAI 产品族（ChatGPT、Codex、OpenAI API）、Claude、Gemini、Grok、X Premium 商品标准化
 - 标签与风险文字提取
 - 当前报价和报价历史
 - 产品、店铺、搜索筛选页面
@@ -121,7 +121,7 @@ Next.js 前端与管理后台
 
 风险标签仅是从标题和描述中提取的事实文字，例如“无售后”“无质保”“售出不退”，不得展示为欺诈评分或未经证实的指控。
 
-自动分类优先使用商品原始标题确认目标品牌，描述不能单独触发商品收录；在标题或原始分类已经确认 OpenAI 产品族后，描述只允许继续细化 Team/K12 和 Pro 倍率。ChatGPT、Codex 与 OpenAI API 统一归入 OpenAI 平台，其中 ChatGPT Free、Plus、Go、K12、Pro 5x、Pro 20x 为独立标准商品；Team、Business、团队邀请、车位、母号和自动拉均归入 K12，Free、Plus 与 Go 必须由标题明确触发，未明确标注 5x/20x 的 Pro 留在通用 Pro 分类，不猜测倍率。仅靠原始分类确认品牌时，标题还必须包含会员、订阅、充值、接码、API、成品账号等商品语境；普通 Gmail、Outlook、iCloud 邮箱不会因为位于 GPT/Gemini 分类下就公开。标题明确说明用于 ChatGPT/OpenAI 的接码、验证、提链或邮箱辅助商品会进入独立的“ChatGPT / Codex 周边服务”，不会混入 Plus 或账号价格；镜像站、教程、授权工具、加速器、网盘和小红书工具等非账号或订阅商品不公开。分类兼容 `chat plus`、`Open Ai`、`PULS`、`plsu` 以及带“成品/半成品/首登”语境的历史命名。Grok 与 SuperGrok 属于目标商品。
+自动分类优先使用商品原始标题确认目标品牌，描述不能单独触发商品收录；标题中最先明确出售的标准产品视为主商品，附赠或包含的其他权益不改变归属。在标题或原始分类已经确认 OpenAI 产品族后，描述只允许继续细化 Team/K12 和 Pro 倍率。ChatGPT、Codex 与 OpenAI API 统一归入 OpenAI 平台，其中 ChatGPT Free、Plus、Go、K12、Pro 5x、Pro 20x 为独立标准商品；Team、Business、团队邀请、车位、母号和自动拉均归入 K12，Free、Plus 与 Go 必须由标题明确触发，未明确标注 5x/20x 的 Pro 留在通用 Pro 分类，不猜测倍率。X Premium 独立于 Grok，按 Basic、Premium、Premium+ 三档标准化；`X Premium…包含 SuperGrok` 归入 X，`SuperGrok…附赠 X Premium+` 仍归入 Grok。仅靠原始分类确认品牌时，标题还必须包含会员、订阅、充值、接码、API、成品账号等商品语境；普通 Gmail、Outlook、iCloud 邮箱不会因为位于 GPT/Gemini 分类下就公开。标题明确说明用于 ChatGPT/OpenAI 的接码、验证、提链或邮箱辅助商品会进入独立的“ChatGPT / Codex 周边服务”，不会混入 Plus 或账号价格；镜像站、教程、授权工具、加速器、网盘和小红书工具等非账号或订阅商品不公开。分类兼容 `chat plus`、`Open Ai`、`PULS`、`plsu` 以及带“成品/半成品/首登”语境的历史命名。Grok、SuperGrok 与 X Premium 属于目标商品。
 
 管理端“重新分类”会覆盖自动分类结果；新规则无法识别的报价会清空标准产品归属，因而立即退出公开产品和店铺报价列表。人工隐藏、审核状态仍由导入流程保留。
 

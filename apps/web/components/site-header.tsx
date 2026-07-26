@@ -18,6 +18,7 @@ export function SiteHeader() {
             ["Claude", "Claude"],
             ["Gemini", "Gemini"],
             ["Grok", "Grok"],
+            ["X", "X"],
           ].map(([platform, label]) => (
             <Link key={platform} href={`/products?platform=${platform}`} className="flex items-center gap-1.5 hover:opacity-60">
               <PlatformIcon platform={platform} size={14} />{label}

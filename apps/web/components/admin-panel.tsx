@@ -24,6 +24,9 @@ const PRODUCT_OPTIONS = [
   "grok-super",
   "grok-account",
   "grok-api-access",
+  "x-premium-basic",
+  "x-premium",
+  "x-premium-plus",
 ];
 
 type Stats = {
