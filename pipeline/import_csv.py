@@ -5,7 +5,9 @@ import os
 import csv
 from pathlib import Path
 
-from common import ImportLockUnavailable, ensure_products, import_lock, session_for, upsert_offer
+from sqlalchemy import update
+
+from common import ImportLockUnavailable, Offer, begin_snapshot, ensure_products, import_lock, session_for, upsert_offer, utcnow
 
 HEADER_MAP = {
     "店铺Token": "token", "店铺名称": "shop_name", "店铺链接": "shop_url",
@@ -27,17 +29,24 @@ def main() -> int:
     try:
         with import_lock(db):
             products = ensure_products(db)
+            snapshot = begin_snapshot(db, "csv")
+            db.execute(update(Offer).values(snapshot_id=snapshot.id))
             with args.csv.open("r", encoding="utf-8-sig", newline="") as handle:
                 for row in csv.DictReader(handle):
                     total += 1
                     record = {HEADER_MAP.get(key, key): value for key, value in row.items()}
                     record["product_key"] = record.get("product_url") or record.get("product_name")
                     try:
-                        upsert_offer(db, record, products)
+                        upsert_offer(db, record, products, snapshot.id)
                     except Exception as exc:
                         failed += 1
                         print(f"row {total}: {exc}")
-            db.commit()
+            if failed:
+                db.rollback()
+            else:
+                snapshot.offer_count = db.query(Offer).count()
+                snapshot.published_at = utcnow()
+                db.commit()
     except ImportLockUnavailable as exc:
         db.rollback()
         print(f"error: {exc}")

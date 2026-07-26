@@ -27,6 +27,9 @@ Validated on 2026-07-25 with Python 3.11 and Node.js 20.
 
 ## Production server validation (2026-07-26)
 
+- Catalog v4 local regression: API 76 passed, pipeline 62 passed, frontend typecheck and production build passed.
+- Delivery-form tests cover negated Plus, shared pools, trials, recharge, semi-finished accounts, relays and team seats; non-comparable offers are excluded from the primary price.
+- Catalog service tests verify comparable vs. related lowest prices, cross-shop fingerprint grouping and lazy original-description loading.
 - Latest regression run: API 67 passed, pipeline 53 passed, frontend typecheck and production build passed.
 - Deployed at `https://ai.pricememo.cn` through the server's existing Caddy instance.
 - Let's Encrypt certificate issued successfully; HTTPS, HSTS, frame denial, MIME sniffing protection, and referrer policy verified.

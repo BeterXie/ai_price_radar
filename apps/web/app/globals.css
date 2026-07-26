@@ -22,7 +22,22 @@ body {
 }
 a { text-decoration: none; }
 button, input, select, textarea { font: inherit; }
+button, input, select, textarea, a { outline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--ink); }
 ::selection { background: var(--accent); color: var(--accent-ink); }
+
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 100;
+  transform: translateY(-160%);
+  border-radius: 8px;
+  background: var(--ink);
+  color: white;
+  padding: 10px 14px;
+}
+.skip-link:focus { transform: translateY(0); }
 
 .shell { width: min(1400px, calc(100% - 32px)); margin-inline: auto; }
 .hairline { border-color: var(--line); }

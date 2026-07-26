@@ -5,7 +5,7 @@ export function SiteFooter() {
     <footer className="mt-24 border-t border-[color:var(--line)] bg-[color:var(--ink)] text-white">
       <div className="shell grid gap-10 py-12 md:grid-cols-[1.4fr_.6fr]">
         <div>
-          <p className="mono text-xs uppercase tracking-[.18em] text-[color:var(--accent)]">Verification over promotion</p>
+          <p className="mono text-xs tracking-[.18em] text-[color:var(--accent)]">核验优先，而非推广</p>
           <h2 className="mt-4 max-w-2xl text-3xl font-semibold tracking-[-.04em]">价格是线索，不是担保。购买前回到原站核验。</h2>
         </div>
         <div className="text-sm leading-7 text-white/60">

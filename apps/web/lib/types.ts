@@ -5,8 +5,10 @@ export type ProductCard = {
   subtitle: string;
   product_type: string;
   lowest_price: string | null;
+  related_lowest_price: string | null;
   offer_count: number;
   in_stock_count: number;
+  comparable_offer_count: number;
   last_updated_at: string | null;
   tags: string[];
 };
@@ -18,6 +20,7 @@ export type Offer = {
   original_name: string;
   original_category: string;
   original_description: string;
+  description_available: boolean;
   goods_type: string;
   price: string | null;
   market_price: string | null;
@@ -27,6 +30,13 @@ export type Offer = {
   auto_delivery: boolean | null;
   tags: string[];
   risk_flags: string[];
+  delivery_type: string;
+  is_comparable: boolean;
+  service_period: string;
+  warranty: string;
+  use_scenarios: string[];
+  item_fingerprint: string;
+  low_price_warning: string | null;
   source_url: string;
   first_seen_at: string;
   last_seen_at: string;
@@ -35,11 +45,46 @@ export type Offer = {
 
 export type ProductDetail = ProductCard & {
   description: string;
+  highest_price: string | null;
+  offer_group_count: number;
+  price_breakdown: DeliveryPriceSummary[];
+  snapshot_id: number | null;
+  snapshot_at: string | null;
   offers: Offer[];
+  offer_groups: OfferGroup[];
   history: { observed_at: string; price: string | null; stock_status: string }[];
 };
 
+export type DeliveryPriceSummary = {
+  delivery_type: string;
+  lowest_price: string | null;
+  offer_count: number;
+  in_stock_count: number;
+};
+
+export type OfferGroup = {
+  fingerprint: string;
+  representative: Offer;
+  offer_count: number;
+  shop_count: number;
+  in_stock_count: number;
+  lowest_price: string | null;
+  highest_price: string | null;
+  latest_observed_at: string | null;
+};
+
 export type OfferPage = {
+  items: Offer[];
+};
+
+export type OfferGroupPage = {
+  items: OfferGroup[];
+  total: number;
+  offer_total: number;
+  snapshot_id: number | null;
+};
+
+export type GroupOffers = {
   items: Offer[];
 };
 
@@ -51,6 +96,8 @@ export type ShopDetail = {
   status: string;
   first_seen_at: string;
   last_success_at: string | null;
+  last_seen_at: string | null;
+  consecutive_failures: number;
   offer_count: number;
   offers: Offer[];
 };
@@ -59,4 +106,13 @@ export type Meta = {
   platforms: string[];
   product_types: string[];
   tags: string[];
+};
+
+export type CatalogResponse = {
+  items: ProductCard[];
+  total: number;
+  offer_count: number;
+  in_stock_count: number;
+  snapshot_id: number | null;
+  snapshot_at: string | null;
 };

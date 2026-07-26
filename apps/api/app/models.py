@@ -54,6 +54,16 @@ class Product(Base):
     offers: Mapped[list[Offer]] = relationship(back_populates="product")
 
 
+class CatalogSnapshot(Base):
+    __tablename__ = "catalog_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(80), default="import")
+    offer_count: Mapped[int] = mapped_column(Integer, default=0)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class RawProduct(Base):
     __tablename__ = "raw_products"
     __table_args__ = (UniqueConstraint("shop_id", "source_product_key", name="uq_raw_shop_key"),)
@@ -90,6 +100,13 @@ class Offer(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     risk_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
     classification_confidence: Mapped[int] = mapped_column(Integer, default=0)
+    delivery_type: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    is_comparable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    service_period: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    warranty: Mapped[str] = mapped_column(String(40), default="unknown", index=True)
+    use_scenarios: Mapped[list[str]] = mapped_column(JSON, default=list)
+    item_fingerprint: Mapped[str] = mapped_column(String(64), default="", index=True)
+    snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("catalog_snapshots.id", ondelete="SET NULL"), nullable=True, index=True)
     source_url: Mapped[str] = mapped_column(Text, default="")
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

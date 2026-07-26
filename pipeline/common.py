@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -73,6 +74,15 @@ class Product(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class CatalogSnapshot(Base):
+    __tablename__ = "catalog_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(80), default="import")
+    offer_count: Mapped[int] = mapped_column(Integer, default=0)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class RawProduct(Base):
     __tablename__ = "raw_products"
     __table_args__ = (UniqueConstraint("shop_id", "source_product_key", name="uq_raw_shop_key"),)
@@ -101,6 +111,13 @@ class Offer(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     risk_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
     classification_confidence: Mapped[int] = mapped_column(Integer, default=0)
+    delivery_type: Mapped[str] = mapped_column(String(40), default="unknown")
+    is_comparable: Mapped[bool] = mapped_column(Boolean, default=False)
+    service_period: Mapped[str] = mapped_column(String(40), default="unknown")
+    warranty: Mapped[str] = mapped_column(String(40), default="unknown")
+    use_scenarios: Mapped[list[str]] = mapped_column(JSON, default=list)
+    item_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("catalog_snapshots.id", ondelete="SET NULL"), nullable=True)
     source_url: Mapped[str] = mapped_column(Text, default="")
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -132,12 +149,14 @@ CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", 
 CHATGPT_PRO_MARKERS = ["chatgpt pro", "gpt pro", "200刀"]
 CHATGPT_PLUS_MARKERS = ["chatgpt plus", "gpt plus", "chat plus", "plus", "puls", "plsu"]
 CHATGPT_GO_MARKERS = ["chatgpt go", "gpt go", "go会员", "go订阅"]
-CHATGPT_FREE_MARKERS = ["chatgpt free", "gpt free", "free账号", "free号", "免费账号", "普通账号", "普通号", "普号", "不含plus", "不含 plus"]
+CHATGPT_FREE_MARKERS = ["chatgpt free", "gpt free", "free账号", "free号", "免费账号", "普通账号", "普通号", "普号", "不含plus", "不含 plus", "不是plus", "不是 plus", "非plus", "非 plus", "无plus", "无 plus"]
 CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指南", "攻略", "授权神器", "自动化授权"]
 CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
 IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
 NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
 RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率"]
+SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池"]
+TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
 CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登"]
 CHATGPT_SERVICE_MARKERS = ["接码", "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"]
@@ -153,6 +172,11 @@ RISK_RULES = {
     "无售后": ["无售后", "不售后", "售出不退"], "无质保": ["无质保", "不质保"],
     "仅首登保障": ["质保首登", "仅首登", "首登售后"], "账号密码交付": ["账号密码", "邮箱密码", "成品号"],
     "团队席位": ["团队邀请", "车位", "自动拉", "拉入团队"], "限制退款": ["买错不退", "不可退款", "售出不退"],
+    "共享号池": SHARED_POOL_MARKERS, "中转服务": RELAY_MARKERS, "体验或日抛": TRIAL_MARKERS,
+}
+COMPARABLE_DELIVERY_TYPES = {
+    "subscription_recharge", "finished_account", "semi_finished_account",
+    "team_seat", "card_code", "api_credit",
 }
 
 
@@ -162,6 +186,12 @@ class Classification:
     tags: list[str]
     risks: list[str]
     confidence: int
+    delivery_type: str
+    is_comparable: bool
+    service_period: str
+    warranty: str
+    use_scenarios: list[str]
+    item_fingerprint: str
 
 
 def norm(text: str) -> str:
@@ -179,6 +209,76 @@ def pro_multiplier(text: str) -> int | None:
         if re.search(rf"pro.*?x?{value}x?(?!\d)|(?<!\d){value}x?.*?pro", compact):
             return multiplier
     return None
+
+
+def delivery_form(text: str) -> str:
+    account_markers = ["成品", "半成品", "账号", "首登", "已接码", "未接码", "账号密码", "独享"]
+    if contains(text, CHATGPT_SERVICE_MARKERS) and not contains(text, account_markers):
+        return "verification_service"
+    if contains(text, SHARED_POOL_MARKERS):
+        return "shared_pool"
+    if contains(text, RELAY_MARKERS) and not contains(text, account_markers):
+        return "relay_api"
+    if contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度"]):
+        return "api_credit"
+    if contains(text, ["团队邀请", "team seat", "车位", "自动拉", "拉入团队", "子号"]):
+        return "team_seat"
+    if contains(text, TRIAL_MARKERS):
+        return "trial_account"
+    if contains(text, ["卡密", "cdk", "兑换码"]):
+        return "card_code"
+    if contains(text, ["半成品", "首登号", "未接码"]):
+        return "semi_finished_account"
+    if contains(text, ["成品", "账号密码", "邮箱密码", "已接码", "独享账号", "账号"]):
+        return "finished_account"
+    if contains(text, ["官方充值", "官方直充", "直充", "代充", "充值", "订阅"]):
+        return "subscription_recharge"
+    if contains(text, RELAY_MARKERS):
+        return "relay_api"
+    return "unknown"
+
+
+def service_period(text: str) -> str:
+    if contains(text, ["日抛", "一天", "1天", "24小时", "24h"]): return "one_day"
+    if contains(text, ["周卡", "一周", "1周", "7天"]): return "one_week"
+    if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]): return "one_month"
+    if contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]): return "one_year"
+    return "unknown"
+
+
+def warranty_type(text: str) -> str:
+    if contains(text, ["无质保", "不质保"]): return "none"
+    if contains(text, ["质保首登", "仅首登", "首登售后", "首登质保"]): return "first_login"
+    if re.search(r"质保.{0,4}(1\s*小时|一\s*小时)|(?:1\s*小时|一\s*小时).{0,4}质保", text): return "one_hour"
+    if re.search(r"质保.{0,4}(24\s*小时|1\s*天|一\s*天)|(?:24\s*小时|1\s*天|一\s*天).{0,4}质保", text): return "one_day"
+    if re.search(r"质保.{0,4}(3\s*天|三\s*天)|(?:3\s*天|三\s*天).{0,4}质保", text): return "three_days"
+    if re.search(r"质保.{0,4}(7\s*天|七\s*天)|(?:7\s*天|七\s*天).{0,4}质保", text): return "seven_days"
+    if contains(text, ["全程质保", "订阅期质保", "质保到期"]): return "subscription_term"
+    return "unknown"
+
+
+def usage_scenarios(text: str) -> list[str]:
+    rules = [
+        ("web", ["网页", "web"]), ("desktop", ["客户端", "app", "桌面端"]),
+        ("codex", ["codex"]), ("api", ["api", "apikey", "api key"]),
+        ("relay", ["中转", "反代"]),
+    ]
+    return [label for label, markers in rules if contains(text, markers)]
+
+
+def fingerprint_component(value: str) -> str:
+    value = re.sub(r"<[^>]+>", " ", value.casefold())
+    value = re.sub(r"(?<!\d)\d{1,2}\s*[./-]\s*\d{1,2}(?!\d)", " ", value)
+    value = re.sub(r"(?<!\d)\d{1,2}\s*点(?!\d)", " ", value)
+    return re.sub(r"[\W_]+", "", value, flags=re.UNICODE)
+
+
+def item_fingerprint(title: str, description: str, slug: str | None, delivery_type: str, period: str, warranty: str) -> str:
+    payload = "|".join([
+        slug or "unclassified", fingerprint_component(title), fingerprint_component(description)[:2000],
+        delivery_type, period, warranty,
+    ])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def chatgpt_tier(text: str) -> str | None:
@@ -284,7 +384,23 @@ def classify(title: str, category: str = "", raw: dict[str, Any] | None = None) 
     risks = [label for label, words in RISK_RULES.items() if any(norm(x) in detail_text for x in words)]
     if slug != "chatgpt-k12":
         tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
-    return Classification(slug, tags, risks, 88 if specific_match else 68 if slug else 0)
+    delivery_type = delivery_form(norm(title))
+    if delivery_type == "unknown":
+        delivery_type = delivery_form(detail_text)
+    period = service_period(detail_text)
+    warranty = warranty_type(detail_text)
+    return Classification(
+        slug=slug,
+        tags=tags,
+        risks=risks,
+        confidence=88 if specific_match else 68 if slug else 0,
+        delivery_type=delivery_type,
+        is_comparable=delivery_type in COMPARABLE_DELIVERY_TYPES,
+        service_period=period,
+        warranty=warranty,
+        use_scenarios=usage_scenarios(detail_text),
+        item_fingerprint=item_fingerprint(title, description_text, slug, delivery_type, period, warranty),
+    )
 
 
 def parse_dt(value: Any) -> datetime:
@@ -373,7 +489,14 @@ def session_for(url: str):
     return sessionmaker(bind=engine, expire_on_commit=False)()
 
 
-def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Product]) -> tuple[bool, bool]:
+def begin_snapshot(db: Session, source: str) -> CatalogSnapshot:
+    snapshot = CatalogSnapshot(source=source)
+    db.add(snapshot)
+    db.flush()
+    return snapshot
+
+
+def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Product], snapshot_id: int | None = None) -> tuple[bool, bool]:
     token = str(record.get("token") or "").strip()
     if not token:
         raise ValueError("missing shop token")
@@ -425,11 +548,19 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
     offer.tags = result.tags
     offer.risk_flags = result.risks
     offer.classification_confidence = result.confidence
+    offer.delivery_type = result.delivery_type
+    offer.is_comparable = result.is_comparable
+    offer.service_period = result.service_period
+    offer.warranty = result.warranty
+    offer.use_scenarios = result.use_scenarios
+    offer.item_fingerprint = result.item_fingerprint
+    if snapshot_id is not None:
+        offer.snapshot_id = snapshot_id
     offer.source_url = raw.source_url
     offer.observed_at = observed_at
     if is_new_offer:
         offer.active = True
-        offer.approved = result.slug is not None and result.confidence >= 60
+        offer.approved = result.slug is not None and result.confidence >= 80
     offer.updated_at = utcnow()
     if changed:
         db.add(OfferHistory(offer_id=offer.id, price=price, stock_count=count, stock_status=status, observed_at=observed_at))

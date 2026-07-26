@@ -6,7 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from common import ImportLockUnavailable, ensure_products, import_lock, session_for, upsert_offer
+from common import ImportLockUnavailable, begin_snapshot, ensure_products, import_lock, session_for, upsert_offer, utcnow
 
 
 def load_records(path: Path):
@@ -44,10 +44,11 @@ def main() -> int:
     try:
         with import_lock(db):
             products = ensure_products(db)
+            snapshot = begin_snapshot(db, "ldxp")
             for record in load_records(args.source_db):
                 total += 1
                 try:
-                    was_created, was_changed = upsert_offer(db, record, products)
+                    was_created, was_changed = upsert_offer(db, record, products, snapshot.id)
                     created += int(was_created)
                     changed += int(was_changed)
                     if total % 100 == 0:
@@ -55,9 +56,11 @@ def main() -> int:
                 except Exception as exc:
                     failed += 1
                     print(json.dumps({"error": str(exc), "record": record.get("product_name")}, ensure_ascii=False))
-            if args.dry_run:
+            if args.dry_run or failed:
                 db.rollback()
             else:
+                snapshot.offer_count = total
+                snapshot.published_at = utcnow()
                 db.commit()
     except ImportLockUnavailable as exc:
         db.rollback()

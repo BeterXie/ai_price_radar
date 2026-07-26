@@ -12,12 +12,61 @@ from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..database import get_db
-from ..models import Offer, Product, Report, ReportRateLimit
-from ..schemas import CatalogResponse, MetaResponse, OfferPageResponse, ProductDetail, ReportCreate, ReportOut, ShopDetail
-from ..services.catalog import get_product_detail, get_product_offer_page, get_shop_detail, list_product_cards
+from ..models import Offer, Product, Report, ReportRateLimit, Shop
+from ..schemas import (
+    CatalogResponse,
+    CatalogSnapshotPublic,
+    GroupOffersResponse,
+    MetaResponse,
+    OfferDescriptionResponse,
+    OfferGroupPageResponse,
+    OfferPageResponse,
+    ProductDetail,
+    ReportCreate,
+    ReportOut,
+    ShopDetail,
+)
+from ..services.catalog import (
+    OfferFilters,
+    get_current_snapshot,
+    get_group_offers,
+    get_offer_description,
+    get_product_detail,
+    get_product_group_page,
+    get_product_offer_page,
+    get_shop_detail,
+    list_product_cards,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 settings = get_settings()
+
+
+def _offer_filters(
+    *,
+    delivery_type: str = "",
+    period: str = "",
+    warranty: str = "",
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = None,
+    comparable: bool | None = None,
+    exclude: str = "",
+    in_stock: bool = False,
+    min_price: Decimal | None = None,
+    max_price: Decimal | None = None,
+) -> OfferFilters:
+    return OfferFilters(
+        delivery_type=delivery_type,
+        service_period=period,
+        warranty=warranty,
+        auto_delivery=auto_delivery,
+        updated_within_hours=updated_within_hours,
+        comparable=comparable,
+        exclude=exclude,
+        in_stock=in_stock,
+        min_price=min_price,
+        max_price=max_price,
+    )
 
 
 def _client_address(request: Request) -> str:
@@ -89,6 +138,14 @@ def products(
     in_stock: bool = False,
     min_price: Decimal | None = Query(default=None, ge=0),
     max_price: Decimal | None = Query(default=None, ge=0),
+    delivery_type: str = Query(default="", max_length=40),
+    period: str = Query(default="", max_length=40),
+    warranty: str = Query(default="", max_length=40),
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
+    comparable: bool | None = None,
+    exclude: str = Query(default="", max_length=200),
+    snapshot: int | None = Query(default=None, ge=1),
     sort: str = Query(default="price", pattern="^(price|price_desc|updated|offers)$"),
     db: Session = Depends(get_db),
 ) -> CatalogResponse:
@@ -99,17 +156,70 @@ def products(
         product_slug=product,
         product_type=product_type,
         tag=tag,
-        in_stock=in_stock,
-        min_price=min_price,
-        max_price=max_price,
+        filters=_offer_filters(
+            delivery_type=delivery_type,
+            period=period,
+            warranty=warranty,
+            auto_delivery=auto_delivery,
+            updated_within_hours=updated_within_hours,
+            comparable=comparable,
+            exclude=exclude,
+            in_stock=in_stock,
+            min_price=min_price,
+            max_price=max_price,
+        ),
         sort=sort,
+        snapshot_id=snapshot,
     )
-    return CatalogResponse(items=items, total=len(items))
+    current = get_current_snapshot(db)
+    return CatalogResponse(
+        items=items,
+        total=len(items),
+        offer_count=sum(item.offer_count for item in items),
+        in_stock_count=sum(item.in_stock_count for item in items),
+        snapshot_id=current.id if current else None,
+        snapshot_at=current.published_at if current else None,
+    )
+
+
+@router.get("/snapshot", response_model=CatalogSnapshotPublic)
+def snapshot(db: Session = Depends(get_db)) -> CatalogSnapshotPublic:
+    current = get_current_snapshot(db)
+    return CatalogSnapshotPublic(
+        id=current.id if current else None,
+        published_at=current.published_at if current else None,
+    )
 
 
 @router.get("/products/{slug}", response_model=ProductDetail)
-def product_detail(slug: str, db: Session = Depends(get_db)) -> ProductDetail:
-    result = get_product_detail(db, slug)
+def product_detail(
+    slug: str,
+    delivery_type: str = Query(default="", max_length=40),
+    period: str = Query(default="", max_length=40),
+    warranty: str = Query(default="", max_length=40),
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
+    comparable: bool | None = True,
+    exclude: str = Query(default="", max_length=200),
+    in_stock: bool = False,
+    snapshot: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+) -> ProductDetail:
+    result = get_product_detail(
+        db,
+        slug,
+        filters=_offer_filters(
+            delivery_type=delivery_type,
+            period=period,
+            warranty=warranty,
+            auto_delivery=auto_delivery,
+            updated_within_hours=updated_within_hours,
+            comparable=comparable,
+            exclude=exclude,
+            in_stock=in_stock,
+        ),
+        snapshot_id=snapshot,
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="product not found")
     return result
@@ -120,12 +230,79 @@ def product_offers(
     slug: str,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
+    snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> OfferPageResponse:
-    items = get_product_offer_page(db, slug, offset=offset, limit=limit)
+    items = get_product_offer_page(db, slug, offset=offset, limit=limit, snapshot_id=snapshot)
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
     return OfferPageResponse(items=items)
+
+
+@router.get("/products/{slug}/groups", response_model=OfferGroupPageResponse)
+def product_groups(
+    slug: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=100),
+    delivery_type: str = Query(default="", max_length=40),
+    period: str = Query(default="", max_length=40),
+    warranty: str = Query(default="", max_length=40),
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
+    comparable: bool | None = True,
+    exclude: str = Query(default="", max_length=200),
+    in_stock: bool = False,
+    snapshot: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+) -> OfferGroupPageResponse:
+    product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
+    if product is None:
+        raise HTTPException(status_code=404, detail="product not found")
+    current = get_current_snapshot(db)
+    items, total, offer_total = get_product_group_page(
+        db,
+        product.id,
+        offset=offset,
+        limit=limit,
+        filters=_offer_filters(
+            delivery_type=delivery_type,
+            period=period,
+            warranty=warranty,
+            auto_delivery=auto_delivery,
+            updated_within_hours=updated_within_hours,
+            comparable=comparable,
+            exclude=exclude,
+            in_stock=in_stock,
+        ),
+        snapshot=current,
+    )
+    return OfferGroupPageResponse(
+        items=items,
+        total=total,
+        offer_total=offer_total,
+        snapshot_id=current.id if current else None,
+    )
+
+
+@router.get("/products/{slug}/groups/{fingerprint}", response_model=GroupOffersResponse)
+def product_group_offers(
+    slug: str,
+    fingerprint: str,
+    snapshot: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+) -> GroupOffersResponse:
+    items = get_group_offers(db, slug, fingerprint, snapshot_id=snapshot)
+    if items is None:
+        raise HTTPException(status_code=404, detail="product not found")
+    return GroupOffersResponse(items=items)
+
+
+@router.get("/offers/{offer_id}/description", response_model=OfferDescriptionResponse)
+def offer_description(offer_id: int, db: Session = Depends(get_db)) -> OfferDescriptionResponse:
+    description = get_offer_description(db, offer_id)
+    if description is None:
+        raise HTTPException(status_code=404, detail="offer not found")
+    return OfferDescriptionResponse(offer_id=offer_id, original_description=description)
 
 
 @router.get("/shops/{token}", response_model=ShopDetail)
@@ -139,7 +316,20 @@ def shop_detail(token: str, db: Session = Depends(get_db)) -> ShopDetail:
 @router.get("/meta", response_model=MetaResponse)
 def meta(db: Session = Depends(get_db)) -> MetaResponse:
     products = list(db.scalars(select(Product).where(Product.is_visible.is_(True))))
-    offers = list(db.scalars(select(Offer).where(Offer.active.is_(True), Offer.approved.is_(True))))
+    current = get_current_snapshot(db)
+    offer_stmt = (
+        select(Offer)
+        .join(Shop, Offer.shop_id == Shop.id)
+        .where(
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            Shop.is_visible.is_(True),
+            Offer.observed_at >= datetime.now(timezone.utc) - timedelta(hours=settings.stale_offer_hours),
+        )
+    )
+    if current is not None:
+        offer_stmt = offer_stmt.where(Offer.snapshot_id == current.id)
+    offers = list(db.scalars(offer_stmt))
     return MetaResponse(
         platforms=sorted({x.platform for x in products}),
         product_types=sorted({x.product_type for x in products}),

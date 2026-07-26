@@ -16,6 +16,10 @@
 - 展示原始商品标题、分类、描述、库存、价格、交付方式、更新时间与来源链接
 - 平台与标准商品 Tab 快速筛选，支持搜索、仅看有货和最低价排序
 - 商品详情使用真实分页瀑布流，首屏及后续请求每次加载 30 条报价
+- 区分交付形态，只用可直接比较报价计算主最低价，并保留全部相关商品最低价
+- 按标题、描述摘要、交付形态、周期和质保生成同款指纹，默认聚合跨店铺重复条目
+- 原始长描述在展开报价后按需加载，首屏只返回购买决策摘要
+- 完整导入通过已发布快照原子切换，公开页面标注同一数据快照时间
 - 记录报价历史，并保留人工审核、隐藏和重新分类状态
 - 自动发现店铺、周期扫描、SQLite 校验、快照与 PostgreSQL 幂等同步
 - 提供举报纠错和不公开暴露入口的基础管理后台
@@ -116,6 +120,10 @@ docker compose --profile tools run --rm importer \
 GET  /api/v1/products
 GET  /api/v1/products/{slug}
 GET  /api/v1/products/{slug}/offers?offset=0&limit=30
+GET  /api/v1/products/{slug}/groups?offset=0&limit=30
+GET  /api/v1/products/{slug}/groups/{fingerprint}
+GET  /api/v1/offers/{id}/description
+GET  /api/v1/snapshot
 GET  /api/v1/shops/{token}
 GET  /api/v1/meta
 POST /api/v1/reports
@@ -133,6 +141,16 @@ POST /api/v1/reports
 - 观察时间没有超过有效窗口
 
 最低价仅从价格大于 0 且库存状态为 `in_stock` 的报价中计算。分类器只把标题或原始分类能够确认品牌与商品语境的内容公开，镜像站、教程、授权工具等非账号或订阅商品不会混入主流产品报价。
+
+标准产品和交付形态是两个独立维度。号池、中转、验证服务、体验号与形态不明的报价可以作为相关信息保留，但不参与标准产品的主最低价；新报价分类置信度不足时保持待审核状态。
+
+从旧版本升级已有 PostgreSQL 数据库时，先备份，再运行：
+
+```bash
+python scripts/migrate_catalog_v4.py --database-url "$DATABASE_URL"
+```
+
+迁移只新增快照和报价分析字段，不删除原始数据。迁移后执行一次完整 SQLite 同步或管理端重新分类，以回填交付形态、可比性和同款指纹。
 
 ## 开发与验证
 

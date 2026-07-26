@@ -3,8 +3,25 @@ export function money(value: string | number | null, currency = "CNY") {
   return new Intl.NumberFormat("zh-CN", {
     style: "currency",
     currency,
+    currencyDisplay: "narrowSymbol",
     minimumFractionDigits: 2,
   }).format(Number(value));
+}
+
+export function exactTime(value: string | null) {
+  if (!value) return "暂无";
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")} 北京时间`;
 }
 
 export function relativeTime(value: string | null) {

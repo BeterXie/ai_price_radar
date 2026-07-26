@@ -134,3 +134,31 @@ def test_target_brand_products_are_classified(title: str, category: str, slug: s
 def test_stock_normalization():
     assert normalize_stock("有货", None) == "in_stock"
     assert normalize_stock("", 0) == "out_of_stock"
+
+
+@pytest.mark.parametrize(
+    ("title", "category", "slug", "delivery_type", "comparable"),
+    [
+        ("美区成品号，带接码链接，不是Plus", "GPT-plus半成品号", "chatgpt-account", "finished_account", True),
+        ("ChatGPT Plus号池标准套餐", "GPT Plus", "chatgpt-plus", "shared_pool", False),
+        ("ChatGPT Plus体验版日抛", "GPT Plus", "chatgpt-plus", "trial_account", False),
+        ("ChatGPT Plus官方直充一个月", "GPT Plus", "chatgpt-plus", "subscription_recharge", True),
+        ("ChatGPT Plus半成品未接码", "GPT Plus", "chatgpt-plus", "semi_finished_account", True),
+        ("Codex中转站 API额度", "GPT-plus", None, "relay_api", False),
+        ("GPT Team团队邀请车位", "GPT Team", "chatgpt-k12", "team_seat", True),
+    ],
+)
+def test_delivery_form_controls_comparability(title: str, category: str, slug: str | None, delivery_type: str, comparable: bool):
+    result = classify_product(title, category)
+    assert result.slug == slug
+    assert result.delivery_type == delivery_type
+    assert result.is_comparable is comparable
+
+
+def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
+    first = classify_product("7.26 ChatGPT Plus 成品号", "GPT", "月卡，质保首登，支持网页和 Codex")
+    second = classify_product("7/27 ChatGPT Plus 成品号", "GPT", "月卡 质保首登 支持网页和 Codex")
+    assert first.service_period == "one_month"
+    assert first.warranty == "first_login"
+    assert first.use_scenarios == ["web", "codex"]
+    assert first.item_fingerprint == second.item_fingerprint

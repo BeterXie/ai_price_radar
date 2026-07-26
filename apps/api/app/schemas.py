@@ -13,7 +13,8 @@ class OfferPublic(BaseModel):
     shop_name: str
     original_name: str
     original_category: str
-    original_description: str
+    original_description: str = ""
+    description_available: bool = False
     goods_type: str
     price: Decimal | None
     market_price: Decimal | None
@@ -23,6 +24,13 @@ class OfferPublic(BaseModel):
     auto_delivery: bool | None
     tags: list[str]
     risk_flags: list[str]
+    delivery_type: str
+    is_comparable: bool
+    service_period: str
+    warranty: str
+    use_scenarios: list[str]
+    item_fingerprint: str
+    low_price_warning: str | None = None
     source_url: str
     first_seen_at: datetime
     last_seen_at: datetime
@@ -36,8 +44,10 @@ class ProductCard(BaseModel):
     subtitle: str
     product_type: str
     lowest_price: Decimal | None
+    related_lowest_price: Decimal | None
     offer_count: int
     in_stock_count: int
+    comparable_offer_count: int
     last_updated_at: datetime | None
     tags: list[str]
 
@@ -48,14 +58,54 @@ class PricePoint(BaseModel):
     stock_status: str
 
 
+class DeliveryPriceSummary(BaseModel):
+    delivery_type: str
+    lowest_price: Decimal | None
+    offer_count: int
+    in_stock_count: int
+
+
+class OfferGroupPublic(BaseModel):
+    fingerprint: str
+    representative: OfferPublic
+    offer_count: int
+    shop_count: int
+    in_stock_count: int
+    lowest_price: Decimal | None
+    highest_price: Decimal | None
+    latest_observed_at: datetime | None
+
+
 class ProductDetail(ProductCard):
     description: str
-    offers: list[OfferPublic]
+    highest_price: Decimal | None
+    offer_group_count: int
+    price_breakdown: list[DeliveryPriceSummary]
+    snapshot_id: int | None
+    snapshot_at: datetime | None
+    offers: list[OfferPublic] = Field(default_factory=list)
+    offer_groups: list[OfferGroupPublic] = Field(default_factory=list)
     history: list[PricePoint]
 
 
 class OfferPageResponse(BaseModel):
     items: list[OfferPublic]
+
+
+class OfferGroupPageResponse(BaseModel):
+    items: list[OfferGroupPublic]
+    total: int
+    offer_total: int
+    snapshot_id: int | None
+
+
+class GroupOffersResponse(BaseModel):
+    items: list[OfferPublic]
+
+
+class OfferDescriptionResponse(BaseModel):
+    offer_id: int
+    original_description: str
 
 
 class ShopDetail(BaseModel):
@@ -66,6 +116,8 @@ class ShopDetail(BaseModel):
     status: str
     first_seen_at: datetime
     last_success_at: datetime | None
+    last_seen_at: datetime | None
+    consecutive_failures: int
     offer_count: int
     offers: list[OfferPublic]
 
@@ -73,6 +125,15 @@ class ShopDetail(BaseModel):
 class CatalogResponse(BaseModel):
     items: list[ProductCard]
     total: int
+    offer_count: int
+    in_stock_count: int
+    snapshot_id: int | None
+    snapshot_at: datetime | None
+
+
+class CatalogSnapshotPublic(BaseModel):
+    id: int | None
+    published_at: datetime | None
 
 
 class MetaResponse(BaseModel):

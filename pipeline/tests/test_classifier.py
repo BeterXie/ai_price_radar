@@ -93,3 +93,30 @@ def test_plus_does_not_inherit_k12_tags_from_description():
     result = classify("ChatGPT Plus 成品号", "GPT", {"description": "支持 Team、Business 和 K12"})
     assert result.slug == "chatgpt-plus"
     assert not ({"Team", "Business", "K12"} & set(result.tags))
+
+
+@pytest.mark.parametrize(
+    ("title", "category", "slug", "delivery_type", "comparable"),
+    [
+        ("美区成品号，带接码链接，不是Plus", "GPT-plus半成品号", "chatgpt-account", "finished_account", True),
+        ("ChatGPT Plus号池标准套餐", "GPT Plus", "chatgpt-plus", "shared_pool", False),
+        ("ChatGPT Plus体验版日抛", "GPT Plus", "chatgpt-plus", "trial_account", False),
+        ("ChatGPT Plus官方直充一个月", "GPT Plus", "chatgpt-plus", "subscription_recharge", True),
+        ("ChatGPT Plus半成品未接码", "GPT Plus", "chatgpt-plus", "semi_finished_account", True),
+        ("Codex中转站 API额度", "GPT-plus", None, "relay_api", False),
+    ],
+)
+def test_delivery_form_controls_comparability(title: str, category: str, slug: str | None, delivery_type: str, comparable: bool):
+    result = classify(title, category)
+    assert result.slug == slug
+    assert result.delivery_type == delivery_type
+    assert result.is_comparable is comparable
+
+
+def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
+    first = classify("7.26 ChatGPT Plus 成品号", "GPT", {"description": "月卡，质保首登，支持网页和 Codex"})
+    second = classify("7/27 ChatGPT Plus 成品号", "GPT", {"description": "月卡 质保首登 支持网页和 Codex"})
+    assert first.service_period == "one_month"
+    assert first.warranty == "first_login"
+    assert first.use_scenarios == ["web", "codex"]
+    assert first.item_fingerprint == second.item_fingerprint
