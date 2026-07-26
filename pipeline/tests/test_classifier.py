@@ -149,3 +149,8 @@ def test_title_period_wins_over_fulfillment_time_in_description():
     assert result.service_period == "three_months"
     unspecified = classify("X（Twitter） Premium会员直充卡密", "Grok", {"description": "24小时内发货"})
     assert unspecified.service_period == "unknown"
+
+
+def test_title_warranty_wins_over_narrower_description_exclusions():
+    result = classify("X Premium 3个月全程质保订阅", "Grok", {"description": "封号无质保，其他情况质保到期"})
+    assert result.warranty == "subscription_term"

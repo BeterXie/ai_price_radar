@@ -336,7 +336,9 @@ def classify_product(title: str, category: str = "", description: str = "") -> C
         described_period = _service_period(detail_text)
         if described_period not in {"one_day", "one_week"}:
             period = described_period
-    warranty = _warranty(detail_text)
+    warranty = _warranty(normalize_title(title))
+    if warranty == "unknown":
+        warranty = _warranty(detail_text)
     return Classification(
         slug=slug,
         tags=tags,

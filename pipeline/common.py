@@ -405,7 +405,9 @@ def classify(title: str, category: str = "", raw: dict[str, Any] | None = None) 
         described_period = service_period(detail_text)
         if described_period not in {"one_day", "one_week"}:
             period = described_period
-    warranty = warranty_type(detail_text)
+    warranty = warranty_type(norm(title))
+    if warranty == "unknown":
+        warranty = warranty_type(detail_text)
     return Classification(
         slug=slug,
         tags=tags,
