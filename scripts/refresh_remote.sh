@@ -133,7 +133,8 @@ if [[ "$(sqlite3 "$BACKUP_DB" 'PRAGMA quick_check;')" != "ok" ]]; then
   echo "crawler database backup validation failed" >&2
   exit 5
 fi
-find "$DATA_DIR/backups" -type f -name 'ldxp_crawler_*.db' -mtime +14 -delete
+find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_crawler_*.db' \
+  ! -path "$BACKUP_DB" -delete
 
 docker run --rm --user 0 \
   --network ai-price-radar_default \
