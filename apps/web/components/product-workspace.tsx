@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clock, Package, Tag } from "@phosphor-icons/react/ssr";
+import { Check, Clock, Package, Tag } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { PlatformIcon } from "@/components/platform-icon";
 import { PriceHistory } from "@/components/price-history";
@@ -62,6 +62,14 @@ export function ProductWorkspace({
       url: canonical,
     },
   } : null;
+  const comparableOnly = single(rawParams, "comparable") !== "false";
+  const inStockOnly = single(rawParams, "in_stock") === "true";
+  const scopeHref = (comparable: boolean, inStock: boolean) => {
+    const params = new URLSearchParams(hiddenFields);
+    params.set("comparable", String(comparable));
+    if (inStock) params.set("in_stock", "true");
+    return `${filterAction}?${params.toString()}`;
+  };
 
   return (
     <>
@@ -87,16 +95,20 @@ export function ProductWorkspace({
       </section>
 
       <section className="py-5">
-        <form action={filterAction} className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-black bg-white px-4 py-3">
-          {Object.entries(hiddenFields).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
-          <fieldset className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-            <legend className="sr-only">报价范围</legend>
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-black bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm" aria-label="报价范围">
             <span className="font-semibold">报价范围</span>
-            <label className="flex items-center gap-2"><input type="hidden" name="comparable" value="false" /><input type="checkbox" name="comparable" value="true" defaultChecked={single(rawParams, "comparable") !== "false"} className="h-4 w-4 accent-black" />仅显示可直接比较</label>
-            <label className="flex items-center gap-2"><input type="checkbox" name="in_stock" value="true" defaultChecked={single(rawParams, "in_stock") === "true"} className="h-4 w-4 accent-black" />仅看有货</label>
-          </fieldset>
-          <div className="flex gap-2"><button className="tactile rounded-[8px] bg-[color:var(--ink)] px-4 py-2 text-sm text-white">应用</button><Link href={resetHref} className="rounded-[8px] border border-black px-4 py-2 text-sm">重置</Link></div>
-        </form>
+            <Link href={scopeHref(!comparableOnly, inStockOnly)} aria-pressed={comparableOnly} className="flex items-center gap-2">
+              <span className={`grid h-4 w-4 place-items-center border border-black ${comparableOnly ? "bg-black text-white" : "bg-white"}`}>{comparableOnly && <Check size={12} weight="bold" />}</span>
+              仅显示可直接比较
+            </Link>
+            <Link href={scopeHref(comparableOnly, !inStockOnly)} aria-pressed={inStockOnly} className="flex items-center gap-2">
+              <span className={`grid h-4 w-4 place-items-center border border-black ${inStockOnly ? "bg-black text-white" : "bg-white"}`}>{inStockOnly && <Check size={12} weight="bold" />}</span>
+              仅看有货
+            </Link>
+          </div>
+          <Link href={resetHref} className="rounded-[8px] border border-black px-4 py-2 text-sm">重置</Link>
+        </div>
       </section>
 
       <section className="pb-12">
