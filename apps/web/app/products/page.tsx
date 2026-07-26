@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CaretDown, CaretUp, Clock, MagnifyingGlass, Package, Stack } from "@phosphor-icons/react/ssr";
+import { Clock, Package, Stack } from "@phosphor-icons/react/ssr";
+import { OfferGroupTable } from "@/components/offer-table";
+import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { PlatformIcon } from "@/components/platform-icon";
-import { ProductCard } from "@/components/product-card";
 import { offerQuery, ProductWorkspace } from "@/components/product-workspace";
-import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
-import { getProduct, getProducts } from "@/lib/api";
-import { exactTime } from "@/lib/format";
+import { ReportForm } from "@/components/report-form";
+import { getCatalogGroups, getProduct } from "@/lib/api";
+import { exactTime, relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -73,14 +74,15 @@ export default async function ProductsPage({ searchParams }: { searchParams: Sea
   const single = (key: string) => Array.isArray(params[key]) ? String(params[key]?.at(-1) || "") : typeof params[key] === "string" ? String(params[key]) : "";
   const activeProduct = single("product");
   const query = new URLSearchParams();
-  ["q", "platform", "product", "sort", "delivery_type", "updated_within_hours", "comparable"].forEach((key) => { const value = single(key); if (value) query.set(key, value); });
+  ["platform", "product", "comparable"].forEach((key) => { const value = single(key); if (value) query.set(key, value); });
   if (single("in_stock") === "true") query.set("in_stock", "true");
   const detailQuery = offerQuery(params);
   const product = activeProduct ? await getProduct(activeProduct, detailQuery.toString()) : null;
   if (activeProduct && !product) notFound();
-  const data = activeProduct ? null : await getProducts(query.toString());
   const activePlatform = product?.platform || single("platform");
-  const currentSort = single("sort") || "price";
+  const catalogQuery = new URLSearchParams(detailQuery);
+  if (activePlatform) catalogQuery.set("platform", activePlatform);
+  const catalog = activeProduct ? null : await getCatalogGroups(catalogQuery.toString());
   const productTabPlatform = activePlatform || "OpenAI";
   const productTabs = PRODUCT_TABS[productTabPlatform] || [];
   const hrefFor = (updates: Record<string, string | null>) => {
@@ -133,43 +135,39 @@ export default async function ProductsPage({ searchParams }: { searchParams: Sea
           hiddenFields={{ platform: product.platform, product: product.slug }}
           resetHref={`/products?platform=${encodeURIComponent(product.platform)}&product=${encodeURIComponent(product.slug)}`}
         />
-      ) : data ? (
+      ) : catalog ? (
         <>
           <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label="目录报价概况">
-            <p className="flex items-center gap-1.5"><Package size={16} />{data.in_stock_count} 条有货报价</p>
-            <p className="flex items-center gap-1.5"><Stack size={16} />{data.offer_count} 条有效报价</p>
-            <p className="flex items-center gap-1.5"><Clock size={16} />更新时间 {exactTime(data.snapshot_at)}</p>
+            <p className="flex items-center gap-1.5"><Package size={16} />{catalog.in_stock_count} 条有货报价</p>
+            <p className="flex items-center gap-1.5"><Stack size={16} />{catalog.offer_total} 条有效报价</p>
+            <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(catalog.last_updated_at)}</p>
           </section>
 
-          <form className="mt-6 rounded-[14px] border border-black bg-white p-3">
-            <fieldset className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_180px_150px_auto] md:items-end">
-              <legend className="sr-only">报价目录筛选</legend>
-              <input type="hidden" name="platform" value={activePlatform} />
-              <input type="hidden" name="sort" value={currentSort} />
-              <label className="flex min-w-0 items-center"><span className="sr-only">搜索标准产品或原始商品名</span><MagnifyingGlass size={20} className="shrink-0" /><input name="q" defaultValue={single("q")} placeholder="搜索标准产品或原始商品名" aria-label="搜索标准产品或原始商品名" className="w-full bg-transparent px-3 py-2 outline-none" /></label>
-              <label className="text-xs text-black/55">交付形态<select name="delivery_type" defaultValue={single("delivery_type")} className="mt-1 w-full rounded-[8px] border hairline bg-transparent px-3 py-2 text-sm text-black"><option value="">全部形态</option>{Object.entries(DELIVERY_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-              <label className="text-xs text-black/55">更新时间<select name="updated_within_hours" defaultValue={single("updated_within_hours")} className="mt-1 w-full rounded-[8px] border hairline bg-transparent px-3 py-2 text-sm text-black"><option value="">72 小时内</option><option value="1">1 小时内</option><option value="24">24 小时内</option></select></label>
-              <button className="tactile shrink-0 rounded-[9px] bg-[color:var(--ink)] px-5 py-2.5 text-sm text-white">应用筛选</button>
-              <div className="flex flex-wrap gap-5 text-sm md:col-span-4"><label className="flex items-center gap-2"><input type="hidden" name="comparable" value="false" /><input type="checkbox" name="comparable" value="true" defaultChecked={single("comparable") === "true"} className="h-4 w-4 accent-black" />仅显示可直接比较</label><label className="flex items-center gap-2"><input type="checkbox" name="in_stock" value="true" defaultChecked={single("in_stock") === "true"} className="h-4 w-4 accent-black" />仅看有货</label></div>
-            </fieldset>
-          </form>
+          <OfferScopeControls
+            action="/products"
+            comparableOnly={single("comparable") !== "false"}
+            inStockOnly={single("in_stock") === "true"}
+            hiddenFields={activePlatform ? { platform: activePlatform } : {}}
+            resetHref={activePlatform ? `/products?platform=${encodeURIComponent(activePlatform)}` : "/products"}
+          />
 
-          <section className="py-8">
-            {data.items.length ? (
-              <>
-                <div className="hidden grid-cols-[40px_minmax(220px,1.4fr)_90px_100px_125px_115px_100px_24px] gap-4 border-b border-black px-0 pb-3 text-xs text-black/45 lg:grid">
-                  <span>序号</span><span>标准商品</span><span>平台</span><span>类型</span>
-                  <Link href={hrefFor({ sort: currentSort === "price" ? "price_desc" : "price" })} className="flex items-center gap-1.5 text-black/60 hover:text-black" aria-label={currentSort === "price" ? "按最低有货价从高到低排序" : "按最低有货价从低到高排序"}>
-                    可比最低价 {currentSort === "price_desc" ? <CaretDown size={13} /> : <CaretUp size={13} />}
-                  </Link>
-                  <span>库存</span><span>更新时间</span><span>查看</span>
-                </div>
-                <div>{data.items.map((item, index) => <ProductCard key={item.slug} product={item} index={index} />)}</div>
-              </>
-            ) : (
-              <div className="rounded-[18px] border hairline p-16 text-center"><h2 className="text-2xl font-semibold">没有匹配产品</h2><p className="mt-3 text-black/50">清除部分筛选条件后再试。</p></div>
-            )}
+          <section className="pb-12">
+            <div className="mb-6">
+              <h2 className="text-3xl font-semibold tracking-[-.04em]">同款报价</h2>
+              <p className="mt-2 text-sm text-black/50">跨标准商品按同款合并；当前显示 {catalog.total} 款，可展开查看全部店铺和按需加载原始描述。</p>
+            </div>
+            <OfferGroupTable
+              key={`${activePlatform || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
+              groups={catalog.items}
+              totalCount={catalog.total}
+              snapshotId={catalog.snapshot_id}
+              filterQuery={catalogQuery.toString()}
+              loadMorePath="/api/v1/catalog/groups"
+              showProduct
+            />
           </section>
+          <section className="border-t border-black py-12"><div className="max-w-2xl"><ReportForm /></div></section>
+          <p className="border-t hairline py-5 text-xs text-black/40">数据快照：{catalog.snapshot_id ? `#${catalog.snapshot_id}` : "未编号"} · {exactTime(catalog.snapshot_at)}</p>
         </>
       ) : null}
     </main>

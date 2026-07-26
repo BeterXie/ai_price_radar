@@ -66,6 +66,8 @@ class DeliveryPriceSummary(BaseModel):
 
 
 class OfferGroupPublic(BaseModel):
+    product_slug: str
+    product_name: str
     fingerprint: str
     representative: OfferPublic
     offer_count: int
@@ -97,6 +99,12 @@ class OfferGroupPageResponse(BaseModel):
     total: int
     offer_total: int
     snapshot_id: int | None
+
+
+class CatalogOfferGroupPageResponse(OfferGroupPageResponse):
+    in_stock_count: int
+    last_updated_at: datetime | None
+    snapshot_at: datetime | None
 
 
 class GroupOffersResponse(BaseModel):

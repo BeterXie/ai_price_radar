@@ -14,6 +14,7 @@ from ..core.config import get_settings
 from ..database import get_db
 from ..models import Offer, Product, Report, ReportRateLimit, Shop
 from ..schemas import (
+    CatalogOfferGroupPageResponse,
     CatalogResponse,
     CatalogSnapshotPublic,
     GroupOffersResponse,
@@ -28,6 +29,7 @@ from ..schemas import (
 )
 from ..services.catalog import (
     OfferFilters,
+    get_catalog_group_page,
     get_current_snapshot,
     get_group_offers,
     get_offer_description,
@@ -35,6 +37,7 @@ from ..services.catalog import (
     get_product_group_page,
     get_product_offer_page,
     get_shop_detail,
+    get_snapshot,
     list_product_cards,
 )
 
@@ -171,7 +174,7 @@ def products(
         sort=sort,
         snapshot_id=snapshot,
     )
-    current = get_current_snapshot(db)
+    current = get_snapshot(db, snapshot)
     return CatalogResponse(
         items=items,
         total=len(items),
@@ -191,6 +194,36 @@ def snapshot(db: Session = Depends(get_db)) -> CatalogSnapshotPublic:
     )
 
 
+@router.get("/catalog/groups", response_model=CatalogOfferGroupPageResponse)
+def catalog_groups(
+    platform: str = Query(default="", max_length=50),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=100),
+    comparable: bool | None = None,
+    in_stock: bool = False,
+    snapshot: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+) -> CatalogOfferGroupPageResponse:
+    current = get_snapshot(db, snapshot)
+    items, total, offer_total, in_stock_count, last_updated_at = get_catalog_group_page(
+        db,
+        platform=platform,
+        offset=offset,
+        limit=limit,
+        filters=_offer_filters(comparable=comparable, in_stock=in_stock),
+        snapshot=current,
+    )
+    return CatalogOfferGroupPageResponse(
+        items=items,
+        total=total,
+        offer_total=offer_total,
+        in_stock_count=in_stock_count,
+        last_updated_at=last_updated_at,
+        snapshot_id=current.id if current else None,
+        snapshot_at=current.published_at if current else None,
+    )
+
+
 @router.get("/products/{slug}", response_model=ProductDetail)
 def product_detail(
     slug: str,
@@ -199,7 +232,7 @@ def product_detail(
     warranty: str = Query(default="", max_length=40),
     auto_delivery: bool | None = None,
     updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
-    comparable: bool | None = True,
+    comparable: bool | None = None,
     exclude: str = Query(default="", max_length=200),
     in_stock: bool = False,
     snapshot: int | None = Query(default=None, ge=1),
@@ -249,7 +282,7 @@ def product_groups(
     warranty: str = Query(default="", max_length=40),
     auto_delivery: bool | None = None,
     updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
-    comparable: bool | None = True,
+    comparable: bool | None = None,
     exclude: str = Query(default="", max_length=200),
     in_stock: bool = False,
     snapshot: int | None = Query(default=None, ge=1),
@@ -258,7 +291,7 @@ def product_groups(
     product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
     if product is None:
         raise HTTPException(status_code=404, detail="product not found")
-    current = get_current_snapshot(db)
+    current = get_snapshot(db, snapshot)
     items, total, offer_total = get_product_group_page(
         db,
         product.id,

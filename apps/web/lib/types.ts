@@ -63,6 +63,8 @@ export type DeliveryPriceSummary = {
 };
 
 export type OfferGroup = {
+  product_slug: string;
+  product_name: string;
   fingerprint: string;
   representative: Offer;
   offer_count: number;
@@ -82,6 +84,12 @@ export type OfferGroupPage = {
   total: number;
   offer_total: number;
   snapshot_id: number | null;
+};
+
+export type CatalogOfferGroupPage = OfferGroupPage & {
+  in_stock_count: number;
+  last_updated_at: string | null;
+  snapshot_at: string | null;
 };
 
 export type GroupOffers = {

@@ -112,6 +112,10 @@ def _snapshot_for_query(db: Session, snapshot_id: int | None = None) -> CatalogS
     return get_current_snapshot(db)
 
 
+def get_snapshot(db: Session, snapshot_id: int | None = None) -> CatalogSnapshot | None:
+    return _snapshot_for_query(db, snapshot_id)
+
+
 def _base_public_offer_query(
     db: Session,
     *,
@@ -260,6 +264,9 @@ def get_product_group_page(
     filters: OfferFilters,
     snapshot: CatalogSnapshot | None = None,
 ) -> tuple[list[OfferGroupPublic], int, int]:
+    product = db.get(Product, product_id)
+    if product is None:
+        return [], 0, 0
     snapshot = snapshot or get_current_snapshot(db)
     stmt = _apply_offer_filters(
         _base_public_offer_query(db, include_details=False, snapshot=snapshot)
@@ -282,6 +289,8 @@ def get_product_group_page(
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
         prices = [offer.price for offer in in_stock if offer.price is not None and offer.price > 0]
         items.append(OfferGroupPublic(
+            product_slug=product.slug,
+            product_name=product.display_name,
             fingerprint=fingerprint,
             representative=_offer_public(
                 representative,
@@ -295,6 +304,89 @@ def get_product_group_page(
             latest_observed_at=max((offer.observed_at for offer in group), default=None),
         ))
     return items, len(grouped), len(offers)
+
+
+def get_catalog_group_page(
+    db: Session,
+    *,
+    platform: str = "",
+    offset: int,
+    limit: int,
+    filters: OfferFilters,
+    snapshot: CatalogSnapshot | None = None,
+) -> tuple[list[OfferGroupPublic], int, int, int, datetime | None]:
+    snapshot = snapshot or get_current_snapshot(db)
+    stmt = (
+        _base_public_offer_query(db, include_details=False, snapshot=snapshot)
+        .join(Product, Offer.product_id == Product.id)
+        .where(Product.is_visible.is_(True))
+    )
+    if platform:
+        stmt = stmt.where(Product.platform == platform)
+    offers = list(db.scalars(_apply_offer_filters(stmt, filters)).unique())
+
+    grouped: dict[tuple[int, str], list[Offer]] = defaultdict(list)
+    for offer in offers:
+        if offer.product_id is None:
+            continue
+        grouped[(offer.product_id, offer.item_fingerprint or f"offer-{offer.id}")].append(offer)
+    groups = [
+        (product_id, fingerprint, sorted(group, key=_offer_sort_key))
+        for (product_id, fingerprint), group in grouped.items()
+    ]
+    groups.sort(key=lambda item: _offer_sort_key(item[2][0]))
+    selected = groups[offset:offset + limit]
+
+    representative_ids = [group[0].id for _, _, group in selected]
+    representatives: dict[int, Offer] = {}
+    if representative_ids:
+        detail_stmt = _base_public_offer_query(db, snapshot=snapshot).where(Offer.id.in_(representative_ids))
+        representatives = {offer.id: offer for offer in db.scalars(detail_stmt).unique()}
+    product_ids = {product_id for product_id, _, _ in selected}
+    products = {
+        product.id: product
+        for product in db.scalars(select(Product).where(Product.id.in_(product_ids)))
+    } if product_ids else {}
+    offers_by_product: dict[int, list[Offer]] = defaultdict(list)
+    for offer in offers:
+        if offer.product_id is not None:
+            offers_by_product[offer.product_id].append(offer)
+    medians_by_product = {
+        scope_product_id: _median_prices(product_offers)
+        for scope_product_id, product_offers in offers_by_product.items()
+    }
+
+    items: list[OfferGroupPublic] = []
+    for product_id, fingerprint, group in selected:
+        product = products.get(product_id)
+        representative = representatives.get(group[0].id)
+        if product is None or representative is None:
+            continue
+        in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
+        prices = [offer.price for offer in in_stock if offer.price is not None and offer.price > 0]
+        items.append(OfferGroupPublic(
+            product_slug=product.slug,
+            product_name=product.display_name,
+            fingerprint=fingerprint,
+            representative=_offer_public(
+                representative,
+                median_price=medians_by_product.get(product_id, {}).get(representative.delivery_type or "unknown"),
+            ),
+            offer_count=len(group),
+            shop_count=len({offer.shop_id for offer in group}),
+            in_stock_count=len(in_stock),
+            lowest_price=min(prices, default=None),
+            highest_price=max(prices, default=None),
+            latest_observed_at=max((offer.observed_at for offer in group), default=None),
+        ))
+
+    return (
+        items,
+        len(groups),
+        len(offers),
+        sum(1 for offer in offers if offer.stock_status == "in_stock"),
+        max((offer.observed_at for offer in offers), default=None),
+    )
 
 
 def list_product_cards(

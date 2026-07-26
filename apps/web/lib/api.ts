@@ -1,4 +1,4 @@
-import type { CatalogResponse, Meta, ProductDetail, ShopDetail } from "@/lib/types";
+import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, ShopDetail } from "@/lib/types";
 
 const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -12,6 +12,10 @@ async function apiFetch<T>(path: string): Promise<T> {
 
 export async function getProducts(query = ""): Promise<CatalogResponse> {
   return apiFetch(`/api/v1/products${query ? `?${query}` : ""}`);
+}
+
+export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPage> {
+  return apiFetch(`/api/v1/catalog/groups${query ? `?${query}` : ""}`);
 }
 
 export async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {

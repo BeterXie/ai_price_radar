@@ -43,7 +43,7 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
   );
 }
 
-function OfferRow({ offer, group, productSlug, snapshotId }: { offer: Offer; group?: OfferGroup; productSlug?: string; snapshotId?: number | null }) {
+function OfferRow({ offer, group, productSlug, productName, snapshotId }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null }) {
   const [description, setDescription] = useState<string | null>(null);
   const [shopOffers, setShopOffers] = useState<Offer[] | null>(group && group.offer_count === 1 ? [offer] : null);
   const [loading, setLoading] = useState(false);
@@ -84,6 +84,7 @@ function OfferRow({ offer, group, productSlug, snapshotId }: { offer: Offer; gro
       <summary className="grid cursor-pointer list-none gap-4 px-5 py-5 marker:hidden lg:grid-cols-[minmax(0,1fr)_150px_150px_32px] lg:items-center [&::-webkit-details-marker]:hidden">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {productName && <span className="rounded-full border hairline px-2 py-1 text-[10px] font-medium">{productName}</span>}
             <h3 className="text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
             {!offer.is_comparable && <span className="rounded-full bg-[#f1e2bd] px-2 py-1 text-[10px] font-medium text-[#6d4f09]">不参与主最低价</span>}
             {group && group.shop_count > 1 && <span className="rounded-full border hairline px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
@@ -167,7 +168,23 @@ function TableFrame({ children, footer }: { children: React.ReactNode; footer: R
   );
 }
 
-export function OfferGroupTable({ groups, productSlug, totalCount, snapshotId, filterQuery = "" }: { groups: OfferGroup[]; productSlug: string; totalCount: number; snapshotId: number | null; filterQuery?: string }) {
+export function OfferGroupTable({
+  groups,
+  productSlug = "",
+  totalCount,
+  snapshotId,
+  filterQuery = "",
+  loadMorePath,
+  showProduct = false,
+}: {
+  groups: OfferGroup[];
+  productSlug?: string;
+  totalCount: number;
+  snapshotId: number | null;
+  filterQuery?: string;
+  loadMorePath?: string;
+  showProduct?: boolean;
+}) {
   const [loadedGroups, setLoadedGroups] = useState(groups);
   const [loadError, setLoadError] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -184,23 +201,24 @@ export function OfferGroupTable({ groups, productSlug, totalCount, snapshotId, f
       query.set("offset", String(loadedGroups.length));
       query.set("limit", String(OFFER_BATCH_SIZE));
       if (snapshotId) query.set("snapshot", String(snapshotId));
-      fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups?${query}`)
+      const endpoint = loadMorePath || `/api/v1/products/${encodeURIComponent(productSlug)}/groups`;
+      fetch(`${publicApiBase}${endpoint}?${query}`)
         .then((response) => response.ok ? response.json() as Promise<OfferGroupPage> : Promise.reject(new Error(`API ${response.status}`)))
         .then((page) => setLoadedGroups((current) => {
-          const fingerprints = new Set(current.map((group) => group.fingerprint));
-          return [...current, ...page.items.filter((group) => !fingerprints.has(group.fingerprint))];
+          const keys = new Set(current.map((group) => `${group.product_slug}:${group.fingerprint}`));
+          return [...current, ...page.items.filter((group) => !keys.has(`${group.product_slug}:${group.fingerprint}`))];
         }))
         .catch(() => setLoadError(true))
         .finally(() => { loadingRef.current = false; });
     }, { rootMargin: "600px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [filterQuery, hasMore, loadedGroups.length, productSlug, snapshotId]);
+  }, [filterQuery, hasMore, loadMorePath, loadedGroups.length, productSlug, snapshotId]);
 
   if (!groups.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前筛选条件下没有可展示的同款报价。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 款` : `已显示全部 ${totalCount} 款`}</div>}>
-      {loadedGroups.map((group) => <OfferRow key={group.fingerprint} offer={group.representative} group={group} productSlug={productSlug} snapshotId={snapshotId} />)}
+      {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? group.product_name : undefined} snapshotId={snapshotId} />)}
     </TableFrame>
   );
 }

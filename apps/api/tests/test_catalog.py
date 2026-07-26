@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.database import Base
 from app.models import Offer, Product, RawProduct, Shop
-from app.services.catalog import _plain_text, _raw_decimal, get_group_offers, get_offer_description, get_product_detail, get_product_offer_page
+from app.services.catalog import (
+    OfferFilters,
+    _plain_text,
+    _raw_decimal,
+    get_catalog_group_page,
+    get_group_offers,
+    get_offer_description,
+    get_product_detail,
+    get_product_offer_page,
+)
 
 
 def test_original_description_is_converted_to_safe_plain_text():
@@ -118,6 +127,7 @@ def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
         assert detail.related_lowest_price == Decimal("2.60")
         assert detail.offer_count == 3
         assert detail.offer_group_count == 1
+        assert detail.offer_groups[0].product_slug == "chatgpt-plus"
         assert detail.offer_groups[0].shop_count == 2
         assert detail.offer_groups[0].lowest_price == Decimal("15.00")
         assert detail.offer_groups[0].representative.original_description == ""
@@ -125,3 +135,95 @@ def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
         grouped = get_group_offers(db, product.slug, "same-fingerprint")
         assert grouped is not None and len(grouped) == 2
         assert get_offer_description(db, offer_ids[0]) == "账号密码交付，质保首登"
+
+
+def test_catalog_groups_keep_products_separate_and_filter_platforms():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        products = [
+            Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus"),
+            Product(slug="claude-pro", platform="Claude", display_name="Claude Pro"),
+        ]
+        db.add_all(products)
+        db.flush()
+        for index, product in enumerate(products):
+            shop = Shop(token=f"shop-{index}", name=f"Shop {index}", source_url=f"https://example.com/{index}")
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=str(index),
+                original_name=product.display_name,
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                price=Decimal("20") + index,
+                stock_status="in_stock",
+                is_comparable=True,
+                item_fingerprint="shared-fingerprint",
+                source_url=shop.source_url,
+                observed_at=now,
+            ))
+        extra_shop = Shop(token="shop-extra", name="Extra", source_url="https://example.com/extra")
+        db.add(extra_shop)
+        db.flush()
+        extra_raw = RawProduct(
+            shop_id=extra_shop.id,
+            source_product_key="extra",
+            original_name="不可直接比较的中转服务",
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        db.add(extra_raw)
+        db.flush()
+        db.add(Offer(
+            raw_product_id=extra_raw.id,
+            product_id=products[0].id,
+            shop_id=extra_shop.id,
+            price=Decimal("1"),
+            stock_status="in_stock",
+            is_comparable=False,
+            item_fingerprint="relay-fingerprint",
+            source_url=extra_shop.source_url,
+            observed_at=now,
+        ))
+        db.commit()
+
+        groups, total, offer_total, in_stock_count, _ = get_catalog_group_page(
+            db,
+            offset=0,
+            limit=30,
+            filters=OfferFilters(comparable=True),
+        )
+        assert total == 2
+        assert offer_total == 2
+        assert in_stock_count == 2
+        assert {group.product_slug for group in groups} == {"chatgpt-plus", "claude-pro"}
+
+        all_groups, all_total, all_offer_total, _, _ = get_catalog_group_page(
+            db,
+            offset=0,
+            limit=30,
+            filters=OfferFilters(),
+        )
+        assert all_total == 3
+        assert all_offer_total == 3
+        assert len(all_groups) == 3
+
+        claude_groups, claude_total, _, _, _ = get_catalog_group_page(
+            db,
+            platform="Claude",
+            offset=0,
+            limit=30,
+            filters=OfferFilters(comparable=True),
+        )
+        assert claude_total == 1
+        assert claude_groups[0].product_name == "Claude Pro"
