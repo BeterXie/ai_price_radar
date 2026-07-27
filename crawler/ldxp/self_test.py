@@ -10,7 +10,7 @@ from ldxp_crawler.browser_scanner import BrowserShopScanner, has_target_brand
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.exporter import export_results
 from ldxp_crawler.models import ProductMatch, ShopScanResult
-from ldxp_crawler.utils import extract_shop_urls
+from ldxp_crawler.utils import CHALLENGE_RE, extract_shop_urls
 
 
 def create_v1_database(path: Path) -> None:
@@ -42,6 +42,7 @@ def create_v1_database(path: Path) -> None:
 
 def main() -> None:
     assert extract_shop_urls("pay.ldxp.cn/shop/ABC123") == ["https://pay.ldxp.cn/shop/ABC123"]
+    assert CHALLENGE_RE.search("<html><script>var arg1='ABC123';</script></html>")
     assert BrowserShopScanner._extract_items({"data": {"list": [{"id": 1}]}}) == [{"id": 1}]
     assert BrowserShopScanner._extract_total({"data": {"total": 12}}) == 12
     assert has_target_brand("SuperGrok 代充值")
