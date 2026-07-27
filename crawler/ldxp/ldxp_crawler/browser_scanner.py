@@ -16,6 +16,7 @@ from .utils import (
     CHALLENGE_RE,
     CLOSED_RE,
     GlobalRateLimiter,
+    JAVASCRIPT_CHALLENGE_RE,
     clean_text,
     merge_unique,
     normalize_shop_url,
@@ -493,7 +494,8 @@ class BrowserShopScanner:
         except json.JSONDecodeError as exc:
             text = clean_text(result.get("text"))[:300]
             if CHALLENGE_RE.search(text):
-                raise BrowserScanError(f"{endpoint} 返回验证页面", "challenge_required", status) from exc
+                challenge_status = "rate_limited" if JAVASCRIPT_CHALLENGE_RE.search(text) else "challenge_required"
+                raise BrowserScanError(f"{endpoint} 返回验证页面", challenge_status, status) from exc
             raise BrowserScanError(f"{endpoint} 返回非 JSON：{text}", "parse_error", status) from exc
         if not isinstance(parsed, dict):
             raise BrowserScanError(f"{endpoint} JSON 结构异常", "parse_error", status)

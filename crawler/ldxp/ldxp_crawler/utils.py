@@ -18,6 +18,7 @@ SHOP_URL_RE = re.compile(
     re.I,
 )
 CLOSED_RE = re.compile(r"店铺已打烊|店铺打烊|已打烊|暂停营业|停止营业|暂不营业|closed", re.I)
+JAVASCRIPT_CHALLENGE_RE = re.compile(r"var\s+arg1\s*=", re.I)
 CHALLENGE_RE = re.compile(
     r"verification|captcha|challenge|人机验证|安全验证|滑块验证|请完成验证|访问验证|阿里云验证码|var\s+arg1\s*=",
     re.I,

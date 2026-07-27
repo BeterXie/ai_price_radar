@@ -6,11 +6,11 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from ldxp_crawler.browser_scanner import BrowserShopScanner, has_target_brand
+from ldxp_crawler.browser_scanner import BrowserScanError, BrowserShopScanner, CaptureState, has_target_brand
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.exporter import export_results
 from ldxp_crawler.models import ProductMatch, ShopScanResult
-from ldxp_crawler.utils import CHALLENGE_RE, extract_shop_urls
+from ldxp_crawler.utils import CHALLENGE_RE, GlobalRateLimiter, extract_shop_urls
 
 
 def create_v1_database(path: Path) -> None:
@@ -73,6 +73,25 @@ def main() -> None:
         {"User-Agent": "bad", "visitorid": "stable", "X-App": "ok", "Cookie": "secret"}
     )
     assert replay_headers == {"visitorid": "stable", "X-App": "ok"}
+
+    scanner.rate_limiter = GlobalRateLimiter(0)
+    challenge_page = type(
+        "ChallengePage",
+        (),
+        {
+            "url": "https://pay.ldxp.cn/shop/TEST01",
+            "evaluate": lambda self, script, payload: {
+                "status": 200,
+                "text": "<html><script>var arg1='ABC123';</script></html>",
+            },
+        },
+    )()
+    try:
+        scanner._fetch_api(challenge_page, CaptureState(), "/shopApi/Shop/info", {"token": "TEST01"})
+    except BrowserScanError as exc:
+        assert exc.status == "rate_limited"
+    else:
+        raise AssertionError("JavaScript challenge was not classified as rate_limited")
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
