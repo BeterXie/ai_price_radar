@@ -18,6 +18,8 @@ export function offerQuery(params: RawSearchParams) {
   const query = new URLSearchParams();
   if (single(params, "comparable") !== "false") query.set("comparable", "true");
   if (single(params, "in_stock") === "true") query.set("in_stock", "true");
+  const warranty = single(params, "warranty");
+  if (warranty) query.set("warranty", warranty);
   return query;
 }
 
@@ -58,21 +60,20 @@ export function ProductWorkspace({
   } : null;
   const comparableOnly = single(rawParams, "comparable") !== "false";
   const inStockOnly = single(rawParams, "in_stock") === "true";
+  const warrantyValue = single(rawParams, "warranty");
+  const warranty = warrantyValue === "covered" || warrantyValue === "none" ? warrantyValue : "";
 
   return (
     <>
       {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
-      <section className="border-b hairline py-7">
-        <h1 className="text-4xl font-semibold tracking-[-.055em]">{product.display_name}价格对比</h1>
-        <p className="mt-3 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{seo.intro}</p>
-      </section>
+      <h1 className="sr-only">{product.display_name}价格对比</h1>
       <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label={`${product.display_name} 报价概况`}>
         <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
         <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条有效报价</p>
         <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
       </section>
 
-      <OfferScopeControls action={filterAction} comparableOnly={comparableOnly} inStockOnly={inStockOnly} resetHref={resetHref} hiddenFields={hiddenFields} />
+      <OfferScopeControls action={filterAction} comparableOnly={comparableOnly} inStockOnly={inStockOnly} warranty={warranty} resetHref={resetHref} hiddenFields={hiddenFields} />
 
       <section className="pb-12">
         <div className="mb-6">

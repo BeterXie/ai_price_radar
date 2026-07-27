@@ -43,7 +43,7 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
   );
 }
 
-function OfferRow({ offer, group, productSlug, productName, snapshotId }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null }) {
+function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQuery = "" }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null; filterQuery?: string }) {
   const [description, setDescription] = useState<string | null>(null);
   const [shopOffers, setShopOffers] = useState<Offer[] | null>(group && group.offer_count === 1 ? [offer] : null);
   const [loading, setLoading] = useState(false);
@@ -63,8 +63,9 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId }: { offe
         setDescription("");
       }
       if (group && productSlug && group.offer_count > 1) {
-        const query = snapshotId ? `?snapshot=${snapshotId}` : "";
-        requests.push(fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}${query}`)
+        const query = new URLSearchParams(filterQuery);
+        if (snapshotId) query.set("snapshot", String(snapshotId));
+        requests.push(fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}?${query}`)
           .then((response) => response.ok ? response.json() : Promise.reject(new Error(`API ${response.status}`)))
           .then((data: GroupOffers) => setShopOffers(data.items)));
       }
@@ -218,7 +219,7 @@ export function OfferGroupTable({
   if (!groups.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前筛选条件下没有可展示的同款报价。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 款` : `已显示全部 ${totalCount} 款`}</div>}>
-      {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? group.product_name : undefined} snapshotId={snapshotId} />)}
+      {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? group.product_name : undefined} snapshotId={snapshotId} filterQuery={filterQuery} />)}
     </TableFrame>
   );
 }

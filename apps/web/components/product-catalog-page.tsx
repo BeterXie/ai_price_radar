@@ -64,6 +64,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const scopeQuery = new URLSearchParams();
   if (single(rawParams, "comparable") === "false") scopeQuery.set("comparable", "false");
   if (single(rawParams, "in_stock") === "true") scopeQuery.set("in_stock", "true");
+  const warrantyValue = single(rawParams, "warranty");
+  const warranty = warrantyValue === "covered" || warrantyValue === "none" ? warrantyValue : "";
+  if (warranty) scopeQuery.set("warranty", warranty);
   const catalogHref = (platform = "") => {
     const next = new URLSearchParams(scopeQuery);
     if (platform) next.set("platform", platform);
@@ -123,6 +126,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             action="/products"
             comparableOnly={single(rawParams, "comparable") !== "false"}
             inStockOnly={single(rawParams, "in_stock") === "true"}
+            warranty={warranty}
             hiddenFields={activePlatform ? { platform: activePlatform } : {}}
             resetHref={activePlatform ? `/products?platform=${encodeURIComponent(activePlatform)}` : "/products"}
           />

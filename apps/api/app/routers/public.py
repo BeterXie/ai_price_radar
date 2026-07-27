@@ -224,6 +224,7 @@ def catalog_groups(
     platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
+    warranty: str = Query(default="", max_length=40),
     comparable: bool | None = None,
     in_stock: bool = False,
     snapshot: int | None = Query(default=None, ge=1),
@@ -235,7 +236,7 @@ def catalog_groups(
         platform=platform,
         offset=offset,
         limit=limit,
-        filters=_offer_filters(comparable=comparable, in_stock=in_stock),
+        filters=_offer_filters(warranty=warranty, comparable=comparable, in_stock=in_stock),
         snapshot=current,
     )
     return CatalogOfferGroupPageResponse(
@@ -346,10 +347,19 @@ def product_groups(
 def product_group_offers(
     slug: str,
     fingerprint: str,
+    warranty: str = Query(default="", max_length=40),
+    comparable: bool | None = None,
+    in_stock: bool = False,
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> GroupOffersResponse:
-    items = get_group_offers(db, slug, fingerprint, snapshot_id=snapshot)
+    items = get_group_offers(
+        db,
+        slug,
+        fingerprint,
+        filters=_offer_filters(warranty=warranty, comparable=comparable, in_stock=in_stock),
+        snapshot_id=snapshot,
+    )
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
     return GroupOffersResponse(items=items)

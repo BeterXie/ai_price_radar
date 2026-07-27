@@ -147,7 +147,9 @@ def _apply_offer_filters(stmt, filters: OfferFilters):
         stmt = stmt.where(Offer.delivery_type == filters.delivery_type)
     if filters.service_period:
         stmt = stmt.where(Offer.service_period == filters.service_period)
-    if filters.warranty:
+    if filters.warranty == "covered":
+        stmt = stmt.where(Offer.warranty.notin_(("none", "unknown")))
+    elif filters.warranty:
         stmt = stmt.where(Offer.warranty == filters.warranty)
     if filters.auto_delivery is not None:
         stmt = stmt.where(Offer.auto_delivery == filters.auto_delivery)
@@ -568,21 +570,22 @@ def get_group_offers(
     slug: str,
     fingerprint: str,
     *,
+    filters: OfferFilters = OfferFilters(),
     snapshot_id: int | None = None,
 ) -> list[OfferPublic] | None:
     product_id = db.scalar(select(Product.id).where(Product.slug == slug, Product.is_visible.is_(True)))
     if product_id is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
-    stmt = (
+    stmt = _apply_offer_filters(
         _base_public_offer_query(db, snapshot=snapshot)
         .where(
             Offer.product_id == product_id,
             Offer.item_fingerprint == fingerprint,
-        )
-        .order_by(*_offer_ordering())
+        ),
+        filters,
     )
-    offers = list(db.scalars(stmt).unique())
+    offers = list(db.scalars(stmt.order_by(*_offer_ordering())).unique())
     medians = _median_prices(offers)
     return [_offer_public(offer, median_price=medians.get(offer.delivery_type or "unknown")) for offer in offers]
 

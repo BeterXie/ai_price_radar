@@ -14,6 +14,7 @@ from app.services.catalog import (
     get_group_offers,
     get_offer_description,
     get_product_detail,
+    get_product_group_page,
     get_product_offer_page,
 )
 
@@ -135,6 +136,67 @@ def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
         grouped = get_group_offers(db, product.slug, "same-fingerprint")
         assert grouped is not None and len(grouped) == 2
         assert get_offer_description(db, offer_ids[0]) == "账号密码交付，质保首登"
+
+
+def test_warranty_scope_filters_groups_and_expanded_offers():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        product = Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus")
+        db.add(product)
+        db.flush()
+        for index, warranty in enumerate(("first_login", "none", "unknown")):
+            shop = Shop(token=f"warranty-{index}", name=f"Warranty {index}", source_url=f"https://example.com/{index}")
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=str(index),
+                original_name="ChatGPT Plus 成品号",
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                price=Decimal("20") + index,
+                stock_status="in_stock",
+                delivery_type="finished_account",
+                warranty=warranty,
+                is_comparable=True,
+                item_fingerprint="same-fingerprint",
+                source_url=shop.source_url,
+                observed_at=now,
+            ))
+        db.commit()
+
+        covered_groups, covered_total, _ = get_product_group_page(
+            db,
+            product.id,
+            offset=0,
+            limit=30,
+            filters=OfferFilters(warranty="covered"),
+        )
+        assert covered_total == 1
+        assert covered_groups[0].offer_count == 1
+        covered_offers = get_group_offers(db, product.slug, "same-fingerprint", filters=OfferFilters(warranty="covered"))
+        assert covered_offers is not None and [offer.warranty for offer in covered_offers] == ["first_login"]
+
+        no_warranty_groups, no_warranty_total, _ = get_product_group_page(
+            db,
+            product.id,
+            offset=0,
+            limit=30,
+            filters=OfferFilters(warranty="none"),
+        )
+        assert no_warranty_total == 1
+        assert no_warranty_groups[0].offer_count == 1
+        no_warranty_offers = get_group_offers(db, product.slug, "same-fingerprint", filters=OfferFilters(warranty="none"))
+        assert no_warranty_offers is not None and [offer.warranty for offer in no_warranty_offers] == ["none"]
 
 
 def test_catalog_groups_keep_products_separate_and_filter_platforms():
