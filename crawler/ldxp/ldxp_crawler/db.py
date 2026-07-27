@@ -216,7 +216,7 @@ class StateDB:
         limit: Optional[int] = None,
     ) -> list[sqlite3.Row]:
         if rescan:
-            where = "1=1"
+            where = "1=1" if retry_blocked else "status NOT IN ('blocked', 'challenge_required')"
         else:
             allowed = ["pending"]
             if retry_failed:

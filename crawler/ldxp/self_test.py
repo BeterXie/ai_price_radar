@@ -113,6 +113,13 @@ def main() -> None:
         count_after = db.conn.execute("SELECT COUNT(*) FROM matches WHERE token='TEST01'").fetchone()[0]
         assert count_after == 1
 
+        db.save_scan_result(
+            ShopScanResult(token="TEST01", status="challenge_required", error="verification required"),
+            run_id,
+        )
+        assert db.list_candidates(rescan=True) == []
+        assert [row["token"] for row in db.list_candidates(rescan=True, retry_blocked=True)] == ["TEST01"]
+
         db.finish_run(
             run_id,
             attempted=2,
