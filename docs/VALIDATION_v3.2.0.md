@@ -24,6 +24,7 @@ Source archive SHA-256: `F18E4D2812E9C9DFC51BF14DF383672780D8A9E3D43410275A24D54
 ## Corrected during acceptance
 
 - Merchant JSON local-file loading treated Windows drive letters as URL schemes. Local files are now detected before HTTPS URL validation; remote feeds still require public HTTPS targets and retain the SSRF, redirect, content-type and size protections.
+- The first Pipeline CI run lacked `pytest` because production requirements intentionally contain runtime dependencies only. CI now installs `pipeline/requirements-test.txt`, which layers the pinned test dependency over runtime requirements.
 - The generic release checklist title was synchronized to `AI Price Radar v3.2.0 — Productization & Evidence`.
 - The production quick-deploy runbook now requires migration rehearsal and runs required migrations with the newly built API image before switching containers.
 
