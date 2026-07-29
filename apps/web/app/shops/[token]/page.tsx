@@ -26,7 +26,7 @@ export default async function ShopPage({ params }: { params: Promise<{ token: st
         <a href={shop.source_url} target="_blank" rel="noreferrer nofollow" className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-5 py-3 text-sm text-white">访问原店铺 <ArrowSquareOut size={17} /></a>
       </section>
       <section className="mt-6 rounded-[16px] border hairline bg-[color:var(--panel)] p-5">
-        <div className="flex items-center gap-3"><ShieldCheck size={22} /><div><p className="text-sm font-semibold">来源扫描健康：{shop.source_health.score} / 100 · {shop.source_health.label}</p><p className="mt-1 text-xs leading-5 text-black/50">{shop.source_health.reasons.join("；")}。该指标只描述抓取可用性，不代表商家信誉或交易安全。</p></div></div>
+        <div className="flex items-center gap-3"><ShieldCheck size={22} /><div><p className="text-sm font-semibold">来源更新状态：{shop.source_health.score} / 100 · {shop.source_health.label}</p><p className="mt-1 text-xs leading-5 text-black/50">{shop.source_health.reasons.join("；")}。这里只说明页面能否正常更新，不代表商家信誉或交易安全。</p></div></div>
       </section>
       <section className="py-12"><div className="mb-5"><p className="mono text-xs tracking-[.15em] text-black/45">当前报价</p><h2 className="mt-2 text-3xl font-semibold tracking-[-.04em]">当前公开报价 · {shop.offer_count}</h2></div><OfferTable offers={shop.offers} /></section>
     </main>

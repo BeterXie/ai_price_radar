@@ -23,9 +23,9 @@ function DecisionFacts({ offer }: { offer: Offer }) {
       <div><dt className="text-xs text-black/40">使用期限</dt><dd className="mt-1">{PERIOD_LABELS[offer.service_period] || offer.service_period}</dd></div>
       <div><dt className="text-xs text-black/40">质保</dt><dd className="mt-1">{WARRANTY_LABELS[offer.warranty] || offer.warranty}</dd></div>
       <div><dt className="text-xs text-black/40">交付方式</dt><dd className="mt-1">{fulfillmentLabel(offer.auto_delivery)}</dd></div>
-      <div><dt className="text-xs text-black/40">来源扫描健康</dt><dd className="mt-1 font-medium">{offer.source_health.score} / 100 · {offer.source_health.label}</dd></div>
+      <div><dt className="text-xs text-black/40">来源更新状态</dt><dd className="mt-1 font-medium">{offer.source_health.score} / 100 · {offer.source_health.label}</dd></div>
       <div className="col-span-2 lg:col-span-3"><dt className="text-xs text-black/40">适用场景</dt><dd className="mt-1">{offer.use_scenarios.length ? offer.use_scenarios.map((item) => SCENARIO_LABELS[item] || item).join("、") : "未注明"}</dd></div>
-      <div className="col-span-2 lg:col-span-4"><dt className="text-xs text-black/40">来源健康依据</dt><dd className="mt-1 text-black/60">{offer.source_health.reasons.join("；")}</dd></div>
+      <div className="col-span-2 lg:col-span-4"><dt className="text-xs text-black/40">状态说明</dt><dd className="mt-1 text-black/60">{offer.source_health.reasons.join("；")}</dd></div>
     </dl>
   );
 }
@@ -38,7 +38,7 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
           <Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link>
           <span className="text-xs text-black/50">{stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}</span>
           <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
-          <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" aria-label={`前往 ${offer.shop_name} 核验报价`} className="inline-flex items-center gap-1 text-xs hover:opacity-60">原站 <ArrowSquareOut size={14} /></a>
+          <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" aria-label={`前往 ${offer.shop_name} 查看报价`} className="inline-flex items-center gap-1 text-xs hover:opacity-60">查看原站 <ArrowSquareOut size={14} /></a>
         </div>
       ))}
     </div>
@@ -89,7 +89,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           <div className="flex flex-wrap items-center gap-2">
             {productName && <span className="rounded-full border hairline px-2 py-1 text-[10px] font-medium">{productName}</span>}
             <h3 className="text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
-            {offer.is_trusted_price ? <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-[10px] font-medium text-[color:var(--accent-ink)]">可信价格</span> : !offer.is_comparable ? <span className="rounded-full bg-[#f1e2bd] px-2 py-1 text-[10px] font-medium text-[#6d4f09]">不参与主最低价</span> : <span className="rounded-full border hairline px-2 py-1 text-[10px] text-black/50">价格待复核</span>}
+            {offer.is_trusted_price ? <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-[10px] font-medium text-[color:var(--accent-ink)]">近期可参考</span> : !offer.is_comparable ? <span className="rounded-full bg-[#f1e2bd] px-2 py-1 text-[10px] font-medium text-[#6d4f09]">类型不同，不直接比价</span> : <span className="rounded-full border hairline px-2 py-1 text-[10px] text-black/50">价格异常，建议确认</span>}
             {group && group.shop_count > 1 && <span className="rounded-full border hairline px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">
@@ -117,7 +117,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
       <div className="border-t hairline bg-black/[.025] px-5 py-6">
         {offer.low_price_warning && (
-          <div className="mb-5 flex items-start gap-2 rounded-[10px] bg-[#f4e6c5] px-4 py-3 text-sm text-[#674b0b]"><Warning className="mt-0.5 shrink-0" size={17} weight="fill" /><span><strong>异常低价：</strong>{offer.low_price_warning}</span></div>
+          <div className="mb-5 flex items-start gap-2 rounded-[10px] bg-[#f4e6c5] px-4 py-3 text-sm text-[#674b0b]"><Warning className="mt-0.5 shrink-0" size={17} weight="fill" /><span><strong>价格明显偏低：</strong>{offer.low_price_warning}</span></div>
         )}
         <DecisionFacts offer={offer} />
         {(offer.tags.length > 0 || offer.risk_flags.length > 0) && (
@@ -128,9 +128,9 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         )}
 
         <section className="mt-6 border-t hairline pt-5">
-          <h4 className="text-sm font-semibold">商家原始描述</h4>
+          <h4 className="text-sm font-semibold">商品原文</h4>
           <p className="mt-3 max-w-[90ch] whitespace-pre-wrap text-sm leading-7 text-black/65">
-            {loading && description === null ? "正在按需加载…" : description === null ? "展开后加载原始描述。" : description || "商家没有提供可公开展示的商品描述。"}
+            {loading && description === null ? "正在加载…" : description === null ? "展开后加载商品原文。" : description || "商家没有提供可公开展示的商品描述。"}
           </p>
         </section>
 
@@ -143,14 +143,14 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
         {!group && (
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" className="tactile inline-flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm text-white">原站核验 <ArrowSquareOut size={16} /></a>
+            <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" className="tactile inline-flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm text-white">去原站查看 <ArrowSquareOut size={16} /></a>
             <Link href={`/shops/${offer.shop_token}`} className="tactile inline-flex items-center gap-2 rounded-[10px] border border-black px-4 py-2.5 text-sm">查看店铺 <Storefront size={16} /></Link>
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap gap-x-5 gap-y-2 border-t hairline px-5 py-3 text-xs text-black/45">
-        <span className="flex items-center gap-1.5"><Clock size={14} />扫描于 {exactTime(group?.latest_observed_at || offer.observed_at)}</span>
+        <span className="flex items-center gap-1.5"><Clock size={14} />数据更新于 {exactTime(group?.latest_observed_at || offer.observed_at)}</span>
         <span suppressHydrationWarning>约 {relativeTime(group?.latest_observed_at || offer.observed_at)}更新</span>
         {offer.original_category && <span className="flex items-center gap-1.5"><Tag size={14} />{offer.original_category}</span>}
       </div>
@@ -162,7 +162,7 @@ function TableFrame({ children, footer }: { children: React.ReactNode; footer: R
   return (
     <div className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
       <div className="bg-black/[.025] px-5 py-3 text-xs text-black/50">
-        <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点击报价查看决策摘要与来源</div>
+        <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看交付、售后和来源</div>
         <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>最低价</span><span>详情</span></div>
       </div>
       <div className="divide-y divide-[color:var(--line)]">{children}</div>
@@ -242,7 +242,7 @@ export function OfferTable({ offers }: { offers: Offer[] }) {
     return () => observer.disconnect();
   }, [hasMore, offers.length]);
 
-  if (!offers.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前没有通过审核且仍在有效期内的报价。</div>;
+  if (!offers.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前没有可展示的报价。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45">{hasMore ? `继续滚动加载，已显示 ${visibleOffers.length} / ${offers.length} 条` : `已显示全部 ${offers.length} 条报价`}</div>}>
       {visibleOffers.map((offer) => <OfferRow key={offer.id} offer={offer} />)}

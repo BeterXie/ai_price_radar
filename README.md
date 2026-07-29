@@ -231,7 +231,7 @@ docs/              架构、部署与数据政策
 
 ## 版本与发布
 
-当前版本：`3.2.0`。正式发布前请完成 `docs/RELEASE_CHECKLIST_v3.2.0.md`，发布说明见 `RELEASE_NOTES_v3.2.0.md`。
+当前版本：`3.2.1`。正式发布前请完成 `docs/RELEASE_CHECKLIST.md`，发布说明见 `RELEASE_NOTES_v3.2.1.md`。
 
 ## 开源协议
 

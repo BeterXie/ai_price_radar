@@ -48,11 +48,11 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
     <figure className="rounded-[18px] border hairline bg-[color:var(--panel)] p-5">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap gap-4">
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-black" />可信最低价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest)}</span>
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-black/45" />可比中位价 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-black" />近期有货最低价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-black/45" />常见价格 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian)}</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 bg-[color:var(--accent)]" />有货观测</span>
         </div>
-        <span className="text-black/40">近 {recent.length} 个日聚合点</span>
+        <span className="text-black/40">最近 {recent.length} 天</span>
       </div>
       <div className="relative overflow-hidden" aria-label={`价格趋势，范围 ${formatPrice(min)} 至 ${formatPrice(max)}`}>
         <svg viewBox={`0 0 ${width} ${height + 40}`} role="img" className="h-auto w-full" preserveAspectRatio="none">

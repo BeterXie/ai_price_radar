@@ -77,7 +77,7 @@ export function WatchlistClient() {
       <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center">
         <BellRinging className="mx-auto" size={34} />
         <h2 className="mt-4 text-2xl font-semibold">关注清单还是空的</h2>
-        <p className="mt-3 text-sm leading-6 text-black/50">进入任意标准产品页，点击“关注价格与库存”。关注数据只保存在当前浏览器。</p>
+        <p className="mt-3 text-sm leading-6 text-black/50">进入任意商品页，点击“关注价格与库存”。关注数据只保存在当前浏览器。</p>
         <Link href="/products" className="mt-6 inline-block rounded-[10px] bg-[color:var(--ink)] px-5 py-3 text-sm text-white">浏览报价目录</Link>
       </div>
     );
@@ -87,7 +87,7 @@ export function WatchlistClient() {
     <div className="space-y-8">
       <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
         <div className="grid gap-3 border-b hairline px-5 py-4 text-xs text-black/45 md:grid-cols-[1fr_150px_150px_110px]">
-          <span>产品与当前状态</span><span>可信最低价</span><span>提醒目标价</span><span>操作</span>
+          <span>商品与当前状态</span><span>近期有货最低价</span><span>提醒目标价</span><span>操作</span>
         </div>
         <div className="divide-y divide-[color:var(--line)]">
           {items.map((item) => {
@@ -102,7 +102,7 @@ export function WatchlistClient() {
                     <Link href={`/products/${encodeURIComponent(item.slug)}`} className="font-semibold hover:underline">{product?.display_name || item.name}</Link>
                     {reached && <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--accent)] px-2 py-1 text-[10px] font-medium"><CheckCircle size={12} weight="fill" />达到条件</span>}
                   </div>
-                  <p className="mt-2 text-xs text-black/45">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条可信 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "当前无法取得数据"}</p>
+                  <p className="mt-2 text-xs text-black/45">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条可参考 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "当前无法取得数据"}</p>
                 </div>
                 <div className="font-semibold">{product ? money(product.lowest_price) : "—"}</div>
                 <label className="text-xs text-black/45">
