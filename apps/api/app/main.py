@@ -11,6 +11,7 @@ from .routers import admin, public
 from .seed import seed
 
 settings = get_settings()
+VERSION = "3.1.0"
 
 
 @asynccontextmanager
@@ -23,7 +24,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="3.0.0",
+    version=VERSION,
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -39,4 +40,4 @@ app.include_router(admin.router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": VERSION}

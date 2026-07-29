@@ -9,6 +9,8 @@ export type ProductCard = {
   offer_count: number;
   in_stock_count: number;
   comparable_offer_count: number;
+  trusted_offer_count: number;
+  median_price: string | null;
   last_updated_at: string | null;
   tags: string[];
 };
@@ -37,6 +39,7 @@ export type Offer = {
   use_scenarios: string[];
   item_fingerprint: string;
   low_price_warning: string | null;
+  is_trusted_price: boolean;
   source_url: string;
   first_seen_at: string;
   last_seen_at: string;

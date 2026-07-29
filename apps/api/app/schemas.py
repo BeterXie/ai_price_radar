@@ -31,6 +31,7 @@ class OfferPublic(BaseModel):
     use_scenarios: list[str]
     item_fingerprint: str
     low_price_warning: str | None = None
+    is_trusted_price: bool = False
     source_url: str
     first_seen_at: datetime
     last_seen_at: datetime
@@ -48,6 +49,8 @@ class ProductCard(BaseModel):
     offer_count: int
     in_stock_count: int
     comparable_offer_count: int
+    trusted_offer_count: int = 0
+    median_price: Decimal | None = None
     last_updated_at: datetime | None
     tags: list[str]
 

@@ -22,6 +22,7 @@ from ..schemas import (
     ProductDetail,
     ShopDetail,
 )
+from .pricing import is_trusted_price, low_price_warning, price_median
 
 
 DEFAULT_OFFER_PAGE_SIZE = 30
@@ -190,14 +191,7 @@ def _offer_sort_key(offer: Offer):
 
 
 def _low_price_warning(price: Decimal | None, median_price: Decimal | None) -> str | None:
-    if price is None or price <= 0:
-        return None
-    if price < Decimal("1"):
-        return "价格低于 ¥1，请核对是否为体验、余额或受限商品。"
-    if median_price and median_price > 0 and price < median_price * Decimal("0.4"):
-        percentage = max(1, round((Decimal("1") - price / median_price) * 100))
-        return f"该报价比同交付形态中位价低约 {percentage}%，请重点核对。"
-    return None
+    return low_price_warning(price, median_price)
 
 
 def _offer_public(
@@ -209,6 +203,7 @@ def _offer_public(
     raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
     raw_description = raw_json.get("description")
     description = _plain_text(raw_description) if include_description else ""
+    warning = _low_price_warning(offer.price, median_price)
     return OfferPublic(
         id=offer.id,
         shop_token=offer.shop.token,
@@ -232,7 +227,8 @@ def _offer_public(
         warranty=offer.warranty or "unknown",
         use_scenarios=offer.use_scenarios or [],
         item_fingerprint=offer.item_fingerprint or f"offer-{offer.id}",
-        low_price_warning=_low_price_warning(offer.price, median_price),
+        low_price_warning=warning,
+        is_trusted_price=bool(offer.is_comparable) and is_trusted_price(offer.price, median_price),
         source_url=offer.source_url,
         first_seen_at=offer.raw_product.first_seen_at,
         last_seen_at=offer.raw_product.last_seen_at,
@@ -240,20 +236,46 @@ def _offer_public(
     )
 
 
-def _median_prices(offers: list[Offer]) -> dict[str, Decimal]:
+def _median_prices(offers: list[Offer], *, comparable_only: bool = False) -> dict[str, Decimal]:
     grouped: dict[str, list[Decimal]] = defaultdict(list)
     for offer in offers:
+        if comparable_only and not offer.is_comparable:
+            continue
         if offer.stock_status == "in_stock" and offer.price is not None and offer.price > 0:
             grouped[offer.delivery_type or "unknown"].append(offer.price)
-    return {delivery_type: Decimal(str(median(values))) for delivery_type, values in grouped.items() if values}
+    return {
+        delivery_type: median_price
+        for delivery_type, values in grouped.items()
+        if (median_price := price_median(values)) is not None
+    }
 
 
-def _group_offers(offers: list[Offer]) -> list[tuple[str, list[Offer]]]:
+def _is_trusted_offer(offer: Offer, medians: dict[str, Decimal]) -> bool:
+    return (
+        offer.stock_status == "in_stock"
+        and bool(offer.is_comparable)
+        and is_trusted_price(offer.price, medians.get(offer.delivery_type or "unknown"))
+    )
+
+
+def _trusted_offer_sort_key(offer: Offer, medians: dict[str, Decimal] | None = None):
+    if medians is None:
+        return _offer_sort_key(offer)
+    return (not _is_trusted_offer(offer, medians), *_offer_sort_key(offer))
+
+
+def _group_offers(
+    offers: list[Offer],
+    medians: dict[str, Decimal] | None = None,
+) -> list[tuple[str, list[Offer]]]:
     grouped: dict[str, list[Offer]] = defaultdict(list)
     for offer in offers:
         grouped[offer.item_fingerprint or f"offer-{offer.id}"].append(offer)
-    groups = [(fingerprint, sorted(group, key=_offer_sort_key)) for fingerprint, group in grouped.items()]
-    groups.sort(key=lambda item: _offer_sort_key(item[1][0]))
+    groups = [
+        (fingerprint, sorted(group, key=lambda offer: _trusted_offer_sort_key(offer, medians)))
+        for fingerprint, group in grouped.items()
+    ]
+    groups.sort(key=lambda item: _trusted_offer_sort_key(item[1][0], medians))
     return groups
 
 
@@ -276,7 +298,8 @@ def get_product_group_page(
         filters,
     )
     offers = list(db.scalars(stmt).unique())
-    grouped = _group_offers(offers)
+    medians = _median_prices(offers, comparable_only=True)
+    grouped = _group_offers(offers, medians)
     selected = grouped[offset:offset + limit]
     representative_ids = [group[0].id for _, group in selected]
     representatives: dict[int, Offer] = {}
@@ -289,7 +312,8 @@ def get_product_group_page(
     for fingerprint, group in selected:
         representative = representatives[group[0].id]
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
-        prices = [offer.price for offer in in_stock if offer.price is not None and offer.price > 0]
+        trusted = [offer for offer in group if _is_trusted_offer(offer, medians)]
+        prices = [offer.price for offer in trusted if offer.price is not None]
         items.append(OfferGroupPublic(
             product_slug=product.slug,
             product_name=product.display_name,
@@ -326,6 +350,14 @@ def get_catalog_group_page(
     if platform:
         stmt = stmt.where(Product.platform == platform)
     offers = list(db.scalars(_apply_offer_filters(stmt, filters)).unique())
+    offers_by_product: dict[int, list[Offer]] = defaultdict(list)
+    for offer in offers:
+        if offer.product_id is not None:
+            offers_by_product[offer.product_id].append(offer)
+    medians_by_product = {
+        scope_product_id: _median_prices(product_offers, comparable_only=True)
+        for scope_product_id, product_offers in offers_by_product.items()
+    }
 
     grouped: dict[tuple[int, str], list[Offer]] = defaultdict(list)
     for offer in offers:
@@ -333,10 +365,19 @@ def get_catalog_group_page(
             continue
         grouped[(offer.product_id, offer.item_fingerprint or f"offer-{offer.id}")].append(offer)
     groups = [
-        (product_id, fingerprint, sorted(group, key=_offer_sort_key))
+        (
+            product_id,
+            fingerprint,
+            sorted(
+                group,
+                key=lambda offer: _trusted_offer_sort_key(offer, medians_by_product.get(product_id, {})),
+            ),
+        )
         for (product_id, fingerprint), group in grouped.items()
     ]
-    groups.sort(key=lambda item: _offer_sort_key(item[2][0]))
+    groups.sort(
+        key=lambda item: _trusted_offer_sort_key(item[2][0], medians_by_product.get(item[0], {}))
+    )
     selected = groups[offset:offset + limit]
 
     representative_ids = [group[0].id for _, _, group in selected]
@@ -365,7 +406,9 @@ def get_catalog_group_page(
         if product is None or representative is None:
             continue
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
-        prices = [offer.price for offer in in_stock if offer.price is not None and offer.price > 0]
+        product_medians = medians_by_product.get(product_id, {})
+        trusted = [offer for offer in group if _is_trusted_offer(offer, product_medians)]
+        prices = [offer.price for offer in trusted if offer.price is not None]
         items.append(OfferGroupPublic(
             product_slug=product.slug,
             product_name=product.display_name,
@@ -441,6 +484,9 @@ def list_product_cards(
             continue
         in_stock = [x for x in group if x.stock_status == "in_stock" and x.price is not None and x.price > 0]
         comparable = [x for x in in_stock if x.is_comparable]
+        medians = _median_prices(comparable, comparable_only=True)
+        trusted = [x for x in comparable if _is_trusted_offer(x, medians)]
+        median_price = price_median(x.price for x in comparable)
         all_tags = sorted({tag_value for offer in group for tag_value in (offer.tags or [])})
         cards.append(ProductCard(
             slug=product.slug,
@@ -448,11 +494,13 @@ def list_product_cards(
             display_name=product.display_name,
             subtitle=product.subtitle,
             product_type=product.product_type,
-            lowest_price=min((x.price for x in comparable), default=None),
+            lowest_price=min((x.price for x in trusted), default=None),
             related_lowest_price=min((x.price for x in in_stock), default=None),
             offer_count=len(group),
             in_stock_count=len(in_stock),
             comparable_offer_count=sum(1 for x in group if x.is_comparable),
+            trusted_offer_count=len(trusted),
+            median_price=median_price,
             last_updated_at=max((x.observed_at for x in group), default=None),
             tags=all_tags[:8],
         ))
@@ -485,6 +533,9 @@ def get_product_detail(
     ).unique())
     in_stock = [x for x in offers if x.stock_status == "in_stock" and x.price is not None and x.price > 0]
     comparable_in_stock = [x for x in in_stock if x.is_comparable]
+    medians = _median_prices(comparable_in_stock, comparable_only=True)
+    trusted_in_stock = [x for x in comparable_in_stock if _is_trusted_offer(x, medians)]
+    median_price = price_median(x.price for x in comparable_in_stock)
 
     history_stmt = (
         select(OfferHistory)
@@ -503,9 +554,12 @@ def get_product_detail(
         delivery_groups[offer.delivery_type or "unknown"].append(offer)
     for delivery_type, group in delivery_groups.items():
         group_stock = [x for x in group if x.stock_status == "in_stock" and x.price is not None and x.price > 0]
+        group_comparable = [x for x in group_stock if x.is_comparable]
+        group_median = price_median(x.price for x in group_comparable)
+        group_trusted = [x for x in group_comparable if is_trusted_price(x.price, group_median)]
         breakdown.append(DeliveryPriceSummary(
             delivery_type=delivery_type,
-            lowest_price=min((x.price for x in group_stock), default=None),
+            lowest_price=min((x.price for x in group_trusted), default=None),
             offer_count=len(group),
             in_stock_count=len(group_stock),
         ))
@@ -526,12 +580,14 @@ def get_product_detail(
         subtitle=product.subtitle,
         description=product.description,
         product_type=product.product_type,
-        lowest_price=min((x.price for x in comparable_in_stock), default=None),
+        lowest_price=min((x.price for x in trusted_in_stock), default=None),
         related_lowest_price=min((x.price for x in in_stock), default=None),
-        highest_price=max((x.price for x in comparable_in_stock), default=None),
+        highest_price=max((x.price for x in trusted_in_stock), default=None),
         offer_count=len(offers),
         in_stock_count=len(in_stock),
         comparable_offer_count=sum(1 for x in offers if x.is_comparable),
+        trusted_offer_count=len(trusted_in_stock),
+        median_price=median_price,
         offer_group_count=group_count,
         last_updated_at=max((x.observed_at for x in offers), default=None),
         tags=all_tags,
@@ -586,7 +642,7 @@ def get_group_offers(
         filters,
     )
     offers = list(db.scalars(stmt.order_by(*_offer_ordering())).unique())
-    medians = _median_prices(offers)
+    medians = _median_prices(offers, comparable_only=True)
     return [_offer_public(offer, median_price=medians.get(offer.delivery_type or "unknown")) for offer in offers]
 
 
@@ -608,7 +664,7 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         .where(Offer.shop_id == shop.id, Product.is_visible.is_(True))
         .order_by(*_offer_ordering())
     ).unique())
-    medians = _median_prices(offers)
+    medians = _median_prices(offers, comparable_only=True)
     return ShopDetail(
         token=shop.token,
         name=shop.name or shop.token,

@@ -16,6 +16,7 @@ from app.services.catalog import (
     get_product_detail,
     get_product_group_page,
     get_product_offer_page,
+    list_product_cards,
 )
 
 
@@ -54,7 +55,7 @@ def test_product_offers_are_returned_in_pages():
                 raw_product_id=raw.id,
                 product_id=product.id,
                 shop_id=shop.id,
-                price=Decimal(index + 1),
+                price=Decimal(index + 100),
                 stock_status="in_stock",
                 delivery_type="finished_account",
                 is_comparable=True,
@@ -69,12 +70,12 @@ def test_product_offers_are_returned_in_pages():
         assert detail.offer_count == 35
         assert detail.offer_group_count == 35
         assert len(detail.offer_groups) == 30
-        assert detail.offer_groups[0].lowest_price == Decimal("1.00")
+        assert detail.offer_groups[0].lowest_price == Decimal("100.00")
 
         next_page = get_product_offer_page(db, product.slug, offset=30, limit=30)
         assert next_page is not None
         assert len(next_page) == 5
-        assert next_page[0].price == Decimal("31.00")
+        assert next_page[0].price == Decimal("130.00")
 
 
 def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
@@ -289,3 +290,55 @@ def test_catalog_groups_keep_products_separate_and_filter_platforms():
         )
         assert claude_total == 1
         assert claude_groups[0].product_name == "Claude Pro"
+
+
+
+def test_trusted_price_excludes_extreme_comparable_outlier():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        product = Product(slug="trusted-product", platform="OpenAI", display_name="Trusted product")
+        db.add(product)
+        db.flush()
+        for index, price in enumerate((Decimal("0.01"), Decimal("15"), Decimal("20"))):
+            shop = Shop(token=f"trusted-{index}", name=f"Trusted {index}", source_url=f"https://example.com/{index}")
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=str(index),
+                original_name="Trusted product account",
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                price=price,
+                stock_status="in_stock",
+                delivery_type="finished_account",
+                is_comparable=True,
+                item_fingerprint=f"trusted-{index}",
+                source_url=shop.source_url,
+                observed_at=now,
+            ))
+        db.commit()
+
+        cards = list_product_cards(db, product_slug=product.slug)
+        assert len(cards) == 1
+        assert cards[0].lowest_price == Decimal("15.00")
+        assert cards[0].related_lowest_price == Decimal("0.01")
+        assert cards[0].trusted_offer_count == 2
+        assert cards[0].median_price == Decimal("15.00")
+
+        detail = get_product_detail(db, product.slug)
+        assert detail is not None
+        assert detail.lowest_price == Decimal("15.00")
+        assert detail.related_lowest_price == Decimal("0.01")
+        assert detail.trusted_offer_count == 2
+        assert detail.offer_groups[0].lowest_price == Decimal("15.00")
+        assert detail.offer_groups[0].representative.price == Decimal("15.00")

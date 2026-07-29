@@ -1,4 +1,4 @@
-import { Clock, Package, Stack } from "@phosphor-icons/react/ssr";
+import { Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { PriceHistory } from "@/components/price-history";
@@ -40,7 +40,7 @@ export function ProductWorkspace({
 }) {
   const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
-  const structuredData = product.lowest_price && product.comparable_offer_count > 0 ? {
+  const structuredData = product.lowest_price && product.trusted_offer_count > 0 ? {
     "@context": "https://schema.org",
     "@type": "Product",
     "@id": `${canonical}#product`,
@@ -54,7 +54,7 @@ export function ProductWorkspace({
       priceCurrency: "CNY",
       lowPrice: product.lowest_price,
       highPrice: product.highest_price || product.lowest_price,
-      offerCount: product.comparable_offer_count,
+      offerCount: product.trusted_offer_count,
       url: canonical,
     },
   } : null;
@@ -68,6 +68,7 @@ export function ProductWorkspace({
       {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
       <h1 className="sr-only">{product.display_name}价格对比</h1>
       <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label={`${product.display_name} 报价概况`}>
+        <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条可信报价</p>
         <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
         <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条有效报价</p>
         <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>

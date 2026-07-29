@@ -58,7 +58,7 @@ export default async function HomePage() {
 
       <section className="shell py-20">
         <div className="flex items-end justify-between gap-6 border-b border-black pb-5">
-          <div><p className="mono text-xs tracking-[.14em] text-black/45">当前低价</p><h2 className="mt-3 text-4xl font-semibold tracking-[-.05em]">可直接比较的有货低价</h2></div>
+          <div><p className="mono text-xs tracking-[.14em] text-black/45">可信价格</p><h2 className="mt-3 text-4xl font-semibold tracking-[-.05em]">排除异常低价后的有货排行</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-black/45">异常报价仍保留来源证据，但不会作为首页主最低价。</p></div>
           <Link href="/products" className="flex items-center gap-2 text-sm font-medium">查看全部 <ArrowRight size={17} /></Link>
         </div>
         <div>{products.map((product, index) => <ProductCard key={product.slug} product={product} index={index} />)}</div>
