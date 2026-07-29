@@ -56,6 +56,9 @@ type Report = {
   message: string;
   contact: string;
   status: string;
+  public_summary: string;
+  merchant_response: string;
+  resolved_at: string | null;
   created_at: string;
 };
 
@@ -72,6 +75,7 @@ export function AdminPanel() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [reportDrafts, setReportDrafts] = useState<Record<number, { public_summary: string; merchant_response: string }>>({});
   const [error, setError] = useState("");
   const headers = { "X-Admin-Key": key };
 
@@ -88,7 +92,9 @@ export function AdminPanel() {
     }
     setStats(await statsResponse.json());
     setOffers(await offersResponse.json());
-    setReports(await reportsResponse.json());
+    const loadedReports = await reportsResponse.json() as Report[];
+    setReports(loadedReports);
+    setReportDrafts(Object.fromEntries(loadedReports.map((report) => [report.id, { public_summary: report.public_summary || "", merchant_response: report.merchant_response || "" }])));
   }
 
   async function patchOffer(offerId: number, body: Record<string, unknown>) {
@@ -109,10 +115,15 @@ export function AdminPanel() {
   }
 
   async function resolveReport(reportId: number, status: "resolved" | "rejected") {
+    const draft = reportDrafts[reportId] || { public_summary: "", merchant_response: "" };
+    if (status === "resolved" && !draft.public_summary.trim()) {
+      setError("发布已处理记录前，请填写不含联系方式和私密内容的公开摘要。");
+      return;
+    }
     const response = await fetch(`${API}/api/v1/admin/reports/${reportId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, public_summary: draft.public_summary.trim(), merchant_response: draft.merchant_response.trim() }),
     });
     if (response.ok) await load();
   }
@@ -169,8 +180,12 @@ export function AdminPanel() {
                   <p className="mono text-xs text-black/40">{REPORT_KIND_LABELS[report.kind] || report.kind}{report.offer_id ? ` / 报价 #${report.offer_id}` : ""}</p>
                   <p className="mt-2 whitespace-pre-line text-sm leading-6">{report.message}</p>
                   {report.contact && <p className="mt-2 text-xs text-black/45">联系方式：{report.contact}</p>}
+                  <div className="mt-4 grid gap-3">
+                    <label className="text-xs font-medium text-black/55">公开处理摘要<textarea value={reportDrafts[report.id]?.public_summary || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { merchant_response: "" }), public_summary: event.target.value } }))} maxLength={500} rows={2} placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>
+                    <label className="text-xs font-medium text-black/55">商家公开回应 <span className="font-normal">选填</span><textarea value={reportDrafts[report.id]?.merchant_response || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { public_summary: "" }), merchant_response: event.target.value } }))} maxLength={1000} rows={2} className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>
+                  </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 md:self-end">
                   <button onClick={() => resolveReport(report.id, "resolved")} className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} />已处理</button>
                   <button onClick={() => resolveReport(report.id, "rejected")} className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} />驳回</button>
                 </div>

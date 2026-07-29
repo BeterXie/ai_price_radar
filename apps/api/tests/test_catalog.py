@@ -260,7 +260,7 @@ def test_catalog_groups_keep_products_separate_and_filter_platforms():
         ))
         db.commit()
 
-        groups, total, offer_total, in_stock_count, _ = get_catalog_group_page(
+        groups, total, offer_total, in_stock_count, comparable_count, trusted_count, _ = get_catalog_group_page(
             db,
             offset=0,
             limit=30,
@@ -269,9 +269,11 @@ def test_catalog_groups_keep_products_separate_and_filter_platforms():
         assert total == 2
         assert offer_total == 2
         assert in_stock_count == 2
+        assert comparable_count == 2
+        assert trusted_count == 2
         assert {group.product_slug for group in groups} == {"chatgpt-plus", "claude-pro"}
 
-        all_groups, all_total, all_offer_total, _, _ = get_catalog_group_page(
+        all_groups, all_total, all_offer_total, _, _, _, _ = get_catalog_group_page(
             db,
             offset=0,
             limit=30,
@@ -281,7 +283,7 @@ def test_catalog_groups_keep_products_separate_and_filter_platforms():
         assert all_offer_total == 3
         assert len(all_groups) == 3
 
-        claude_groups, claude_total, _, _, _ = get_catalog_group_page(
+        claude_groups, claude_total, _, _, _, _, _ = get_catalog_group_page(
             db,
             platform="Claude",
             offset=0,

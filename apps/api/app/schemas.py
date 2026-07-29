@@ -1,10 +1,35 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+
+
+class OfficialPriceReferencePublic(BaseModel):
+    provider: str
+    plan: str
+    price: Decimal | None
+    currency: str
+    billing_period: str
+    url: str
+    checked_at: date
+    note: str
+
+
+class SourceHealthPublic(BaseModel):
+    score: int = Field(ge=0, le=100)
+    label: str
+    reasons: list[str]
+
+
+class PriceTrendPoint(BaseModel):
+    bucket_at: datetime
+    trusted_lowest_price: Decimal | None
+    median_price: Decimal | None
+    in_stock_count: int
+    observation_count: int
 
 
 class OfferPublic(BaseModel):
@@ -32,6 +57,7 @@ class OfferPublic(BaseModel):
     item_fingerprint: str
     low_price_warning: str | None = None
     is_trusted_price: bool = False
+    source_health: SourceHealthPublic
     source_url: str
     first_seen_at: datetime
     last_seen_at: datetime
@@ -51,6 +77,10 @@ class ProductCard(BaseModel):
     comparable_offer_count: int
     trusted_offer_count: int = 0
     median_price: Decimal | None = None
+    source_count: int = 0
+    data_quality_score: int = Field(default=0, ge=0, le=100)
+    data_quality_label: str = "数据不足"
+    official_reference: OfficialPriceReferencePublic | None = None
     last_updated_at: datetime | None
     tags: list[str]
 
@@ -91,6 +121,7 @@ class ProductDetail(ProductCard):
     offers: list[OfferPublic] = Field(default_factory=list)
     offer_groups: list[OfferGroupPublic] = Field(default_factory=list)
     history: list[PricePoint]
+    trend: list[PriceTrendPoint] = Field(default_factory=list)
 
 
 class OfferPageResponse(BaseModel):
@@ -106,6 +137,9 @@ class OfferGroupPageResponse(BaseModel):
 
 class CatalogOfferGroupPageResponse(OfferGroupPageResponse):
     in_stock_count: int
+    comparable_offer_count: int = 0
+    trusted_offer_count: int = 0
+    metrics_note: str = "统计范围为当前筛选条件、当前已发布快照和有效时间窗口。"
     last_updated_at: datetime | None
     snapshot_at: datetime | None
 
@@ -129,6 +163,7 @@ class ShopDetail(BaseModel):
     last_success_at: datetime | None
     last_seen_at: datetime | None
     consecutive_failures: int
+    source_health: SourceHealthPublic
     offer_count: int
     offers: list[OfferPublic]
 
@@ -138,6 +173,9 @@ class CatalogResponse(BaseModel):
     total: int
     offer_count: int
     in_stock_count: int
+    comparable_offer_count: int = 0
+    trusted_offer_count: int = 0
+    metrics_note: str = "统计范围为当前筛选条件、当前已发布快照和有效时间窗口。"
     snapshot_id: int | None
     snapshot_at: datetime | None
 
@@ -169,10 +207,14 @@ class ReportOut(BaseModel):
     message: str
     contact: str
     status: str
+    public_summary: str = ""
+    merchant_response: str = ""
+    resolved_at: datetime | None = None
     created_at: datetime
 
 
 class ShopRequestCreate(BaseModel):
+    source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)
     contact: str = Field(default="", max_length=200)
@@ -180,9 +222,26 @@ class ShopRequestCreate(BaseModel):
 
 
 class ShopRequestOut(BaseModel):
+    source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
     status: Literal["submitted", "already_pending", "already_known"]
     request_id: int | None = None
     shop_token: str
+
+
+class PublicCorrection(BaseModel):
+    id: int
+    offer_id: int | None
+    kind: str
+    public_summary: str
+    merchant_response: str
+    resolved_at: datetime | None
+    created_at: datetime
+
+
+class PublicCorrectionPage(BaseModel):
+    items: list[PublicCorrection]
+    total: int
+
 
 
 class AdminOfferUpdate(BaseModel):
@@ -194,6 +253,8 @@ class AdminOfferUpdate(BaseModel):
 
 class AdminReportUpdate(BaseModel):
     status: Literal["open", "reviewing", "resolved", "rejected"]
+    public_summary: str | None = Field(default=None, max_length=500)
+    merchant_response: str | None = Field(default=None, max_length=1000)
 
 
 class AdminStats(BaseModel):

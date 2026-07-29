@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
@@ -18,11 +18,14 @@ from ..schemas import (
     OfferGroupPublic,
     OfferPublic,
     PricePoint,
+    PriceTrendPoint,
     ProductCard,
     ProductDetail,
     ShopDetail,
 )
+from .official_pricing import official_reference_for
 from .pricing import is_trusted_price, low_price_warning, price_median
+from .source_health import source_health
 
 
 DEFAULT_OFFER_PAGE_SIZE = 30
@@ -229,6 +232,7 @@ def _offer_public(
         item_fingerprint=offer.item_fingerprint or f"offer-{offer.id}",
         low_price_warning=warning,
         is_trusted_price=bool(offer.is_comparable) and is_trusted_price(offer.price, median_price),
+        source_health=asdict(source_health(offer.shop)),
         source_url=offer.source_url,
         first_seen_at=offer.raw_product.first_seen_at,
         last_seen_at=offer.raw_product.last_seen_at,
@@ -279,6 +283,66 @@ def _group_offers(
     return groups
 
 
+def _data_quality(offers: list[Offer], trusted: list[Offer], comparable: list[Offer]) -> tuple[int, str]:
+    if not offers:
+        return 0, "数据不足"
+    source_count = len({offer.shop_id for offer in offers})
+    comparable_count = len(comparable)
+    trusted_ratio = len(trusted) / comparable_count if comparable_count else 0
+    latest = max((offer.observed_at for offer in offers), default=None)
+    freshness = 0
+    if latest is not None:
+        latest = latest if latest.tzinfo is not None else latest.replace(tzinfo=timezone.utc)
+        age_hours = max(0.0, (datetime.now(timezone.utc) - latest).total_seconds() / 3600)
+        freshness = 30 if age_hours <= 6 else 22 if age_hours <= 24 else 12 if age_hours <= 72 else 0
+    score = round(45 * trusted_ratio + min(25, source_count * 5) + freshness)
+    score = max(0, min(100, score))
+    label = "充足" if score >= 80 else "一般" if score >= 55 else "有限"
+    return score, label
+
+
+def _price_trend(db: Session, product_id: int, *, day_limit: int = 90) -> list[PriceTrendPoint]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=day_limit)
+    rows = db.execute(
+        select(OfferHistory, Offer)
+        .join(Offer, OfferHistory.offer_id == Offer.id)
+        .where(Offer.product_id == product_id, OfferHistory.observed_at >= cutoff)
+        .order_by(OfferHistory.observed_at.asc())
+    ).all()
+    grouped: dict[datetime, list[tuple[OfferHistory, Offer]]] = defaultdict(list)
+    for history, offer in rows:
+        observed = history.observed_at
+        observed = observed if observed.tzinfo is not None else observed.replace(tzinfo=timezone.utc)
+        bucket = observed.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        grouped[bucket].append((history, offer))
+
+    result: list[PriceTrendPoint] = []
+    for bucket, records in sorted(grouped.items()):
+        comparable_records = [
+            (history, offer)
+            for history, offer in records
+            if offer.is_comparable and history.stock_status == "in_stock" and history.price is not None and history.price > 0
+        ]
+        delivery_prices: dict[str, list[Decimal]] = defaultdict(list)
+        for history, offer in comparable_records:
+            delivery_prices[offer.delivery_type or "unknown"].append(history.price)
+        medians = {key: value for key, values in delivery_prices.items() if (value := price_median(values)) is not None}
+        trusted_prices = [
+            history.price
+            for history, offer in comparable_records
+            if is_trusted_price(history.price, medians.get(offer.delivery_type or "unknown"))
+        ]
+        all_prices = [history.price for history, _ in comparable_records if history.price is not None]
+        result.append(PriceTrendPoint(
+            bucket_at=bucket,
+            trusted_lowest_price=min(trusted_prices, default=None),
+            median_price=price_median(all_prices),
+            in_stock_count=sum(1 for history, _ in records if history.stock_status == "in_stock"),
+            observation_count=len(records),
+        ))
+    return result
+
+
 def get_product_group_page(
     db: Session,
     product_id: int,
@@ -306,7 +370,7 @@ def get_product_group_page(
     if representative_ids:
         detail_stmt = _base_public_offer_query(db, snapshot=snapshot).where(Offer.id.in_(representative_ids))
         representatives = {offer.id: offer for offer in db.scalars(detail_stmt).unique()}
-    medians = _median_prices(offers)
+    medians = _median_prices(offers, comparable_only=True)
 
     items: list[OfferGroupPublic] = []
     for fingerprint, group in selected:
@@ -340,7 +404,7 @@ def get_catalog_group_page(
     limit: int,
     filters: OfferFilters,
     snapshot: CatalogSnapshot | None = None,
-) -> tuple[list[OfferGroupPublic], int, int, int, datetime | None]:
+) -> tuple[list[OfferGroupPublic], int, int, int, int, int, datetime | None]:
     snapshot = snapshot or get_current_snapshot(db)
     stmt = (
         _base_public_offer_query(db, include_details=False, snapshot=snapshot)
@@ -395,7 +459,7 @@ def get_catalog_group_page(
         if offer.product_id is not None:
             offers_by_product[offer.product_id].append(offer)
     medians_by_product = {
-        scope_product_id: _median_prices(product_offers)
+        scope_product_id: _median_prices(product_offers, comparable_only=True)
         for scope_product_id, product_offers in offers_by_product.items()
     }
 
@@ -430,6 +494,8 @@ def get_catalog_group_page(
         len(groups),
         len(offers),
         sum(1 for offer in offers if offer.stock_status == "in_stock"),
+        sum(1 for offer in offers if offer.is_comparable),
+        sum(1 for product_id, product_offers in offers_by_product.items() for offer in product_offers if _is_trusted_offer(offer, medians_by_product.get(product_id, {}))),
         max((offer.observed_at for offer in offers), default=None),
     )
 
@@ -443,7 +509,7 @@ def list_product_cards(
     product_type: str = "",
     tag: str = "",
     filters: OfferFilters = OfferFilters(),
-    sort: str = "price",
+    sort: str = "quality",
     snapshot_id: int | None = None,
 ) -> list[ProductCard]:
     snapshot = _snapshot_for_query(db, snapshot_id)
@@ -501,11 +567,17 @@ def list_product_cards(
             comparable_offer_count=sum(1 for x in group if x.is_comparable),
             trusted_offer_count=len(trusted),
             median_price=median_price,
+            source_count=len({x.shop_id for x in group}),
+            data_quality_score=_data_quality(group, trusted, comparable)[0],
+            data_quality_label=_data_quality(group, trusted, comparable)[1],
+            official_reference=asdict(reference) if (reference := official_reference_for(product.slug)) else None,
             last_updated_at=max((x.observed_at for x in group), default=None),
             tags=all_tags[:8],
         ))
 
-    if sort == "updated":
+    if sort == "quality":
+        cards.sort(key=lambda x: (x.data_quality_score, x.trusted_offer_count, x.source_count, -(x.lowest_price or Decimal("999999"))), reverse=True)
+    elif sort == "updated":
         cards.sort(key=lambda x: x.last_updated_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     elif sort == "offers":
         cards.sort(key=lambda x: (x.in_stock_count, x.offer_count), reverse=True)
@@ -588,6 +660,10 @@ def get_product_detail(
         comparable_offer_count=sum(1 for x in offers if x.is_comparable),
         trusted_offer_count=len(trusted_in_stock),
         median_price=median_price,
+        source_count=len({x.shop_id for x in offers}),
+        data_quality_score=_data_quality(offers, trusted_in_stock, comparable_in_stock)[0],
+        data_quality_label=_data_quality(offers, trusted_in_stock, comparable_in_stock)[1],
+        official_reference=asdict(reference) if (reference := official_reference_for(product.slug)) else None,
         offer_group_count=group_count,
         last_updated_at=max((x.observed_at for x in offers), default=None),
         tags=all_tags,
@@ -596,6 +672,7 @@ def get_product_detail(
         snapshot_at=snapshot.published_at if snapshot else None,
         offer_groups=offer_groups,
         history=[PricePoint(observed_at=x.observed_at, price=x.price, stock_status=x.stock_status) for x in history],
+        trend=_price_trend(db, product.id),
     )
 
 
@@ -675,6 +752,7 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         last_success_at=shop.last_success_at,
         last_seen_at=shop.last_seen_at,
         consecutive_failures=shop.consecutive_failures,
+        source_health=asdict(source_health(shop)),
         offer_count=len(offers),
         offers=[_offer_public(x, median_price=medians.get(x.delivery_type or "unknown")) for x in offers],
     )

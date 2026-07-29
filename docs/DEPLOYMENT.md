@@ -1,5 +1,7 @@
 # Deployment
 
+`ai.pricememo.cn` 的日常生产更新必须遵循 [生产快速部署](QUICK_DEPLOY.md)。本文件保留首次建站、网络、迁移和备份恢复说明。
+
 ## Single server
 
 Recommended minimum:
@@ -76,3 +78,14 @@ docker compose -f docker-compose.yml -f docker-compose.pricememo.yml up --build 
 ```
 
 Append `deploy/ai.pricememo.cn.Caddyfile` to the existing Caddy configuration, validate it with `caddy validate`, then apply it with `caddy reload`. Set all public URLs in `.env` to `https://ai.pricememo.cn` and set `TRUSTED_PROXY_CIDRS` to the existing Caddy network CIDR.
+
+
+## v3.2.0 database migration
+
+After the v4 catalog migration, add the public correction fields before deploying the v3.2 API:
+
+```bash
+python scripts/migrate_productization_v5.py --database-url "$DATABASE_URL"
+```
+
+Deploy API and Web together, then smoke-test `/api/v1/corrections`, `/api/v1/watch.atom`, `/methodology`, `/watchlist` and the merchant Feed submission form. For remote merchant feeds, restrict importer egress at the container or network layer in addition to application URL validation.

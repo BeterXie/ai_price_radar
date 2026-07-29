@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Package, Stack } from "@phosphor-icons/react/ssr";
+import { Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { PlatformIcon } from "@/components/platform-icon";
-import { offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
+import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
 import { ReportForm } from "@/components/report-form";
 import { getCatalogGroups, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
@@ -61,12 +61,8 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const catalog = product ? null : await getCatalogGroups(catalogQuery.toString());
   const productTabPlatform = activePlatform || "OpenAI";
   const productTabs = PRODUCT_TABS[productTabPlatform] || [];
-  const scopeQuery = new URLSearchParams();
-  if (single(rawParams, "comparable") === "false") scopeQuery.set("comparable", "false");
-  if (single(rawParams, "in_stock") === "true") scopeQuery.set("in_stock", "true");
-  const warrantyValue = single(rawParams, "warranty");
-  const warranty = warrantyValue === "covered" || warrantyValue === "none" ? warrantyValue : "";
-  if (warranty) scopeQuery.set("warranty", warranty);
+  const scopeQuery = new URLSearchParams(detailQuery);
+  const filters = filterValues(rawParams);
   const catalogHref = (platform = "") => {
     const next = new URLSearchParams(scopeQuery);
     if (platform) next.set("platform", platform);
@@ -117,16 +113,15 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         <>
           <h1 className="sr-only">{activePlatform ? `${activePlatform} AI 商品公开报价` : "AI 商品公开报价目录"}</h1>
           <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label="目录报价概况">
+            <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{catalog.trusted_offer_count} 条可信报价</p>
             <p className="flex items-center gap-1.5"><Package size={16} />{catalog.in_stock_count} 条有货报价</p>
-            <p className="flex items-center gap-1.5"><Stack size={16} />{catalog.offer_total} 条有效报价</p>
+            <p className="flex items-center gap-1.5"><Stack size={16} />{catalog.offer_total} 条有效 · {catalog.comparable_offer_count} 条可比</p>
             <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(catalog.last_updated_at)}</p>
           </section>
 
           <OfferScopeControls
             action="/products"
-            comparableOnly={single(rawParams, "comparable") !== "false"}
-            inStockOnly={single(rawParams, "in_stock") === "true"}
-            warranty={warranty}
+            values={filters}
             hiddenFields={activePlatform ? { platform: activePlatform } : {}}
             resetHref={activePlatform ? `/products?platform=${encodeURIComponent(activePlatform)}` : "/products"}
           />
@@ -135,6 +130,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             <div className="mb-6">
               <h2 className="text-3xl font-semibold tracking-[-.04em]">同款报价</h2>
               <p className="mt-2 text-sm text-black/50">跨标准商品按同款合并；当前显示 {catalog.total} 款，可展开查看全部店铺和按需加载原始描述。</p>
+              <p className="mt-1 text-xs text-black/35">{catalog.metrics_note}</p>
             </div>
             <OfferGroupTable
               key={`${activePlatform || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}

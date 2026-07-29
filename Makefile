@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 SOURCE_DB ?= ./ldxp_crawler.db
 
-.PHONY: up prod-up down logs ps test-api test-pipeline build-web import-db seed
+.PHONY: up prod-up down logs ps test-api test-pipeline build-web release-check import-db seed
 
 up:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
@@ -26,7 +26,10 @@ test-pipeline:
 	cd pipeline && python -m pytest -q
 
 build-web:
-	cd apps/web && npm ci && npm run build
+	cd apps/web && npm ci && npm run typecheck && npm run build
+
+release-check:
+	bash scripts/validate_release.sh
 
 import-db:
 	docker compose --profile tools run --rm importer python sync_ldxp.py --source-db /workspace/$(SOURCE_DB)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import ipaddress
 import math
 import re
@@ -25,6 +26,7 @@ from ..schemas import (
     OfferGroupPageResponse,
     OfferPageResponse,
     ProductDetail,
+    PublicCorrectionPage,
     ReportCreate,
     ReportOut,
     ShopDetail,
@@ -156,6 +158,27 @@ def _normalize_ldxp_shop_url(value: object) -> tuple[str, str]:
     return token, normalized
 
 
+def _normalize_merchant_feed_url(value: object) -> tuple[str, str]:
+    parsed = urllib.parse.urlsplit(str(value))
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="商家 Feed 必须使用公开 HTTPS URL",
+        )
+    if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+        raise HTTPException(status_code=422, detail="Feed 地址不能指向本地或内部主机")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved):
+        raise HTTPException(status_code=422, detail="Feed 地址不能使用私有或保留 IP")
+    normalized = urllib.parse.urlunsplit(("https", parsed.netloc, parsed.path or "/", parsed.query, ""))
+    token = "feed-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
+    return token, normalized
+
+
 @router.get("/products", response_model=CatalogResponse)
 def products(
     q: str = Query(default="", max_length=100),
@@ -174,7 +197,7 @@ def products(
     comparable: bool | None = None,
     exclude: str = Query(default="", max_length=200),
     snapshot: int | None = Query(default=None, ge=1),
-    sort: str = Query(default="price", pattern="^(price|price_desc|updated|offers)$"),
+    sort: str = Query(default="quality", pattern="^(quality|price|price_desc|updated|offers)$"),
     db: Session = Depends(get_db),
 ) -> CatalogResponse:
     items = list_product_cards(
@@ -205,6 +228,8 @@ def products(
         total=len(items),
         offer_count=sum(item.offer_count for item in items),
         in_stock_count=sum(item.in_stock_count for item in items),
+        comparable_offer_count=sum(item.comparable_offer_count for item in items),
+        trusted_offer_count=sum(item.trusted_offer_count for item in items),
         snapshot_id=current.id if current else None,
         snapshot_at=current.published_at if current else None,
     )
@@ -224,19 +249,37 @@ def catalog_groups(
     platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
+    delivery_type: str = Query(default="", max_length=40),
+    period: str = Query(default="", max_length=40),
     warranty: str = Query(default="", max_length=40),
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
     comparable: bool | None = None,
+    exclude: str = Query(default="", max_length=200),
     in_stock: bool = False,
+    min_price: Decimal | None = Query(default=None, ge=0),
+    max_price: Decimal | None = Query(default=None, ge=0),
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> CatalogOfferGroupPageResponse:
     current = get_snapshot(db, snapshot)
-    items, total, offer_total, in_stock_count, last_updated_at = get_catalog_group_page(
+    items, total, offer_total, in_stock_count, comparable_offer_count, trusted_offer_count, last_updated_at = get_catalog_group_page(
         db,
         platform=platform,
         offset=offset,
         limit=limit,
-        filters=_offer_filters(warranty=warranty, comparable=comparable, in_stock=in_stock),
+        filters=_offer_filters(
+            delivery_type=delivery_type,
+            period=period,
+            warranty=warranty,
+            auto_delivery=auto_delivery,
+            updated_within_hours=updated_within_hours,
+            comparable=comparable,
+            exclude=exclude,
+            in_stock=in_stock,
+            min_price=min_price,
+            max_price=max_price,
+        ),
         snapshot=current,
     )
     return CatalogOfferGroupPageResponse(
@@ -244,6 +287,8 @@ def catalog_groups(
         total=total,
         offer_total=offer_total,
         in_stock_count=in_stock_count,
+        comparable_offer_count=comparable_offer_count,
+        trusted_offer_count=trusted_offer_count,
         last_updated_at=last_updated_at,
         snapshot_id=current.id if current else None,
         snapshot_at=current.published_at if current else None,
@@ -261,6 +306,8 @@ def product_detail(
     comparable: bool | None = None,
     exclude: str = Query(default="", max_length=200),
     in_stock: bool = False,
+    min_price: Decimal | None = Query(default=None, ge=0),
+    max_price: Decimal | None = Query(default=None, ge=0),
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> ProductDetail:
@@ -276,6 +323,8 @@ def product_detail(
             comparable=comparable,
             exclude=exclude,
             in_stock=in_stock,
+            min_price=min_price,
+            max_price=max_price,
         ),
         snapshot_id=snapshot,
     )
@@ -311,6 +360,8 @@ def product_groups(
     comparable: bool | None = None,
     exclude: str = Query(default="", max_length=200),
     in_stock: bool = False,
+    min_price: Decimal | None = Query(default=None, ge=0),
+    max_price: Decimal | None = Query(default=None, ge=0),
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> OfferGroupPageResponse:
@@ -332,6 +383,8 @@ def product_groups(
             comparable=comparable,
             exclude=exclude,
             in_stock=in_stock,
+            min_price=min_price,
+            max_price=max_price,
         ),
         snapshot=current,
     )
@@ -347,9 +400,15 @@ def product_groups(
 def product_group_offers(
     slug: str,
     fingerprint: str,
+    delivery_type: str = Query(default="", max_length=40),
+    period: str = Query(default="", max_length=40),
     warranty: str = Query(default="", max_length=40),
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
     comparable: bool | None = None,
     in_stock: bool = False,
+    min_price: Decimal | None = Query(default=None, ge=0),
+    max_price: Decimal | None = Query(default=None, ge=0),
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> GroupOffersResponse:
@@ -357,7 +416,17 @@ def product_group_offers(
         db,
         slug,
         fingerprint,
-        filters=_offer_filters(warranty=warranty, comparable=comparable, in_stock=in_stock),
+        filters=_offer_filters(
+            delivery_type=delivery_type,
+            period=period,
+            warranty=warranty,
+            auto_delivery=auto_delivery,
+            updated_within_hours=updated_within_hours,
+            comparable=comparable,
+            in_stock=in_stock,
+            min_price=min_price,
+            max_price=max_price,
+        ),
         snapshot_id=snapshot,
     )
     if items is None:
@@ -405,6 +474,108 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     )
 
 
+@router.get("/corrections", response_model=PublicCorrectionPage)
+def public_corrections(
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> PublicCorrectionPage:
+    base = select(Report).where(
+        Report.status == "resolved",
+        Report.public_summary != "",
+    )
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = list(db.scalars(base.order_by(Report.resolved_at.desc(), Report.id.desc()).offset(offset).limit(limit)))
+    return PublicCorrectionPage(
+        items=[{
+            "id": row.id,
+            "offer_id": row.offer_id,
+            "kind": row.kind,
+            "public_summary": row.public_summary,
+            "merchant_response": row.merchant_response,
+            "resolved_at": row.resolved_at,
+            "created_at": row.created_at,
+        } for row in rows],
+        total=total,
+    )
+
+
+def _watch_targets(value: str) -> list[tuple[str, Decimal | None]]:
+    targets: list[tuple[str, Decimal | None]] = []
+    for raw in value.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        slug, _, raw_price = raw.partition(":")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,159}", slug):
+            continue
+        threshold = None
+        if raw_price:
+            try:
+                threshold = Decimal(raw_price).quantize(Decimal("0.01"))
+            except Exception:
+                continue
+            if threshold <= 0:
+                continue
+        targets.append((slug, threshold))
+        if len(targets) >= 20:
+            break
+    return targets
+
+
+@router.get("/watch.atom", response_class=Response)
+def watch_feed(
+    targets: str = Query(default="", max_length=1000),
+    db: Session = Depends(get_db),
+) -> Response:
+    parsed = _watch_targets(targets)
+    if not parsed:
+        raise HTTPException(status_code=422, detail="至少提供一个有效关注目标")
+    now = datetime.now(timezone.utc)
+    entries: list[str] = []
+    latest: datetime | None = None
+    for slug, threshold in parsed:
+        cards = list_product_cards(db, product_slug=slug, sort="quality")
+        if not cards:
+            continue
+        card = cards[0]
+        updated = card.last_updated_at or now
+        updated = updated if updated.tzinfo is not None else updated.replace(tzinfo=timezone.utc)
+        latest = updated if latest is None else max(latest, updated)
+        price = card.lowest_price
+        hit = card.in_stock_count > 0 and (threshold is None or (price is not None and price <= threshold))
+        state = "达到提醒条件" if hit else "持续关注"
+        price_text = f"¥{price:.2f}" if price is not None else "暂无可信价格"
+        threshold_text = f"，目标价 ¥{threshold:.2f}" if threshold is not None else ""
+        content = f"{card.display_name}：{price_text}，{card.in_stock_count} 条有货，{card.trusted_offer_count} 条可信报价{threshold_text}。状态：{state}。"
+        entry_id = hashlib.sha256(f"{slug}:{price}:{card.in_stock_count}:{threshold}:{card.last_updated_at}".encode()).hexdigest()
+        url = f"{str(settings.public_site_url).rstrip('/')}/products/{urllib.parse.quote(slug)}"
+        entries.append(
+            "<entry>"
+            f"<id>urn:ai-price-radar:{entry_id}</id>"
+            f"<title>{html.escape(card.display_name)} · {html.escape(state)}</title>"
+            f"<link href=\"{html.escape(url)}\"/>"
+            f"<updated>{updated.isoformat()}</updated>"
+            f"<content type=\"text\">{html.escape(content)}</content>"
+            "</entry>"
+        )
+    if not entries:
+        raise HTTPException(status_code=404, detail="关注产品不存在")
+    feed_id = hashlib.sha256(targets.encode()).hexdigest()
+    watch_url = str(settings.public_site_url).rstrip("/") + "/watchlist"
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<feed xmlns="http://www.w3.org/2005/Atom">'
+        f'<id>urn:ai-price-radar:watch:{feed_id}</id>'
+        '<title>AI Price Radar 价格与补货关注</title>'
+        f'<updated>{(latest or now).isoformat()}</updated>'
+        f'<link href="{html.escape(watch_url)}"/>'
+        + "".join(entries)
+        + '</feed>'
+    )
+    return Response(content=body, media_type="application/atom+xml; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
+
+
 @router.post("/reports", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
 def create_report(payload: ReportCreate, request: Request, db: Session = Depends(get_db)) -> Report:
     _enforce_report_rate_limit(request, db)
@@ -424,13 +595,18 @@ def create_shop_request(
     response: Response,
     db: Session = Depends(get_db),
 ) -> ShopRequestOut:
-    token, shop_url = _normalize_ldxp_shop_url(payload.shop_url)
+    if payload.source_type == "merchant_feed":
+        token, shop_url = _normalize_merchant_feed_url(payload.shop_url)
+    else:
+        token, shop_url = _normalize_ldxp_shop_url(payload.shop_url)
     _enforce_report_rate_limit(request, db)
 
-    known_shop = db.scalar(select(Shop.id).where(func.lower(Shop.token) == token.lower()))
+    known_shop = db.scalar(select(Shop.id).where(
+        (func.lower(Shop.token) == token.lower()) | (func.lower(Shop.source_url) == shop_url.lower())
+    ))
     if known_shop is not None:
         db.commit()
-        return ShopRequestOut(status="already_known", shop_token=token)
+        return ShopRequestOut(source_type=payload.source_type, status="already_known", shop_token=token)
 
     pending = db.scalar(
         select(Report)
@@ -444,12 +620,13 @@ def create_shop_request(
     if pending is not None:
         db.commit()
         return ShopRequestOut(
+            source_type=payload.source_type,
             status="already_pending",
             request_id=pending.id,
             shop_token=token,
         )
 
-    lines = [f"店铺链接：{shop_url}"]
+    lines = [f"来源类型：{payload.source_type}", f"店铺链接：{shop_url}"]
     if payload.shop_name.strip():
         lines.append(f"店铺名称：{payload.shop_name.strip()}")
     if payload.note.strip():
@@ -463,4 +640,4 @@ def create_shop_request(
     db.commit()
     db.refresh(report)
     response.status_code = status.HTTP_201_CREATED
-    return ShopRequestOut(status="submitted", request_id=report.id, shop_token=token)
+    return ShopRequestOut(source_type=payload.source_type, status="submitted", request_id=report.id, shop_token=token)

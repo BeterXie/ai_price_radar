@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Clock, Package } from "@phosphor-icons/react/ssr";
+import { ArrowUpRight, Clock, Package, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { PlatformIcon } from "@/components/platform-icon";
 import type { ProductCard as ProductCardType } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
@@ -15,7 +15,7 @@ export function ProductCard({ product, index = 0 }: { product: ProductCardType; 
   return (
     <Link
       href={`/products/${encodeURIComponent(product.slug)}`}
-      className="group grid gap-4 border-t border-[color:var(--line)] py-6 lg:grid-cols-[40px_minmax(220px,1.4fr)_90px_100px_125px_115px_100px_24px] lg:items-center"
+      className="group grid gap-4 border-t border-[color:var(--line)] py-6 lg:grid-cols-[40px_minmax(220px,1.4fr)_90px_100px_125px_130px_120px_100px_24px] lg:items-center"
     >
       <div className="mono text-xs text-black/35">{String(index + 1).padStart(2, "0")}</div>
       <div>
@@ -38,6 +38,7 @@ export function ProductCard({ product, index = 0 }: { product: ProductCardType; 
         {product.related_lowest_price && product.related_lowest_price !== product.lowest_price && <p className="mt-1 text-[11px] text-black/40">全部有货 {money(product.related_lowest_price)} 起</p>}
       </div>
       <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Package size={16} /> {product.trusted_offer_count} 可信 / {product.in_stock_count} 有货</p>
+      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><ShieldCheck size={16} /> {product.data_quality_score} 分 · {product.data_quality_label}<br className="hidden" /></p>
       <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Clock size={16} /> {relativeTime(product.last_updated_at)}</p>
       <ArrowUpRight size={22} className="transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
     </Link>

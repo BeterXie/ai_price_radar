@@ -1,0 +1,20 @@
+{
+  "shop": {
+    "token": "merchant-demo",
+    "name": "Demo AI Store",
+    "url": "https://merchant.example.com"
+  },
+  "updated_at": "2026-07-29T00:00:00Z",
+  "items": [
+    {
+      "id": "chatgpt-plus-monthly",
+      "name": "ChatGPT Plus 1 month",
+      "category": "OpenAI",
+      "description": "Public example record only",
+      "price": 99,
+      "currency": "CNY",
+      "stock": 8,
+      "url": "https://merchant.example.com/products/chatgpt-plus"
+    }
+  ]
+}

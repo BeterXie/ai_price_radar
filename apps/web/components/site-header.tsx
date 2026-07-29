@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { GithubLogo, Storefront } from "@phosphor-icons/react/ssr";
+import { Bell, GithubLogo, Storefront } from "@phosphor-icons/react/ssr";
 import { PlatformIcon } from "@/components/platform-icon";
 
 export function SiteHeader() {
@@ -26,6 +26,7 @@ export function SiteHeader() {
           ))}
         </nav>
         <div className="flex shrink-0 items-center gap-2">
+          <Link href="/watchlist" className="tactile hidden h-10 items-center gap-2 rounded-[10px] border hairline bg-[color:var(--panel)] px-3 text-sm font-medium sm:flex"><Bell size={18} />关注</Link>
           <Link href="/shops/submit" className="tactile flex h-10 items-center gap-2 rounded-[10px] border hairline bg-[color:var(--panel)] px-3 text-sm font-medium">
             <Storefront size={18} />
             <span className="hidden sm:inline">申请收录</span>

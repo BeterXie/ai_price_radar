@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -118,6 +120,17 @@ def update_report(report_id: int, payload: AdminReportUpdate, db: Session = Depe
     report = db.get(Report, report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="report not found")
-    report.status = payload.status
+    data = payload.model_dump(exclude_unset=True)
+    report.status = data.pop("status")
+    for key, value in data.items():
+        if value is not None:
+            setattr(report, key, value.strip())
+    report.resolved_at = datetime.now(timezone.utc) if report.status == "resolved" else None
     db.commit()
-    return {"ok": True, "id": report.id, "status": report.status}
+    return {
+        "ok": True,
+        "id": report.id,
+        "status": report.status,
+        "public_summary": report.public_summary,
+        "merchant_response": report.merchant_response,
+    }

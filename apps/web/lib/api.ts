@@ -1,4 +1,4 @@
-import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, ShopDetail } from "@/lib/types";
+import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, PublicCorrectionPage, ShopDetail } from "@/lib/types";
 
 const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -36,4 +36,8 @@ export async function getShop(token: string): Promise<ShopDetail | null> {
 
 export async function getMeta(): Promise<Meta> {
   return apiFetch("/api/v1/meta");
+}
+
+export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {
+  return apiFetch(`/api/v1/corrections${query ? `?${query}` : ""}`);
 }

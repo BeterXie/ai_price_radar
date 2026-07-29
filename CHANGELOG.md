@@ -2,6 +2,29 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.2.0] - 2026-07-29
+
+### Added
+
+- Official price references, verification dates, product data-quality scores, source scan-health facts, and daily aggregated price/stock trends.
+- Browser-local watchlists and privacy-preserving Atom price/restock subscriptions.
+- Public methodology, privacy, terms, security, developer, and correction-log pages.
+- Public correction summaries with optional merchant responses while keeping reporter contacts private.
+- Generic connector protocol, merchant HTTPS JSON Feed importer, submission flow, fixtures, and tests.
+- Full delivery, period, warranty, fulfillment, freshness, stock, and price-range filters across catalog and product pages.
+
+### Changed
+
+- Default catalog ranking now prioritizes data quality and freshness before price.
+- Homepage and directory counters use one published-snapshot scope and show trusted/comparable context.
+- Price history presentation uses daily aggregates instead of connecting unrelated raw observations.
+- Source-health labels explicitly describe crawler availability rather than merchant reputation.
+
+### Security
+
+- Merchant Feed submissions require public HTTPS URLs and reject localhost, internal hostnames, and private/reserved IP literals.
+- Public correction endpoints exclude raw report messages and contact information.
+
 ## [3.1.0] - 2026-07-29
 
 ### Added

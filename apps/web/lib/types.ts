@@ -1,3 +1,28 @@
+export type OfficialPriceReference = {
+  provider: string;
+  plan: string;
+  price: string | null;
+  currency: string;
+  billing_period: string;
+  url: string;
+  checked_at: string;
+  note: string;
+};
+
+export type SourceHealth = {
+  score: number;
+  label: string;
+  reasons: string[];
+};
+
+export type PriceTrendPoint = {
+  bucket_at: string;
+  trusted_lowest_price: string | null;
+  median_price: string | null;
+  in_stock_count: number;
+  observation_count: number;
+};
+
 export type ProductCard = {
   slug: string;
   platform: string;
@@ -11,6 +36,10 @@ export type ProductCard = {
   comparable_offer_count: number;
   trusted_offer_count: number;
   median_price: string | null;
+  source_count: number;
+  data_quality_score: number;
+  data_quality_label: string;
+  official_reference: OfficialPriceReference | null;
   last_updated_at: string | null;
   tags: string[];
 };
@@ -40,6 +69,7 @@ export type Offer = {
   item_fingerprint: string;
   low_price_warning: string | null;
   is_trusted_price: boolean;
+  source_health: SourceHealth;
   source_url: string;
   first_seen_at: string;
   last_seen_at: string;
@@ -56,6 +86,7 @@ export type ProductDetail = ProductCard & {
   offers: Offer[];
   offer_groups: OfferGroup[];
   history: { observed_at: string; price: string | null; stock_status: string }[];
+  trend: PriceTrendPoint[];
 };
 
 export type DeliveryPriceSummary = {
@@ -91,6 +122,9 @@ export type OfferGroupPage = {
 
 export type CatalogOfferGroupPage = OfferGroupPage & {
   in_stock_count: number;
+  comparable_offer_count: number;
+  trusted_offer_count: number;
+  metrics_note: string;
   last_updated_at: string | null;
   snapshot_at: string | null;
 };
@@ -109,6 +143,7 @@ export type ShopDetail = {
   last_success_at: string | null;
   last_seen_at: string | null;
   consecutive_failures: number;
+  source_health: SourceHealth;
   offer_count: number;
   offers: Offer[];
 };
@@ -124,6 +159,24 @@ export type CatalogResponse = {
   total: number;
   offer_count: number;
   in_stock_count: number;
+  comparable_offer_count: number;
+  trusted_offer_count: number;
+  metrics_note: string;
   snapshot_id: number | null;
   snapshot_at: string | null;
+};
+
+export type PublicCorrection = {
+  id: number;
+  offer_id: number | null;
+  kind: string;
+  public_summary: string;
+  merchant_response: string;
+  resolved_at: string | null;
+  created_at: string;
+};
+
+export type PublicCorrectionPage = {
+  items: PublicCorrection[];
+  total: number;
 };

@@ -525,13 +525,16 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
     shop = db.scalar(select(Shop).where(Shop.token == token))
     observed_at = parse_dt(record.get("observed_at") or record.get("collected_at") or record.get("scanned_at"))
     if shop is None:
-        shop = Shop(token=token, name=str(record.get("shop_name") or token), source_url=str(record.get("shop_url") or ""), platform="ldxp")
+        shop = Shop(token=token, name=str(record.get("shop_name") or token), source_url=str(record.get("shop_url") or ""), platform=str(record.get("source_platform") or "ldxp"))
         db.add(shop); db.flush()
     shop.name = str(record.get("shop_name") or shop.name or token)
     shop.source_url = str(record.get("shop_url") or shop.source_url)
+    shop.platform = str(record.get("source_platform") or shop.platform or "unknown")
+    shop.source_score = int(record.get("source_score") or shop.source_score or 0)
     shop.status = str(record.get("shop_status") or "success")
+    shop.consecutive_failures = int(record.get("consecutive_failures") or 0)
     shop.last_seen_at = observed_at
-    shop.last_success_at = observed_at
+    shop.last_success_at = parse_dt(record.get("last_success_at")) if record.get("last_success_at") else observed_at
 
     key = str(record.get("product_key") or record.get("source_product_key") or record.get("product_url") or record.get("product_name") or "")[:300]
     raw = db.scalar(select(RawProduct).where(RawProduct.shop_id == shop.id, RawProduct.source_product_key == key))

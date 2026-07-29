@@ -24,6 +24,8 @@
 - 自动发现店铺、周期扫描、SQLite 校验、快照与 PostgreSQL 幂等同步
 - 提供举报纠错和不公开暴露入口的基础管理后台
 - 提供动态 Sitemap、自引用 canonical、产品结构化数据、独特产品说明与社交分享图
+- 提供官方价格参考、数据质量、来源扫描健康、聚合趋势、浏览器本地关注清单与 Atom Feed
+- 支持公开纠错记录、商家回应、LDXP 与通用商家 JSON Feed Connector
 
 ## 架构
 
@@ -127,13 +129,15 @@ GET  /api/v1/offers/{id}/description
 GET  /api/v1/snapshot
 GET  /api/v1/shops/{token}
 GET  /api/v1/meta
+GET  /api/v1/corrections
+GET  /api/v1/watch.atom?targets=chatgpt-plus:100
 POST /api/v1/reports
 POST /api/v1/shop-requests
 ```
 
 管理接口位于 `/api/v1/admin/*`，通过 `X-Admin-Key` 请求头保护。请勿在客户端代码、截图、日志或公开 Issue 中粘贴管理密钥。
 
-商家可通过 `/shops/submit` 提交链动小铺公开店铺链接。接口会校验来源域名、按店铺 token 去重，并复用举报限流与后台审核队列；申请通过抓取验证前不会进入公开报价。
+商家可通过 `/shops/submit` 提交链动小铺公开店铺链接或公开 HTTPS JSON Feed。接口会校验来源、去重并复用举报限流与后台审核队列；申请通过读取验证前不会进入公开报价。Connector 说明见 [docs/CONNECTORS.md](docs/CONNECTORS.md)。
 
 ## 公开报价规则
 
@@ -155,6 +159,12 @@ python scripts/migrate_catalog_v4.py --database-url "$DATABASE_URL"
 ```
 
 迁移只新增快照和报价分析字段，不删除原始数据。迁移后执行一次完整 SQLite 同步或管理端重新分类，以回填交付形态、可比性和同款指纹。
+
+v3.2.0 还需要新增公开纠错字段：
+
+```bash
+python scripts/migrate_productization_v5.py --database-url "$DATABASE_URL"
+```
 
 ## 开发与验证
 
@@ -193,6 +203,7 @@ docs/              架构、部署与数据政策
 
 - [架构说明](docs/ARCHITECTURE.md)
 - [部署指南](docs/DEPLOYMENT.md)
+- [生产快速部署](docs/QUICK_DEPLOY.md)
 - [数据政策](docs/DATA_POLICY.md)
 - [项目交接文档](docs/HANDOVER.md)
 - [验证记录](VALIDATION.md)
@@ -220,7 +231,7 @@ docs/              架构、部署与数据政策
 
 ## 版本与发布
 
-当前版本：`3.1.0`。正式发布前请完成 `docs/RELEASE_CHECKLIST.md`，发布说明见 `RELEASE_NOTES_v3.1.0.md`。
+当前版本：`3.2.0`。正式发布前请完成 `docs/RELEASE_CHECKLIST_v3.2.0.md`，发布说明见 `RELEASE_NOTES_v3.2.0.md`。
 
 ## 开源协议
 

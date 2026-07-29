@@ -1,0 +1,179 @@
+# 生产快速部署
+
+这是 `ai.pricememo.cn` 的唯一标准部署流程。生产主机为 `pricememo-prod`，运行目录为 `/opt/ai-price-radar-v3`；主机没有 Git 和 Node.js，因此源码来自 Release Tag，Next.js standalone 必须在本机生成。
+
+## 原则
+
+- 只部署已发布且 CI 通过的 Tag，生产源码、API 和 Web 必须来自同一提交。
+- 先暂停定时器，再等待当前刷新锁一次；部署完成前不要恢复定时器。
+- 只重建 `api` 和 `web`，不重建 `db`，无迁移版本不得执行数据库结构操作。
+- 部署前只做一次 PostgreSQL 备份，并保留旧 API/Web 镜像和旧源码包。
+- 普通 API/Web 发布不等待完整爬虫刷新。只有改动 `crawler/`、`pipeline/` 或数据库结构时，才把一次完整刷新作为部署门禁。
+
+## 1. 发布前检查
+
+在仓库根目录确认工作区干净、Tag 指向当前提交，并完成完整门禁：
+
+```powershell
+$Tag = "vX.Y.Z"
+$Version = $Tag.TrimStart("v")
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+if (git status --porcelain) { throw "Working tree is not clean" }
+if ((git rev-parse HEAD) -ne (git rev-list -n 1 $Tag)) { throw "HEAD does not match $Tag" }
+
+Push-Location apps/api
+python -m pytest -q
+Pop-Location
+
+npm --prefix apps/web ci
+npm --prefix apps/web run typecheck
+```
+
+## 2. 暂停调度并创建回滚点
+
+先停止三个 timer。若刷新锁忙，只等待当前任务；15 分钟仍未释放就中止部署并排查，不要强杀任务。
+
+```bash
+ssh pricememo-prod '
+  systemctl stop \
+    ai-price-radar-inventory.timer \
+    ai-price-radar-refresh.timer \
+    ai-price-radar-discover.timer
+
+  deadline=$((SECONDS + 900))
+  until flock -n /opt/ai-price-radar-v3/data/crawler/.refresh.lock -c true; do
+    if (( SECONDS >= deadline )); then
+      echo "refresh lock did not clear within 15 minutes" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+
+  cd /opt/ai-price-radar-v3
+  bash scripts/backup_postgres.sh
+'
+```
+
+然后保存旧源码和镜像。回滚名称必须带 `$Stamp`，部署记录中保留该值。
+
+```bash
+# 在服务器执行；将 STAMP 替换为本次值
+cd /opt/ai-price-radar-v3
+umask 077
+tar -czf "backups/source_pre_deploy_STAMP.tar.gz" \
+  --exclude=./backups --exclude=./data \
+  --exclude=./apps/web/node_modules --exclude=./.env .
+gzip -t "backups/source_pre_deploy_STAMP.tar.gz"
+
+docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-api-1)" \
+  "ai-price-radar-api:rollback-STAMP"
+docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-web-1)" \
+  "ai-price-radar-web:rollback-STAMP"
+```
+
+## 3. 本机构建并上传
+
+必须注入生产 API 地址；构建后确认客户端静态文件不含 `http://localhost:8000`。
+
+```powershell
+$env:NEXT_PUBLIC_API_BASE_URL = "https://ai.pricememo.cn"
+$env:NEXT_PUBLIC_SITE_NAME = "AI Price Radar"
+
+npm --prefix apps/web run build
+
+if (rg -a -l "http://localhost:8000" apps/web/.next/static) {
+  throw "Production client bundle contains localhost API URL"
+}
+
+$Source = "$env:TEMP\ai-price-radar-$Version-source-$Stamp.tar.gz"
+$Web = "$env:TEMP\ai-price-radar-$Version-web-$Stamp.tar.gz"
+
+git archive --format=tar.gz --prefix="ai-price-radar-$Version/" --output=$Source $Tag
+tar -czf $Web -C apps/web .next/standalone .next/static
+Get-FileHash $Source,$Web -Algorithm SHA256
+
+scp $Source "pricememo-prod:/tmp/"
+scp $Web "pricememo-prod:/tmp/"
+```
+
+## 4. Staging 校验、构建和切换
+
+在独立 staging 目录校验 SHA-256、解包、复制生产 `.env`，运行 `production_preflight.py` 和 Compose 配置检查。全部通过后才覆盖运行目录。
+
+```text
+1. sha256sum -c 检查两个上传包
+2. 解压源码到 /opt/ai-price-radar-staging-$Stamp
+3. 解压 .next/standalone 和 .next/static
+4. 从当前运行目录复制 .env
+5. python3 scripts/production_preflight.py
+6. docker compose ... config -q
+7. 覆盖 /opt/ai-price-radar-v3，但保留 .env、data/、backups/
+```
+
+随后只构建并依次切换 API、Web：
+
+```bash
+cd /opt/ai-price-radar-v3
+COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
+
+$COMPOSE build api web
+
+# Release Notes 要求迁移时，在切换 API 前用新 API 镜像执行；脚本名按版本替换。
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_productization_v5.py
+
+$COMPOSE up -d --no-deps api
+# 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
+
+$COMPOSE up -d --no-deps web
+# 确认公网首页出现目标版本文案
+```
+
+API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像。不要回滚或重建 PostgreSQL。
+
+迁移必须先在临时数据库演练，并确认可重复执行。没有迁移要求的版本省略迁移命令，不能自行推断或新增数据库操作。
+
+## 5. 固定验收
+
+以下项目全部通过即视为部署完成：
+
+```text
+[ ] https://ai.pricememo.cn/health 返回 status=ok 和目标版本
+[ ] API、Web、DB 容器运行，API/DB 为 healthy
+[ ] OpenAPI 包含本版本新增字段
+[ ] 首页、报价目录和一个商品详情页可正常访问
+[ ] 真实商品的可信最低价与 related_lowest_price 口径正确
+[ ] API/Web 部署后日志无 traceback、exception、critical
+[ ] 三个 systemd timer 已恢复为 active
+[ ] 数据库备份、旧源码包和旧镜像回滚标签存在
+```
+
+恢复定时器：
+
+```bash
+systemctl start \
+  ai-price-radar-inventory.timer \
+  ai-price-radar-refresh.timer \
+  ai-price-radar-discover.timer
+```
+
+恢复后可能因 `Persistent=true` 立即补跑一次，这是正常调度。普通 API/Web 发布记录任务已启动即可，不要等待后续每个周期；涉及爬虫、数据管道或数据库结构的发布，才等待一次任务完成并确认 `failed=0`。
+
+## 回滚
+
+```bash
+cd /opt/ai-price-radar-v3
+COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
+
+docker image tag ai-price-radar-api:rollback-STAMP ai-price-radar-api:latest
+docker image tag ai-price-radar-web:rollback-STAMP ai-price-radar-web:latest
+$COMPOSE up -d --no-deps --force-recreate api web
+```
+
+若发布同时修改了定时脚本、crawler 或 pipeline，再恢复 `backups/source_pre_deploy_STAMP.tar.gz` 中的源码。数据库仅在明确存在不兼容迁移且获得单独批准时恢复。

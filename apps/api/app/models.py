@@ -157,6 +157,9 @@ class Report(Base):
     message: Mapped[str] = mapped_column(Text)
     contact: Mapped[str] = mapped_column(String(200), default="")
     status: Mapped[str] = mapped_column(String(30), default="open", index=True)
+    public_summary: Mapped[str] = mapped_column(Text, default="")
+    merchant_response: Mapped[str] = mapped_column(Text, default="")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

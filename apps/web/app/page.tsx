@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const data = await getProducts("sort=price");
+  const data = await getProducts("sort=quality");
   const products = data.items.slice(0, 6);
   return (
     <main id="main-content">

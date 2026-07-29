@@ -23,7 +23,9 @@ function DecisionFacts({ offer }: { offer: Offer }) {
       <div><dt className="text-xs text-black/40">使用期限</dt><dd className="mt-1">{PERIOD_LABELS[offer.service_period] || offer.service_period}</dd></div>
       <div><dt className="text-xs text-black/40">质保</dt><dd className="mt-1">{WARRANTY_LABELS[offer.warranty] || offer.warranty}</dd></div>
       <div><dt className="text-xs text-black/40">交付方式</dt><dd className="mt-1">{fulfillmentLabel(offer.auto_delivery)}</dd></div>
-      <div className="col-span-2 lg:col-span-4"><dt className="text-xs text-black/40">适用场景</dt><dd className="mt-1">{offer.use_scenarios.length ? offer.use_scenarios.map((item) => SCENARIO_LABELS[item] || item).join("、") : "未注明"}</dd></div>
+      <div><dt className="text-xs text-black/40">来源扫描健康</dt><dd className="mt-1 font-medium">{offer.source_health.score} / 100 · {offer.source_health.label}</dd></div>
+      <div className="col-span-2 lg:col-span-3"><dt className="text-xs text-black/40">适用场景</dt><dd className="mt-1">{offer.use_scenarios.length ? offer.use_scenarios.map((item) => SCENARIO_LABELS[item] || item).join("、") : "未注明"}</dd></div>
+      <div className="col-span-2 lg:col-span-4"><dt className="text-xs text-black/40">来源健康依据</dt><dd className="mt-1 text-black/60">{offer.source_health.reasons.join("；")}</dd></div>
     </dl>
   );
 }
@@ -87,7 +89,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           <div className="flex flex-wrap items-center gap-2">
             {productName && <span className="rounded-full border hairline px-2 py-1 text-[10px] font-medium">{productName}</span>}
             <h3 className="text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
-            {!offer.is_comparable && <span className="rounded-full bg-[#f1e2bd] px-2 py-1 text-[10px] font-medium text-[#6d4f09]">不参与主最低价</span>}
+            {offer.is_trusted_price ? <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-[10px] font-medium text-[color:var(--accent-ink)]">可信价格</span> : !offer.is_comparable ? <span className="rounded-full bg-[#f1e2bd] px-2 py-1 text-[10px] font-medium text-[#6d4f09]">不参与主最低价</span> : <span className="rounded-full border hairline px-2 py-1 text-[10px] text-black/50">价格待复核</span>}
             {group && group.shop_count > 1 && <span className="rounded-full border hairline px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">

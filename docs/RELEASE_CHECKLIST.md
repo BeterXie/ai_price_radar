@@ -14,11 +14,11 @@
 ## Publish
 
 ```bash
-git tag -a v3.1.0 -m "AI Price Radar v3.1.0 — Trusted Pricing"
-git push origin v3.1.0
+git tag -a v3.2.0 -m "AI Price Radar v3.2.0 — Productization & Evidence"
+git push origin v3.2.0
 ```
 
-Create a GitHub Release from `v3.1.0` using `RELEASE_NOTES_v3.1.0.md`.
+Create a GitHub Release from `v3.2.0` using `RELEASE_NOTES_v3.2.0.md`.
 
 ## After publishing
 
