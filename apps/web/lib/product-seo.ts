@@ -12,13 +12,13 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     comparisonPoints: ["确认账号是否需要二次验证，以及交付后能否修改资料。", "区分成品号、首登号、日抛号和共享账号，并分别核对质保。"],
     faqs: [
       { question: "ChatGPT Free 报价为什么差异很大？", answer: "账号地区、注册方式、是否可改资料、质保期限和交付自动化程度都会影响价格。" },
-      { question: "这个页面包含 Plus 或 Pro 吗？", answer: "不包含。标题明确的 Plus、Go、K12 和 Pro 会进入各自的标准产品页面。" },
+      { question: "这个页面包含 Plus 或 Pro 吗？", answer: "不包含。标题明确的 Plus、Go、K12 和 Pro 会进入各自的商品类型页面。" },
     ],
   },
   "chatgpt-plus": {
     metaDescription: "比较 ChatGPT Plus 公开报价，区分直充、成品号、首登号、体验号、共享号池与中转服务。",
     intro: "ChatGPT Plus 报价按交付形态拆分展示。主最低价只统计可直接比较的 Plus 报价，号池、中转和辅助服务不会冒充标准月订阅低价。",
-    comparisonPoints: ["先确认是订阅充值、Plus 成品号还是短期体验账号。", "核对使用周期、首登要求、质保范围和是否允许修改账号资料。", "异常低价需结合商品形态和原始描述判断，不能只看金额。"],
+    comparisonPoints: ["先确认是订阅充值、Plus 成品号还是短期体验账号。", "核对使用周期、首登要求、质保范围和是否允许修改账号资料。", "价格明显偏低时，需结合商品类型和商品原文判断，不能只看金额。"],
     faqs: [
       { question: "为什么页面上的最低价不是所有相关商品最低价？", answer: "标准最低价只比较交付形态相近的报价。共享号池、中转、接码和辅助服务会单独保留，但不参与主价格。" },
       { question: "“不是 Plus”的商品会进入这里吗？", answer: "分类规则会识别否定语境；误分类也可以通过页面纠错入口提交审核。" },
@@ -29,7 +29,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     intro: "本页只聚合标题明确标注 ChatGPT Go 的商品，并与 ChatGPT Free、Plus 和 Pro 报价分开比较。",
     comparisonPoints: ["确认商品名称和描述都指向 Go，而不是普通账号或其他订阅。", "核对订阅周期、充值方式、账号归属和售后条件。"],
     faqs: [
-      { question: "ChatGPT Go 会和 Plus 一起比较吗？", answer: "不会。Go 与 Plus 是不同标准商品，各自计算报价和最低价。" },
+      { question: "ChatGPT Go 会和 Plus 一起比较吗？", answer: "不会。Go 与 Plus 是不同商品类型，各自计算报价和最低价。" },
       { question: "标题没有写 Go 的商品会被收录吗？", answer: "不会仅凭描述猜测。标题需要明确出现 Go 商品语境。" },
     ],
   },
@@ -45,7 +45,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
   "chatgpt-pro-5x": {
     metaDescription: "比较明确标注 ChatGPT Pro 5x 的公开报价、交付形态、库存、质保和更新时间。",
     intro: "本页只把明确标注 Pro 5x 权益的商品纳入标准分类，普通 Pro、20x、共享号池和中转服务不会参与同类最低价。",
-    comparisonPoints: ["核对商品是独享账号、充值服务还是共享使用形式。", "确认 5x 标识来自商品标题或明确权益说明，而不是分类猜测。", "查看质保、账号资料修改权限和异常低价提示。"],
+    comparisonPoints: ["核对商品是独享账号、充值服务还是共享使用形式。", "确认 5x 标识来自商品标题或明确权益说明，而不是分类猜测。", "查看质保、账号资料修改权限和价格偏低提示。"],
     faqs: [
       { question: "没有写 5x 的 Pro 会出现在这里吗？", answer: "不会。未明确倍率的商品保留在通用 ChatGPT Pro 分类。" },
       { question: "Pro 号池会参与最低价吗？", answer: "共享号池可以作为相关商品展示，但不会参与独享或可直接比较报价的主最低价。" },
@@ -54,7 +54,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
   "chatgpt-pro-20x": {
     metaDescription: "比较明确标注 ChatGPT Pro 20x 的公开报价、库存、交付方式、期限、质保与来源。",
     intro: "ChatGPT Pro 20x 页面只比较明确标注对应倍率的商品，并把账号、充值、号池和服务型报价分开呈现。",
-    comparisonPoints: ["确认 20x 权益、使用周期和账号归属是否在原始描述中写明。", "区分独享账号、代充、共享号池和短期使用权。", "价格明显偏低时重点核对限制条件和售后范围。"],
+    comparisonPoints: ["确认 20x 权益、使用周期和账号归属是否在商品原文中写明。", "区分独享账号、代充、共享号池和短期使用权。", "价格明显偏低时重点核对限制条件和售后范围。"],
     faqs: [
       { question: "20x 和 5x 会混在一起吗？", answer: "不会。只有标题或明确商品信息确认倍率后才进入对应页面。" },
       { question: "最低价是否代表完整 Pro 20x 账号？", answer: "不一定。请同时查看交付形态；页面会把不可直接比较的号池和服务报价排除在主最低价之外。" },
@@ -63,7 +63,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
   "chatgpt-pro": {
     metaDescription: "查询未明确 5x 或 20x 倍率的 ChatGPT Pro 公开报价、交付方式、库存和更新时间。",
     intro: "通用 ChatGPT Pro 页面收纳明确写明 Pro、但没有足够信息判断 5x 或 20x 倍率的商品，避免系统替商家猜测权益。",
-    comparisonPoints: ["先回到原始描述确认具体倍率、周期和账号类型。", "权益不清晰的报价不应直接与明确 5x 或 20x 商品比较。"],
+    comparisonPoints: ["先回到商品原文确认具体倍率、周期和账号类型。", "权益不清晰的报价不应直接与明确 5x 或 20x 商品比较。"],
     faqs: [
       { question: "为什么商品没有进入 Pro 5x 或 20x？", answer: "商品信息没有明确倍率时，系统会保留在通用 Pro 分类，不自动推断。" },
       { question: "确认倍率后可以修正分类吗？", answer: "可以通过纠错入口提供来源信息，管理员核验后可重新分类。" },
@@ -129,7 +129,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     comparisonPoints: ["确认是订阅充值、带权益账号还是短期共享使用。", "核对地区、周期、账号归属、资料修改权限和售后。"],
     faqs: [
       { question: "普通 Gemini 账号会参与 Advanced 最低价吗？", answer: "不会。没有明确 Advanced 权益的账号进入普通账号分类。" },
-      { question: "如何判断异常低价？", answer: "查看交付形态、周期和质保；体验号、共享号或辅助服务通常不能与完整订阅直接比较。" },
+      { question: "如何判断价格是否明显偏低？", answer: "查看交付方式、周期和质保；体验号、共享号或辅助服务通常不能与完整订阅直接比较。" },
     ],
   },
   "gemini-account": {
@@ -147,7 +147,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     comparisonPoints: ["确认价格单位、可用模型、调用限制和额度有效期。", "区分直接额度、代理访问和中转服务。"],
     faqs: [
       { question: "Gemini API 价格能和 Advanced 会员比较吗？", answer: "不能。API 与网页订阅的使用方式和计费单位不同。" },
-      { question: "为什么必须查看原始描述？", answer: "API 报价常按余额、调用量或时间套餐计价，金额本身不能完整表达单位。" },
+      { question: "为什么必须查看商品原文？", answer: "API 报价常按余额、调用量或时间套餐计价，金额本身不能完整表达单位。" },
     ],
   },
   "grok-super": {
@@ -164,7 +164,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     intro: "本页展示明确出售 Grok 账号、但不属于 SuperGrok、API 或 X Premium 订阅的商品。",
     comparisonPoints: ["确认账号是否带付费权益，以及网页版、客户端等使用限制。", "极低价格常对应普通号、体验号或功能受限账号，需要结合描述判断。"],
     faqs: [
-      { question: "低至几分钱的 Grok 账号可靠吗？", answer: "价格可能真实，但通常对应普通账号、体验或功能限制。页面会保留报价并提示异常低价，而不是直接当作完整付费订阅。" },
+      { question: "低至几分钱的 Grok 账号可靠吗？", answer: "价格可能真实，但通常对应普通账号、体验或功能限制。页面会保留报价并提示价格明显偏低，而不是直接当作完整付费订阅。" },
       { question: "Grok 账号和 X Premium 是一回事吗？", answer: "不是。X Premium 是独立产品系列，按 Basic、Premium 和 Premium+ 分类。" },
     ],
   },
@@ -182,7 +182,7 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     intro: "X Premium Basic 与 Premium、Premium+ 以及 Grok 商品独立分类，只收录明确标注 Basic 档位的报价。",
     comparisonPoints: ["确认档位名称明确为 Basic，并核对充值账号和地区要求。", "查看订阅周期、代充方式和售后范围。"],
     faqs: [
-      { question: "为什么当前可能看不到 Basic 报价？", answer: "已发布快照中没有通过分类和有效性检查的报价时，页面会保留产品说明，但不展示占位价格。" },
+      { question: "为什么当前可能看不到 Basic 报价？", answer: "最近更新的数据中没有符合分类和展示条件的报价时，页面会保留商品说明，但不展示占位价格。" },
       { question: "Basic 会和 Premium 混算吗？", answer: "不会，三个档位分别统计报价。" },
     ],
   },
@@ -241,7 +241,7 @@ export function getProductSeoContent(slug: string, displayName: string, fallback
     ],
     faqs: [
       { question: "页面报价是否由本站销售？", answer: "不是。本站只聚合公开报价，不参与交易、收款、交付或售后。" },
-      { question: "为什么价格会变化？", answer: "店铺会调整价格和库存，页面按已发布数据快照展示最近一次成功采集结果。" },
+      { question: "为什么价格会变化？", answer: "店铺会调整价格和库存，页面展示最近一次成功更新的结果。" },
     ],
   };
 }

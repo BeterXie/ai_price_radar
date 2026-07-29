@@ -84,8 +84,8 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             </Link>
           ))}
         </nav>
-        <nav className="mt-3 flex items-center gap-1 overflow-x-auto border-t hairline pt-3" aria-label="标准商品筛选">
-          <span className="mr-2 shrink-0 text-xs text-black/45">标准商品</span>
+        <nav className="mt-3 flex items-center gap-1 overflow-x-auto border-t hairline pt-3" aria-label="商品类型筛选">
+          <span className="mr-2 shrink-0 text-xs text-black/45">商品类型</span>
           <Link href={catalogHref(activePlatform)} aria-current={!product ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-sm ${!product ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
             全部商品
           </Link>
@@ -113,9 +113,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         <>
           <h1 className="sr-only">{activePlatform ? `${activePlatform} AI 商品公开报价` : "AI 商品公开报价目录"}</h1>
           <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label="目录报价概况">
-            <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{catalog.trusted_offer_count} 条可信报价</p>
+            <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{catalog.trusted_offer_count} 条可参考报价</p>
             <p className="flex items-center gap-1.5"><Package size={16} />{catalog.in_stock_count} 条有货报价</p>
-            <p className="flex items-center gap-1.5"><Stack size={16} />{catalog.offer_total} 条有效 · {catalog.comparable_offer_count} 条可比</p>
+            <p className="flex items-center gap-1.5"><Stack size={16} />{catalog.offer_total} 条当前报价 · {catalog.comparable_offer_count} 条可直接比较</p>
             <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(catalog.last_updated_at)}</p>
           </section>
 
@@ -128,9 +128,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
 
           <section className="pb-12">
             <div className="mb-6">
-              <h2 className="text-3xl font-semibold tracking-[-.04em]">同款报价</h2>
-              <p className="mt-2 text-sm text-black/50">跨标准商品按同款合并；当前显示 {catalog.total} 款，可展开查看全部店铺和按需加载原始描述。</p>
-              <p className="mt-1 text-xs text-black/35">{catalog.metrics_note}</p>
+              <h2 className="text-3xl font-semibold tracking-[-.04em]">在售报价</h2>
+              <p className="mt-2 text-sm text-black/50">相同商品会合并展示。当前共有 {catalog.total} 款，点开即可查看不同店铺、交付方式和商品原文。</p>
+              <p className="mt-1 text-xs text-black/35">统计仅包含当前筛选结果，价格和库存以最近一次更新为准。</p>
             </div>
             <OfferGroupTable
               key={`${activePlatform || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
@@ -143,7 +143,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             />
           </section>
           <section className="border-t border-black py-12"><div className="max-w-2xl"><ReportForm /></div></section>
-          <p className="border-t hairline py-5 text-xs text-black/40">数据快照：{catalog.snapshot_id ? `#${catalog.snapshot_id}` : "未编号"} · {exactTime(catalog.snapshot_at)}</p>
+          <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(catalog.snapshot_at)}</p>
         </>
       ) : null}
     </main>

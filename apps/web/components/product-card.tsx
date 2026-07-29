@@ -33,12 +33,12 @@ export function ProductCard({ product, index = 0 }: { product: ProductCardType; 
       <div className="hidden items-center gap-2 text-sm lg:flex"><PlatformIcon platform={product.platform} />{product.platform}</div>
       <div className="hidden text-sm text-[color:var(--muted)] lg:block">{typeLabel[product.product_type] || product.product_type}</div>
       <div>
-        <p className="text-xs text-black/40 lg:hidden">可信最低价</p>
+        <p className="text-xs text-black/40 lg:hidden">近期有货最低价</p>
         <p className="mt-2 text-2xl font-semibold tracking-[-.04em]">{money(product.lowest_price)}</p>
         {product.related_lowest_price && product.related_lowest_price !== product.lowest_price && <p className="mt-1 text-[11px] text-black/40">全部有货 {money(product.related_lowest_price)} 起</p>}
       </div>
-      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Package size={16} /> {product.trusted_offer_count} 可信 / {product.in_stock_count} 有货</p>
-      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><ShieldCheck size={16} /> {product.data_quality_score} 分 · {product.data_quality_label}<br className="hidden" /></p>
+      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Package size={16} /> {product.trusted_offer_count} 可参考 / {product.in_stock_count} 有货</p>
+      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><ShieldCheck size={16} /> 报价覆盖 {product.data_quality_score} 分 · {product.data_quality_label}<br className="hidden" /></p>
       <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Clock size={16} /> {relativeTime(product.last_updated_at)}</p>
       <ArrowUpRight size={22} className="transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
     </Link>

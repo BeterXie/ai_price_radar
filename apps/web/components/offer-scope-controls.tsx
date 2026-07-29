@@ -75,7 +75,7 @@ export function OfferScopeControls({
           </label>
           <label className="text-xs font-medium text-black/55">更新时间
             <select name="updated_within_hours" defaultValue={values.updated_within_hours} className="mt-1.5 w-full rounded-[9px] border hairline bg-white px-3 py-2.5 text-sm text-black">
-              <option value="">有效窗口内</option><option value="6">6 小时内</option><option value="24">24 小时内</option><option value="72">3 天内</option><option value="168">7 天内</option>
+              <option value="">全部更新时间</option><option value="6">6 小时内</option><option value="24">24 小时内</option><option value="72">3 天内</option><option value="168">7 天内</option>
             </select>
           </label>
         </div>
