@@ -166,6 +166,14 @@ v3.2.0 还需要新增公开纠错字段：
 python scripts/migrate_productization_v5.py --database-url "$DATABASE_URL"
 ```
 
+启用多来源原币种保存前，还需要新增报价历史币种字段：
+
+```bash
+python scripts/migrate_currency_v7.py --database-url "$DATABASE_URL"
+```
+
+该迁移可重复执行，并会从现有 Merchant JSON 原始记录中尽力回填常用法定币种。必须在切换读取 `offer_history.currency` 的 API 前完成。
+
 ## 开发与验证
 
 ```bash

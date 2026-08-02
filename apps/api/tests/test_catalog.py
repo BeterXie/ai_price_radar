@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.models import Offer, Product, RawProduct, Shop
+from app.models import Offer, OfferHistory, Product, RawProduct, Shop
 from app.services.catalog import (
     OfferFilters,
     _plain_text,
@@ -344,3 +344,80 @@ def test_trusted_price_excludes_extreme_comparable_outlier():
         assert detail.trusted_offer_count == 2
         assert detail.offer_groups[0].lowest_price == Decimal("15.00")
         assert detail.offer_groups[0].representative.price == Decimal("15.00")
+
+
+def test_catalog_aggregates_and_filters_do_not_mix_currencies():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        product = Product(slug="mixed-currency", platform="OpenAI", display_name="Mixed currency")
+        db.add(product)
+        db.flush()
+        for token, price, currency in (
+            ("cny-shop", Decimal("100"), "CNY"),
+            ("usd-shop", Decimal("1"), "USD"),
+        ):
+            shop = Shop(token=token, name=token, source_url=f"https://example.com/{token}")
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=token,
+                original_name="Same product",
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            offer = Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                price=price,
+                currency=currency,
+                stock_status="in_stock",
+                delivery_type="finished_account",
+                is_comparable=True,
+                item_fingerprint="same-fingerprint",
+                source_url=shop.source_url,
+                observed_at=now,
+            )
+            db.add(offer)
+            db.flush()
+            db.add(OfferHistory(
+                offer_id=offer.id,
+                price=price,
+                currency=currency,
+                stock_status="in_stock",
+                observed_at=now,
+            ))
+        db.commit()
+
+        card = list_product_cards(db, product_slug=product.slug)[0]
+        assert card.price_currency == "CNY"
+        assert card.lowest_price == Decimal("100.00")
+        assert card.related_lowest_price == Decimal("100.00")
+
+        detail = get_product_detail(db, product.slug)
+        assert detail is not None
+        assert detail.price_currency == "CNY"
+        assert detail.lowest_price == Decimal("100.00")
+        assert detail.related_lowest_price == Decimal("100.00")
+        assert detail.offer_groups[0].price_currency == "CNY"
+        assert detail.offer_groups[0].lowest_price == Decimal("100.00")
+        assert detail.trend[-1].trusted_lowest_price == Decimal("100.00")
+
+        groups, _, offer_total = get_product_group_page(
+            db,
+            product.id,
+            offset=0,
+            limit=30,
+            filters=OfferFilters(min_price=Decimal("50")),
+        )
+        assert offer_total == 1
+        assert groups[0].representative.currency == "CNY"
+
+        usd_offers = get_group_offers(db, product.slug, "same-fingerprint", currency="USD")
+        assert usd_offers is not None
+        assert [(offer.currency, offer.price) for offer in usd_offers] == [("USD", Decimal("1.00"))]

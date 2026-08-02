@@ -127,6 +127,7 @@ class OfferHistory(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     offer_id: Mapped[int] = mapped_column(ForeignKey("offers.id", ondelete="CASCADE"), index=True)
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="CNY")
     stock_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     stock_status: Mapped[str] = mapped_column(String(30), default="unknown")
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

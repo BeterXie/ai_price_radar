@@ -13,6 +13,8 @@ from typing import Any
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
+from currencies import normalize_currency
+
 
 class Base(DeclarativeBase):
     pass
@@ -132,6 +134,7 @@ class OfferHistory(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     offer_id: Mapped[int] = mapped_column(ForeignKey("offers.id", ondelete="CASCADE"))
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="CNY")
     stock_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     stock_status: Mapped[str] = mapped_column(String(30), default="unknown")
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -453,7 +456,7 @@ def parse_json(value: Any, default: Any):
 
 def stock_status(value: str, count: int | None) -> str:
     text = norm(value)
-    if any(x in text for x in ["有货", "in stock"]): return "in_stock"
+    if any(x in text for x in ["有货", "in stock", "low stock", "unlimited"]): return "in_stock"
     if any(x in text for x in ["缺货", "售罄", "out of stock"]): return "out_of_stock"
     if any(x in text for x in ["下架", "不可用", "暂停", "关闭"]): return "unavailable"
     if count is not None: return "in_stock" if count > 0 else "out_of_stock"
@@ -552,6 +555,7 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
     result = classify(raw.original_name, raw.original_category, raw_json)
     offer = db.scalar(select(Offer).where(Offer.raw_product_id == raw.id))
     price = parse_decimal(record.get("listed_price") if record.get("listed_price") not in (None, "") else record.get("price"))
+    currency = normalize_currency(record.get("currency"))
     count_raw = record.get("stock_count")
     try: count = int(float(count_raw)) if count_raw not in (None, "") else None
     except (TypeError, ValueError): count = None
@@ -562,10 +566,11 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
         offer = Offer(raw_product_id=raw.id, shop_id=shop.id)
         db.add(offer); db.flush()
         changed = True
-    elif offer.price != price or offer.stock_count != count or offer.stock_status != status:
+    elif offer.price != price or offer.currency != currency or offer.stock_count != count or offer.stock_status != status:
         changed = True
     offer.product_id = products[result.slug].id if result.slug and result.slug in products else None
     offer.price = price
+    offer.currency = currency
     offer.stock_count = count
     offer.stock_status = status
     delivery = str(record.get("auto_delivery") or "").strip()
@@ -588,5 +593,5 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
         offer.approved = result.slug is not None and result.confidence >= 80
     offer.updated_at = utcnow()
     if changed:
-        db.add(OfferHistory(offer_id=offer.id, price=price, stock_count=count, stock_status=status, observed_at=observed_at))
+        db.add(OfferHistory(offer_id=offer.id, price=price, currency=currency, stock_count=count, stock_status=status, observed_at=observed_at))
     return created, changed

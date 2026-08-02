@@ -211,6 +211,35 @@ python ldxp_gpt_crawler.py discover \
   --sources seed,bing,commoncrawl,wayback
 ```
 
+### 发现 Dujiao-Next 候选
+
+Dujiao-Next 使用独立候选表，不会进入 LDXP 浏览器扫描或自动发布链路。发现器只访问首页和公开商品列表 API，默认单线程、候选请求间隔 2 秒：
+
+```text
+python ldxp_gpt_crawler.py discover-dujiao --sources seed,bing --seed-file dujiao_seeds.txt --request-interval 2
+```
+
+候选必须同时满足：
+
+- 首页包含强 `Dujiao-Next` 指纹；
+- `/api/v1/public/products` 返回合法公开数据；
+- 公开商品数大于 0；
+- 至少一个带 slug 的商品标题、分类或标签命中 AI 关键词；
+- 不属于 `dujiao-next.com` 或其官方子域。
+
+验证结果写入同一 SQLite 文件的 `dujiao_candidates` 表。命中门槛的记录使用 `review_status=pending_review`，并以 JSONL 输出供人工检查。空店、API 失败、指纹不符和非 AI 店铺也会保留最后验证状态，但不会进入审核队列。
+
+人工审核只记录决定，不创建公开 Shop、Offer 或 Snapshot：
+
+```text
+python ldxp_gpt_crawler.py review-dujiao --origin https://shop.example.com --decision approve --note "公开页面与商品已核对"
+python ldxp_gpt_crawler.py review-dujiao --origin https://shop.example.com --decision reject --note "来源信息不足"
+```
+
+批准后仍需由操作员显式运行 `dujiao-next` Connector 的 dry-run 和发布流程。重新发现只更新验证证据，不会覆盖已有的人工批准或拒绝。
+
+Common Crawl 的公共 CDX 服务是 URL 索引，不是页面正文全文搜索。它可以补证已知域名的历史 URL，但不能通过增加一条 `Dujiao-Next` 文本指纹发现任意域名；全网正文检索需要单独的 URL Index/WARC 分析任务，因此未伪装成当前低频命令的一部分。
+
 ### 只扫描自己的 URL 列表
 
 将链接逐行写入 `seeds.txt`：

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, X } from "@phosphor-icons/react";
+import { money } from "@/lib/format";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 const PRODUCT_OPTIONS = [
@@ -46,6 +47,7 @@ type AdminOffer = {
   title: string;
   product_slug: string | null;
   price: string | null;
+  currency: string;
   stock_status: string;
   approved: boolean;
   active: boolean;
@@ -322,7 +324,7 @@ export function AdminPanel() {
                   {PRODUCT_OPTIONS.map((slug) => <option key={slug} value={slug}>{slug}</option>)}
                 </select>
                 <div className="text-sm">
-                  ¥{offer.price || "暂无"}<br />
+                  {money(offer.price, offer.currency)}<br />
                   <span className="text-black/40">{offer.stock_status}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">

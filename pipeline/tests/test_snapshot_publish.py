@@ -1,4 +1,6 @@
-from common import CatalogSnapshot, Offer, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
+import pytest
+
+from common import CatalogSnapshot, Offer, OfferHistory, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
 
 
 def record(name: str = "ChatGPT Plus 直充一个月") -> dict:
@@ -49,5 +51,37 @@ def test_low_confidence_new_offer_stays_pending_review():
         assert offer.product_id == products["claude-account"].id
         assert offer.classification_confidence == 68
         assert offer.approved is False
+    finally:
+        db.close()
+
+
+def test_offer_and_history_preserve_valid_currency_changes():
+    db = session_for("sqlite://")
+    try:
+        products = ensure_products(db)
+        usd = record()
+        usd["currency"] = "usd"
+        _, first_changed = upsert_offer(db, usd, products)
+        db.commit()
+
+        offer = db.query(Offer).one()
+        assert first_changed is True
+        assert offer.currency == "USD"
+        assert [row.currency for row in db.query(OfferHistory).all()] == ["USD"]
+
+        eur = record()
+        eur["currency"] = "EUR"
+        _, second_changed = upsert_offer(db, eur, products)
+        db.commit()
+
+        assert second_changed is True
+        assert offer.currency == "EUR"
+        assert [row.currency for row in db.query(OfferHistory).order_by(OfferHistory.id)] == ["USD", "EUR"]
+
+        invalid = record("ChatGPT Plus 直充三个月")
+        invalid["product_key"] = "invalid-currency"
+        invalid["currency"] = "USDT"
+        with pytest.raises(ValueError, match="unsupported currency"):
+            upsert_offer(db, invalid, products)
     finally:
         db.close()

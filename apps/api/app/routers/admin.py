@@ -74,6 +74,7 @@ def offers(
         "title": x.raw_product.original_name,
         "product_slug": x.product.slug if x.product else None,
         "price": str(x.price) if x.price is not None else None,
+        "currency": x.currency,
         "stock_status": x.stock_status,
         "approved": x.approved,
         "active": x.active,

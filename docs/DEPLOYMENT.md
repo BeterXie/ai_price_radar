@@ -101,3 +101,13 @@ python scripts/migrate_shop_intake_v6.py --database-url "$DATABASE_URL"
 ```
 
 The migration creates `source_intakes` and `notification_outbox`, then converts historical `shop_request` Reports. Running it again is safe. Start the `notification-worker` service with the API stack; it is the only process allowed to call Resend or connect to SMTP. LDXP crawler and pipeline jobs must receive the same `INTAKE_WORKER_KEY` and `INTAKE_API_URL`, while Merchant JSON Feed remains a queued state-machine source until a separate safe consumer is delivered.
+
+## Offer-history currency migration
+
+Before switching an API version that reads `offer_history.currency`, run the idempotent v7 migration with the new API image:
+
+```bash
+python scripts/migrate_currency_v7.py --database-url "$DATABASE_URL"
+```
+
+The migration adds the history currency column and performs a conservative current-offer backfill from Merchant JSON raw records. It does not exchange-rate convert prices or rewrite historical observations whose original currency cannot be proven.

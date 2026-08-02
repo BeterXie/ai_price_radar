@@ -408,6 +408,7 @@ def product_groups(
 def product_group_offers(
     slug: str,
     fingerprint: str,
+    currency: str = Query(default="", min_length=0, max_length=10),
     delivery_type: str = Query(default="", max_length=40),
     period: str = Query(default="", max_length=40),
     warranty: str = Query(default="", max_length=40),
@@ -424,6 +425,7 @@ def product_group_offers(
         db,
         slug,
         fingerprint,
+        currency=currency,
         filters=_offer_filters(
             delivery_type=delivery_type,
             period=period,
@@ -554,10 +556,10 @@ def watch_feed(
         price = card.lowest_price
         hit = card.in_stock_count > 0 and (threshold is None or (price is not None and price <= threshold))
         state = "达到提醒条件" if hit else "持续关注"
-        price_text = f"¥{price:.2f}" if price is not None else "暂无可信价格"
-        threshold_text = f"，目标价 ¥{threshold:.2f}" if threshold is not None else ""
+        price_text = f"{card.price_currency} {price:.2f}" if price is not None else "暂无可信价格"
+        threshold_text = f"，目标价 {card.price_currency} {threshold:.2f}" if threshold is not None else ""
         content = f"{card.display_name}：{price_text}，{card.in_stock_count} 条有货，{card.trusted_offer_count} 条可信报价{threshold_text}。状态：{state}。"
-        entry_id = hashlib.sha256(f"{slug}:{price}:{card.in_stock_count}:{threshold}:{card.last_updated_at}".encode()).hexdigest()
+        entry_id = hashlib.sha256(f"{slug}:{card.price_currency}:{price}:{card.in_stock_count}:{threshold}:{card.last_updated_at}".encode()).hexdigest()
         url = f"{str(settings.public_site_url).rstrip('/')}/products/{urllib.parse.quote(slug)}"
         entries.append(
             "<entry>"

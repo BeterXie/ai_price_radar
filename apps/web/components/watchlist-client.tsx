@@ -104,10 +104,10 @@ export function WatchlistClient() {
                   </div>
                   <p className="mt-2 text-xs text-black/45">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条可参考 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "当前无法取得数据"}</p>
                 </div>
-                <div className="font-semibold">{product ? money(product.lowest_price) : "—"}</div>
+                <div className="font-semibold">{product ? money(product.lowest_price, product.price_currency) : "—"}</div>
                 <label className="text-xs text-black/45">
                   <span className="sr-only">{item.name} 提醒目标价</span>
-                  <span className="flex items-center rounded-[9px] border hairline bg-white px-3"><span>¥</span><input value={item.threshold} onChange={(event) => updateThreshold(item.slug, event.target.value)} inputMode="decimal" placeholder="不限" className="w-full bg-transparent py-2.5 pl-1 outline-none" /></span>
+                  <span className="flex items-center rounded-[9px] border hairline bg-white px-3"><span>{product?.price_currency || item.currency || "CNY"}</span><input value={item.threshold} onChange={(event) => updateThreshold(item.slug, event.target.value)} inputMode="decimal" placeholder="不限" className="w-full bg-transparent py-2.5 pl-1 outline-none" /></span>
                 </label>
                 <button type="button" onClick={() => remove(item.slug)} className="inline-flex items-center gap-2 text-sm text-[color:var(--danger)]"><Trash size={16} />移除</button>
               </div>

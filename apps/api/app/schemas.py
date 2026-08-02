@@ -28,6 +28,7 @@ class SourceHealthPublic(BaseModel):
 
 class PriceTrendPoint(BaseModel):
     bucket_at: datetime
+    price_currency: str
     trusted_lowest_price: Decimal | None
     median_price: Decimal | None
     in_stock_count: int
@@ -72,6 +73,7 @@ class ProductCard(BaseModel):
     display_name: str
     subtitle: str
     product_type: str
+    price_currency: str
     lowest_price: Decimal | None
     related_lowest_price: Decimal | None
     offer_count: int
@@ -90,11 +92,13 @@ class ProductCard(BaseModel):
 class PricePoint(BaseModel):
     observed_at: datetime
     price: Decimal | None
+    currency: str
     stock_status: str
 
 
 class DeliveryPriceSummary(BaseModel):
     delivery_type: str
+    price_currency: str
     lowest_price: Decimal | None
     offer_count: int
     in_stock_count: int
@@ -108,6 +112,7 @@ class OfferGroupPublic(BaseModel):
     offer_count: int
     shop_count: int
     in_stock_count: int
+    price_currency: str
     lowest_price: Decimal | None
     highest_price: Decimal | None
     latest_observed_at: datetime | None

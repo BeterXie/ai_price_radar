@@ -11,6 +11,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from currencies import normalize_currency
+
 from .base import validate_record
 
 
@@ -109,7 +111,8 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
             "category_name": item.get("category") or item.get("category_name") or "",
             "product_url": product_url,
             "listed_price": item.get("price"),
-            "stock_count": item.get("stock_count"),
+            "currency": normalize_currency(item.get("currency")),
+            "stock_count": item.get("stock_count") if item.get("stock_count") not in (None, "") else item.get("stock"),
             "product_status": item.get("stock_status") or item.get("status") or "",
             "auto_delivery": item.get("auto_delivery"),
             "collected_at": item.get("observed_at") or metadata.get("updated_at"),

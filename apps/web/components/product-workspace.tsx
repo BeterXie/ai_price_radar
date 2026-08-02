@@ -4,7 +4,7 @@ import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-s
 import { PriceHistory } from "@/components/price-history";
 import { ReportForm } from "@/components/report-form";
 import { WatchButton } from "@/components/watch-button";
-import { exactTime, relativeTime } from "@/lib/format";
+import { exactTime, money, relativeTime } from "@/lib/format";
 import { getProductSeoContent } from "@/lib/product-seo";
 import type { ProductDetail } from "@/lib/types";
 
@@ -70,7 +70,7 @@ export function ProductWorkspace({
     brand: { "@type": "Brand", name: product.platform },
     offers: {
       "@type": "AggregateOffer",
-      priceCurrency: "CNY",
+      priceCurrency: product.price_currency,
       lowPrice: product.lowest_price,
       highPrice: product.highest_price || product.lowest_price,
       offerCount: product.trusted_offer_count,
@@ -92,11 +92,11 @@ export function ProductWorkspace({
 
       <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
         <div className="grid gap-px overflow-hidden rounded-[16px] border hairline bg-[color:var(--line)] sm:grid-cols-3">
-          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">近期有货最低价</p><p className="mt-2 text-2xl font-semibold">{product.lowest_price ? `¥${Number(product.lowest_price).toFixed(2)}` : "暂无"}</p></div>
-          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">常见价格</p><p className="mt-2 text-2xl font-semibold">{product.median_price ? `¥${Number(product.median_price).toFixed(2)}` : "暂无"}</p></div>
+          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">近期有货最低价</p><p className="mt-2 text-2xl font-semibold">{money(product.lowest_price, product.price_currency)}</p></div>
+          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">常见价格</p><p className="mt-2 text-2xl font-semibold">{money(product.median_price, product.price_currency)}</p></div>
           <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">报价覆盖</p><p className="mt-2 text-2xl font-semibold">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-black/45">/ 100 · {product.data_quality_label}</span></p><p className="mt-1 text-xs text-black/40">{product.source_count} 个来源</p></div>
         </div>
-        <WatchButton slug={product.slug} name={product.display_name} suggestedPrice={product.lowest_price} />
+        <WatchButton slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
       </section>
 
       {product.official_reference && (

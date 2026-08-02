@@ -80,6 +80,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   };
 
   const shownPrice = group?.lowest_price ?? offer.price;
+  const shownCurrency = group?.lowest_price ? group.price_currency : offer.currency;
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
 
   return (
@@ -108,7 +109,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         </div>
 
         <div>
-          <p className="mono text-xl font-semibold tracking-[-.04em]">{money(shownPrice, offer.currency)}</p>
+          <p className="mono text-xl font-semibold tracking-[-.04em]">{money(shownPrice, shownCurrency)}</p>
           <p className="mt-1 text-xs text-black/45">{fulfillmentLabel(offer.auto_delivery)}</p>
         </div>
 

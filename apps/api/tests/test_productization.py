@@ -159,7 +159,7 @@ def test_watch_atom_feed_contains_threshold_state():
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("application/atom+xml")
         assert "达到提醒条件" in response.text
-        assert "¥15.00" in response.text
+        assert "CNY 15.00" in response.text
     finally:
         app.dependency_overrides.clear()
 

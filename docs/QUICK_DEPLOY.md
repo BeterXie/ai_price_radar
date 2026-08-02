@@ -155,6 +155,15 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_shop_intake_v6.py
 
+# 报价历史币种迁移；在切换读取 offer_history.currency 的 API 前执行，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_currency_v7.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 

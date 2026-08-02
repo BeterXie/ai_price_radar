@@ -17,6 +17,7 @@ export type SourceHealth = {
 
 export type PriceTrendPoint = {
   bucket_at: string;
+  price_currency: string;
   trusted_lowest_price: string | null;
   median_price: string | null;
   in_stock_count: number;
@@ -29,6 +30,7 @@ export type ProductCard = {
   display_name: string;
   subtitle: string;
   product_type: string;
+  price_currency: string;
   lowest_price: string | null;
   related_lowest_price: string | null;
   offer_count: number;
@@ -85,12 +87,13 @@ export type ProductDetail = ProductCard & {
   snapshot_at: string | null;
   offers: Offer[];
   offer_groups: OfferGroup[];
-  history: { observed_at: string; price: string | null; stock_status: string }[];
+  history: { observed_at: string; price: string | null; currency: string; stock_status: string }[];
   trend: PriceTrendPoint[];
 };
 
 export type DeliveryPriceSummary = {
   delivery_type: string;
+  price_currency: string;
   lowest_price: string | null;
   offer_count: number;
   in_stock_count: number;
@@ -104,6 +107,7 @@ export type OfferGroup = {
   offer_count: number;
   shop_count: number;
   in_stock_count: number;
+  price_currency: string;
   lowest_price: string | null;
   highest_price: string | null;
   latest_observed_at: string | null;
