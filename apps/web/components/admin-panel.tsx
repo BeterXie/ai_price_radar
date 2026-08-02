@@ -34,6 +34,8 @@ type Stats = {
   products: number;
   offers: number;
   public_offers: number;
+  open_corrections: number;
+  pending_source_intakes: number;
   open_reports: number;
   last_scan_at: string | null;
 };
@@ -62,11 +64,30 @@ type Report = {
   created_at: string;
 };
 
+type SourceIntake = {
+  id: number;
+  source_type: "ldxp" | "merchant_feed";
+  source_url: string;
+  shop_name: string;
+  contact_email: string;
+  note: string;
+  origin: string;
+  status: string;
+  decision_note: string;
+  failure_reason: string;
+  attempt_count: number;
+  product_count: number;
+  approved_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  email_status: Record<string, string>;
+};
+
 const REPORT_KIND_LABELS: Record<string, string> = {
   correction: "报价纠错",
   unavailable: "无法购买",
   fraud_concern: "风险反馈",
-  shop_request: "店铺收录申请",
   other: "其他反馈",
 };
 
@@ -75,18 +96,21 @@ export function AdminPanel() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [intakes, setIntakes] = useState<SourceIntake[]>([]);
   const [reportDrafts, setReportDrafts] = useState<Record<number, { public_summary: string; merchant_response: string }>>({});
+  const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
   const headers = { "X-Admin-Key": key };
 
   async function load() {
     setError("");
-    const [statsResponse, offersResponse, reportsResponse] = await Promise.all([
+    const [statsResponse, offersResponse, reportsResponse, intakesResponse] = await Promise.all([
       fetch(`${API}/api/v1/admin/stats`, { headers }),
       fetch(`${API}/api/v1/admin/offers?limit=50`, { headers }),
       fetch(`${API}/api/v1/admin/reports?status=open`, { headers }),
+      fetch(`${API}/api/v1/admin/source-intakes`, { headers }),
     ]);
-    if (!statsResponse.ok || !offersResponse.ok || !reportsResponse.ok) {
+    if (!statsResponse.ok || !offersResponse.ok || !reportsResponse.ok || !intakesResponse.ok) {
       setError("管理密钥无效，或 API 无法访问。");
       return;
     }
@@ -95,6 +119,9 @@ export function AdminPanel() {
     const loadedReports = await reportsResponse.json() as Report[];
     setReports(loadedReports);
     setReportDrafts(Object.fromEntries(loadedReports.map((report) => [report.id, { public_summary: report.public_summary || "", merchant_response: report.merchant_response || "" }])));
+    const loadedIntakes = await intakesResponse.json() as SourceIntake[];
+    setIntakes(loadedIntakes);
+    setIntakeReasons(Object.fromEntries(loadedIntakes.map((intake) => [intake.id, intake.decision_note || ""])));
   }
 
   async function patchOffer(offerId: number, body: Record<string, unknown>) {
@@ -128,6 +155,45 @@ export function AdminPanel() {
     if (response.ok) await load();
   }
 
+  async function updateIntake(intakeId: number, action: "approve" | "reject" | "retry") {
+    const body = action === "reject" ? { reason: (intakeReasons[intakeId] || "").trim() } : undefined;
+    if (action === "reject" && !body?.reason) {
+      setError("驳回收录申请前，请填写原因。");
+      return;
+    }
+    const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/${action}`, {
+      method: "POST",
+      headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (response.ok) await load();
+    else setError("收录申请状态更新失败，请刷新后重试。");
+  }
+
+  async function retryFailedIntakeNotifications(intakeId: number) {
+    const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/notifications/retry`, {
+      method: "POST",
+      headers,
+    });
+    if (response.ok) await load();
+    else setError("失败邮件重发排队失败，请刷新后重试。");
+  }
+
+  const intakeStatusLabels: Record<string, string> = {
+    pending_review: "待初审",
+    queued: "等待验证",
+    validating: "验证中",
+    validated: "已验证待发布",
+    onboarded: "已收录",
+    rejected: "已驳回",
+    no_products: "未发现目标商品",
+    validation_failed: "验证失败",
+  };
+
+  function emailStatusLabel(status: string) {
+    return status === "sent" ? "已发送" : status === "failed" ? "发送失败" : status === "sending" ? "发送中" : "待发送";
+  }
+
   return (
     <div className="space-y-8">
       <section className="grid gap-4 rounded-[18px] border hairline bg-[color:var(--panel)] p-5 md:grid-cols-[1fr_auto_auto] md:items-end">
@@ -154,13 +220,14 @@ export function AdminPanel() {
       {error && <p className="rounded-[10px] bg-[#f2d8d2] p-4 text-[color:var(--danger)]">{error}</p>}
 
       {stats && (
-        <section className="grid gap-px overflow-hidden rounded-[18px] border hairline bg-[color:var(--line)] sm:grid-cols-2 lg:grid-cols-5">
+        <section className="grid gap-px overflow-hidden rounded-[18px] border hairline bg-[color:var(--line)] sm:grid-cols-2 lg:grid-cols-6">
           {[
             ["店铺", stats.shops],
             ["标准产品", stats.products],
             ["全部报价", stats.offers],
             ["公开报价", stats.public_offers],
-            ["待处理申请 / 举报", stats.open_reports],
+            ["待处理纠错", stats.open_corrections],
+            ["待初审收录申请", stats.pending_source_intakes],
           ].map(([label, value]) => (
             <div key={String(label)} className="bg-[color:var(--panel)] p-5">
               <p className="mono text-xs text-black/40">{label}</p>
@@ -170,9 +237,39 @@ export function AdminPanel() {
         </section>
       )}
 
+      {intakes.length > 0 && (
+        <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
+          <div className="border-b hairline px-5 py-4 font-semibold">店铺收录申请</div>
+          <div className="divide-y divide-[color:var(--line)]">
+            {intakes.map((intake) => (
+              <div key={intake.id} className="grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="mono text-xs text-black/40">#{intake.id} · {intake.source_type === "ldxp" ? "链动小铺" : "商家 JSON Feed"}</p>
+                    <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-xs">{intakeStatusLabels[intake.status] || intake.status}</span>
+                  </div>
+                  <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
+                  <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
+                  <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
+                  {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
+                  {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[#f2d8d2] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
+                  {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
+                  {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>}
+                </div>
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  {intake.status === "pending_review" && <><button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />批准并验证</button><button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
+                  {(intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
+                  {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {reports.length > 0 && (
         <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
-          <div className="border-b hairline px-5 py-4 font-semibold">待处理申请与举报</div>
+          <div className="border-b hairline px-5 py-4 font-semibold">纠错与风险反馈</div>
           <div className="divide-y divide-[color:var(--line)]">
             {reports.map((report) => (
               <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">

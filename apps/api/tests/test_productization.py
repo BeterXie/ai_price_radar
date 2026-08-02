@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Offer, OfferHistory, Product, RawProduct, Report, Shop
+from app.models import Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake
 from app.services.catalog import get_product_detail, list_product_cards
 from app.services.source_health import source_health
 
@@ -182,13 +182,16 @@ def test_merchant_feed_submission_accepts_public_https_and_rejects_private_host(
             "source_type": "merchant_feed",
             "shop_url": "https://merchant.example/catalog.json",
             "shop_name": "Merchant",
+            "contact": "merchant@example.com",
         })
         assert accepted.status_code == 201
         assert accepted.json()["source_type"] == "merchant_feed"
         with Session(engine) as db:
-            report = db.scalar(select(Report))
-            assert report is not None
-            assert "merchant_feed" in report.message
+            intake = db.scalar(select(SourceIntake))
+            assert intake is not None
+            assert intake.source_type == "merchant_feed"
+            assert intake.source_key == "https://merchant.example/catalog.json"
+            assert intake.status == "pending_review"
 
         rejected = client.post("/api/v1/shop-requests", json={
             "source_type": "merchant_feed",

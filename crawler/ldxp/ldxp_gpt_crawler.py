@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -13,10 +14,20 @@ from ldxp_crawler.browser_scanner import BrowserShopScanner
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.discovery import Discovery, build_session
 from ldxp_crawler.exporter import export_results
-from ldxp_crawler.utils import merge_unique
+from ldxp_crawler.intake_bridge import IntakeBridge, IntakeBridgeError
+from ldxp_crawler.utils import extract_shop_token, merge_unique
 
 DEFAULT_KEYWORDS = ["gpt", "chatgpt"]
 BLOCK_STATUSES = {"blocked", "challenge_required", "rate_limited"}
+PUBLIC_VALIDATION_FAILURE_REASONS = {
+    "network_error": "来源暂时无法访问",
+    "rate_limited": "来源请求受到限流，请稍后重试",
+    "blocked": "来源访问被阻断",
+    "challenge_required": "来源需要完成公开验证",
+    "parse_error": "来源返回内容无法解析",
+    "api_changed": "来源接口格式暂不兼容",
+    "failed": "来源验证暂时失败",
+}
 
 
 def make_logger(verbose: bool) -> logging.Logger:
@@ -77,6 +88,10 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-retry-failed", action="store_true")
     parser.add_argument("--retry-blocked", action="store_true", help="重新尝试 blocked/challenge_required")
     parser.add_argument("--circuit-breaker", type=int, default=3, help="连续站点级阻断多少次后停止；0 关闭")
+    parser.add_argument("--intake-api-url", default=os.getenv("INTAKE_API_URL", ""), help="收录状态机 API 地址")
+    parser.add_argument("--intake-worker-key", default=os.getenv("INTAKE_WORKER_KEY", ""), help="收录 Worker Key")
+    parser.add_argument("--intake-claim-limit", type=int, default=20, help="每次扫描前领取的人工申请数量")
+    parser.add_argument("--intake-lease-seconds", type=int, default=900, help="人工申请租约秒数")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -142,9 +157,49 @@ def run_discovery(args: argparse.Namespace, db: StateDB, logger: logging.Logger)
     logger.info("发现完成：新增 %s 家，累计 %s 家。", db.candidate_count() - before, db.candidate_count())
 
 
+def intake_result_payload(result) -> tuple[str, int, str]:
+    if result.matches:
+        return "validated", len(result.matches), ""
+    if result.is_successful_scan:
+        return "no_products", 0, ""
+    return "validation_failed", 0, PUBLIC_VALIDATION_FAILURE_REASONS.get(result.status, "来源验证失败")
+
+
+def intake_claim_token(source_url: str) -> str | None:
+    return extract_shop_token(source_url)
+
+
 def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> dict[str, Any]:
     keywords = merge_unique(args.keywords)
     limit = args.limit if args.limit > 0 else None
+    intake_bridge = IntakeBridge(args.intake_api_url, args.intake_worker_key, timeout=args.timeout)
+    if intake_bridge.enabled:
+        try:
+            claims = intake_bridge.claim(
+                limit=max(1, args.intake_claim_limit),
+                lease_seconds=max(60, args.intake_lease_seconds),
+            )
+            for claim in claims:
+                source_key = str(claim.get("source_key") or "").strip()
+                source_url = str(claim.get("source_url") or "").strip()
+                if not source_key or not source_url:
+                    logger.warning("收录申请领取结果缺少来源字段，已跳过")
+                    continue
+                token = intake_claim_token(source_url)
+                if not token:
+                    logger.warning("收录申请来源地址无法解析 token，已跳过")
+                    continue
+                db.upsert_intake_candidate(
+                    intake_id=int(claim["intake_id"]),
+                    token=token,
+                    url=source_url,
+                    shop_name=str(claim.get("shop_name") or ""),
+                    attempt_count=int(claim.get("attempt_count") or 0),
+                )
+            if claims:
+                logger.info("已领取 %s 家人工申请并置于优先扫描队列", len(claims))
+        except (IntakeBridgeError, KeyError, TypeError, ValueError) as exc:
+            logger.error("收录申请领取失败：%s", str(exc))
     candidates = db.list_candidates(
         rescan=args.rescan,
         retry_blocked=args.retry_blocked,
@@ -209,6 +264,20 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
                 result = scanner.scan_shop(candidate, keywords)
                 attempted += 1
                 db.save_scan_result(result, run_id)
+                intake_id = candidate["intake_id"]
+                if intake_bridge.enabled and intake_id is not None:
+                    intake_attempt = int(candidate["intake_attempt_count"] or 0)
+                    intake_status, product_count, failure_reason = intake_result_payload(result)
+                    try:
+                        intake_bridge.report_result(
+                            intake_id=int(intake_id),
+                            attempt_count=intake_attempt,
+                            status=intake_status,
+                            product_count=product_count,
+                            failure_reason=failure_reason,
+                        )
+                    except IntakeBridgeError as exc:
+                        logger.error("收录申请结果回报失败：%s", str(exc))
                 if result.is_successful_scan:
                     successful += 1
                     match_count += len(result.matches)

@@ -8,17 +8,21 @@
 - [ ] A product with normal offers and one anomaly returns the normal trusted minimum.
 - [ ] `related_lowest_price` still exposes the raw all-in-stock minimum.
 - [ ] API OpenAPI schema includes `trusted_offer_count`, `median_price`, and `is_trusted_price`.
+- [ ] Shop-intake submission, approval, rejection, retry, and notification tests pass.
+- [ ] `migrate_shop_intake_v6.py` succeeds twice against a temporary PostgreSQL database.
+- [ ] `INTAKE_WORKER_KEY` differs from `ADMIN_API_KEY`.
+- [ ] Production has real `SHOP_INTAKE_ADMIN_EMAILS`, `RESEND_API_KEY`, and verified `RESEND_FROM` values, or a complete SMTP fallback configuration.
 - [ ] Production database backup is current.
 - [ ] Staging smoke test covers homepage, catalog, product detail, grouped offers, reports, and admin login.
 
 ## Publish
 
-```bash
-git tag -a v3.2.1 -m "AI Price Radar v3.2.1 — Clearer Product Copy"
-git push origin v3.2.1
+```powershell
+git tag -a v3.3.0 -m "AI Price Radar v3.3.0 — Shop Intake & Email Notifications"
+git push origin v3.3.0
 ```
 
-Create a GitHub Release from `v3.2.1` using `RELEASE_NOTES_v3.2.1.md`.
+Create a GitHub Release from `v3.3.0` using `RELEASE_NOTES_v3.3.0.md`.
 
 ## After publishing
 

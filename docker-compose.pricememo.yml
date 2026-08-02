@@ -22,6 +22,12 @@ services:
         aliases:
           - ai-radar-web
 
+  notification-worker:
+    build:
+      context: ./apps/api
+      args:
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+
   crawler:
     profiles: ["crawler"]
     build:
@@ -34,6 +40,8 @@ services:
     environment:
       HOME: /home/crawler
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
     volumes:
       - ./crawler/ldxp/seeds.txt:/config/seeds.txt:ro
       - ./data/crawler:/data
@@ -50,6 +58,8 @@ services:
     environment:
       HOME: /home/crawler
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
     ports:
       - "127.0.0.1:6080:6080"
     volumes:

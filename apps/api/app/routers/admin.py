@@ -7,10 +7,19 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models import Offer, Product, Report, ScanRun, Shop
-from ..schemas import AdminOfferUpdate, AdminReportUpdate, AdminStats, ReportOut
+from ..models import NotificationOutbox, Offer, Product, Report, ScanRun, Shop, SourceIntake
+from ..schemas import (
+    AdminOfferUpdate,
+    AdminReportUpdate,
+    AdminStats,
+    NotificationOutboxOut,
+    ReportOut,
+    SourceIntakeOut,
+    SourceIntakeReject,
+)
 from ..security import require_admin
 from ..services.classifier import classify_product
+from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -18,12 +27,24 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends
 @router.get("/stats", response_model=AdminStats)
 def stats(db: Session = Depends(get_db)) -> AdminStats:
     last_scan = db.scalar(select(func.max(ScanRun.finished_at)))
+    open_corrections = db.scalar(
+        select(func.count()).select_from(Report).where(
+            Report.status == "open", Report.kind != "shop_request"
+        )
+    ) or 0
+    pending_source_intakes = db.scalar(
+        select(func.count()).select_from(SourceIntake).where(
+            SourceIntake.status == "pending_review"
+        )
+    ) or 0
     return AdminStats(
         shops=db.scalar(select(func.count()).select_from(Shop)) or 0,
         products=db.scalar(select(func.count()).select_from(Product)) or 0,
         offers=db.scalar(select(func.count()).select_from(Offer)) or 0,
         public_offers=db.scalar(select(func.count()).select_from(Offer).where(Offer.active.is_(True), Offer.approved.is_(True))) or 0,
-        open_reports=db.scalar(select(func.count()).select_from(Report).where(Report.status == "open")) or 0,
+        open_corrections=open_corrections,
+        pending_source_intakes=pending_source_intakes,
+        open_reports=open_corrections,
         last_scan_at=last_scan,
     )
 
@@ -112,7 +133,168 @@ def reclassify(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/reports", response_model=list[ReportOut])
 def reports(status: str = "open", db: Session = Depends(get_db)) -> list[Report]:
-    return list(db.scalars(select(Report).where(Report.status == status).order_by(Report.created_at.desc())))
+    return list(
+        db.scalars(
+            select(Report)
+            .where(Report.status == status, Report.kind != "shop_request")
+            .order_by(Report.created_at.desc())
+        )
+    )
+
+
+def _source_intake_response(db: Session, intake: SourceIntake) -> SourceIntakeOut:
+    return SourceIntakeOut(
+        id=intake.id,
+        report_id=intake.report_id,
+        source_type=intake.source_type,
+        source_key=intake.source_key,
+        source_url=intake.source_url,
+        shop_name=intake.shop_name,
+        contact_email=intake.contact_email,
+        note=intake.note,
+        origin=intake.origin,
+        status=intake.status,
+        decision_note=intake.decision_note,
+        failure_reason=intake.failure_reason,
+        attempt_count=intake.attempt_count,
+        product_count=intake.product_count,
+        lease_expires_at=intake.lease_expires_at,
+        approved_at=intake.approved_at,
+        started_at=intake.started_at,
+        finished_at=intake.finished_at,
+        created_at=intake.created_at,
+        updated_at=intake.updated_at,
+        email_status=email_statuses(db, intake.id),
+    )
+
+
+def _locked_source_intake(db: Session, intake_id: int) -> SourceIntake | None:
+    return db.scalar(
+        select(SourceIntake)
+        .where(SourceIntake.id == intake_id)
+        .with_for_update()
+    )
+
+
+@router.get("/source-intakes", response_model=list[SourceIntakeOut])
+def source_intakes(status: str | None = None, db: Session = Depends(get_db)) -> list[SourceIntakeOut]:
+    stmt = select(SourceIntake).order_by(SourceIntake.created_at.desc())
+    if status:
+        stmt = stmt.where(SourceIntake.status == status)
+    rows = list(db.scalars(stmt))
+    return [_source_intake_response(db, intake) for intake in rows]
+
+
+@router.post("/source-intakes/{intake_id}/approve", response_model=SourceIntakeOut)
+def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> SourceIntakeOut:
+    intake = _locked_source_intake(db, intake_id)
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    if intake.status == "pending_review":
+        intake.status = "queued"
+        intake.approved_at = utcnow()
+        intake.decision_note = "已通过初审，等待验证"
+        enqueue_transition_notification(
+            db,
+            intake,
+            event_type="shop_request.approved",
+            subject="店铺收录申请已通过初审",
+            text_body=(
+                f"你的店铺收录申请（#{intake.id}）已通过初审。\n"
+                "当前状态：等待系统验证；验证成功且商品发布后才会正式收录。"
+            ),
+        )
+        db.commit()
+    elif intake.status not in {"queued", "validating", "validated", "onboarded"}:
+        raise HTTPException(status_code=409, detail=f"cannot approve intake in status {intake.status}")
+    return _source_intake_response(db, intake)
+
+
+@router.post("/source-intakes/{intake_id}/reject", response_model=SourceIntakeOut)
+def reject_source_intake(
+    intake_id: int,
+    payload: SourceIntakeReject,
+    db: Session = Depends(get_db),
+) -> SourceIntakeOut:
+    intake = _locked_source_intake(db, intake_id)
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    if intake.status == "pending_review":
+        now = utcnow()
+        intake.status = "rejected"
+        intake.decision_note = payload.reason
+        intake.finished_at = now
+        enqueue_transition_notification(
+            db,
+            intake,
+            event_type="shop_request.rejected",
+            subject="店铺收录申请未通过",
+            text_body=(
+                f"你的店铺收录申请（#{intake.id}）未通过初审。\n"
+                f"原因：{payload.reason}"
+            ),
+        )
+        db.commit()
+    elif intake.status != "rejected":
+        raise HTTPException(status_code=409, detail=f"cannot reject intake in status {intake.status}")
+    return _source_intake_response(db, intake)
+
+
+@router.post("/source-intakes/{intake_id}/retry", response_model=SourceIntakeOut)
+def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> SourceIntakeOut:
+    intake = _locked_source_intake(db, intake_id)
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    if intake.status in {"no_products", "validation_failed"}:
+        intake.status = "queued"
+        intake.lease_expires_at = None
+        intake.finished_at = None
+        intake.decision_note = "已重新排队，等待验证"
+        db.commit()
+    elif intake.status not in {"queued", "validating", "validated", "onboarded"}:
+        raise HTTPException(status_code=409, detail=f"cannot retry intake in status {intake.status}")
+    return _source_intake_response(db, intake)
+
+
+@router.post("/source-intakes/{intake_id}/notifications/retry", response_model=SourceIntakeOut)
+def retry_failed_intake_notifications(intake_id: int, db: Session = Depends(get_db)) -> SourceIntakeOut:
+    intake = _locked_source_intake(db, intake_id)
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    failed_rows = list(
+        db.scalars(
+            select(NotificationOutbox)
+            .where(
+                NotificationOutbox.status == "failed",
+                NotificationOutbox.dedupe_key.like(f"source-intake:{intake_id}:%"),
+            )
+            .with_for_update()
+        )
+    )
+    now = utcnow()
+    for row in failed_rows:
+        row.status = "pending"
+        row.attempt_count = 0
+        row.next_attempt_at = now
+        row.last_error = ""
+        row.sent_at = None
+    db.commit()
+    return _source_intake_response(db, intake)
+
+
+@router.post("/notification-outbox/{outbox_id}/retry", response_model=NotificationOutboxOut)
+def retry_notification(outbox_id: int, db: Session = Depends(get_db)) -> NotificationOutbox:
+    row = db.get(NotificationOutbox, outbox_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="notification not found")
+    if row.status != "sent":
+        row.status = "pending"
+        row.attempt_count = 0
+        row.next_attempt_at = utcnow()
+        row.last_error = ""
+        row.sent_at = None
+        db.commit()
+    return row
 
 
 @router.patch("/reports/{report_id}")
@@ -120,6 +302,8 @@ def update_report(report_id: int, payload: AdminReportUpdate, db: Session = Depe
     report = db.get(Report, report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="report not found")
+    if report.kind == "shop_request":
+        raise HTTPException(status_code=409, detail="use source-intakes endpoints for shop applications")
     data = payload.model_dump(exclude_unset=True)
     report.status = data.pop("status")
     for key, value in data.items():

@@ -46,6 +46,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 - Back up PostgreSQL every day.
 - Keep the crawler and public web process in separate containers/users.
 - Do not mount browser profiles into the public web container.
+- Set `INTAKE_WORKER_KEY` to a secret distinct from `ADMIN_API_KEY`; the crawler and importer use it only for internal intake callbacks.
+- Configure real `SHOP_INTAKE_ADMIN_EMAILS`, `RESEND_API_KEY` and a verified `RESEND_FROM` before production deployment. SMTP remains available as a local/fallback provider. The API can start without either provider and retain messages in `notification_outbox`, but production preflight rejects incomplete mail configuration.
 
 ## Backup and restore rehearsal
 
@@ -89,3 +91,13 @@ python scripts/migrate_productization_v5.py --database-url "$DATABASE_URL"
 ```
 
 Deploy API and Web together, then smoke-test `/api/v1/corrections`, `/api/v1/watch.atom`, `/methodology`, `/watchlist` and the merchant Feed submission form. For remote merchant feeds, restrict importer egress at the container or network layer in addition to application URL validation.
+
+## Shop intake and notification migration
+
+After the v5 migration and before switching API/Web, run the idempotent v6 migration with the new API image:
+
+```bash
+python scripts/migrate_shop_intake_v6.py --database-url "$DATABASE_URL"
+```
+
+The migration creates `source_intakes` and `notification_outbox`, then converts historical `shop_request` Reports. Running it again is safe. Start the `notification-worker` service with the API stack; it is the only process allowed to call Resend or connect to SMTP. LDXP crawler and pipeline jobs must receive the same `INTAKE_WORKER_KEY` and `INTAKE_API_URL`, while Merchant JSON Feed remains a queued state-machine source until a separate safe consumer is delivered.

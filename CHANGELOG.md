@@ -2,6 +2,28 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.3.0] - 2026-08-02
+
+### Added
+
+- Durable shop-intake records with explicit review, validation, onboarding, rejection, and retry states.
+- Admin controls for approving, rejecting, retrying, and inspecting source-intake notification delivery.
+- Applicant and administrator email notifications through Resend, with SMTP fallback and a transactional outbox worker.
+- LDXP intake bridges for crawler and pipeline jobs, protected by a dedicated worker credential and leased claims.
+- Idempotent `migrate_shop_intake_v6.py` migration for historical shop requests and notification outbox storage.
+
+### Changed
+
+- Shop submissions now require a valid contact email and return a stable request identifier for duplicate requests.
+- Production preflight now requires administrator recipients, a separate intake-worker key, and a complete Resend or SMTP configuration.
+- Production Compose and deployment guidance now include the notification worker and the v6 intake migration.
+
+### Security
+
+- Intake-worker access is isolated from the administrator API key.
+- Source validation failures are sanitized before storage or email delivery.
+- Resend credentials remain environment-only and are never written to application logs.
+
 ## [3.2.1] - 2026-07-30
 
 ### Changed

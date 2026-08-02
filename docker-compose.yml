@@ -29,6 +29,17 @@ services:
       REPORT_RATE_LIMIT_COUNT: ${REPORT_RATE_LIMIT_COUNT:-5}
       REPORT_RATE_LIMIT_WINDOW_SECONDS: ${REPORT_RATE_LIMIT_WINDOW_SECONDS:-3600}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      SHOP_INTAKE_ADMIN_EMAILS: ${SHOP_INTAKE_ADMIN_EMAILS:-admin@example.invalid}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
+      INTAKE_LEASE_SECONDS: ${INTAKE_LEASE_SECONDS:-900}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -37,6 +48,28 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  notification-worker:
+    build:
+      context: ./apps/api
+    command: ["python", "-m", "app.notification_worker"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+      SHOP_INTAKE_ADMIN_EMAILS: ${SHOP_INTAKE_ADMIN_EMAILS:-admin@example.invalid}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
   web:
     build:
@@ -79,6 +112,8 @@ services:
       context: ./pipeline
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+      INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
     volumes:
       - ./:/workspace
     working_dir: /workspace/pipeline

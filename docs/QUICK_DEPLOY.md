@@ -6,7 +6,7 @@
 
 - 只部署已发布且 CI 通过的 Tag，生产源码、API 和 Web 必须来自同一提交。
 - 先暂停定时器，再等待当前刷新锁一次；部署完成前不要恢复定时器。
-- 只重建 `api` 和 `web`，不重建 `db`，无迁移版本不得执行数据库结构操作。
+- 只重建 `api`、`web` 和需要更新的 `notification-worker`，不重建 `db`，无迁移版本不得执行数据库结构操作。
 - 部署前只做一次 PostgreSQL 备份，并保留旧 API/Web 镜像和旧源码包。
 - 普通 API/Web 发布不等待完整爬虫刷新。只有改动 `crawler/`、`pipeline/` 或数据库结构时，才把一次完整刷新作为部署门禁。
 
@@ -117,7 +117,7 @@ scp $Web "pricememo-prod:/tmp/"
 cd /opt/ai-price-radar-v3
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
 
-$COMPOSE build api web
+$COMPOSE build api web notification-worker
 
 # Release Notes 要求迁移时，在切换 API 前用新 API 镜像执行；脚本名按版本替换。
 docker run --rm \
@@ -128,10 +128,21 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_productization_v5.py
 
+# 店铺收录状态机与邮件 Outbox 迁移；重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_shop_intake_v6.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
 $COMPOSE up -d --no-deps web
+# 若本次发布包含邮件通知配置或 Worker 代码，同时切换 notification-worker
+$COMPOSE up -d --no-deps notification-worker
 # 确认公网首页出现目标版本文案
 ```
 

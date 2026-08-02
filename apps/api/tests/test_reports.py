@@ -6,7 +6,7 @@ from starlette.requests import Request
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Report, ReportRateLimit, Shop
+from app.models import NotificationOutbox, Report, ReportRateLimit, Shop, SourceIntake
 from app.routers import public
 
 
@@ -108,10 +108,17 @@ def test_shop_request_is_validated_normalized_and_deduplicated(monkeypatch):
         assert duplicate.json()["status"] == "already_pending"
 
         with Session(engine) as db:
-            reports = list(db.scalars(select(Report).where(Report.kind == "shop_request")))
-            assert len(reports) == 1
-            assert "店铺链接：https://pay.ldxp.cn/shop/JBJJWNA5" in reports[0].message
-            assert reports[0].contact == "merchant@example.com"
+            intakes = list(db.scalars(select(SourceIntake)))
+            assert len(intakes) == 1
+            assert intakes[0].source_key == "jbjjwna5"
+            assert intakes[0].source_url == "https://pay.ldxp.cn/shop/JBJJWNA5"
+            assert intakes[0].contact_email == "merchant@example.com"
+            outbox = list(db.scalars(select(NotificationOutbox)))
+            assert len(outbox) == 2
+            assert {row.event_type for row in outbox} == {
+                "shop_request.submitted.admin",
+                "shop_request.submitted.applicant",
+            }
     finally:
         app.dependency_overrides.clear()
 
@@ -137,7 +144,7 @@ def test_shop_request_reports_known_shop_without_creating_report(monkeypatch):
         client = TestClient(app)
         response = client.post(
             "/api/v1/shop-requests",
-            json={"shop_url": "https://pay.ldxp.cn/shop/known01"},
+            json={"shop_url": "https://pay.ldxp.cn/shop/known01", "contact": "merchant@example.com"},
         )
         assert response.status_code == 200
         assert response.json()["status"] == "already_known"

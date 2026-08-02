@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..database import get_db
-from ..models import Offer, Product, Report, ReportRateLimit, Shop
+from ..models import Offer, Product, Report, ReportRateLimit, Shop, SourceIntake
 from ..schemas import (
     CatalogOfferGroupPageResponse,
     CatalogResponse,
@@ -33,6 +33,7 @@ from ..schemas import (
     ShopRequestCreate,
     ShopRequestOut,
 )
+from ..services.source_intake import enqueue_submission_notifications
 from ..services.catalog import (
     OfferFilters,
     get_catalog_group_page,
@@ -174,7 +175,14 @@ def _normalize_merchant_feed_url(value: object) -> tuple[str, str]:
         ip = None
     if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved):
         raise HTTPException(status_code=422, detail="Feed 地址不能使用私有或保留 IP")
-    normalized = urllib.parse.urlunsplit(("https", parsed.netloc, parsed.path or "/", parsed.query, ""))
+    try:
+        port = parsed.port
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Feed 地址端口无效") from None
+    netloc = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    if port is not None and port != 443:
+        netloc = f"{netloc}:{port}"
+    normalized = urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
     token = "feed-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
     return token, normalized
 
@@ -482,6 +490,7 @@ def public_corrections(
 ) -> PublicCorrectionPage:
     base = select(Report).where(
         Report.status == "resolved",
+        Report.kind != "shop_request",
         Report.public_summary != "",
     )
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
@@ -579,6 +588,8 @@ def watch_feed(
 @router.post("/reports", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
 def create_report(payload: ReportCreate, request: Request, db: Session = Depends(get_db)) -> Report:
     _enforce_report_rate_limit(request, db)
+    if payload.kind == "shop_request":
+        raise HTTPException(status_code=422, detail="use /api/v1/shop-requests for shop applications")
     if payload.offer_id is not None and db.get(Offer, payload.offer_id) is None:
         raise HTTPException(status_code=404, detail="offer not found")
     report = Report(**payload.model_dump())
@@ -600,6 +611,7 @@ def create_shop_request(
     else:
         token, shop_url = _normalize_ldxp_shop_url(payload.shop_url)
     _enforce_report_rate_limit(request, db)
+    source_key = token.casefold() if payload.source_type == "ldxp" else shop_url
 
     known_shop = db.scalar(select(Shop.id).where(
         (func.lower(Shop.token) == token.lower()) | (func.lower(Shop.source_url) == shop_url.lower())
@@ -608,36 +620,86 @@ def create_shop_request(
         db.commit()
         return ShopRequestOut(source_type=payload.source_type, status="already_known", shop_token=token)
 
-    pending = db.scalar(
-        select(Report)
+    existing = db.scalar(
+        select(SourceIntake)
         .where(
-            Report.kind == "shop_request",
-            Report.status.in_(("open", "reviewing")),
-            func.lower(Report.message).contains(f"店铺链接：{shop_url.lower()}"),
+            SourceIntake.source_type == payload.source_type,
+            SourceIntake.source_key == source_key,
         )
-        .order_by(Report.id.desc())
+        .order_by(SourceIntake.id.desc())
     )
-    if pending is not None:
+    if existing is not None:
         db.commit()
         return ShopRequestOut(
             source_type=payload.source_type,
-            status="already_pending",
-            request_id=pending.id,
+            status="already_known" if existing.status == "onboarded" else "already_pending",
+            request_id=existing.id,
             shop_token=token,
         )
 
-    lines = [f"来源类型：{payload.source_type}", f"店铺链接：{shop_url}"]
-    if payload.shop_name.strip():
-        lines.append(f"店铺名称：{payload.shop_name.strip()}")
-    if payload.note.strip():
-        lines.append(f"申请说明：{payload.note.strip()}")
-    report = Report(
-        kind="shop_request",
-        message="\n".join(lines),
-        contact=payload.contact.strip(),
-    )
-    db.add(report)
+    intake_values = {
+        "source_type": payload.source_type,
+        "source_key": source_key,
+        "source_url": shop_url,
+        "shop_name": payload.shop_name.strip(),
+        "contact_email": payload.contact.strip(),
+        "note": payload.note.strip(),
+        "origin": "manual",
+        "status": "pending_review",
+    }
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+
+        result = db.execute(
+            insert(SourceIntake)
+            .values(**intake_values)
+            .on_conflict_do_nothing(index_elements=["source_type", "source_key"])
+        )
+        intake = db.scalar(
+            select(SourceIntake).where(
+                SourceIntake.source_type == payload.source_type,
+                SourceIntake.source_key == source_key,
+            )
+        )
+        if result.rowcount == 0:
+            db.commit()
+            return ShopRequestOut(
+                source_type=payload.source_type,
+                status="already_known" if intake and intake.status == "onboarded" else "already_pending",
+                request_id=intake.id if intake else None,
+                shop_token=token,
+            )
+    elif dialect == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert
+
+        result = db.execute(
+            insert(SourceIntake)
+            .values(**intake_values)
+            .on_conflict_do_nothing(index_elements=["source_type", "source_key"])
+        )
+        intake = db.scalar(
+            select(SourceIntake).where(
+                SourceIntake.source_type == payload.source_type,
+                SourceIntake.source_key == source_key,
+            )
+        )
+        if result.rowcount == 0:
+            db.commit()
+            return ShopRequestOut(
+                source_type=payload.source_type,
+                status="already_known" if intake and intake.status == "onboarded" else "already_pending",
+                request_id=intake.id if intake else None,
+                shop_token=token,
+            )
+    else:
+        intake = SourceIntake(**intake_values)
+        db.add(intake)
+        db.flush()
+    if intake is None:
+        raise HTTPException(status_code=500, detail="failed to create source intake")
+    enqueue_submission_notifications(db, intake)
     db.commit()
-    db.refresh(report)
+    db.refresh(intake)
     response.status_code = status.HTTP_201_CREATED
-    return ShopRequestOut(source_type=payload.source_type, status="submitted", request_id=report.id, shop_token=token)
+    return ShopRequestOut(source_type=payload.source_type, status="submitted", request_id=intake.id, shop_token=token)
