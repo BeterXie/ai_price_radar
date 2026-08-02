@@ -140,7 +140,7 @@ POST /api/v1/shop-requests
 
 管理接口位于 `/api/v1/admin/*`，通过 `X-Admin-Key` 请求头保护。请勿在客户端代码、截图、日志或公开 Issue 中粘贴管理密钥。
 
-商家可通过 `/shops/submit` 提交链动小铺公开店铺链接或公开 HTTPS JSON Feed。接口会校验来源、去重并复用举报限流与后台审核队列；申请通过读取验证前不会进入公开报价。Connector 说明见 [docs/CONNECTORS.md](docs/CONNECTORS.md)。
+商家可通过 `/shops/submit` 提交店铺首页、商品页面或公开 HTTPS JSON Feed。系统默认自动识别链动小铺、Dujiao-Next、Merchant JSON 与其他独立站，保存声明类型和检测类型，并复用举报限流与后台审核队列；审核通过不等于发布，只有成功进入完整公开快照后才会公开。Connector 说明见 [docs/CONNECTORS.md](docs/CONNECTORS.md)。
 
 ## 公开报价规则
 
@@ -176,6 +176,14 @@ python scripts/migrate_currency_v7.py --database-url "$DATABASE_URL"
 ```
 
 该迁移可重复执行，并会从现有 Merchant JSON 原始记录中尽力回填常用法定币种。必须在切换读取 `offer_history.currency` 的 API 前完成。
+
+启用来源自动识别和扩展收录状态前，再执行：
+
+```bash
+python scripts/migrate_source_intake_v8.py --database-url "$DATABASE_URL"
+```
+
+该迁移会新增 declared/detected 平台字段并更新 PostgreSQL 检查约束，必须在切换读取新收录字段的 API 前完成。
 
 ## 开发与验证
 

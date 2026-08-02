@@ -164,6 +164,15 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_currency_v7.py
 
+# 来源自动识别与收录状态约束迁移；在切换读取新字段的 API 前执行，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_source_intake_v8.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
@@ -191,7 +200,7 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] 三个 systemd timer 已恢复为 active
 [ ] 数据库备份、旧源码包和旧镜像回滚标签存在
 [ ] 本次改动 crawler/ 时，新 Crawler 镜像已构建且旧镜像回滚标签存在
-[ ] 本次改动 crawler/、pipeline/ 或数据库结构时，一次完整刷新结束且日志确认 failed=0
+[ ] 本次改动 crawler/、pipeline/ 或数据库结构时，一次完整多来源发布结束，日志确认所有来源成功且 published=true
 ```
 
 恢复定时器：

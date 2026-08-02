@@ -114,7 +114,13 @@ The migration adds the history currency column and performs a conservative curre
 
 ## Full multi-source publication
 
-After the v7 migration, deploy API, Pipeline and Web from the same tested release, then run one complete publication:
+After the v7 currency migration, add the source detection fields and expanded intake constraints before switching the API:
+
+```bash
+python scripts/migrate_source_intake_v8.py --database-url "$DATABASE_URL"
+```
+
+The migration preserves legacy intake states, backfills existing declared/detected platforms, and is safe to run again. After both migrations succeed, deploy API, Pipeline and Web from the same tested release, then run one complete publication:
 
 ```bash
 python pipeline/publish_catalog.py \
@@ -126,4 +132,4 @@ python pipeline/publish_catalog.py \
 
 The Dujiao database is the crawler SQLite containing `dujiao_candidates`; only approved and currently API-verified rows are selected. Omit `--merchant-sources` when no reviewed Merchant Feed configuration exists. Do not run individual Dujiao URLs as a production publication shortcut. If any connector fails, stop and investigate while the previous published snapshot remains active.
 
-Required order for this release is: v7 migration, API, Pipeline, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` before the migration succeeds.
+Required order for this release is: v7 migration, v8 migration, API, Pipeline, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` or the new intake columns before its migration succeeds.
