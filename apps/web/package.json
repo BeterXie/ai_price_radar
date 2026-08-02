@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/source-intake.test.mjs"
   },
   "dependencies": {
     "@icons-pack/react-simple-icons": "12.0.0",

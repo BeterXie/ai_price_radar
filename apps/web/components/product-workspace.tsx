@@ -15,7 +15,7 @@ export function single(params: RawSearchParams, key: string) {
   return Array.isArray(value) ? value[value.length - 1] || "" : value || "";
 }
 
-const FILTER_KEYS = ["delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price"] as const;
+const FILTER_KEYS = ["delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price", "source_platform"] as const;
 
 export function offerQuery(params: RawSearchParams) {
   const query = new URLSearchParams();
@@ -67,7 +67,7 @@ export function ProductWorkspace({
     description: seo.metaDescription,
     image: `${canonical}/opengraph-image`,
     category: product.product_type,
-    brand: { "@type": "Brand", name: product.platform },
+    brand: { "@type": "Brand", name: product.brand },
     offers: {
       "@type": "AggregateOffer",
       priceCurrency: product.price_currency,

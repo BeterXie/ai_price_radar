@@ -14,6 +14,7 @@ from app.main import app
 from app.models import NotificationOutbox, Report, Shop, SourceIntake
 from app.services import outbox
 from app.services.outbox import process_once
+from app.services.source_platform import SourceDetection
 
 
 def _engine():
@@ -81,6 +82,8 @@ def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
         intake = db.get(SourceIntake, intake_id)
         assert intake is not None
         assert intake.source_key == "abc123"
+        assert intake.declared_platform == "auto"
+        assert intake.detected_platform == "ldxp"
         assert intake.status == "pending_review"
         outbox = list(db.scalars(select(NotificationOutbox).order_by(NotificationOutbox.id)))
         assert len(outbox) == 2
@@ -103,6 +106,7 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
     approved = client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers)
     assert approved.status_code == 200
     assert approved.json()["status"] == "queued"
+    assert approved.json()["workflow_status"] == "approved"
     repeated = client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers)
     assert repeated.status_code == 200
 
@@ -142,6 +146,7 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
     )
     assert onboarded.status_code == 200
     assert onboarded.json()["status"] == "onboarded"
+    assert onboarded.json()["workflow_status"] == "published"
     repeated_onboard = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
@@ -155,6 +160,36 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         assert sum(row.event_type == "shop_intake.onboarded" for row in events) == 1
         onboarded_mail = next(row for row in events if row.event_type == "shop_intake.onboarded")
         assert "https://ai.pricememo.cn/shops/APPROVE1" in onboarded_mail.text_body
+
+
+def test_declared_platform_mismatch_is_saved_and_reported(api_client, monkeypatch):
+    client, engine = api_client
+    monkeypatch.setattr(
+        "app.routers.public.detect_source_platform",
+        lambda _url: SourceDetection(
+            platform="dujiao_next",
+            source_url="https://shop.example.com",
+            source_key="https://shop.example.com",
+            shop_token="dujiao-next-example",
+        ),
+    )
+    response = client.post(
+        "/api/v1/shop-requests",
+        json={
+            **_payload(),
+            "source_type": "ldxp",
+            "shop_url": "https://shop.example.com",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["declared_platform"] == "ldxp"
+    assert response.json()["detected_platform"] == "dujiao_next"
+    assert "Dujiao-Next" in response.json()["detection_message"]
+    assert response.json()["workflow_status"] == "pending_review"
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, response.json()["request_id"])
+        assert intake.declared_platform == "ldxp"
+        assert intake.detected_platform == "dujiao_next"
 
 
 def test_reject_retry_and_lease_generation_are_idempotent(api_client):

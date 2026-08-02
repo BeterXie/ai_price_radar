@@ -26,6 +26,7 @@ from ..schemas import (
 from .official_pricing import official_reference_for
 from .pricing import is_trusted_price, low_price_warning, price_median
 from .source_health import source_health
+from .source_platform import source_kind, source_kind_label, source_platform_label
 
 
 DEFAULT_OFFER_PAGE_SIZE = 30
@@ -34,6 +35,7 @@ PRICE_CURRENCY = "CNY"
 
 @dataclass(frozen=True, slots=True)
 class OfferFilters:
+    source_platform: str = ""
     delivery_type: str = ""
     service_period: str = ""
     warranty: str = ""
@@ -148,6 +150,8 @@ def _base_public_offer_query(
 
 
 def _apply_offer_filters(stmt, filters: OfferFilters):
+    if filters.source_platform:
+        stmt = stmt.where(Shop.platform == filters.source_platform)
     if filters.delivery_type:
         stmt = stmt.where(Offer.delivery_type == filters.delivery_type)
     if filters.service_period:
@@ -218,6 +222,10 @@ def _offer_public(
         id=offer.id,
         shop_token=offer.shop.token,
         shop_name=offer.shop.name or offer.shop.token,
+        source_platform=offer.shop.platform,
+        source_platform_label=source_platform_label(offer.shop.platform),
+        source_kind=source_kind(offer.shop.platform),
+        source_kind_label=source_kind_label(source_kind(offer.shop.platform)),
         original_name=offer.raw_product.original_name,
         original_category=_plain_text(offer.raw_product.original_category, 300),
         original_description=description if include_description else "",
@@ -312,9 +320,16 @@ def _data_quality(offers: list[Offer], trusted: list[Offer], comparable: list[Of
     return score, label
 
 
-def _price_trend(db: Session, product_id: int, *, currency: str = PRICE_CURRENCY, day_limit: int = 90) -> list[PriceTrendPoint]:
+def _price_trend(
+    db: Session,
+    product_id: int,
+    *,
+    currency: str = PRICE_CURRENCY,
+    source_platform: str = "",
+    day_limit: int = 90,
+) -> list[PriceTrendPoint]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=day_limit)
-    rows = db.execute(
+    stmt = (
         select(OfferHistory, Offer)
         .join(Offer, OfferHistory.offer_id == Offer.id)
         .where(
@@ -323,7 +338,10 @@ def _price_trend(db: Session, product_id: int, *, currency: str = PRICE_CURRENCY
             OfferHistory.observed_at >= cutoff,
         )
         .order_by(OfferHistory.observed_at.asc())
-    ).all()
+    )
+    if source_platform:
+        stmt = stmt.join(Shop, Offer.shop_id == Shop.id).where(Shop.platform == source_platform)
+    rows = db.execute(stmt).all()
     grouped: dict[datetime, list[tuple[OfferHistory, Offer]]] = defaultdict(list)
     for history, offer in rows:
         observed = history.observed_at
@@ -417,6 +435,7 @@ def get_catalog_group_page(
     db: Session,
     *,
     platform: str = "",
+    product_slug: str = "",
     offset: int,
     limit: int,
     filters: OfferFilters,
@@ -430,6 +449,8 @@ def get_catalog_group_page(
     )
     if platform:
         stmt = stmt.where(Product.platform == platform)
+    if product_slug:
+        stmt = stmt.where(Product.slug == product_slug)
     offers = list(db.scalars(_apply_offer_filters(stmt, filters)).unique())
     offers_by_product: dict[int, list[Offer]] = defaultdict(list)
     for offer in offers:
@@ -581,6 +602,7 @@ def list_product_cards(
         cards.append(ProductCard(
             slug=product.slug,
             platform=product.platform,
+            brand=product.platform,
             display_name=product.display_name,
             subtitle=product.subtitle,
             product_type=product.product_type,
@@ -624,10 +646,11 @@ def get_product_detail(
     if product is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
-    offers = list(db.scalars(
+    offers = list(db.scalars(_apply_offer_filters(
         _base_public_offer_query(db, include_details=False, snapshot=snapshot)
-        .where(Offer.product_id == product.id)
-    ).unique())
+        .where(Offer.product_id == product.id),
+        OfferFilters(source_platform=filters.source_platform),
+    )).unique())
     in_stock = [x for x in offers if x.stock_status == "in_stock" and x.price is not None and x.price > 0]
     price_scope = [x for x in in_stock if x.currency == PRICE_CURRENCY]
     comparable_in_stock = [x for x in price_scope if x.is_comparable]
@@ -639,9 +662,10 @@ def get_product_detail(
         select(OfferHistory)
         .join(Offer, OfferHistory.offer_id == Offer.id)
         .where(Offer.product_id == product.id)
-        .order_by(OfferHistory.observed_at.desc())
-        .limit(120)
     )
+    if filters.source_platform:
+        history_stmt = history_stmt.join(Shop, Offer.shop_id == Shop.id).where(Shop.platform == filters.source_platform)
+    history_stmt = history_stmt.order_by(OfferHistory.observed_at.desc()).limit(120)
     history = list(db.scalars(history_stmt))
     history.reverse()
     all_tags = sorted({tag for offer in offers for tag in (offer.tags or [])})
@@ -675,6 +699,7 @@ def get_product_detail(
     return ProductDetail(
         slug=product.slug,
         platform=product.platform,
+        brand=product.platform,
         display_name=product.display_name,
         subtitle=product.subtitle,
         description=product.description,
@@ -700,7 +725,7 @@ def get_product_detail(
         snapshot_at=snapshot.published_at if snapshot else None,
         offer_groups=offer_groups,
         history=[PricePoint(observed_at=x.observed_at, price=x.price, currency=x.currency, stock_status=x.stock_status) for x in history],
-        trend=_price_trend(db, product.id, currency=PRICE_CURRENCY),
+        trend=_price_trend(db, product.id, currency=PRICE_CURRENCY, source_platform=filters.source_platform),
     )
 
 
@@ -710,15 +735,20 @@ def get_product_offer_page(
     *,
     offset: int,
     limit: int,
+    filters: OfferFilters = OfferFilters(),
     snapshot_id: int | None = None,
 ) -> list[OfferPublic] | None:
     product_id = db.scalar(select(Product.id).where(Product.slug == slug, Product.is_visible.is_(True)))
     if product_id is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
-    stmt = (
+    stmt = _apply_offer_filters(
         _base_public_offer_query(db, snapshot=snapshot)
-        .where(Offer.product_id == product_id)
+        .where(Offer.product_id == product_id),
+        filters,
+    )
+    stmt = (
+        stmt
         .order_by(*_offer_ordering())
         .offset(offset)
         .limit(limit)
@@ -778,6 +808,10 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         name=shop.name or shop.token,
         source_url=shop.source_url,
         platform=shop.platform,
+        source_platform=shop.platform,
+        source_platform_label=source_platform_label(shop.platform),
+        source_kind=source_kind(shop.platform),
+        source_kind_label=source_kind_label(source_kind(shop.platform)),
         status=shop.status,
         first_seen_at=shop.first_seen_at,
         last_success_at=shop.last_success_at,

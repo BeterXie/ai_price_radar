@@ -6,10 +6,10 @@ import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { PlatformIcon } from "@/components/platform-icon";
 import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
 import { ReportForm } from "@/components/report-form";
-import { getCatalogGroups, getProduct } from "@/lib/api";
+import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
 
-const PLATFORM_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
+const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 
 const PRODUCT_TABS: Record<string, { label: string; slug: string }[]> = {
   OpenAI: [
@@ -52,41 +52,62 @@ function withQuery(path: string, query: URLSearchParams) {
 
 export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
   const detailQuery = offerQuery(rawParams);
-  const product = productSlug ? await getProduct(productSlug, detailQuery.toString()) : null;
+  const [product, meta] = await Promise.all([
+    productSlug ? getProduct(productSlug, detailQuery.toString()) : Promise.resolve(null),
+    getMeta(),
+  ]);
   if (productSlug && !product) notFound();
 
-  const activePlatform = product?.platform || single(rawParams, "platform");
+  const activeBrand = product?.brand || single(rawParams, "brand") || single(rawParams, "platform");
+  const activeSourcePlatform = single(rawParams, "source_platform");
   const catalogQuery = new URLSearchParams(detailQuery);
-  if (activePlatform) catalogQuery.set("platform", activePlatform);
+  if (activeBrand) catalogQuery.set("brand", activeBrand);
   const catalog = product ? null : await getCatalogGroups(catalogQuery.toString());
-  const productTabPlatform = activePlatform || "OpenAI";
-  const productTabs = PRODUCT_TABS[productTabPlatform] || [];
+  const productTabBrand = activeBrand || "OpenAI";
+  const productTabs = PRODUCT_TABS[productTabBrand] || [];
   const scopeQuery = new URLSearchParams(detailQuery);
   const filters = filterValues(rawParams);
-  const catalogHref = (platform = "") => {
+  const catalogHref = (brand = "") => {
     const next = new URLSearchParams(scopeQuery);
-    if (platform) next.set("platform", platform);
+    next.delete("platform");
+    if (brand) next.set("brand", brand);
+    else next.delete("brand");
     return withQuery("/products", next);
   };
   const productHref = (slug: string) => withQuery(`/products/${encodeURIComponent(slug)}`, scopeQuery);
+  const sourceHref = (sourcePlatform = "") => {
+    const next = new URLSearchParams(scopeQuery);
+    if (sourcePlatform) next.set("source_platform", sourcePlatform);
+    else next.delete("source_platform");
+    if (!product && activeBrand) next.set("brand", activeBrand);
+    return withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", next);
+  };
+  const navigationQuery = new URLSearchParams();
+  if (!product && activeBrand) navigationQuery.set("brand", activeBrand);
+  if (activeSourcePlatform) navigationQuery.set("source_platform", activeSourcePlatform);
+  const navigationHref = withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", navigationQuery);
+  const hiddenFields = {
+    ...(!product && activeBrand ? { brand: activeBrand } : {}),
+    ...(activeSourcePlatform ? { source_platform: activeSourcePlatform } : {}),
+  };
 
   return (
     <main id="main-content" className="shell py-8 md:py-10">
       <section className="border-b hairline pb-4" aria-label="报价快捷筛选">
-        <nav className="flex items-center gap-1 overflow-x-auto" aria-label="平台筛选">
-          <span className="mr-2 shrink-0 text-xs text-black/45">平台</span>
-          <Link href={catalogHref()} aria-current={!activePlatform ? "page" : undefined} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm ${!activePlatform ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
+        <nav className="flex items-center gap-1 overflow-x-auto" aria-label="品牌筛选">
+          <span className="mr-2 shrink-0 text-xs text-black/45">品牌</span>
+          <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm ${!activeBrand ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
             <PlatformIcon platform="" />全部
           </Link>
-          {PLATFORM_TABS.map((platform) => (
-            <Link key={platform} href={catalogHref(platform)} aria-current={activePlatform === platform ? "page" : undefined} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm ${activePlatform === platform ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
-              <PlatformIcon platform={platform} />{platform}
+          {BRAND_TABS.map((brand) => (
+            <Link key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined} className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-sm ${activeBrand === brand ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
+              <PlatformIcon platform={brand} />{brand}
             </Link>
           ))}
         </nav>
         <nav className="mt-3 flex items-center gap-1 overflow-x-auto border-t hairline pt-3" aria-label="商品类型筛选">
           <span className="mr-2 shrink-0 text-xs text-black/45">商品类型</span>
-          <Link href={catalogHref(activePlatform)} aria-current={!product ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-sm ${!product ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
+          <Link href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-sm ${!product ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>
             全部商品
           </Link>
           {productTabs.map((tab) => (
@@ -100,6 +121,13 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             </Link>
           ))}
         </nav>
+        <nav className="mt-3 flex items-center gap-1 overflow-x-auto border-t hairline pt-3" aria-label="来源平台筛选">
+          <span className="mr-2 shrink-0 text-xs text-black/45">来源平台</span>
+          <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-sm ${!activeSourcePlatform ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>全部来源</Link>
+          {meta.source_platforms.map((source) => (
+            <Link key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className={`shrink-0 rounded-full px-3 py-2 text-sm ${activeSourcePlatform === source.id ? "bg-[color:var(--ink)] text-white" : "hover:bg-black/5"}`}>{source.label}</Link>
+          ))}
+        </nav>
       </section>
       {product ? (
         <ProductWorkspace
@@ -107,11 +135,12 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           rawParams={rawParams}
           query={detailQuery}
           filterAction={`/products/${encodeURIComponent(product.slug)}`}
-          resetHref={`/products/${encodeURIComponent(product.slug)}`}
+          resetHref={navigationHref}
+          hiddenFields={hiddenFields}
         />
       ) : catalog ? (
         <>
-          <h1 className="sr-only">{activePlatform ? `${activePlatform} AI 商品公开报价` : "AI 商品公开报价目录"}</h1>
+          <h1 className="sr-only">{activeBrand ? `${activeBrand} AI 商品公开报价` : "AI 商品公开报价目录"}</h1>
           <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label="目录报价概况">
             <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{catalog.trusted_offer_count} 条可参考报价</p>
             <p className="flex items-center gap-1.5"><Package size={16} />{catalog.in_stock_count} 条有货报价</p>
@@ -122,8 +151,8 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           <OfferScopeControls
             action="/products"
             values={filters}
-            hiddenFields={activePlatform ? { platform: activePlatform } : {}}
-            resetHref={activePlatform ? `/products?platform=${encodeURIComponent(activePlatform)}` : "/products"}
+            hiddenFields={hiddenFields}
+            resetHref={navigationHref}
           />
 
           <section className="pb-12">
@@ -133,7 +162,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
               <p className="mt-1 text-xs text-black/35">统计仅包含当前筛选结果，价格和库存以最近一次更新为准。</p>
             </div>
             <OfferGroupTable
-              key={`${activePlatform || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
+              key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
               groups={catalog.items}
               totalCount={catalog.total}
               snapshotId={catalog.snapshot_id}

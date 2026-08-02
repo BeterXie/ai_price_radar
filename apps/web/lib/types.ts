@@ -27,6 +27,7 @@ export type PriceTrendPoint = {
 export type ProductCard = {
   slug: string;
   platform: string;
+  brand: string;
   display_name: string;
   subtitle: string;
   product_type: string;
@@ -50,6 +51,10 @@ export type Offer = {
   id: number;
   shop_token: string;
   shop_name: string;
+  source_platform: string;
+  source_platform_label: string;
+  source_kind: string;
+  source_kind_label: string;
   original_name: string;
   original_category: string;
   original_description: string;
@@ -142,6 +147,10 @@ export type ShopDetail = {
   name: string;
   source_url: string;
   platform: string;
+  source_platform: string;
+  source_platform_label: string;
+  source_kind: string;
+  source_kind_label: string;
   status: string;
   first_seen_at: string;
   last_success_at: string | null;
@@ -154,6 +163,8 @@ export type ShopDetail = {
 
 export type Meta = {
   platforms: string[];
+  brands: string[];
+  source_platforms: { id: string; label: string }[];
   product_types: string[];
   tags: string[];
 };

@@ -12,6 +12,7 @@ from ..models import Shop, SourceIntake
 from ..schemas import SourceIntakeClaimOut, SourceIntakeClaimRequest, SourceIntakeResult
 from ..security import require_intake_worker
 from ..services.source_intake import enqueue_transition_notification, site_url, utcnow
+from ..services.source_platform import workflow_status
 
 router = APIRouter(
     prefix="/api/v1/internal/source-intakes",
@@ -36,6 +37,7 @@ def _response(intake: SourceIntake) -> dict[str, object]:
     return {
         "intake_id": intake.id,
         "status": intake.status,
+        "workflow_status": workflow_status(intake.status),
         "attempt_count": intake.attempt_count,
         "product_count": intake.product_count,
         "lease_expires_at": intake.lease_expires_at,

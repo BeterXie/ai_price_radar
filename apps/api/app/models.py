@@ -169,9 +169,14 @@ class SourceIntake(Base):
     __tablename__ = "source_intakes"
     __table_args__ = (
         UniqueConstraint("source_type", "source_key", name="uq_source_intakes_source"),
-        CheckConstraint("source_type IN ('ldxp', 'merchant_feed')", name="ck_source_intakes_type"),
         CheckConstraint(
-            "status IN ('pending_review', 'queued', 'validating', 'validated', 'onboarded', 'rejected', 'no_products', 'validation_failed')",
+            "source_type IN ('ldxp', 'merchant_feed', 'merchant_json', 'dujiao_next', 'other')",
+            name="ck_source_intakes_type",
+        ),
+        CheckConstraint(
+            "status IN ('submitted', 'detecting', 'validation_failed', 'pending_review', 'approved', 'syncing', "
+            "'published', 'rejected', 'needs_re_review', 'disabled', 'queued', 'validating', 'validated', "
+            "'onboarded', 'no_products')",
             name="ck_source_intakes_status",
         ),
         Index("ix_source_intakes_status_lease", "status", "lease_expires_at"),
@@ -182,6 +187,8 @@ class SourceIntake(Base):
         ForeignKey("reports.id", ondelete="SET NULL"), nullable=True, unique=True
     )
     source_type: Mapped[str] = mapped_column(String(30), index=True)
+    declared_platform: Mapped[str] = mapped_column(String(30), default="auto", server_default="auto", index=True)
+    detected_platform: Mapped[str] = mapped_column(String(30), default="other", server_default="other", index=True)
     source_key: Mapped[str] = mapped_column(String(300))
     source_url: Mapped[str] = mapped_column(Text)
     shop_name: Mapped[str] = mapped_column(Text, default="")

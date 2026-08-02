@@ -20,6 +20,7 @@ from ..schemas import (
 from ..security import require_admin
 from ..services.classifier import classify_product
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
+from ..services.source_platform import workflow_status
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -148,6 +149,9 @@ def _source_intake_response(db: Session, intake: SourceIntake) -> SourceIntakeOu
         id=intake.id,
         report_id=intake.report_id,
         source_type=intake.source_type,
+        declared_platform=intake.declared_platform or intake.source_type,
+        detected_platform=intake.detected_platform or intake.source_type,
+        workflow_status=workflow_status(intake.status),
         source_key=intake.source_key,
         source_url=intake.source_url,
         shop_name=intake.shop_name,

@@ -39,6 +39,10 @@ class OfferPublic(BaseModel):
     id: int
     shop_token: str
     shop_name: str
+    source_platform: str
+    source_platform_label: str
+    source_kind: str
+    source_kind_label: str
     original_name: str
     original_category: str
     original_description: str = ""
@@ -70,6 +74,7 @@ class OfferPublic(BaseModel):
 class ProductCard(BaseModel):
     slug: str
     platform: str
+    brand: str
     display_name: str
     subtitle: str
     product_type: str
@@ -165,6 +170,10 @@ class ShopDetail(BaseModel):
     name: str
     source_url: str
     platform: str
+    source_platform: str
+    source_platform_label: str
+    source_kind: str
+    source_kind_label: str
     status: str
     first_seen_at: datetime
     last_success_at: datetime | None
@@ -192,8 +201,15 @@ class CatalogSnapshotPublic(BaseModel):
     published_at: datetime | None
 
 
+class SourcePlatformMeta(BaseModel):
+    id: str
+    label: str
+
+
 class MetaResponse(BaseModel):
     platforms: list[str]
+    brands: list[str]
+    source_platforms: list[SourcePlatformMeta]
     product_types: list[str]
     tags: list[str]
 
@@ -221,7 +237,8 @@ class ReportOut(BaseModel):
 
 
 class ShopRequestCreate(BaseModel):
-    source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
+    source_type: Literal["auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "other"] = "auto"
+    declared_platform: Literal["auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "other"] | None = None
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)
     contact: str = Field(min_length=3, max_length=200)
@@ -237,7 +254,11 @@ class ShopRequestCreate(BaseModel):
 
 
 class ShopRequestOut(BaseModel):
-    source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
+    source_type: str
+    declared_platform: str
+    detected_platform: str
+    detection_message: str = ""
+    workflow_status: str
     status: Literal["submitted", "already_pending", "already_known"]
     request_id: int | None = None
     shop_token: str
@@ -248,7 +269,10 @@ class SourceIntakeOut(BaseModel):
 
     id: int
     report_id: int | None
-    source_type: Literal["ldxp", "merchant_feed"]
+    source_type: str
+    declared_platform: str
+    detected_platform: str
+    workflow_status: str
     source_key: str
     source_url: str
     shop_name: str
