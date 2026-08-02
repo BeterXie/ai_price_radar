@@ -85,3 +85,24 @@ def test_offer_and_history_preserve_valid_currency_changes():
             upsert_offer(db, invalid, products)
     finally:
         db.close()
+
+
+@pytest.mark.parametrize(("raw_delivery", "expected"), [
+    (True, True),
+    (False, False),
+    (None, None),
+    ("否", False),
+    ("false", False),
+])
+def test_upsert_offer_preserves_delivery_state(raw_delivery, expected):
+    db = session_for("sqlite://")
+    try:
+        products = ensure_products(db)
+        source_record = record()
+        source_record["auto_delivery"] = raw_delivery
+
+        upsert_offer(db, source_record, products)
+
+        assert db.query(Offer).one().auto_delivery is expected
+    finally:
+        db.close()

@@ -573,8 +573,12 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
     offer.currency = currency
     offer.stock_count = count
     offer.stock_status = status
-    delivery = str(record.get("auto_delivery") or "").strip()
-    offer.auto_delivery = True if delivery in {"是", "true", "True", "1"} else False if delivery in {"否", "false", "False", "0"} else None
+    raw_delivery = record.get("auto_delivery")
+    if isinstance(raw_delivery, bool):
+        offer.auto_delivery = raw_delivery
+    else:
+        delivery = str(raw_delivery or "").strip().casefold()
+        offer.auto_delivery = True if delivery in {"是", "true", "1"} else False if delivery in {"否", "false", "0"} else None
     offer.tags = result.tags
     offer.risk_flags = result.risks
     offer.classification_confidence = result.confidence

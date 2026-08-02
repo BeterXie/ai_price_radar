@@ -7,6 +7,7 @@ import pytest
 from connectors import get_connector
 from connectors import dujiao_next
 from connectors.merchant_json import _validate_remote_url
+from common import Offer, ensure_products, session_for, upsert_offer
 
 
 def test_merchant_json_connector_normalizes_feed(tmp_path: Path):
@@ -125,6 +126,13 @@ def test_dujiao_next_connector_paginates_and_emits_variants(monkeypatch):
     assert single["category_name"] == "AI Accounts"
     assert single["stock_count"] == 4
     assert any("page=2" in url for url in calls)
+
+    db = session_for("sqlite://")
+    try:
+        upsert_offer(db, variant, ensure_products(db))
+        assert db.query(Offer).one().auto_delivery is False
+    finally:
+        db.close()
 
 
 def test_dujiao_next_connector_rejects_business_errors(monkeypatch):
