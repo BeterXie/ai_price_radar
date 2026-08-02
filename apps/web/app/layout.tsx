@@ -5,6 +5,7 @@ import "./globals.css";
 import { BackToTop } from "@/components/back-to-top";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { CommunityPrompts } from "@/components/community-prompts";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai.pricememo.cn"),
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <div id="page-content" tabIndex={-1}>{children}</div>
         <BackToTop />
         <SiteFooter />
+        <CommunityPrompts />
       </body>
     </html>
   );

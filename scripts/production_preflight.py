@@ -92,6 +92,13 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
         except ValueError:
             errors.append("TRUSTED_PROXY_CIDRS must be a comma-separated CIDR list")
 
+    if env.get("NEXT_PUBLIC_SUPPORT_ENABLED", "").casefold() in {"true", "1", "yes"}:
+        for key in ("NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL", "NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL"):
+            qr_url = env.get(key, "")
+            hostname = urlparse(qr_url).hostname or ""
+            if not is_https_url(qr_url) or hostname == "example.com" or hostname.endswith(".example.com"):
+                errors.append(f"{key} must be an absolute https URL when author support is enabled")
+
     return errors
 
 

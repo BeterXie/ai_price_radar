@@ -2,6 +2,24 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.4.0] - 2026-08-02
+
+### Added
+
+- Optional GitHub Star and author-support entry points in the public footer.
+- Low-frequency, session-aware community prompts that stay disabled on administrator and shop-submission routes.
+- Accessible WeChat Pay and Alipay support dialog with keyboard dismissal and mobile layouts.
+
+### Changed
+
+- Production Web containers can mount support QR images from `data/support` as read-only runtime assets.
+- Production preflight validates both public HTTPS QR URLs whenever author support is enabled.
+
+### Security
+
+- Payment QR images and production support configuration remain outside the public Git repository.
+- The support dialog does not display or configure a payee name and never records payment information.
+
 ## [3.3.1] - 2026-08-02
 
 ### Added
