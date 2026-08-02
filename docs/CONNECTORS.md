@@ -8,11 +8,16 @@ AI Price Radar separates source reading from database publication. A connector c
 - `merchant-json`: reads a local JSON file or a public HTTPS JSON Feed.
 - `dujiao-next`: reads a Dujiao-Next shop through its unauthenticated public REST API.
 
+Production publication must use one authoritative multi-source transaction:
+
 ```bash
-python pipeline/sync_source.py --connector ldxp --source /data/ldxp_crawler.db
-python pipeline/sync_source.py --connector merchant-json --source https://merchant.example.com/feed.json
-python pipeline/sync_source.py --connector dujiao-next --source https://shop.example.com
+python pipeline/publish_catalog.py \
+  --ldxp-db /data/ldxp_crawler.db \
+  --dujiao-db /data/ldxp_crawler.db \
+  --merchant-sources /data/merchant_sources.json
 ```
+
+`publish_catalog.py` creates one draft snapshot, imports every configured source, and publishes only after all imports succeed. A failed source rolls the transaction back and leaves the previous complete snapshot online. `sync_source.py` remains a compatibility tool for local or incremental operations; it carries the current catalog forward and must not be used as the authoritative production refresh.
 
 ## Merchant JSON Feed
 
@@ -52,7 +57,7 @@ The connector caps response size, pages and product count. Run it behind an outb
 
 The crawler CLI provides a separate `discover-dujiao` flow for seed pages and low-frequency Bing RSS results. It reduces `/buy/...` and `/products/...` hits to a validated HTTPS origin, excludes official Dujiao-Next domains, checks the homepage fingerprint and public product API, and only queues stores whose real product data matches the AI catalog vocabulary.
 
-Discovery evidence is stored privately in the crawler SQLite `dujiao_candidates` table. Human `approve` or `reject` decisions are local review metadata only: they never call `sync_source.py` and never create a public Shop or snapshot. Publication remains an explicit Connector operation after review.
+Discovery evidence is stored privately in the crawler SQLite `dujiao_candidates` table. Human `approve` or `reject` decisions never publish by themselves. The production publisher reads only candidates that are approved, API-verified, and still in a publishable verification state; an arbitrary Dujiao URL cannot enter the public snapshot. The development-only bypass requires both `--allow-unreviewed-source` and `AI_PRICE_RADAR_ALLOW_UNREVIEWED_DUJIAO=1`.
 
 The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-domain discovery from template prose requires a separate URL Index/WARC content-analysis job; the low-frequency discovery command deliberately does not issue broad or misleading CDX queries.
 

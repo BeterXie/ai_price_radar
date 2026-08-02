@@ -7,6 +7,7 @@ cd "$ROOT"
 MODE="${1:-scan}"
 DATA_DIR="$ROOT/data/crawler"
 CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
+MERCHANT_SOURCES="$DATA_DIR/merchant_sources.json"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.pricememo.yml)
 KEYWORDS=(gpt chatgpt openai "open ai" codex claude gemini "google one ai" grok supergrok xai "x.ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
 
@@ -136,6 +137,15 @@ fi
 find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_crawler_*.db' \
   ! -path "$BACKUP_DB" -delete
 
+PUBLISH_ARGS=(
+  python publish_catalog.py
+  --ldxp-db /tmp/ldxp_crawler.db
+  --dujiao-db /tmp/ldxp_crawler.db
+)
+if [[ -f "$MERCHANT_SOURCES" ]]; then
+  PUBLISH_ARGS+=(--merchant-sources /workspace/data/crawler/merchant_sources.json)
+fi
+
 docker run --rm --user 0 \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
@@ -143,4 +153,4 @@ docker run --rm --user 0 \
   -v "$BACKUP_DB:/tmp/ldxp_crawler.db:ro" \
   -w /workspace/pipeline \
   ai-price-radar-api \
-  python sync_ldxp.py --source-db /tmp/ldxp_crawler.db
+  "${PUBLISH_ARGS[@]}"

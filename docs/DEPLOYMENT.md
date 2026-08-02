@@ -111,3 +111,19 @@ python scripts/migrate_currency_v7.py --database-url "$DATABASE_URL"
 ```
 
 The migration adds the history currency column and performs a conservative current-offer backfill from Merchant JSON raw records. It does not exchange-rate convert prices or rewrite historical observations whose original currency cannot be proven.
+
+## Full multi-source publication
+
+After the v7 migration, deploy API, Pipeline and Web from the same tested release, then run one complete publication:
+
+```bash
+python pipeline/publish_catalog.py \
+  --ldxp-db /data/ldxp_crawler.db \
+  --dujiao-db /data/ldxp_crawler.db \
+  --merchant-sources /data/merchant_sources.json \
+  --database-url "$DATABASE_URL"
+```
+
+The Dujiao database is the crawler SQLite containing `dujiao_candidates`; only approved and currently API-verified rows are selected. Omit `--merchant-sources` when no reviewed Merchant Feed configuration exists. Do not run individual Dujiao URLs as a production publication shortcut. If any connector fails, stop and investigate while the previous published snapshot remains active.
+
+Required order for this release is: v7 migration, API, Pipeline, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` before the migration succeeds.

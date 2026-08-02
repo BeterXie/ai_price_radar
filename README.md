@@ -14,12 +14,12 @@
 - 聚合 ChatGPT、Codex、OpenAI API、Claude、Gemini、Grok、X Premium 等公开商品报价
 - 区分 ChatGPT Free、Plus、Go、K12 / Team、Pro 5x、Pro 20x 等标准商品
 - 展示原始商品标题、分类、描述、库存、价格、交付方式、更新时间与来源链接
-- 平台与标准商品 Tab 快速筛选，支持搜索、仅看有货和最低价排序
+- 品牌、标准商品与来源平台组合筛选，支持搜索、仅看有货和最低价排序
 - 标准产品使用清晰 URL 并复用统一目录工作区，报价通过真实分页瀑布流加载
 - 区分交付形态，只用可直接比较报价计算主最低价，并保留全部相关商品最低价
 - 按标题、描述摘要、交付形态、周期和质保生成同款指纹，默认聚合跨店铺重复条目
 - 原始长描述在展开报价后按需加载，首屏只返回购买决策摘要
-- 完整导入通过已发布快照原子切换，公开页面标注同一数据快照时间
+- LDXP、已审核 Dujiao-Next 与商家 Feed 通过同一完整快照原子切换，任一来源失败时保留上一份线上目录
 - 记录报价历史，并保留人工审核、隐藏和重新分类状态
 - 自动发现店铺、周期扫描、SQLite 校验、快照与 PostgreSQL 幂等同步
 - 提供举报纠错和不公开暴露入口的基础管理后台
@@ -106,14 +106,17 @@ bash scripts/install_remote_timers.sh
 
 三类任务共享单实例文件锁；重叠任务会安全跳过。浏览器扫描默认保持请求间隔，并在连续遇到验证、阻断或限流时熔断。项目不会绕过 CAPTCHA 或 WAF；首次遇到正常验证时，需要由操作者在真实浏览器中完成。
 
-已有 LDXP SQLite 数据可以直接同步：
+生产更新应把 LDXP、审核通过的 Dujiao-Next 与配置的商家 Feed 一次性发布：
 
 ```bash
-docker compose --profile tools run --rm importer \
-  python sync_ldxp.py --source-db /workspace/ldxp_crawler.db
+python pipeline/publish_catalog.py \
+  --ldxp-db /data/ldxp_crawler.db \
+  --dujiao-db /data/ldxp_crawler.db \
+  --merchant-sources /data/merchant_sources.json \
+  --database-url "$DATABASE_URL"
 ```
 
-历史 CSV 可通过 `pipeline/import_csv.py` 导入。重复导入不会产生重复报价，价格、库存或状态变化时才会写入新历史记录。
+没有商家 Feed 配置时可以省略对应参数。历史 CSV 可通过 `pipeline/import_csv.py` 导入。重复导入不会产生重复报价，价格、库存或状态变化时才会写入新历史记录。
 
 ## API
 
