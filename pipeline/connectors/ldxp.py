@@ -17,10 +17,15 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     conn = sqlite3.connect(source_uri, uri=True)
     conn.row_factory = sqlite3.Row
     try:
+        candidate_columns = {row[1] for row in conn.execute("PRAGMA table_info(candidates)")}
+        intake_id = "c.intake_id" if "intake_id" in candidate_columns else "NULL AS intake_id"
+        intake_attempt_count = (
+            "c.intake_attempt_count" if "intake_attempt_count" in candidate_columns else "NULL AS intake_attempt_count"
+        )
         rows = conn.execute(
-            """
+            f"""
             SELECT m.*, c.status AS shop_status, c.source_score, c.last_success_at,
-                   c.consecutive_failures, c.scanned_at
+                   c.consecutive_failures, c.scanned_at, {intake_id}, {intake_attempt_count}
             FROM matches m
             LEFT JOIN candidates c ON c.token = m.token
             ORDER BY m.collected_at

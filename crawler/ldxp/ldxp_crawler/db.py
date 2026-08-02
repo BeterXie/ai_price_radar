@@ -51,7 +51,9 @@ class StateDB:
                 last_success_at TEXT,
                 next_retry_at TEXT,
                 consecutive_failures INTEGER NOT NULL DEFAULT 0,
-                last_error TEXT
+                last_error TEXT,
+                intake_id INTEGER,
+                intake_attempt_count INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS matches (
@@ -124,6 +126,8 @@ class StateDB:
             "last_success_at": "TEXT",
             "next_retry_at": "TEXT",
             "consecutive_failures": "INTEGER NOT NULL DEFAULT 0",
+            "intake_id": "INTEGER",
+            "intake_attempt_count": "INTEGER",
         }
         for name, ddl in migrations.items():
             self._ensure_column("candidates", name, ddl)
@@ -203,6 +207,68 @@ class StateDB:
         self.conn.commit()
         return inserted
 
+    def upsert_intake_candidate(
+        self,
+        *,
+        intake_id: int,
+        token: str,
+        url: str,
+        shop_name: str,
+        attempt_count: int,
+    ) -> bool:
+        now = utc_now()
+        row = self.conn.execute(
+            "SELECT sources FROM candidates WHERE token=?", (token,)
+        ).fetchone()
+        source_score = 1_000_000
+        if row:
+            sources = merge_unique([*json_loads_or(row["sources"], []), "intake"])
+            self.conn.execute(
+                """
+                UPDATE candidates
+                SET url=?, sources=?, source_score=MAX(source_score, ?), updated_at=?,
+                    status='pending', next_retry_at=NULL, intake_id=?, intake_attempt_count=?,
+                    shop_name=COALESCE(NULLIF(?, ''), shop_name), shop_url=?
+                WHERE token=?
+                """,
+                (
+                    url,
+                    json.dumps(sources, ensure_ascii=False),
+                    source_score,
+                    now,
+                    intake_id,
+                    attempt_count,
+                    shop_name,
+                    url,
+                    token,
+                ),
+            )
+            inserted = False
+        else:
+            self.conn.execute(
+                """
+                INSERT INTO candidates(
+                    token, url, sources, source_score, discovered_at, updated_at, status,
+                    shop_name, shop_url, intake_id, intake_attempt_count
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                """,
+                (
+                    token,
+                    url,
+                    json.dumps(["intake"], ensure_ascii=False),
+                    source_score,
+                    now,
+                    now,
+                    shop_name,
+                    url,
+                    intake_id,
+                    attempt_count,
+                ),
+            )
+            inserted = True
+        self.conn.commit()
+        return inserted
+
     def candidate_count(self) -> int:
         return int(self.conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0])
 
@@ -227,7 +293,8 @@ class StateDB:
             where = f"status IN ({marks})"
         params: list[Any] = [] if rescan else allowed
         matched_clause = (
-            "AND EXISTS (SELECT 1 FROM matches WHERE matches.token = candidates.token)"
+            "AND (candidates.intake_id IS NOT NULL OR EXISTS "
+            "(SELECT 1 FROM matches WHERE matches.token = candidates.token))"
             if matched_only
             else ""
         )

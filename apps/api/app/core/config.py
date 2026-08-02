@@ -19,6 +19,18 @@ class Settings(BaseSettings):
     report_rate_limit_count: int = Field(default=5, ge=1, le=100)
     report_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=24 * 60 * 60)
     trusted_proxy_cidrs: str = ""
+    shop_intake_admin_emails: str = "admin@example.invalid"
+    intake_worker_key: str = ""
+    intake_lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
+    resend_api_key: str = ""
+    resend_from: str = ""
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+    smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
 
 
 @lru_cache

@@ -19,12 +19,16 @@ PostgreSQL
   ├─ catalog_snapshots
   ├─ offer_history
   ├─ scan_runs
-  └─ reports
+  ├─ reports
+  ├─ source_intakes
+  └─ notification_outbox
           ↓
 FastAPI
           ↓
 Next.js
 ```
+
+人工店铺申请通过 `source_intakes` 状态机进入 `queued`，LDXP crawler 使用独立 Worker Key 领取并回报 `validated`、`no_products` 或 `validation_failed`。只有 `sync_ldxp.py` 在完整快照事务提交后才能回报 `onboarded`。独立 notification worker 消费 Outbox，生产优先使用 Resend API，并保留 SMTP 回退；Merchant JSON Feed 暂留在状态机中，不通过 LDXP 桥接自动收录。
 
 ## Publication guarantees
 

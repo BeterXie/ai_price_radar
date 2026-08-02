@@ -4,7 +4,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class OfficialPriceReferencePublic(BaseModel):
@@ -217,8 +219,16 @@ class ShopRequestCreate(BaseModel):
     source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)
-    contact: str = Field(default="", max_length=200)
+    contact: str = Field(min_length=3, max_length=200)
     note: str = Field(default="", max_length=1000)
+
+    @field_validator("contact")
+    @classmethod
+    def validate_contact_email(cls, value: str) -> str:
+        value = value.strip()
+        if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) is None:
+            raise ValueError("contact must be a valid email address")
+        return value
 
 
 class ShopRequestOut(BaseModel):
@@ -226,6 +236,88 @@ class ShopRequestOut(BaseModel):
     status: Literal["submitted", "already_pending", "already_known"]
     request_id: int | None = None
     shop_token: str
+
+
+class SourceIntakeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    report_id: int | None
+    source_type: Literal["ldxp", "merchant_feed"]
+    source_key: str
+    source_url: str
+    shop_name: str
+    contact_email: str
+    note: str
+    origin: str
+    status: str
+    decision_note: str
+    failure_reason: str
+    attempt_count: int
+    product_count: int
+    lease_expires_at: datetime | None
+    approved_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    email_status: dict[str, str] = Field(default_factory=dict)
+
+
+class SourceIntakeReject(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("rejection reason is required")
+        return value
+
+
+class SourceIntakeClaimRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+    lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
+
+
+class SourceIntakeClaimOut(BaseModel):
+    intake_id: int
+    source_type: Literal["ldxp"]
+    source_key: str
+    source_url: str
+    shop_name: str
+    attempt_count: int
+    lease_expires_at: datetime
+
+
+class SourceIntakeResult(BaseModel):
+    status: Literal["validated", "no_products", "validation_failed", "onboarded"]
+    attempt_count: int = Field(ge=1)
+    product_count: int = Field(default=0, ge=0)
+    failure_reason: str = Field(default="", max_length=500)
+    published: bool = False
+
+    @field_validator("failure_reason")
+    @classmethod
+    def normalize_failure_reason(cls, value: str) -> str:
+        return " ".join(value.split())[:500]
+
+
+class NotificationOutboxOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_type: str
+    recipient: str
+    subject: str
+    status: str
+    attempt_count: int
+    next_attempt_at: datetime
+    last_error: str
+    dedupe_key: str
+    created_at: datetime
+    sent_at: datetime | None
 
 
 class PublicCorrection(BaseModel):
@@ -262,5 +354,8 @@ class AdminStats(BaseModel):
     products: int
     offers: int
     public_offers: int
+    open_corrections: int
+    pending_source_intakes: int
+    # Backward-compatible alias; the UI uses the explicit fields above.
     open_reports: int
     last_scan_at: datetime | None

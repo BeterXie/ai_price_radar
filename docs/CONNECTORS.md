@@ -36,6 +36,8 @@ The response may be an array of items or an object containing `shop`, `updated_a
 
 Required per item: stable `id`, human-readable `name`, and public `url`. Price and stock may be omitted when unknown. The connector limits response size, accepts HTTPS for remote feeds, and normalizes records before import. Production deployments should additionally apply egress allow-lists or an outbound proxy.
 
+Merchant JSON Feed submissions share the `source_intakes` review state machine, but the LDXP Worker bridge does not claim them. A feed remains non-onboarded until a separately reviewed consumer can prove a successful published sync.
+
 ## Adding a connector
 
 Implement the connector protocol in `pipeline/connectors/base.py`, return common records, add fixtures and tests, then register it in `pipeline/connectors/__init__.py`. A connector must not bypass moderation, write directly to public tables, store credentials, or hide source URLs.

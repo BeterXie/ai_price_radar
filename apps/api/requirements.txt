@@ -5,4 +5,5 @@ psycopg[binary]>=3.2,<4
 pydantic-settings>=2.8,<3
 python-multipart>=0.0.20,<1
 httpx>=0.28,<1
+resend>=2,<3
 pytest>=8.3,<9

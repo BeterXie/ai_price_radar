@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY requirements.txt .
 ARG PIP_INDEX_URL=https://pypi.org/simple
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt
 RUN addgroup --system app && adduser --system --ingroup app app
 COPY --chown=app:app app ./app
 
