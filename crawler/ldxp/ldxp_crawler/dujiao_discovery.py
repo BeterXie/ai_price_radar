@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import random
 import re
@@ -10,6 +11,8 @@ import unicodedata
 import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
+from html import unescape
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -39,6 +42,7 @@ HOME_FINGERPRINTS = (
 )
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass(slots=True)
@@ -51,6 +55,7 @@ class DujiaoVerificationResult:
     api_verified: bool = False
     product_count: int | None = None
     matched_products: list[dict[str, Any]] = field(default_factory=list)
+    site_name: str = ""
     last_verified_at: str = field(default_factory=utc_now)
     error: str = ""
 
@@ -138,6 +143,42 @@ def _product_text(product: dict[str, Any]) -> str:
     return _normalized_search_text(" ".join(values))
 
 
+def read_limited_response(response: requests.Response, max_bytes: int = MAX_RESPONSE_BYTES) -> bytes:
+    try:
+        content_length = int(response.headers.get("Content-Length") or 0)
+    except (TypeError, ValueError):
+        content_length = 0
+    if content_length > max_bytes:
+        response.close()
+        raise ValueError("candidate response exceeds 5 MiB")
+
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_bytes:
+                raise ValueError("candidate response exceeds 5 MiB")
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        response.close()
+
+
+def _decode_body(response: requests.Response, body: bytes) -> str:
+    return body.decode(getattr(response, "encoding", None) or "utf-8", errors="replace")
+
+
+def _site_name(home_text: str) -> str:
+    match = TITLE_RE.search(home_text)
+    if not match:
+        return ""
+    title = re.sub(r"<[^>]+>", " ", unescape(match.group(1)))
+    return re.sub(r"\s+", " ", title).strip()[:200]
+
+
 class DujiaoVerifier:
     def __init__(
         self,
@@ -152,7 +193,7 @@ class DujiaoVerifier:
         self.max_pages = max(1, min(max_pages, 20))
         self.rate_limiter = GlobalRateLimiter(request_interval)
 
-    def _get(self, url: str, *, accept: str) -> requests.Response:
+    def _get(self, url: str, *, accept: str) -> tuple[requests.Response, bytes]:
         validate_public_url(url)
         self.rate_limiter.wait()
         response = self.session.get(
@@ -160,23 +201,23 @@ class DujiaoVerifier:
             headers={"Accept": accept},
             timeout=self.timeout,
             allow_redirects=False,
+            stream=True,
         )
-        content_length = int(response.headers.get("Content-Length") or 0)
-        if content_length > MAX_RESPONSE_BYTES or len(response.content) > MAX_RESPONSE_BYTES:
-            raise ValueError("candidate response exceeds 5 MiB")
-        return response
+        return response, read_limited_response(response)
 
-    def _home(self, origin: str) -> tuple[str, requests.Response]:
+    def _home(self, origin: str) -> tuple[str, requests.Response, bytes]:
         url = origin + "/"
         for _ in range(3):
-            response = self._get(url, accept="text/html,application/xhtml+xml")
+            response, body = self._get(url, accept="text/html,application/xhtml+xml")
             if response.status_code not in REDIRECT_STATUSES:
-                return normalize_candidate_origin(url) or origin, response
+                return normalize_candidate_origin(url) or origin, response, body
             location = response.headers.get("Location") or ""
             target = urllib.parse.urljoin(url, location)
             target_origin = normalize_candidate_origin(target)
             if not target_origin or is_excluded_origin(target_origin):
                 raise ValueError("candidate redirected to an invalid origin")
+            if target_origin != origin:
+                raise ValueError("candidate redirected to a different origin")
             validate_public_url(target)
             url = target
         raise ValueError("candidate redirects exceeded limit")
@@ -184,12 +225,12 @@ class DujiaoVerifier:
     def _products_page(self, origin: str, page: int) -> tuple[list[dict[str, Any]], int | None, int]:
         query = urllib.parse.urlencode({"page": page, "page_size": 100})
         url = f"{origin}/api/v1/public/products?{query}"
-        response = self._get(url, accept="application/json")
+        response, body = self._get(url, accept="application/json")
         if response.status_code != 200:
             raise ValueError(f"product API returned HTTP {response.status_code}")
         try:
-            document = response.json()
-        except ValueError as exc:
+            document = json.loads(_decode_body(response, body))
+        except (UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("product API did not return JSON") from exc
         if not isinstance(document, dict) or document.get("status_code") != 0 or not isinstance(document.get("data"), list):
             raise ValueError("product API response is not Dujiao-Next public data")
@@ -235,11 +276,13 @@ class DujiaoVerifier:
             return result
 
         try:
-            origin, home = self._home(origin)
+            origin, home, home_body = self._home(origin)
             result.origin = origin
             if home.status_code != 200:
                 raise ValueError(f"homepage returned HTTP {home.status_code}")
-            home_text = home.text.casefold()
+            decoded_home = _decode_body(home, home_body)
+            home_text = decoded_home.casefold()
+            result.site_name = _site_name(decoded_home)
             result.fingerprints = [name for name, marker in HOME_FINGERPRINTS if marker in home_text]
 
             page = 1
@@ -273,9 +316,7 @@ class DujiaoVerifier:
             if result.product_count is None:
                 result.product_count = fetched
 
-            if "dujiao-next" not in result.fingerprints:
-                result.status = "fingerprint_mismatch"
-            elif result.product_count <= 0:
+            if result.product_count <= 0:
                 result.status = "no_products"
             elif result.matched_products:
                 result.status = "pending_review"
@@ -316,35 +357,66 @@ class DujiaoDiscovery:
         verifier: DujiaoVerifier,
         *,
         logger: logging.Logger,
-        max_candidates: int,
+        max_new_candidates: int,
+        max_processed_candidates: int,
+        reverify_stale_hours: float,
     ):
         self.db = db
         self.verifier = verifier
         self.logger = logger
-        self.max_candidates = max_candidates
+        self.max_new_candidates = max_new_candidates
+        self.max_processed_candidates = max_processed_candidates
+        self.reverify_stale_hours = reverify_stale_hours
+        self.processed_count = 0
+        self.new_candidate_count = 0
         self._seen_results: dict[str, DujiaoVerificationResult] = {}
 
     def reached_limit(self) -> bool:
-        return self.max_candidates > 0 and self.db.dujiao_candidate_count() >= self.max_candidates
+        return self.max_processed_candidates > 0 and self.processed_count >= self.max_processed_candidates
 
-    def add_url(self, url: str, source: str, keywords: Sequence[str] = DEFAULT_AI_KEYWORDS) -> bool:
+    def reached_new_limit(self) -> bool:
+        return self.max_new_candidates > 0 and self.new_candidate_count >= self.max_new_candidates
+
+    def _stale_before(self) -> str:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max(0.0, self.reverify_stale_hours))
+        return cutoff.replace(microsecond=0).isoformat()
+
+    def add_url(
+        self,
+        url: str,
+        source: str,
+        keywords: Sequence[str] = DEFAULT_AI_KEYWORDS,
+        *,
+        force_reverify: bool = False,
+    ) -> bool:
         origin = normalize_candidate_origin(url)
         if not origin or is_excluded_origin(origin):
             return False
+        normalized_url = _normalized_https_url(url) or str(url).strip()
         previous = self._seen_results.get(origin)
-        result = (
-            replace(
+        if previous:
+            result = replace(
                 previous,
                 discovered_by=source,
-                discovered_url=_normalized_https_url(url) or str(url).strip(),
+                discovered_url=normalized_url,
             )
-            if previous
-            else self.verifier.verify(url, discovered_by=source, keywords=keywords)
-        )
+        else:
+            existing = self.db.get_dujiao_candidate(origin)
+            if existing is not None and not force_reverify and existing["last_verified_at"] > self._stale_before():
+                self.db.record_dujiao_discovery(origin, normalized_url, source)
+                return False
+            if existing is None and self.reached_new_limit():
+                return False
+            if self.reached_limit():
+                return False
+            result = self.verifier.verify(url, discovered_by=source, keywords=keywords)
+            self.processed_count += 1
         self._seen_results[origin] = result
         if result.origin:
             self._seen_results[result.origin] = result
         inserted = self.db.upsert_dujiao_candidate(result)
+        if inserted:
+            self.new_candidate_count += 1
         self.logger.info(
             "Dujiao 候选 %s 状态=%s 商品=%s AI命中=%s 来源=%s",
             result.origin,
@@ -354,6 +426,21 @@ class DujiaoDiscovery:
             source[:100],
         )
         return inserted
+
+    def reverify_stale(self, keywords: Sequence[str] = DEFAULT_AI_KEYWORDS) -> int:
+        verified = 0
+        remaining = (
+            max(0, self.max_processed_candidates - self.processed_count)
+            if self.max_processed_candidates > 0
+            else None
+        )
+        for row in self.db.list_stale_dujiao_candidates(self._stale_before(), limit=remaining):
+            if self.reached_limit():
+                break
+            before = self.processed_count
+            self.add_url(row["origin"], "stale-reverify", keywords, force_reverify=True)
+            verified += int(self.processed_count > before)
+        return verified
 
     def from_seeds(self, seeds: Sequence[str], seed_file: Path | None, keywords: Sequence[str]) -> int:
         values = list(seeds)

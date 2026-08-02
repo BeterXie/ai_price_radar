@@ -216,27 +216,29 @@ python ldxp_gpt_crawler.py discover \
 Dujiao-Next 使用独立候选表，不会进入 LDXP 浏览器扫描或自动发布链路。发现器只访问首页和公开商品列表 API，默认单线程、候选请求间隔 2 秒：
 
 ```text
-python ldxp_gpt_crawler.py discover-dujiao --sources seed,bing --seed-file dujiao_seeds.txt --request-interval 2
+python ldxp_gpt_crawler.py discover-dujiao --sources seed,bing --seed-file dujiao_seeds.txt --request-interval 2 --max-new-candidates 500 --max-processed-candidates 2000 --reverify-stale-hours 24
 ```
 
 候选必须同时满足：
 
-- 首页包含强 `Dujiao-Next` 指纹；
 - `/api/v1/public/products` 返回合法公开数据；
 - 公开商品数大于 0；
 - 至少一个带 slug 的商品标题、分类或标签命中 AI 关键词；
 - 不属于 `dujiao-next.com` 或其官方子域。
 
-验证结果写入同一 SQLite 文件的 `dujiao_candidates` 表。命中门槛的记录使用 `review_status=pending_review`，并以 JSONL 输出供人工检查。空店、API 失败、指纹不符和非 AI 店铺也会保留最后验证状态，但不会进入审核队列。
+首页的 `Dujiao-Next` 和默认主题文字只作为辅助指纹；白标或自定义页脚不会阻止 API 契约完整、且包含 AI 商品的候选进入人工审核。首页和公开 API 均禁止自动重定向、按 64 KiB 分块读取，超过 5 MiB 会在下载过程中立即关闭响应。
+
+`--max-new-candidates` 和 `--max-processed-candidates` 是单次运行额度，不读取历史候选总数。每次运行会先按 `--reverify-stale-hours` 复验过期候选；因此数据库累计超过 500 条后仍可发现新店和检查旧店。验证结果写入同一 SQLite 文件的 `dujiao_candidates` 表，只有本次验证符合门槛的 `review_status=pending_review` 记录会以 JSONL 输出供人工检查。
 
 人工审核只记录决定，不创建公开 Shop、Offer 或 Snapshot：
 
 ```text
 python ldxp_gpt_crawler.py review-dujiao --origin https://shop.example.com --decision approve --note "公开页面与商品已核对"
 python ldxp_gpt_crawler.py review-dujiao --origin https://shop.example.com --decision reject --note "来源信息不足"
+python ldxp_gpt_crawler.py review-dujiao --origin https://shop.example.com --decision disable --note "停止维护该来源"
 ```
 
-批准后仍需由操作员显式运行 `dujiao-next` Connector 的 dry-run 和发布流程。重新发现只更新验证证据，不会覆盖已有的人工批准或拒绝。
+审核状态限定为 `pending_review`、`approved`、`rejected`、`needs_re_review` 和 `disabled`。复验不会把 `rejected`、`disabled` 或 `needs_re_review` 自动提升为 `approved`；已批准来源若 API 契约失效、跨站重定向、过期复验时不可达、不再包含 AI 商品，或可识别的页面标题发生变化，会转为 `needs_re_review` 并记录原因。批准后仍需由操作员显式运行后续 dry-run 和发布流程，发现和审核命令本身不会创建公开 Shop、Offer 或 Snapshot。
 
 Common Crawl 的公共 CDX 服务是 URL 索引，不是页面正文全文搜索。它可以补证已知域名的历史 URL，但不能通过增加一条 `Dujiao-Next` 文本指纹发现任意域名；全网正文检索需要单独的 URL Index/WARC 分析任务，因此未伪装成当前低频命令的一部分。
 

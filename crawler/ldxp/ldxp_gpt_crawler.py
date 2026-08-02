@@ -86,7 +86,9 @@ def add_dujiao_discovery_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--bing-delay", type=float, default=2.0)
     parser.add_argument("--request-interval", type=float, default=2.0, help="候选站公开请求最小间隔")
     parser.add_argument("--max-api-pages", type=int, default=5, help="单个候选最多读取的公开商品页数")
-    parser.add_argument("--max-candidates", type=int, default=500)
+    parser.add_argument("--max-new-candidates", type=int, default=500, help="本次最多新增候选数；0 不限制")
+    parser.add_argument("--max-processed-candidates", type=int, default=2000, help="本次最多验证候选数；0 不限制")
+    parser.add_argument("--reverify-stale-hours", type=float, default=24.0, help="复验超过该小时数未验证的候选")
 
 
 def add_scan_args(parser: argparse.ArgumentParser) -> None:
@@ -132,7 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     dujiao_review = sub.add_parser("review-dujiao", help="记录 Dujiao-Next 候选人工审核决定")
     dujiao_review.add_argument("--db", default="ldxp_crawler.db")
     dujiao_review.add_argument("--origin", required=True, help="候选店铺根地址")
-    dujiao_review.add_argument("--decision", required=True, choices=("approve", "reject"))
+    dujiao_review.add_argument("--decision", required=True, choices=("approve", "reject", "disable"))
     dujiao_review.add_argument("--note", default="", help="可选审核备注")
     dujiao_review.add_argument("-v", "--verbose", action="store_true")
     dujiao_review.set_defaults(keywords=[])
@@ -200,7 +202,9 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
         db,
         verifier,
         logger=logger,
-        max_candidates=args.max_candidates,
+        max_new_candidates=args.max_new_candidates,
+        max_processed_candidates=args.max_processed_candidates,
+        reverify_stale_hours=args.reverify_stale_hours,
     )
     sources = {value.strip().casefold() for value in args.sources.split(",") if value.strip()}
     unsupported = sources - {"seed", "bing"}
@@ -208,13 +212,19 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
         raise ValueError(f"unsupported Dujiao discovery sources: {', '.join(sorted(unsupported))}")
     filter_keywords = merge_unique([*DEFAULT_AI_KEYWORDS, *args.keywords])
     before = db.dujiao_candidate_count()
+    reverified = discovery.reverify_stale(filter_keywords)
     if "seed" in sources:
         discovery.from_seeds(args.seed, args.seed_file, filter_keywords)
     if "bing" in sources and not discovery.reached_limit():
         discovery.from_bing(args.keywords, pages=args.bing_pages, count=args.bing_count, delay=args.bing_delay)
-    pending = db.list_dujiao_candidates(review_status="pending_review")
+    pending = db.list_dujiao_candidates(
+        review_status="pending_review",
+        verification_status="pending_review",
+    )
     logger.info(
-        "Dujiao 发现完成：新增 %s 个候选，累计 %s 个，待人工审核 %s 个。",
+        "Dujiao 发现完成：处理 %s 个（复验 %s），新增 %s 个，累计 %s 个，待人工审核 %s 个。",
+        discovery.processed_count,
+        reverified,
         db.dujiao_candidate_count() - before,
         db.dujiao_candidate_count(),
         len(pending),
@@ -231,6 +241,8 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
             "first_seen_at": row["first_seen_at"],
             "last_verified_at": row["last_verified_at"],
             "review_status": row["review_status"],
+            "site_name": row["site_name"],
+            "re_review_reason": row["re_review_reason"],
         }, ensure_ascii=False))
 
 
@@ -238,7 +250,11 @@ def run_dujiao_review(args: argparse.Namespace, db: StateDB) -> None:
     origin = normalize_candidate_origin(args.origin)
     if not origin:
         raise ValueError("invalid Dujiao candidate origin")
-    decision = "approved" if args.decision == "approve" else "rejected"
+    decision = {
+        "approve": "approved",
+        "reject": "rejected",
+        "disable": "disabled",
+    }[args.decision]
     if not db.review_dujiao_candidate(origin, decision, args.note):
         raise ValueError("Dujiao candidate was not found")
     row = next(item for item in db.list_dujiao_candidates() if item["origin"] == origin)
