@@ -6,7 +6,7 @@
 
 - 只部署已发布且 CI 通过的 Tag，生产源码、API 和 Web 必须来自同一提交。
 - 先暂停定时器，再等待当前刷新锁一次；部署完成前不要恢复定时器。
-- 只重建 `api`、`web` 和需要更新的 `notification-worker`，不重建 `db`，无迁移版本不得执行数据库结构操作。
+- 按改动范围重建服务：普通发布重建 `api`、`web`，邮件代码变更同时重建 `notification-worker`，`crawler/` 或 Crawler Dockerfile 变更必须重建 `crawler`。不重建 `db`，无迁移版本不得执行数据库结构操作。
 - 部署前只做一次 PostgreSQL 备份，并保留旧 API/Web 镜像和旧源码包。
 - 普通 API/Web 发布不等待完整爬虫刷新。只有改动 `crawler/`、`pipeline/` 或数据库结构时，才把一次完整刷新作为部署门禁。
 
@@ -70,6 +70,10 @@ docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-api-1)" \
   "ai-price-radar-api:rollback-STAMP"
 docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-web-1)" \
   "ai-price-radar-web:rollback-STAMP"
+
+# 本次改动 crawler/ 或 Crawler Dockerfile 时执行
+docker image tag "$(docker image inspect -f '{{.Id}}' ai-price-radar-crawler:latest)" \
+  "ai-price-radar-crawler:rollback-STAMP"
 ```
 
 ## 3. 本机构建并上传
@@ -119,6 +123,9 @@ COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
 
 $COMPOSE build api web notification-worker
 
+# 本次改动 crawler/ 或 Crawler Dockerfile 时必须执行
+$COMPOSE build crawler
+
 # Release Notes 要求迁移时，在切换 API 前用新 API 镜像执行；脚本名按版本替换。
 docker run --rm \
   --network ai-price-radar_default \
@@ -163,6 +170,8 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] API/Web 部署后日志无 traceback、exception、critical
 [ ] 三个 systemd timer 已恢复为 active
 [ ] 数据库备份、旧源码包和旧镜像回滚标签存在
+[ ] 本次改动 crawler/ 时，新 Crawler 镜像已构建且旧镜像回滚标签存在
+[ ] 本次改动 crawler/、pipeline/ 或数据库结构时，一次完整刷新结束且日志确认 failed=0
 ```
 
 恢复定时器：
@@ -185,6 +194,9 @@ COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
 docker image tag ai-price-radar-api:rollback-STAMP ai-price-radar-api:latest
 docker image tag ai-price-radar-web:rollback-STAMP ai-price-radar-web:latest
 $COMPOSE up -d --no-deps --force-recreate api web
+
+# 本次发布改动 crawler/ 时同时恢复 Crawler 镜像
+docker image tag ai-price-radar-crawler:rollback-STAMP ai-price-radar-crawler:latest
 ```
 
 若发布同时修改了定时脚本、crawler 或 pipeline，再恢复 `backups/source_pre_deploy_STAMP.tar.gz` 中的源码。数据库仅在明确存在不兼容迁移且获得单独批准时恢复。
