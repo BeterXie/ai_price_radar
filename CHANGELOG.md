@@ -2,6 +2,21 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.3.1] - 2026-08-02
+
+### Added
+
+- Administrator intake emails now include a direct link to the matching review item in the admin panel.
+- Final onboarding emails now include the published public shop page.
+
+### Changed
+
+- Admin intake links still require the administrator key, then scroll to and highlight the referenced request after authentication.
+
+### Security
+
+- Administrator links contain only the intake identifier and never include the administrator key.
+
 ## [3.3.0] - 2026-08-02
 
 ### Added

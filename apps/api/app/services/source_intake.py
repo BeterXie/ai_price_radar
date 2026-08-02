@@ -30,6 +30,10 @@ def admin_recipients() -> list[str]:
     return result
 
 
+def site_url(path: str) -> str:
+    return f"{get_settings().public_site_url.rstrip('/')}/{path.lstrip('/')}"
+
+
 def _insert_outbox_row(db: Session, values: dict[str, object]) -> None:
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
@@ -100,7 +104,8 @@ def enqueue_submission_notifications(db: Session, intake: SourceIntake) -> None:
                 f"来源名称：{intake.shop_name or '未填写'}\n"
                 f"联系邮箱：{intake.contact_email}\n"
                 f"申请说明：{intake.note or '未填写'}\n"
-                "请在管理后台完成初审。"
+                f"审批地址：{site_url(f'/admin?intake={intake.id}#source-intake-{intake.id}')}\n"
+                "打开后输入管理密钥，即可定位到此申请。"
             ),
             dedupe_key=f"source-intake:{intake.id}:shop_request.submitted.admin:{recipient}",
         )

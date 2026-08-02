@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.config import get_settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import NotificationOutbox, Report, SourceIntake
+from app.models import NotificationOutbox, Report, Shop, SourceIntake
 from app.services import outbox
 from app.services.outbox import process_once
 
@@ -32,6 +32,7 @@ def api_client(monkeypatch):
     monkeypatch.setattr(settings, "admin_api_key", "admin-test")
     monkeypatch.setattr(settings, "intake_worker_key", "worker-test")
     monkeypatch.setattr(settings, "report_rate_limit_count", 100)
+    monkeypatch.setattr(settings, "public_site_url", "https://ai.pricememo.cn")
 
     def override_db():
         with Session(engine) as db:
@@ -87,6 +88,9 @@ def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
             "shop_request.submitted.admin",
             "shop_request.submitted.applicant",
         }
+        admin_mail = next(row for row in outbox if row.event_type == "shop_request.submitted.admin")
+        assert f"https://ai.pricememo.cn/admin?intake={intake_id}#source-intake-{intake_id}" in admin_mail.text_body
+        assert "输入管理密钥" in admin_mail.text_body
 
 
 def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_client):
@@ -127,6 +131,10 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
     )
     assert not_published.status_code == 409
 
+    with Session(engine) as db:
+        db.add(Shop(token="APPROVE1", name="测试店铺", source_url="https://pay.ldxp.cn/shop/APPROVE1"))
+        db.commit()
+
     onboarded = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
@@ -145,6 +153,8 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         events = list(db.scalars(select(NotificationOutbox)))
         assert len(events) == 4
         assert sum(row.event_type == "shop_intake.onboarded" for row in events) == 1
+        onboarded_mail = next(row for row in events if row.event_type == "shop_intake.onboarded")
+        assert "https://ai.pricememo.cn/shops/APPROVE1" in onboarded_mail.text_body
 
 
 def test_reject_retry_and_lease_generation_are_idempotent(api_client):

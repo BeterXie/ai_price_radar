@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, X } from "@phosphor-icons/react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -97,10 +97,21 @@ export function AdminPanel() {
   const [offers, setOffers] = useState<AdminOffer[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [intakes, setIntakes] = useState<SourceIntake[]>([]);
+  const [targetIntakeId, setTargetIntakeId] = useState<number | null>(null);
   const [reportDrafts, setReportDrafts] = useState<Record<number, { public_summary: string; merchant_response: string }>>({});
   const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
   const headers = { "X-Admin-Key": key };
+
+  useEffect(() => {
+    const intakeId = Number(new URLSearchParams(window.location.search).get("intake"));
+    if (Number.isInteger(intakeId) && intakeId > 0) setTargetIntakeId(intakeId);
+  }, []);
+
+  useEffect(() => {
+    if (targetIntakeId === null || !intakes.some((intake) => intake.id === targetIntakeId)) return;
+    document.getElementById(`source-intake-${targetIntakeId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [intakes, targetIntakeId]);
 
   async function load() {
     setError("");
@@ -242,7 +253,7 @@ export function AdminPanel() {
           <div className="border-b hairline px-5 py-4 font-semibold">店铺收录申请</div>
           <div className="divide-y divide-[color:var(--line)]">
             {intakes.map((intake) => (
-              <div key={intake.id} className="grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start">
+              <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--accent)]" : ""}`}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="mono text-xs text-black/40">#{intake.id} · {intake.source_type === "ldxp" ? "链动小铺" : "商家 JSON Feed"}</p>
