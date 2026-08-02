@@ -47,3 +47,15 @@ def test_production_preflight_accepts_smtp_fallback():
     env["SMTP_HOST"] = "smtp.example.com"
     env["SMTP_FROM"] = "no-reply@example.com"
     assert validate_production_env(env) == []
+
+
+def test_production_preflight_requires_complete_author_support_configuration():
+    env = _valid_env()
+    env["NEXT_PUBLIC_SUPPORT_ENABLED"] = "true"
+    errors = validate_production_env(env)
+    assert any("NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL" in error for error in errors)
+    assert any("NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL" in error for error in errors)
+
+    env["NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL"] = "https://ai.pricememo.cn/support/wechat.jpg"
+    env["NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL"] = "https://ai.pricememo.cn/support/alipay.jpg"
+    assert validate_production_env(env) == []

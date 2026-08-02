@@ -16,6 +16,8 @@ services:
       dockerfile: Dockerfile.prebuilt
       args:
         ALPINE_REPOSITORY_HOST: mirrors.aliyun.com
+    volumes:
+      - ./data/support:/app/public/support:ro
     networks:
       default:
       pricememo_frontend:

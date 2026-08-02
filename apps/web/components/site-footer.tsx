@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GITHUB_REPOSITORY_URL, SUPPORT_AVAILABLE } from "@/lib/community";
 
 export function SiteFooter() {
   return (
@@ -16,6 +17,8 @@ export function SiteFooter() {
             <Link href="/developers">开发者</Link><Link href="/shops/submit">申请收录</Link>
             <Link href="/about">关于本站</Link><Link href="/privacy">隐私政策</Link>
             <Link href="/terms">使用条款</Link><Link href="/security">安全说明</Link>
+            <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub 点 Star</a>
+            {SUPPORT_AVAILABLE && <a href="#support-author">支持作者</a>}
           </div>
         </div>
       </div>

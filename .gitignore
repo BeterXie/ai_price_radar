@@ -21,6 +21,8 @@ output/
 backups/
 dogfood-output/
 data/crawler/
+data/support/
+apps/web/public/support/
 postgres_data/
 *.log
 *.tmp

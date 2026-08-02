@@ -84,6 +84,11 @@ docker image tag "$(docker image inspect -f '{{.Id}}' ai-price-radar-crawler:lat
 $env:NEXT_PUBLIC_API_BASE_URL = "https://ai.pricememo.cn"
 $env:NEXT_PUBLIC_SITE_NAME = "AI Price Radar"
 
+# 启用支持作者功能时，这三项是公开的构建时配置，不是密钥。
+$env:NEXT_PUBLIC_SUPPORT_ENABLED = "true"
+$env:NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL = "https://ai.pricememo.cn/support/wechat.jpg"
+$env:NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL = "https://ai.pricememo.cn/support/alipay.jpg"
+
 npm --prefix apps/web run build
 
 if (rg -a -l "http://localhost:8000" apps/web/.next/static) {
@@ -99,6 +104,8 @@ Get-FileHash $Source,$Web -Algorithm SHA256
 
 scp $Source "pricememo-prod:/tmp/"
 scp $Web "pricememo-prod:/tmp/"
+scp "C:\Users\59908\Pictures\wechat.jpg" "pricememo-prod:/tmp/wechat.jpg"
+scp "C:\Users\59908\Pictures\alipay.jpg" "pricememo-prod:/tmp/alipay.jpg"
 ```
 
 ## 4. Staging 校验、构建和切换
@@ -113,6 +120,7 @@ scp $Web "pricememo-prod:/tmp/"
 5. python3 scripts/production_preflight.py
 6. docker compose ... config -q
 7. 覆盖 /opt/ai-price-radar-v3，但保留 .env、data/、backups/
+8. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
 ```
 
 随后只构建并依次切换 API、Web：
@@ -121,7 +129,10 @@ scp $Web "pricememo-prod:/tmp/"
 cd /opt/ai-price-radar-v3
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
 
-$COMPOSE build api web notification-worker
+$COMPOSE build api web
+
+# 本次改动邮件通知配置或 Worker 代码时，取消下一行注释后执行
+# $COMPOSE build notification-worker
 
 # 本次改动 crawler/ 或 Crawler Dockerfile 时必须执行
 $COMPOSE build crawler
@@ -148,8 +159,8 @@ $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
 $COMPOSE up -d --no-deps web
-# 若本次发布包含邮件通知配置或 Worker 代码，同时切换 notification-worker
-$COMPOSE up -d --no-deps notification-worker
+# 若本次发布包含邮件通知配置或 Worker 代码，同时取消下一行注释并切换 notification-worker
+# $COMPOSE up -d --no-deps notification-worker
 # 确认公网首页出现目标版本文案
 ```
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
-test "$VERSION" = "3.3.1"
+test "$VERSION" = "3.4.0"
 grep -q "VERSION = \"$VERSION\"" "$ROOT/apps/api/app/main.py"
 grep -q "\"version\": \"$VERSION\"" "$ROOT/apps/web/package.json"
 (
