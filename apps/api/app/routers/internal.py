@@ -3,15 +3,15 @@ from __future__ import annotations
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..database import get_db
-from ..models import SourceIntake
+from ..models import Shop, SourceIntake
 from ..schemas import SourceIntakeClaimOut, SourceIntakeClaimRequest, SourceIntakeResult
 from ..security import require_intake_worker
-from ..services.source_intake import enqueue_transition_notification, utcnow
+from ..services.source_intake import enqueue_transition_notification, site_url, utcnow
 
 router = APIRouter(
     prefix="/api/v1/internal/source-intakes",
@@ -121,6 +121,12 @@ def report_source_intake_result(
         intake.failure_reason = ""
         intake.lease_expires_at = None
         intake.finished_at = utcnow()
+        shop_token = db.scalar(
+            select(Shop.token)
+            .where(func.lower(Shop.token) == intake.source_key.casefold())
+            .order_by(Shop.id)
+            .limit(1)
+        ) or intake.source_key
         enqueue_transition_notification(
             db,
             intake,
@@ -128,7 +134,8 @@ def report_source_intake_result(
             subject="店铺已正式收录",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）已完成验证并发布。\n"
-                f"已发布商品数：{intake.product_count}。"
+                f"已发布商品数：{intake.product_count}。\n"
+                f"店铺页面：{site_url(f'/shops/{shop_token}')}"
             ),
         )
         db.commit()
