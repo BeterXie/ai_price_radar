@@ -45,6 +45,90 @@ export const PRODUCT_SLUGS = [
 
 export type ProductSlug = (typeof PRODUCT_SLUGS)[number];
 
+export const WORKFLOW_GUIDE_SLUGS = [
+  "openai-codex",
+  "cockpit-to-codex",
+  "sub2api-to-codex",
+  "api-endpoint-to-codex",
+] as const;
+
+export type WorkflowGuideSlug = (typeof WORKFLOW_GUIDE_SLUGS)[number];
+
+export type WorkflowRelevance =
+  | "recommended"
+  | "conditional"
+  | "advanced";
+
+export interface ProductWorkflowReference {
+  workflowSlug: WorkflowGuideSlug;
+  relevance: WorkflowRelevance;
+
+  /**
+   * 用户满足什么条件时选择此路线。
+   * 必填，不允许仅写“视情况而定”。
+   */
+  condition: string;
+
+  /**
+   * 卡片中显示的目标用户。
+   */
+  audience: string;
+
+  /**
+   * 产品特有警告。例如 Team/K12 管理员可撤销席位。
+   */
+  note?: string;
+}
+
+export type WorkflowVariantId = "cc-switch" | "codex-plusplus";
+
+export interface WorkflowVariant {
+  id: WorkflowVariantId;
+  title: string;
+  description: string;
+  walkthrough: GuideWalkthrough;
+}
+
+export interface WorkflowProblem {
+  problem: string;
+  likelyCause: string;
+  action: string;
+}
+
+export interface WorkflowGuide {
+  slug: WorkflowGuideSlug;
+  title: string;
+  description: string;
+
+  /**
+   * 用于卡片直接展示链路，例如：
+   * ["OpenAI 账号", "Cockpit", "CC Switch / Codex++", "Codex"]
+   */
+  flow: readonly string[];
+
+  audience: readonly string[];
+  prerequisites: readonly string[];
+  overview: readonly GuideBlock[];
+
+  /**
+   * 详细页中分别展示 CC Switch 和 Codex++ 两个方案。
+   * 不做 Tab；使用两个独立 section，方便 SEO 和无 JS 阅读。
+   */
+  variants: readonly WorkflowVariant[];
+
+  verificationChecklist: readonly string[];
+  commonProblems: readonly WorkflowProblem[];
+  riskNotes: readonly string[];
+  faq: readonly GuideFaq[];
+
+  /**
+   * OpenAI 官方文档和第三方项目自己的官方仓库都可以放入，
+   * 但必须通过 source.kind 明确区分。
+   */
+  sources: readonly GuideSource[];
+  lastReviewedAt: string;
+}
+
 export const GENERAL_GUIDE_SLUGS = [
   "buying-checklist",
   "account-control",
@@ -97,12 +181,22 @@ export interface GuideWalkthrough {
   steps: readonly GuideWalkthroughStep[];
 }
 
-export interface OfficialSource {
+export type GuideSourceKind =
+  | "platform_official"
+  | "project_official";
+
+export interface GuideSource {
   title: string;
   url: string;
   publisher: string;
   lastCheckedAt: string;
+  kind: GuideSourceKind;
 }
+
+/**
+ * 临时兼容现有代码，后续可以逐步移除旧名。
+ */
+export type OfficialSource = GuideSource;
 
 export interface ProductGuide {
   productSlug: ProductSlug;
@@ -113,6 +207,7 @@ export interface ProductGuide {
   supportedDeliveryTypes: readonly KnownDeliveryType[];
   overview: readonly GuideBlock[];
   walkthrough?: GuideWalkthrough;
+  workflowReferences?: readonly ProductWorkflowReference[];
   buyingChecklist: readonly string[];
   verificationChecklist: readonly string[];
   riskNotes: readonly string[];
@@ -164,4 +259,5 @@ export interface GuideRegistry {
   products: Readonly<Record<ProductSlug, ProductGuide>>;
   delivery: Readonly<Record<KnownDeliveryType, DeliveryGuide>>;
   general: Readonly<Record<GeneralGuideSlug, GeneralGuide>>;
+  workflows: Readonly<Record<WorkflowGuideSlug, WorkflowGuide>>;
 }

@@ -13,7 +13,9 @@ import { GuideSection } from "@/components/guides/guide-section";
 import { GuideSources } from "@/components/guides/guide-sources";
 import { GuideSteps } from "@/components/guides/guide-steps";
 import { GuideWalkthrough } from "@/components/guides/guide-walkthrough";
-import { getDeliveryGuide, getProductGuide, productGuides } from "@/lib/guides/registry";
+import { GuideWorkflowCards } from "@/components/guides/guide-workflow-cards";
+import { getDeliveryGuide, getProductGuide, getWorkflowGuide, productGuides } from "@/lib/guides/registry";
+import type { ProductWorkflowReference, WorkflowGuide } from "@/lib/guides/types";
 import { articleJsonLd, BRAND_NAMES, breadcrumbJsonLd, faqJsonLd, guideMetadata, howToJsonLd } from "../../_shared";
 
 type PageProps = { params: Promise<{ productSlug: string }> };
@@ -45,6 +47,17 @@ export default async function ProductGuidePage({ params }: PageProps) {
   const deliveryEntries = guide.supportedDeliveryTypes.map((type) => getDeliveryGuide(type)).filter((item) => item !== undefined);
   const comparisonBlocks = guide.overview.filter((block) => block.type === "comparison");
   const overviewBlocks = guide.overview.filter((block) => block.type === "paragraph");
+  const workflowEntries = (guide.workflowReferences ?? [])
+    .map((reference) => ({
+      reference,
+      guide: getWorkflowGuide(reference.workflowSlug),
+    }))
+    .filter(
+      (entry): entry is {
+        reference: ProductWorkflowReference;
+        guide: WorkflowGuide;
+      } => Boolean(entry.guide),
+    );
   const problemRows = deliveryEntries.flatMap((delivery) =>
     delivery.commonProblems.map((item) => [delivery.shortLabel, item.problem, item.action]),
   );
@@ -58,6 +71,9 @@ export default async function ProductGuidePage({ params }: PageProps) {
     { id: "buying-checklist", label: "购买前确认" },
     { id: "delivery-guides", label: "购买后使用" },
     { id: "verification", label: "确认服务生效" },
+    ...(workflowEntries.length
+      ? [{ id: "usage-workflows", label: "用于 Codex" }]
+      : []),
     { id: "problems", label: "常见错误" },
     { id: "security", label: "安全和隐私" },
     { id: "after-sales", label: "售后证据" },
@@ -156,6 +172,16 @@ export default async function ProductGuidePage({ params }: PageProps) {
         </GuideSection>
 
         <GuideSection id="verification" title="如何确认服务已经生效"><GuideChecklist items={guide.verificationChecklist} /></GuideSection>
+
+        {workflowEntries.length ? (
+          <GuideSection
+            id="usage-workflows"
+            title="购买后如何用于 Codex"
+            intro="先确认账号、套餐或席位已经生效，再选择本地账号池、服务器账号池，或直接 API 路线。Cockpit/Sub2API 负责上游账号与 API，CC Switch/Codex++ 负责把接口配置给 Codex。"
+          >
+            <GuideWorkflowCards entries={workflowEntries} />
+          </GuideSection>
+        ) : null}
 
         <GuideSection id="problems" title="常见错误与处理">
           <GuideComparison columns={["交付方式", "问题", "安全处理"]} rows={problemRows} />

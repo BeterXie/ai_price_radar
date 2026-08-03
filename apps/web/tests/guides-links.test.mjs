@@ -25,6 +25,14 @@ test("all source links are HTTPS and all contextual guide links are internal", (
       assert.match(resolveGuideHref({ productSlug: product.productSlug, deliveryType }), /^\/guides(?:\/|$)/);
     }
   }
+
+  for (const workflow of Object.values(guideRegistry.workflows)) {
+    for (const source of workflow.sources) {
+      const url = new URL(source.url);
+      assert.equal(url.protocol, "https:", source.url);
+      assert.ok(url.hostname.length > 0, source.url);
+    }
+  }
 });
 
 test("canonical path helpers cover index, brands, products, delivery, and general pages", () => {

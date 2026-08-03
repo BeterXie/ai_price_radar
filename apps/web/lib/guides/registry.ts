@@ -2,6 +2,7 @@ import { brandGuideEntries } from "@/content/guides/brands";
 import { deliveryGuideEntries } from "@/content/guides/delivery";
 import { generalGuideEntries } from "@/content/guides/general";
 import { productGuideEntries } from "@/content/guides/products";
+import { workflowGuideEntries } from "@/content/guides/workflows";
 import type {
   BrandGuide,
   BrandSlug,
@@ -12,6 +13,8 @@ import type {
   KnownDeliveryType,
   ProductGuide,
   ProductSlug,
+  WorkflowGuide,
+  WorkflowGuideSlug,
 } from "./types";
 import { validateGuideRegistry } from "./validation";
 
@@ -29,12 +32,14 @@ export const brandGuides: Readonly<Record<BrandSlug, BrandGuide>> = indexBy(bran
 export const productGuides: Readonly<Record<ProductSlug, ProductGuide>> = indexBy(productGuideEntries, (guide) => guide.productSlug, "product guide");
 export const deliveryGuides: Readonly<Record<KnownDeliveryType, DeliveryGuide>> = indexBy(deliveryGuideEntries, (guide) => guide.deliveryType, "delivery guide");
 export const generalGuides: Readonly<Record<GeneralGuideSlug, GeneralGuide>> = indexBy(generalGuideEntries, (guide) => guide.slug, "general guide");
+export const workflowGuides: Readonly<Record<WorkflowGuideSlug, WorkflowGuide>> = indexBy(workflowGuideEntries, (guide) => guide.slug, "workflow guide");
 
 export const guideRegistry: GuideRegistry = {
   brands: brandGuides,
   products: productGuides,
   delivery: deliveryGuides,
   general: generalGuides,
+  workflows: workflowGuides,
 };
 
 validateGuideRegistry(guideRegistry);
@@ -53,4 +58,10 @@ export function getDeliveryGuide(type?: string | null): DeliveryGuide | undefine
 
 export function getGeneralGuide(slug?: string | null): GeneralGuide | undefined {
   return slug ? generalGuides[slug as GeneralGuideSlug] : undefined;
+}
+
+export function getWorkflowGuide(
+  slug?: string | null,
+): WorkflowGuide | undefined {
+  return slug ? workflowGuides[slug as WorkflowGuideSlug] : undefined;
 }
