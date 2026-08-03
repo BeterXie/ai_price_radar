@@ -77,6 +77,7 @@ export function CockpitJsonConverter() {
     const overflowFiles = allFiles.slice(COCKPIT_LIMITS.maxFilesPerBatch);
     const textDocuments: JsonTextDocument[] = [];
     const fileIssues: CockpitConversionIssue[] = [];
+    let totalBytes = 0;
 
     for (const file of inScopeFiles) {
       if (file.size > COCKPIT_LIMITS.maxFileBytes) {
@@ -87,6 +88,15 @@ export function CockpitJsonConverter() {
         });
         continue;
       }
+      if (totalBytes + file.size > COCKPIT_LIMITS.maxTotalFileBytes) {
+        fileIssues.push({
+          sourceName: file.name,
+          path: "$",
+          reason: `累计文件大小超过 ${COCKPIT_LIMITS.maxTotalFileBytes / (1024 * 1024)} MB 上限`,
+        });
+        continue;
+      }
+      totalBytes += file.size;
       try {
         textDocuments.push({ sourceName: file.name, text: await file.text() });
       } catch (readError) {
@@ -108,8 +118,8 @@ export function CockpitJsonConverter() {
     const nextResult = convertJsonTexts(textDocuments);
     setResult({ accounts: nextResult.accounts, issues: [...nextResult.issues, ...fileIssues] });
     setInputText("");
-    setSelectedFiles(textDocuments.map((document) => document.sourceName));
-    setFileSummary(`解析文件：${textDocuments.length} 个成功，${allFiles.length - textDocuments.length} 个跳过`);
+    setSelectedFiles(nextResult.parsedFileNames);
+    setFileSummary(`解析文件：${nextResult.parsedFileNames.length} 个成功，${allFiles.length - nextResult.parsedFileNames.length} 个跳过`);
     setError(
       nextResult.accounts.length
         ? ""
@@ -201,7 +211,7 @@ export function CockpitJsonConverter() {
             选择 JSON 文件（支持多选）
           </button>
           <p className="mt-2 text-xs leading-5 text-black/45">
-            单次最多 {COCKPIT_LIMITS.maxFilesPerBatch} 个文件，每个不超过 {COCKPIT_LIMITS.maxFileBytes / (1024 * 1024)} MB。
+            单次最多 {COCKPIT_LIMITS.maxFilesPerBatch} 个文件，单个不超过 {COCKPIT_LIMITS.maxFileBytes / (1024 * 1024)} MB，累计不超过 {COCKPIT_LIMITS.maxTotalFileBytes / (1024 * 1024)} MB。
           </p>
 
           {selectedFiles.length ? (
@@ -308,7 +318,7 @@ export function CockpitJsonConverter() {
               <div className="flex gap-3">
                 <CheckCircle size={21} weight="fill" className="shrink-0" aria-hidden="true" />
                 <p>
-                  转换完成：{result.accounts.length} 个账号已通过必要字段校验（accessToken、account_id、id_token）。下载后回到 Cockpit Tools，进入 Codex → “+” → “导入”，选择刚生成的文件。
+                  转换完成：{result.accounts.length} 个账号已通过必要字段校验（accessToken、account_id、email、id_token）。下载后回到 Cockpit Tools，进入 Codex → “+” → “导入”，选择刚生成的文件。
                 </p>
               </div>
               {result.issues.length ? (

@@ -56,11 +56,15 @@ test("converts a ChatGPT session into Cockpit format", () => {
 });
 
 test("finds nested and batched account records", () => {
+  const firstIdToken = jwt({
+    email: "one@example.com",
+    "https://api.openai.com/auth": { chatgpt_account_id: "one" },
+  });
   const result = convertJsonDocuments([{
     sourceName: "batch.json",
     value: {
       accounts: [
-        { email: "one@example.com", account_id: "one", access_token: opaqueToken("one"), id_token: "id-one" },
+        { email: "one@example.com", account_id: "one", access_token: opaqueToken("one"), id_token: firstIdToken },
         { meta: { label: "two@example.com" }, tokens: { access_token: opaqueToken("two"), account_id: "two", refresh_token: "refresh-two" } },
       ],
     },
@@ -71,7 +75,7 @@ test("finds nested and batched account records", () => {
   assert.deepEqual(buildCockpitDocument(result.accounts), [
     {
       type: "codex",
-      id_token: "id-one",
+      id_token: firstIdToken,
       access_token: opaqueToken("one"),
       refresh_token: "",
       account_id: "one",
@@ -125,7 +129,7 @@ test("rejects a long opaque access token without an account id", () => {
   assert.match(result.issues[0].reason, /account_id/);
 });
 
-test("accepts an opaque access token with account id and real id token", () => {
+test("replaces an unparsable id_token with a synthetic token", () => {
   const result = convertJsonDocuments([{
     sourceName: "opaque-valid.json",
     value: {
@@ -139,8 +143,41 @@ test("accepts an opaque access token with account id and real id token", () => {
   assert.equal(result.issues.length, 0);
   assert.equal(result.accounts.length, 1);
   assert.equal(result.accounts[0].account.account_id, "account-1");
-  assert.equal(result.accounts[0].account.id_token, "real-id-token");
+  assert.notEqual(result.accounts[0].account.id_token, "real-id-token");
+  assert.match(result.accounts[0].account.id_token, /\.synthetic$/);
+  const payload = JSON.parse(Buffer.from(result.accounts[0].account.id_token.split(".")[1], "base64url").toString());
+  assert.equal(payload.email, "buyer@example.com");
   assert.equal(result.accounts[0].account.expired, "");
+});
+
+test("keeps a parseable id_token that contains email", () => {
+  const idToken = jwt({
+    email: "buyer@example.com",
+    "https://api.openai.com/auth": { chatgpt_account_id: "account-1" },
+  });
+  const result = convertJsonDocuments([{
+    sourceName: "real-id.json",
+    value: {
+      email: "buyer@example.com",
+      account_id: "account-1",
+      access_token: opaqueToken("opaque"),
+      id_token: idToken,
+    },
+  }], NOW);
+
+  assert.equal(result.issues.length, 0);
+  assert.equal(result.accounts[0].account.id_token, idToken);
+});
+
+test("rejects accounts without email", () => {
+  const result = convertJsonDocuments([{
+    sourceName: "no-email.json",
+    value: { account_id: "account-1", access_token: opaqueToken("opaque") },
+  }], NOW);
+
+  assert.equal(result.accounts.length, 0);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0].reason, /缺少 email/);
 });
 
 test("deduplicates accounts with an identical access token", () => {
@@ -149,8 +186,8 @@ test("deduplicates accounts with an identical access token", () => {
     sourceName: "duplicates.json",
     value: {
       accounts: [
-        { email: "a@example.com", account_id: "a", access_token: sharedToken, id_token: "id-a" },
-        { email: "b@example.com", account_id: "b", access_token: sharedToken, id_token: "id-b" },
+        { email: "a@example.com", account_id: "a", access_token: sharedToken },
+        { email: "b@example.com", account_id: "b", access_token: sharedToken },
       ],
     },
   }], NOW);
@@ -167,7 +204,7 @@ test("emits expired even when a refresh token is present", () => {
   });
   const result = convertJsonDocuments([{
     sourceName: "refresh.json",
-    value: { account_id: "account-1", accessToken, refresh_token: "refresh-token" },
+    value: { email: "buyer@example.com", account_id: "account-1", accessToken, refresh_token: "refresh-token" },
   }], NOW);
 
   assert.equal(result.accounts.length, 1);
@@ -225,6 +262,7 @@ test("keeps valid files when another file fails to parse", () => {
   assert.equal(result.issues.length, 1);
   assert.equal(result.issues[0].sourceName, "bad.json");
   assert.match(result.issues[0].reason, /JSON 解析失败/);
+  assert.deepEqual(result.parsedFileNames, ["good.json"]);
 });
 
 test("stops parsing documents nested beyond the depth limit", () => {
@@ -250,7 +288,29 @@ test("caps the number of converted accounts per batch", () => {
 
   assert.equal(result.accounts.length, COCKPIT_LIMITS.maxAccountsPerBatch);
   assert.equal(result.issues.length, 1);
-  assert.match(result.issues[0].reason, /账号数超过单次 500/);
+  assert.match(result.issues[0].reason, /剩余账号预算/);
+});
+
+test("caps total accounts across multiple files", () => {
+  const firstFile = {
+    accounts: Array.from({ length: COCKPIT_LIMITS.maxAccountsPerBatch }, (_, index) => ({
+      email: `user${index}@example.com`,
+      account_id: `account-${index}`,
+      access_token: opaqueToken(`token-${index}`),
+      id_token: `id-${index}`,
+    })),
+  };
+  const result = convertJsonDocuments([
+    { sourceName: "first.json", value: firstFile },
+    {
+      sourceName: "second.json",
+      value: { email: "extra@example.com", account_id: "extra", access_token: opaqueToken("extra") },
+    },
+  ], NOW);
+
+  assert.equal(result.accounts.length, COCKPIT_LIMITS.maxAccountsPerBatch);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0].reason, /账号总数已超过单次批次 500/);
 });
 
 test("parses JSON text and reports invalid syntax", () => {
