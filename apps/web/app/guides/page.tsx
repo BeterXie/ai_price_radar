@@ -4,7 +4,7 @@ import { ArrowRight, BookOpenText, MagnifyingGlass } from "@phosphor-icons/react
 import { GuideCard } from "@/components/guides/guide-card";
 import { GuideIndex } from "@/components/guides/guide-index";
 import { GuideJsonLd } from "@/components/guides/guide-json-ld";
-import { brandGuides, deliveryGuides, generalGuides, productGuides } from "@/lib/guides/registry";
+import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 import { BRAND_NAMES, breadcrumbJsonLd } from "./_shared";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -53,7 +53,26 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
     (!delivery || guide.deliveryType === delivery) && includesQuery([guide.title, guide.summary, guide.shortLabel], query),
   );
   const general = Object.values(generalGuides).filter((guide) => includesQuery([guide.title, guide.description], query));
+  const workflows = Object.values(workflowGuides).filter((guide) =>
+    includesQuery(
+      [
+        guide.title,
+        guide.description,
+        ...guide.flow,
+        "Cockpit",
+        "Sub2API",
+        "CC Switch",
+        "Codex++",
+      ],
+      query,
+    ),
+  );
   const hasFilters = Boolean(query || brand || product || delivery);
+  const guideCount = Object.keys(brandGuides).length
+    + Object.keys(productGuides).length
+    + Object.keys(deliveryGuides).length
+    + Object.keys(generalGuides).length
+    + Object.keys(workflowGuides).length;
 
   return (
     <main id="main-content">
@@ -70,8 +89,8 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
           <aside className="rounded-[14px] border border-black bg-[color:var(--panel)] p-6">
             <BookOpenText size={27} aria-hidden="true" />
             <p className="mt-5 text-sm font-semibold">当前教程目录</p>
-            <p className="mt-2 text-4xl font-semibold tracking-[-.055em]">{1 + Object.keys(brandGuides).length + Object.keys(productGuides).length + Object.keys(deliveryGuides).length + Object.keys(generalGuides).length}</p>
-            <p className="mt-2 text-sm leading-6 text-black/55">覆盖 5 个品牌、22 个产品、10 种交付方式和 6 篇通用指南。</p>
+            <p className="mt-2 text-4xl font-semibold tracking-[-.055em]">{1 + guideCount}</p>
+            <p className="mt-2 text-sm leading-6 text-black/55">覆盖 {Object.keys(brandGuides).length} 个品牌、{Object.keys(productGuides).length} 个产品、{Object.keys(deliveryGuides).length} 种交付方式、{Object.keys(generalGuides).length} 篇通用指南和 {Object.keys(workflowGuides).length} 个工作流。</p>
           </aside>
         </div>
       </header>
@@ -112,7 +131,7 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
           </form>
           {hasFilters ? (
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-black/55">
-              <span>找到 {brands.length + products.length + deliveries.length + general.length} 篇相关教程</span>
+              <span>找到 {brands.length + products.length + deliveries.length + general.length + workflows.length} 篇相关教程</span>
               <Link href="/guides" className="flex min-h-11 items-center font-medium text-black hover:underline">清空筛选</Link>
             </div>
           ) : null}
@@ -126,6 +145,12 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
 
         <GuideIndex id="brands" title="全部品牌" description="查看品牌产品范围、套餐选择、常见交付和官方帮助入口。" empty={brands.length === 0}>
           {brands.map((guide) => <GuideCard key={guide.brand} href={`/guides/brands/${guide.brand}`} title={guide.title} description={guide.description} meta={BRAND_NAMES[guide.brand]} />)}
+        </GuideIndex>
+
+        <GuideIndex id="workflows" title="OpenAI 与 Codex 使用工作流" description="从账号或 API 交付开始，选择 Cockpit、Sub2API、CC Switch 或 Codex++ 完成实际接入。" empty={workflows.length === 0}>
+          {workflows.map((guide) => (
+            <GuideCard key={guide.slug} href={`/guides/workflows/${guide.slug}`} title={guide.title} description={guide.description} meta="OpenAI / Codex 工作流" />
+          ))}
         </GuideIndex>
 
         <GuideIndex id="products" title="全部产品教程" description="按稳定产品分类查看购买前确认、交付方式和使用步骤。" empty={products.length === 0}>
