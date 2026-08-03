@@ -43,9 +43,20 @@ function validateSources(sources: readonly OfficialSource[], label: string): voi
 }
 
 function productSearchText(product: ProductGuide): string {
+  const walkthroughText = product.walkthrough
+    ? product.walkthrough.steps.flatMap((step) => [
+        step.title,
+        step.action,
+        ...(step.items ?? []),
+        ...(step.links?.flatMap((link) => [link.label, link.url]) ?? []),
+        step.result,
+        step.trouble ?? "",
+      ])
+    : [];
   return [
     product.title,
     product.description,
+    ...walkthroughText,
     ...product.buyingChecklist,
     ...product.verificationChecklist,
     ...product.riskNotes,
@@ -95,6 +106,31 @@ export function validateGuideRegistry(registry: GuideRegistry): void {
     assert(product.riskNotes.length > 0, `product ${product.productSlug} is missing risk notes`);
     assert(product.faq.length > 0, `product ${product.productSlug} is missing FAQ`);
     validateSources(product.officialSources, `product ${product.productSlug}`);
+
+    if (product.walkthrough) {
+      assert(product.walkthrough.title.trim(), `product ${product.productSlug} walkthrough is missing title`);
+      assert(product.walkthrough.intro.trim(), `product ${product.productSlug} walkthrough is missing intro`);
+      assert(product.walkthrough.steps.length >= 4, `product ${product.productSlug} walkthrough must include at least four steps`);
+      for (const step of product.walkthrough.steps) {
+        assert(step.title.trim(), `product ${product.productSlug} walkthrough has a step without title`);
+        assert(step.action.trim(), `product ${product.productSlug} walkthrough has a step without action`);
+        assert(step.result.trim(), `product ${product.productSlug} walkthrough has a step without result`);
+        for (const item of step.items ?? []) {
+          assert(item.trim(), `product ${product.productSlug} walkthrough has an empty substep`);
+        }
+        for (const link of step.links ?? []) {
+          assert(link.label.trim(), `product ${product.productSlug} walkthrough has a link without label`);
+          if (link.url.startsWith("/") && !link.url.startsWith("//")) continue;
+          let url: URL;
+          try {
+            url = new URL(link.url);
+          } catch {
+            throw new Error(`Invalid guide registry: product ${product.productSlug} walkthrough has an invalid link: ${link.url}`);
+          }
+          assert(url.protocol === "https:", `product ${product.productSlug} walkthrough link must use HTTPS: ${link.url}`);
+        }
+      }
+    }
 
     assertUnique(product.supportedDeliveryTypes, `delivery type in product ${product.productSlug}`);
     for (const deliveryType of product.supportedDeliveryTypes) {

@@ -17,6 +17,7 @@ export const OFFICIAL_SOURCES = {
     "OpenAI",
   ),
   openaiPlatform: officialSource("OpenAI API Documentation", "https://platform.openai.com/docs/", "OpenAI"),
+  openaiCodexCli: officialSource("Codex CLI", "https://developers.openai.com/codex/cli/", "OpenAI"),
   openaiTerms: officialSource("OpenAI Terms of Use", "https://openai.com/policies/terms-of-use/", "OpenAI"),
   anthropicHelp: officialSource("Anthropic Help Center", "https://support.anthropic.com/", "Anthropic"),
   anthropicDocs: officialSource("Claude API Documentation", "https://docs.anthropic.com/", "Anthropic"),

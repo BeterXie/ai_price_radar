@@ -82,6 +82,21 @@ export interface GuideFaq {
   answer: string;
 }
 
+export interface GuideWalkthroughStep {
+  title: string;
+  action: string;
+  items?: readonly string[];
+  links?: readonly { label: string; url: string }[];
+  result: string;
+  trouble?: string;
+}
+
+export interface GuideWalkthrough {
+  title: string;
+  intro: string;
+  steps: readonly GuideWalkthroughStep[];
+}
+
 export interface OfficialSource {
   title: string;
   url: string;
@@ -97,6 +112,7 @@ export interface ProductGuide {
   audience: readonly string[];
   supportedDeliveryTypes: readonly KnownDeliveryType[];
   overview: readonly GuideBlock[];
+  walkthrough?: GuideWalkthrough;
   buyingChecklist: readonly string[];
   verificationChecklist: readonly string[];
   riskNotes: readonly string[];

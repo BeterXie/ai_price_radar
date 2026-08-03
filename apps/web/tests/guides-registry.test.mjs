@@ -83,6 +83,28 @@ test("product content includes required safety and maintenance sections", () => 
   assert.match(JSON.stringify(guideRegistry.delivery.relay_api), /第三方.*处理|处理.*第三方/);
 });
 
+test("representative product guides include actionable walkthroughs", () => {
+  for (const slug of ["chatgpt-plus", "codex-access"]) {
+    const walkthrough = guideRegistry.products[slug].walkthrough;
+    assert.ok(walkthrough, slug);
+    assert.ok(walkthrough.steps.length >= 5, slug);
+    for (const step of walkthrough.steps) {
+      assert.ok(step.title.length > 0, `${slug}: step title`);
+      assert.ok(step.action.length > 40, `${slug}: ${step.title} action`);
+      assert.ok(step.result.length > 10, `${slug}: ${step.title} result`);
+    }
+  }
+
+  const codexGuide = JSON.stringify(guideRegistry.products["codex-access"]);
+  assert.match(codexGuide, /\/tools\/json-to-cockpit/);
+  assert.match(codexGuide, /jlcodes99\/cockpit-tools\/releases/);
+  assert.match(codexGuide, /批量导入/);
+  assert.match(codexGuide, /启动 API/);
+  assert.match(codexGuide, /恢复可见性/);
+  assert.match(codexGuide, /%USERPROFILE%/);
+  assert.doesNotMatch(codexGuide, /chatgpt\.com\/api\/auth\/session/);
+});
+
 test("validation rejects a duplicate product slug", () => {
   const duplicateRegistry = {
     ...guideRegistry,

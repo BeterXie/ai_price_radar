@@ -1,5 +1,6 @@
 import type {
   BrandSlug,
+  GuideWalkthrough,
   KnownDeliveryType,
   OfficialSource,
   ProductGuide,
@@ -35,6 +36,7 @@ interface ProductSeed {
   faq: { question: string; answer: string };
   officialSources: readonly OfficialSource[];
   securityProfile: "account" | "api" | "verification";
+  walkthrough?: GuideWalkthrough;
 }
 
 const productSeeds = [
@@ -63,6 +65,42 @@ const productSeeds = [
     difference: "Plus 与 Free、Go、Pro、团队席位及 API 分别管理；API 用量不包含在 Plus 中。",
     audience: ["希望提升个人 ChatGPT 使用体验的用户", "需要判断代充与账号交付区别的用户"],
     supportedDeliveryTypes: ["subscription_recharge", "finished_account", "semi_finished_account", "card_code", "shared_pool", "trial_account"],
+    walkthrough: {
+      title: "购买后按这 5 步确认 Plus",
+      intro: "界面文字可能随版本调整，但判断顺序不变：先锁定账号，再确认交付，最后只以 ChatGPT 官方账户状态为准。",
+      steps: [
+        {
+          title: "先确认自己买的是哪种交付",
+          action: "回到订单原页，找到“交付方式、账号归属、期限”三项。自己的账号由商家充值属于代充；收到新账号属于成品或半成品号；收到兑换字符属于卡密；多人共用或限时使用属于共享池或体验号。把这三项和订单号一起保存。",
+          result: "你能明确说出使用哪个账号、由谁控制邮箱，以及权益从什么时候开始计算。",
+          trouble: "商品只写“Plus 自动发货”却没有账号归属或期限时，先不要登录或提交任何凭据，向原商家确认后再继续。",
+        },
+        {
+          title: "在官方页面锁定目标账号",
+          action: "打开 ChatGPT 官方页面，通过头像菜单进入设置或套餐管理入口。先核对当前账号标识；代充必须是下单时约定的自有账号，成品号则必须与交付记录一致。不要仅凭浏览器里已经登录就假定账号正确。",
+          result: "官方页面显示的账号与订单约定一致，截图时已遮挡完整邮箱和个人信息。",
+          trouble: "账号不一致时立即退出，不要继续兑换、充值或修改安全设置。",
+        },
+        {
+          title: "只执行当前交付需要的动作",
+          action: "代充在商家通知完成后由你本人刷新官方账户页；卡密只在商品明确指向的官方兑换入口提交一次；成品号按约定登录后先核对控制权；共享池和体验号不要修改密码、邮箱或 MFA，也不要上传隐私资料。",
+          result: "没有把密码、验证码、恢复码或付款信息交给不必要的页面和人员。",
+          trouble: "页面额外索取验证码、恢复码或证件时停止操作，改用官方帮助渠道或按订单售后处理。",
+        },
+        {
+          title: "查看套餐名称、期限和续费状态",
+          action: "回到官方设置或套餐管理页，逐项核对套餐名称是否为 Plus、账号是否正确、当前周期或到期信息是否符合订单、是否存在你未同意的自动续费。不要用某个功能暂时可用来替代套餐核验。",
+          result: "官方账户页明确显示 Plus，且期限与订单口径一致。",
+          trouble: "仍显示 Free 时先刷新并重新核对账号；超过商家承诺到账时间后，保存完整状态页和时间再联系售后。",
+        },
+        {
+          title: "做一次低风险验证并保存证据",
+          action: "使用官方账户页当前明确列出的一个 Plus 功能完成最小测试，同时保存订单、到账时间和经过遮挡的套餐状态截图。成品号、共享池和体验号只处理可丢弃的非敏感内容。",
+          result: "套餐状态与最小功能测试都正常，并且你已经知道账号异常时该联系谁。",
+          trouble: "功能受限但套餐显示正常时，记录功能名称、完整提示和发生时间，不要反复改密码或切换地区。",
+        },
+      ],
+    },
     buyingNotes: ["确认商品明确写明 Plus、期限和账号归属。", "共享与体验报价不能和长期独享 Plus 直接比较。"],
     verificationNotes: ["在 ChatGPT 官方设置中确认当前账号显示 Plus、正确期限与续费状态。"],
     riskNotes: ["代充前充错账号、共享会话暴露和成品号找回是不同风险，应按交付形式分别判断。"],
@@ -185,17 +223,96 @@ const productSeeds = [
   {
     productSlug: "codex-access",
     brand: "openai",
-    title: "Codex 账号与访问指南",
-    description: "区分 Codex 的完整账号、订阅权限和团队席位，核对登录主体、组织、使用环境与控制权。",
-    summary: "Codex 商品可能交付可登录账号、为现有账号开通的访问权限，或组织工作区中的席位。",
-    difference: "Codex 访问不应与 OpenAI API 额度、ChatGPT Plus 或第三方中转自动画等号，具体权限以官方账号和组织显示为准。",
-    audience: ["需要在开发工作流中使用 Codex 的用户", "正在比较个人账号、充值和团队席位的用户"],
+    title: "Codex JSON 导入与 Cockpit 使用教程",
+    description: "按实际界面完成 JSON 格式转换、Cockpit Tools 下载、批量导入、账号启动、API 服务和会话恢复。",
+    summary: "部分 Codex 商品会交付 JSON 文件，需要先转换成 Cockpit 格式，再导入 Cockpit Tools；导入后既可以启动单个账号，也可以把已选账号加入 API 服务统一使用。",
+    difference: "Cockpit Tools、JSON 凭证和本地 API 服务属于第三方使用方式，不是 OpenAI 官方 Codex 登录；本页专门说明这类商品的实际操作顺序。",
+    audience: ["购买后收到 CPA、Sub2 或其他 JSON 文件的用户", "需要用 Cockpit Tools 管理一个或多个 Codex 账号的用户"],
     supportedDeliveryTypes: ["finished_account", "subscription_recharge", "team_seat"],
-    buyingNotes: ["确认可用环境、登录账号、组织名称、期限和权限来源。", "团队席位需确认管理员与被移除后的处理。"],
-    verificationNotes: ["在官方入口确认当前账号或组织拥有 Codex 访问，并用非敏感仓库完成最小测试。"],
-    riskNotes: ["不要让第三方 Codex 账号访问私有代码、生产密钥或公司机密。"],
-    faq: { question: "Codex 访问一定包含 OpenAI API 额度吗？", answer: "不一定。账号或组织访问与 API 项目额度需要分别核对。" },
-    officialSources: [OFFICIAL_SOURCES.openaiHelp, OFFICIAL_SOURCES.openaiPlatform],
+    walkthrough: {
+      title: "按顺序完成 JSON 转换、导入和启动",
+      intro: "下面按你收到商家 JSON 文件后的实际流程讲解。本文以 Windows 64 位为例；其他系统只在下载文件类型上不同。",
+      steps: [
+        {
+          title: "先把商家 JSON 转成 Cockpit 格式",
+          action: "卡网下载的文件可能是 CPA、Sub2 或其他结构，Cockpit Tools 不能直接识别时，需要先用转换页面生成 Cockpit 格式。转换页在浏览器本地解析，但 JSON 内含登录令牌，仍要按账号密码同等级别保存。",
+          items: [
+            "打开转换工具，先点击顶部的“Cockpit”，把输出格式切换为 Cockpit。",
+            "点击“选择文件”，选中商家交付的一个或多个 JSON；需要批量处理时可以一次多选。",
+            "等待页面完成解析，核对账号数、跳过项和输出格式，确认输出显示为 Cockpit。",
+            "点击“下载 JSON”，把转换后的文件保存到单独文件夹；不要覆盖商家交付的原文件。",
+          ],
+          links: [
+            { label: "打开站内 JSON 转换工具", url: "/tools/json-to-cockpit" },
+          ],
+          result: "下载目录中同时保留原始 JSON 和新生成的 Cockpit JSON，转换页面显示的账号数量与所选文件基本一致。",
+          trouble: "出现“跳过项”、字段缺失或账号数为 0 时，不要手工编造 token；先确认文件没有损坏，并把不含完整令牌的错误截图发给原商家。",
+        },
+        {
+          title: "下载并安装 Cockpit Tools",
+          action: "从项目的 GitHub Releases 页面下载，不要在搜索结果里的陌生网盘找安装包。本文以 Windows 64 位为例，选择文件名中包含 x64 和 setup.exe 的安装包。",
+          items: [
+            "打开 Releases 页面，优先查看标记为 Latest 的稳定版；截至 2026-08-03，最新发布为 v1.3.16。",
+            "Windows 64 位选择 x64 安装包；ARM、macOS 或 Linux 用户按自己的系统和架构选择对应文件。",
+            "如果商家明确要求旧版兼容，可以进入对应历史版本；参考页使用的是 v0.23.9，不要把旧文件名当成当前最新版。",
+            "完成安装并启动 Cockpit Tools，先确认左侧导航中能看到 Codex 入口。",
+          ],
+          links: [
+            { label: "打开 Cockpit Tools Releases", url: "https://github.com/jlcodes99/cockpit-tools/releases" },
+            { label: "访问 Cockpit Tools 官网", url: "https://cockpit.tools/" },
+          ],
+          result: "Cockpit Tools 可以正常打开，版本号与下载页面一致，左侧导航显示 Codex 功能入口。",
+          trouble: "Windows 拦截安装时先核对下载域名、版本和文件名；来源不一致就删除安装包，不要直接关闭系统安全功能。",
+        },
+        {
+          title: "批量导入 JSON 并启动账号",
+          action: "打开 Cockpit Tools 后，进入左侧的 Codex 页面，再把第 1 步下载的 Cockpit JSON 导入。原始 CPA 或 Sub2 文件不要和转换后的文件混着选。",
+          items: [
+            "点击 Codex 页面中的蓝色“+”按钮，然后选择“导入”。",
+            "选择转换后的 Cockpit JSON；有多个文件时可以一次多选并批量导入。",
+            "导入完成后检查账号列表，确认账号数量、状态和备注没有明显异常。",
+            "进入设置，找到 Codex 启动路径；不知道路径时先使用默认自动选择，再确认最终路径。",
+            "回到账号列表，点击目标账号右侧的“启动”，等待 Codex 打开。",
+          ],
+          result: "账号出现在 Codex 列表中，点击“启动”后能够打开 Codex，当前启动账号与列表选择一致。",
+          trouble: "导入后没有账号时，确认选中的是转换后的文件；启动无反应时先检查 Codex 启动路径，再查看 Cockpit 的错误提示。",
+        },
+        {
+          title: "把多个账号加入 API 服务",
+          action: "如果只使用一个账号，可以停在上一步；如果需要让多个已导入账号统一提供额度和自动切换，就在 Cockpit 的 Codex API 服务中选择账号并启动本地服务。",
+          items: [
+            "进入 API 服务页面，点击“添加账号”或账号选择区域。",
+            "如果希望 Free 账号也参与使用，关闭会排除或限制 Free 账号的筛选；不需要时保持限制即可。",
+            "点击“全选”或逐个勾选需要加入服务的账号，然后点击“保存”。",
+            "返回 API 服务首页，点击“启动 API”，等待服务状态变为运行中。",
+            "页面提供“标准”和“快速”模式时按任务需要选择；先用标准模式完成一次小任务，再决定是否切换。",
+          ],
+          result: "API 服务显示运行中，已选账号数量正确；某个账号额度用完或不可用时，服务能够继续尝试其他可用账号。",
+          trouble: "服务启动但没有可用账号时，检查账号是否已保存、令牌是否过期、Free 账号筛选和每个账号的状态。",
+        },
+        {
+          title: "不要频繁切换单账号和 API 服务",
+          action: "确定一种使用方式后尽量保持一致。频繁在单账号启动和 API 服务之间切换，可能让本地聊天记录暂时不可见；记录通常仍在本机，需要通过会话管理恢复。",
+          items: [
+            "如果聊天记录不见了，打开 Cockpit 的“会话管理”。",
+            "勾选需要恢复的线程；无法判断时先全选，再点击“恢复可见性”。",
+            "恢复操作可能把记录再次写入 %USERPROFILE%\\.codex，重复恢复会产生重复文件。",
+            "清理前先完整备份 .codex 目录；不熟悉文件结构时不要手动批量删除。",
+          ],
+          result: "目标聊天记录重新可见，并且你已经固定使用单账号或 API 服务中的一种模式。",
+          trouble: "恢复后仍不可见时先停止重复恢复，备份 .codex 目录并记录 Cockpit 版本、账号和错误提示，再联系原商家或工具维护者。",
+        },
+      ],
+    },
+    buyingNotes: ["确认商品交付的是可转换 JSON，并询问原始格式、账号数量和令牌有效期。", "确认商家是否指定 Cockpit 版本、售后范围以及账号失效后的处理。"],
+    verificationNotes: ["核对转换账号数、Cockpit 导入账号数和 API 服务所选账号数，三处数量差异必须能解释。"],
+    riskNotes: [
+      "JSON 中可能包含 accessToken、sessionToken 或其他登录凭证，不要发送到聊天群、公开仓库或无法确认处理方式的网站。",
+      "Cockpit Tools 和本地 API 服务属于第三方工具，不等于 OpenAI 官方服务；只导入你有权使用的账号。",
+      "首次使用会话恢复前先备份 %USERPROFILE%\\.codex，避免误删本地聊天记录。",
+    ],
+    faq: { question: "JSON 转换成功为什么仍然不能启动？", answer: "格式转换只改变文件结构，不会修复过期令牌、缺失字段或账号权限。先检查导入文件、启动路径和账号状态，再保存错误提示联系原商家。" },
+    officialSources: [OFFICIAL_SOURCES.openaiCodexCli, OFFICIAL_SOURCES.openaiHelp, OFFICIAL_SOURCES.openaiPlatform],
     securityProfile: "account",
   },
   {
@@ -419,6 +536,7 @@ function buildProductGuide(seed: ProductSeed): ProductGuide {
     description: seed.description,
     audience: seed.audience,
     supportedDeliveryTypes: seed.supportedDeliveryTypes,
+    walkthrough: seed.walkthrough,
     overview: [
       { type: "paragraph", text: seed.summary },
       {

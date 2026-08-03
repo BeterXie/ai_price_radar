@@ -12,6 +12,7 @@ import { GuideLayout } from "@/components/guides/guide-layout";
 import { GuideSection } from "@/components/guides/guide-section";
 import { GuideSources } from "@/components/guides/guide-sources";
 import { GuideSteps } from "@/components/guides/guide-steps";
+import { GuideWalkthrough } from "@/components/guides/guide-walkthrough";
 import { getDeliveryGuide, getProductGuide, productGuides } from "@/lib/guides/registry";
 import { articleJsonLd, BRAND_NAMES, breadcrumbJsonLd, faqJsonLd, guideMetadata, howToJsonLd } from "../../_shared";
 
@@ -50,6 +51,7 @@ export default async function ProductGuidePage({ params }: PageProps) {
   const path = `/guides/products/${guide.productSlug}`;
   const toc = [
     { id: "what-is", label: "这是什么" },
+    ...(guide.walkthrough ? [{ id: "walkthrough", label: "照着做" }] : []),
     { id: "differences", label: "相邻套餐区别" },
     { id: "audience", label: "适合哪些用户" },
     { id: "delivery-types", label: "常见交付方式" },
@@ -73,7 +75,11 @@ export default async function ProductGuidePage({ params }: PageProps) {
           { name: guide.title, path },
         ]),
         articleJsonLd({ title: guide.title, description: guide.description, path, dateModified: guide.lastReviewedAt }),
-        howToJsonLd({ title: `${guide.title}购买前确认`, description: guide.description, steps: guide.buyingChecklist }),
+        howToJsonLd({
+          title: guide.walkthrough?.title ?? `${guide.title}购买前确认`,
+          description: guide.description,
+          steps: guide.walkthrough?.steps.map((step) => step.action) ?? guide.buyingChecklist,
+        }),
         faqJsonLd(guide.faq),
       ]} />
       <GuideLayout
@@ -100,6 +106,12 @@ export default async function ProductGuidePage({ params }: PageProps) {
         }
       >
         <GuideSection id="what-is" title="这是什么"><GuideBlocks blocks={overviewBlocks} /></GuideSection>
+
+        {guide.walkthrough ? (
+          <GuideSection id="walkthrough" title="照着做：从交付到确认生效">
+            <GuideWalkthrough walkthrough={guide.walkthrough} />
+          </GuideSection>
+        ) : null}
 
         <GuideSection id="differences" title="它与相邻套餐有什么区别" intro="名称相近的套餐可能在权益、用量、组织管理和计费方式上不同，最终以官方产品页和账户页为准。">
           {comparisonBlocks.length ? <GuideBlocks blocks={comparisonBlocks} /> : (
