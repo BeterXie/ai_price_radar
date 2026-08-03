@@ -5,6 +5,7 @@ import type {
   OfficialSource,
   ProductGuide,
   ProductSlug,
+  ProductWorkflowReference,
 } from "@/lib/guides/types";
 import { GUIDE_DISCLAIMER, LAST_REVIEWED_AT, OFFICIAL_SOURCES } from "./sources";
 
@@ -519,6 +520,168 @@ const apiSafetyNotes = [
   "设置用量预算和账单提醒；Key 泄露时立即撤销并轮换，同时检查异常用量。",
 ];
 
+const WORKFLOW_REFERENCE_MATRIX: Partial<Record<ProductSlug, readonly ProductWorkflowReference[]>> = {
+  "chatgpt-account": [
+    {
+      workflowSlug: "openai-codex",
+      relevance: "conditional",
+      audience: "需要确认基础账号是否包含 Codex 权限的用户",
+      condition: "账号实际拥有 Codex 权限时",
+    },
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "conditional",
+      audience: "收到可登录账号、OAuth 或可导入凭证的用户",
+      condition: "收到可登录账号、OAuth 或可导入凭证",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "需要服务器账号池的团队",
+      condition: "需要服务器账号池时",
+    },
+  ],
+  "chatgpt-plus": [
+    {
+      workflowSlug: "openai-codex",
+      relevance: "recommended",
+      audience: "先确认 Plus 和 Codex 当前可用的用户",
+      condition: "先确认 Plus 和 Codex 当前可用",
+    },
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "recommended",
+      audience: "个人电脑和多账号用户",
+      condition: "个人电脑和多账号场景",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "多设备、多用户或服务端团队",
+      condition: "多设备、多用户或服务端场景",
+    },
+  ],
+  "chatgpt-go": [
+    {
+      workflowSlug: "openai-codex",
+      relevance: "conditional",
+      audience: "需要确认 Go 是否包含 Codex 权限的用户",
+      condition: "以当前官方权限为准",
+    },
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "conditional",
+      audience: "能完成 OAuth 或凭证导入的用户",
+      condition: "能完成 OAuth 或凭证导入时",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "服务端场景的团队",
+      condition: "服务端场景",
+    },
+  ],
+  "chatgpt-k12": [
+    {
+      workflowSlug: "openai-codex",
+      relevance: "conditional",
+      audience: "工作区管理员允许的用户",
+      condition: "工作区管理员允许且席位包含相关权限",
+      note: "团队席位不等于账号所有权。管理员可能限制 Codex、查看组织策略或移除席位；不要在第三方工作区和未经授权的账号池中处理公司机密。",
+    },
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "conditional",
+      audience: "有合法登录和导入能力的工作区用户",
+      condition: "使用者有合法登录和导入能力",
+      note: "团队席位不等于账号所有权。管理员可能限制 Codex、查看组织策略或移除席位；不要在第三方工作区和未经授权的账号池中处理公司机密。",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "管理员授权的服务端团队",
+      condition: "管理员授权的服务端场景",
+      note: "团队席位不等于账号所有权。管理员可能限制 Codex、查看组织策略或移除席位；不要在第三方工作区和未经授权的账号池中处理公司机密。",
+    },
+  ],
+  "chatgpt-pro-5x": [
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "recommended",
+      audience: "个人、多账号用户",
+      condition: "个人、多账号场景",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "服务端团队",
+      condition: "服务端场景",
+    },
+  ],
+  "chatgpt-pro-20x": [
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "recommended",
+      audience: "个人、多账号用户",
+      condition: "个人、多账号场景",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "服务端团队",
+      condition: "服务端场景",
+    },
+  ],
+  "chatgpt-pro": [
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "recommended",
+      audience: "个人、多账号用户",
+      condition: "个人、多账号场景",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "服务端团队",
+      condition: "服务端场景",
+    },
+  ],
+  "openai-api-credit": [
+    {
+      workflowSlug: "api-endpoint-to-codex",
+      relevance: "recommended",
+      audience: "已有 API Key 或额度的开发者",
+      condition: "已有 API Key 或额度",
+      note: "此商品直接交付 API 使用能力，不需要先把账号导入 Cockpit。只有在你需要自行做账号池时才考虑 Sub2API。",
+    },
+  ],
+  "chatgpt-access-service": [
+    {
+      workflowSlug: "api-endpoint-to-codex",
+      relevance: "recommended",
+      audience: "已有 Base URL 和用户 Key 的用户",
+      condition: "已有 Base URL 和用户 Key",
+      note: "此商品直接交付 API 使用能力，不需要先把账号导入 Cockpit。只有在你需要自行做账号池时才考虑 Sub2API。",
+    },
+  ],
+  "codex-access": [
+    {
+      workflowSlug: "cockpit-to-codex",
+      relevance: "recommended",
+      audience: "收到 JSON、OAuth 或账号交付的用户",
+      condition: "JSON、OAuth 或账号交付",
+      note: "若交付的是团队席位，管理员可能限制或移除席位；不要把工作区凭证导入未授权账号池。",
+    },
+    {
+      workflowSlug: "sub2api-to-codex",
+      relevance: "advanced",
+      audience: "需要服务器账号池的团队",
+      condition: "服务器账号池场景",
+      note: "若交付的是团队席位，管理员可能限制或移除席位；不要把工作区凭证导入未授权账号池。",
+    },
+  ],
+};
+
 function buildProductGuide(seed: ProductSeed): ProductGuide {
   const securityNotes = seed.securityProfile === "api"
     ? apiSafetyNotes
@@ -537,6 +700,7 @@ function buildProductGuide(seed: ProductSeed): ProductGuide {
     audience: seed.audience,
     supportedDeliveryTypes: seed.supportedDeliveryTypes,
     walkthrough: seed.walkthrough,
+    workflowReferences: WORKFLOW_REFERENCE_MATRIX[seed.productSlug],
     overview: [
       { type: "paragraph", text: seed.summary },
       {
