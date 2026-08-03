@@ -65,7 +65,7 @@ DDL = PREPARE_DDL + FINAL_DDL
 
 STATUS_RANK = {
     "published": 100,
-    "onboarded": 100,
+    "onboarded": 95,
     "approved": 90,
     "validated": 85,
     "syncing": 80,
@@ -118,6 +118,8 @@ def merge_merchant_intakes(connection: psycopg.Connection) -> int:
 
         merged = 0
         for rows in grouped.values():
+            # Keep the furthest-progressed row. Recency breaks equal-status ties,
+            # and the lowest id makes the result deterministic when timestamps tie.
             ordered = sorted(
                 rows,
                 key=lambda row: (STATUS_RANK.get(str(row["status"]), 0), row.get("updated_at") or row["created_at"], -row["id"]),
@@ -159,6 +161,7 @@ def merge_merchant_intakes(connection: psycopg.Connection) -> int:
                     _first(ordered, "source_url", survivor["source_url"]),
                     _first(ordered, "shop_name", ""),
                     _first(ordered, "contact_email", ""),
+                    # Free-text audit fields retain distinct values in priority order.
                     _joined(ordered, "note"),
                     "manual" if any(row.get("origin") == "manual" for row in rows) else _first(ordered, "origin", "manual"),
                     survivor["status"],
