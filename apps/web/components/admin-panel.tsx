@@ -66,7 +66,7 @@ type Report = {
   created_at: string;
 };
 
-type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "merchant_feed" | "other";
+type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "other";
 
 type SourceIntake = {
   id: number;
@@ -215,7 +215,6 @@ export function AdminPanel() {
     ldxp: "链动小铺",
     dujiao_next: "Dujiao-Next",
     merchant_json: "商家 JSON Feed",
-    merchant_feed: "商家 JSON Feed",
     other: "其他独立站",
   };
 

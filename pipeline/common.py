@@ -521,7 +521,14 @@ def begin_snapshot(db: Session, source: str) -> CatalogSnapshot:
     return snapshot
 
 
-def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Product], snapshot_id: int | None = None) -> tuple[bool, bool]:
+def upsert_offer(
+    db: Session,
+    record: dict[str, Any],
+    products: dict[str, Product],
+    snapshot_id: int | None = None,
+    *,
+    collected_offer_ids: set[int] | None = None,
+) -> tuple[bool, bool]:
     token = str(record.get("token") or "").strip()
     if not token:
         raise ValueError("missing shop token")
@@ -598,4 +605,6 @@ def upsert_offer(db: Session, record: dict[str, Any], products: dict[str, Produc
     offer.updated_at = utcnow()
     if changed:
         db.add(OfferHistory(offer_id=offer.id, price=price, currency=currency, stock_count=count, stock_status=status, observed_at=observed_at))
+    if collected_offer_ids is not None:
+        collected_offer_ids.add(offer.id)
     return created, changed

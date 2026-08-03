@@ -49,6 +49,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 - Set `INTAKE_WORKER_KEY` to a secret distinct from `ADMIN_API_KEY`; the crawler and importer use it only for internal intake callbacks.
 - Set `DETECTOR_WORKER_KEY` to a third secret, distinct from both `ADMIN_API_KEY` and `INTAKE_WORKER_KEY`; only the API and `source-detector` receive it.
 - Keep `source-detector` off the default database network. It must not receive `DATABASE_URL`, Redis credentials, Docker socket mounts, or internal service credentials; retain only its API control network and outbound probe network.
+- Build Detector, Pipeline and Crawler images from the repository root so each installs the same `shared_http` package. A release that changes `shared_http/` must rebuild all three images.
 - Configure real `SHOP_INTAKE_ADMIN_EMAILS`, `RESEND_API_KEY` and a verified `RESEND_FROM` before production deployment. SMTP remains available as a local/fallback provider. The API can start without either provider and retain messages in `notification_outbox`, but production preflight rejects incomplete mail configuration.
 
 ## Backup and restore rehearsal
@@ -104,7 +105,7 @@ python scripts/migrate_shop_intake_v6.py --database-url "$DATABASE_URL"
 
 The migration creates `source_intakes` and `notification_outbox`, then converts historical `shop_request` Reports. Running it again is safe. Start the `notification-worker` service with the API stack; it is the only process allowed to call Resend or connect to SMTP. LDXP crawler and pipeline jobs receive `INTAKE_WORKER_KEY` and `INTAKE_API_URL`; the isolated detector receives only `DETECTOR_WORKER_KEY` and its API control URL.
 
-Public submissions are asynchronous. The API saves `submitted` without contacting the URL, `source-detector` reports a detected platform, and an administrator reviews the resulting `pending_review` record. LDXP approval uses its queued crawler path. Dujiao-Next and Merchant JSON approval produces `approved`, which the authoritative publisher consumes; only a successful snapshot changes those records to `published`. Unknown `other` sources remain manual.
+Public submissions are asynchronous. The API saves `submitted` without contacting the URL, `source-detector` reports a detected platform, and an administrator reviews the resulting `pending_review` record. LDXP approval uses its queued crawler path. Dujiao-Next and Merchant JSON approval produces `approved`, which the authoritative publisher consumes. The publisher continues to consume both `approved` and `published` sources on every refresh; only sources with a positive public-offer count become or remain `published`. Unknown `other` sources remain manual.
 
 ## Offer-history currency migration
 

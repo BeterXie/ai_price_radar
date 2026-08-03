@@ -266,7 +266,7 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
         elif intake.source_type == "ldxp":
             intake.status = "queued"
             decision_note = "已重新排队，等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "merchant_feed"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json"}:
             intake.status = "approved" if intake.approved_at is not None else "pending_review"
             decision_note = (
                 "已恢复，等待下一次完整目录发布"

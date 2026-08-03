@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import json
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from price_radar_http import PinnedHTTPSClient
 
 from currencies import normalize_currency
 
@@ -21,28 +19,10 @@ MAX_BYTES = 5 * 1024 * 1024
 
 
 def _validate_remote_url(value: str) -> urllib.parse.SplitResult:
-    parsed = urllib.parse.urlsplit(value)
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-        raise ValueError("merchant feed URL must be a public HTTPS URL")
-    if host == "localhost" or host.endswith((".local", ".internal")):
-        raise ValueError("merchant feed host must be public")
     try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
-    except socket.gaierror as exc:
-        raise ValueError("merchant feed host could not be resolved") from exc
-    if not addresses:
-        raise ValueError("merchant feed host did not resolve")
-    for address in addresses:
-        ip = ipaddress.ip_address(address)
-        if not ip.is_global:
-            raise ValueError("merchant feed host resolves to a non-public address")
-    return parsed
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
-        raise urllib.error.HTTPError(req.full_url, code, "merchant feed redirects are disabled", headers, fp)
+        return urllib.parse.urlsplit(PinnedHTTPSClient.normalize_url(value))
+    except ValueError as exc:
+        raise ValueError("merchant feed URL must be public HTTPS on port 443") from exc
 
 
 def _read_source(source: str | Path) -> tuple[bytes, str]:
@@ -56,19 +36,21 @@ def _read_source(source: str | Path) -> tuple[bytes, str]:
 
     parsed = urllib.parse.urlsplit(value)
     if parsed.scheme:
-        _validate_remote_url(value)
-        request = urllib.request.Request(value, headers={"User-Agent": "AI-Price-Radar-Importer/3.2", "Accept": "application/json"})
-        opener = urllib.request.build_opener(_NoRedirect)
-        with opener.open(request, timeout=20) as response:
-            content_type = (response.headers.get("Content-Type") or "").lower()
-            if content_type and "json" not in content_type:
-                raise ValueError("merchant feed must return JSON content")
-            if int(response.headers.get("Content-Length") or 0) > MAX_BYTES:
-                raise ValueError("merchant feed exceeds 5 MiB")
-            payload = response.read(MAX_BYTES + 1)
-            if len(payload) > MAX_BYTES:
-                raise ValueError("merchant feed exceeds 5 MiB")
-            return payload, value
+        normalized = _validate_remote_url(value).geturl()
+        client = PinnedHTTPSClient(
+            max_response_bytes=MAX_BYTES,
+            max_task_bytes=MAX_BYTES,
+            max_task_seconds=30,
+            request_timeout=20,
+            user_agent="AI-Price-Radar-Importer/3.4",
+        )
+        response = client.get(normalized, accept="application/json")
+        if response.status != 200:
+            raise ValueError(f"merchant feed returned HTTP {response.status}")
+        content_type = response.headers.get("content-type", "").casefold()
+        if content_type and "json" not in content_type:
+            raise ValueError("merchant feed must return JSON content")
+        return response.body, normalized
     payload = path.read_bytes()
     if len(payload) > MAX_BYTES:
         raise ValueError("merchant feed exceeds 5 MiB")

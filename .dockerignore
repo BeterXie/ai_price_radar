@@ -1,0 +1,14 @@
+.git
+.env
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/*.egg-info
+.venv
+apps/web/.next
+apps/web/node_modules
+backups
+data
+*.db
+*.sqlite
+*.sqlite3

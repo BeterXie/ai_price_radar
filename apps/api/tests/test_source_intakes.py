@@ -203,29 +203,118 @@ def test_detector_key_lease_recovery_and_failure_sanitization(api_client):
         assert intake.finished_at is not None
 
 
-def test_legacy_merchant_feed_is_deduplicated_during_compatibility_window(api_client):
+def test_legacy_merchant_feed_input_is_canonicalized_without_persisting_alias(api_client):
     client, engine = api_client
     url = "https://feed.example/catalog.json"
-    with Session(engine) as db:
-        db.add(SourceIntake(
-            source_type="merchant_feed",
-            declared_platform="merchant_json",
-            detected_platform="merchant_json",
-            source_key=url,
-            source_url=url,
-            contact_email="legacy@example.com",
-            status="pending_review",
-        ))
-        db.commit()
     response = client.post(
         "/api/v1/shop-requests",
-        json={**_payload(), "source_type": "auto", "shop_url": url},
+        json={**_payload(), "source_type": "merchant_feed", "shop_url": url},
+    )
+    assert response.status_code == 201
+    assert response.json()["declared_platform"] == "merchant_json"
+    with Session(engine) as db:
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.source_key == url))
+        assert intake is not None
+        assert intake.source_type == "unknown"
+        assert intake.declared_platform == "merchant_json"
+
+
+def test_detection_merges_two_product_pages_into_one_canonical_dujiao_source(api_client):
+    client, engine = api_client
+    first = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://shop.example/products/a", "note": "first note"},
+    ).json()["request_id"]
+    second = client.post(
+        "/api/v1/shop-requests",
+        json={
+            **_payload(),
+            "shop_url": "https://shop.example/products/b",
+            "contact": "second@example.com",
+            "note": "second note",
+        },
+    ).json()["request_id"]
+    headers = {"X-Detector-Worker-Key": "detector-test"}
+    claims = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=headers,
+        json={"limit": 2, "lease_seconds": 300},
+    ).json()
+    assert {task["intake_id"] for task in claims} == {first, second}
+    attempts = {task["intake_id"]: task["attempt_count"] for task in claims}
+
+    for intake_id in (first, second):
+        response = client.post(
+            f"/api/v1/internal/source-detections/{intake_id}/result",
+            headers=headers,
+            json={
+                "status": "pending_review",
+                "attempt_count": attempts[intake_id],
+                "detected_platform": "dujiao_next",
+                "source_url": "https://shop.example",
+                "source_key": "https://shop.example/",
+                "shop_name": "Canonical Shop",
+                "product_count": intake_id,
+            },
+        )
+        assert response.status_code == 200
+
+    with Session(engine) as db:
+        rows = list(db.scalars(select(SourceIntake)))
+        assert len(rows) == 1
+        intake = rows[0]
+        assert (intake.source_type, intake.source_key, intake.status) == (
+            "dujiao_next",
+            "https://shop.example/",
+            "pending_review",
+        )
+        assert "first note" in intake.note and "second note" in intake.note
+        assert "second@example.com" in intake.note
+
+
+def test_detection_merges_resubmission_into_published_source_without_downgrade(api_client):
+    client, engine = api_client
+    with Session(engine) as db:
+        db.add(SourceIntake(
+            source_type="dujiao_next",
+            declared_platform="dujiao_next",
+            detected_platform="dujiao_next",
+            source_key="https://shop.example/",
+            source_url="https://shop.example/",
+            contact_email="owner@example.com",
+            status="published",
+            product_count=3,
+        ))
+        db.commit()
+    duplicate_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://shop.example/products/new"},
+    ).json()["request_id"]
+    headers = {"X-Detector-Worker-Key": "detector-test"}
+    task = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    response = client.post(
+        f"/api/v1/internal/source-detections/{duplicate_id}/result",
+        headers=headers,
+        json={
+            "status": "pending_review",
+            "attempt_count": task["attempt_count"],
+            "detected_platform": "dujiao_next",
+            "source_url": "https://shop.example",
+            "source_key": "https://shop.example/",
+            "product_count": 1,
+        },
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "already_pending"
+    assert response.json()["status"] == "published"
     with Session(engine) as db:
-        assert db.scalar(select(SourceIntake).where(SourceIntake.source_key == url)) is not None
-        assert len(list(db.scalars(select(SourceIntake).where(SourceIntake.source_key == url)))) == 1
+        rows = list(db.scalars(select(SourceIntake)))
+        assert len(rows) == 1
+        assert rows[0].status == "published"
+        assert rows[0].product_count == 3
 
 
 def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_client):

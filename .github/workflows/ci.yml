@@ -43,8 +43,26 @@ jobs:
           cache-dependency-path: |
             pipeline/requirements.txt
             pipeline/requirements-test.txt
+            shared_http/pyproject.toml
       - run: python -m pip install --upgrade pip
+      - run: pip install ../shared_http
       - run: pip install -r requirements-test.txt
+      - run: python -m pytest -q
+
+  detector:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: detector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: shared_http/pyproject.toml
+      - run: python -m pip install --upgrade pip
+      - run: pip install ../shared_http pytest
       - run: python -m pytest -q
 
   web:

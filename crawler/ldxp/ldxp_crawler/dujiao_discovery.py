@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import ipaddress
 import json
 import logging
 import random
 import re
-import socket
 import time
 import unicodedata
 import urllib.parse
@@ -14,9 +12,10 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import requests
+from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from .db import StateDB
 from .utils import GlobalRateLimiter, merge_unique, utc_now
@@ -41,7 +40,6 @@ HOME_FINGERPRINTS = (
     ("premium-digital-assets", "discover our premium collection of digital assets"),
 )
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
-REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
@@ -96,24 +94,10 @@ def is_excluded_origin(origin: str) -> bool:
 
 
 def validate_public_url(url: str) -> None:
-    parsed = urllib.parse.urlsplit(url)
-    host = (parsed.hostname or "").casefold().rstrip(".")
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-        raise ValueError("candidate must use public HTTPS")
-    if host == "localhost" or host.endswith((".local", ".internal")):
-        raise ValueError("candidate host must be public")
     try:
-        literal_ip = ipaddress.ip_address(host)
-    except ValueError:
-        literal_ip = None
-    if literal_ip is not None and not literal_ip.is_global:
-        raise ValueError("candidate host must be public")
-    try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
-    except socket.gaierror as exc:
-        raise ValueError("candidate host could not be resolved") from exc
-    if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
-        raise ValueError("candidate host resolves to a non-public address")
+        PinnedHTTPSClient.normalize_url(url)
+    except ValueError as exc:
+        raise ValueError("candidate must use public HTTPS on port 443") from exc
 
 
 def _localized(value: Any) -> str:
@@ -171,6 +155,32 @@ def _decode_body(response: requests.Response, body: bytes) -> str:
     return body.decode(getattr(response, "encoding", None) or "utf-8", errors="replace")
 
 
+class _InjectedSessionClient:
+    """Adapter used only by injected unit-test transports."""
+
+    def __init__(self, session: Any, timeout: float):
+        self.session = session
+        self.timeout = timeout
+
+    def get(self, url: str, *, accept: str) -> PinnedResponse:
+        response = self.session.get(
+            url,
+            headers={"Accept": accept},
+            timeout=self.timeout,
+            allow_redirects=False,
+            stream=True,
+        )
+        if 300 <= response.status_code < 400:
+            response.close()
+            raise ValueError("source redirects are not followed")
+        body = read_limited_response(response)
+        return PinnedResponse(
+            response.status_code,
+            {str(key).casefold(): str(value) for key, value in response.headers.items()},
+            body,
+        )
+
+
 def _site_name(home_text: str) -> str:
     match = TITLE_RE.search(home_text)
     if not match:
@@ -187,40 +197,38 @@ class DujiaoVerifier:
         timeout: float,
         request_interval: float,
         max_pages: int = 5,
+        candidate_client_factory: Callable[[], Any] | None = None,
     ):
         self.session = session
         self.timeout = timeout
         self.max_pages = max(1, min(max_pages, 20))
         self.rate_limiter = GlobalRateLimiter(request_interval)
+        if candidate_client_factory is not None:
+            self.candidate_client_factory = candidate_client_factory
+        elif isinstance(session, requests.Session):
+            self.candidate_client_factory = lambda: PinnedHTTPSClient(
+                max_response_bytes=MAX_RESPONSE_BYTES,
+                max_task_bytes=(self.max_pages + 2) * MAX_RESPONSE_BYTES,
+                max_task_seconds=max(30.0, timeout * (self.max_pages + 2)),
+                request_timeout=timeout,
+                user_agent="AI-Price-Radar-Dujiao-Discovery/1",
+            )
+        else:
+            self.candidate_client_factory = lambda: _InjectedSessionClient(session, timeout)
+        self._candidate_client: Any | None = None
 
-    def _get(self, url: str, *, accept: str) -> tuple[requests.Response, bytes]:
+    def _get(self, url: str, *, accept: str) -> tuple[PinnedResponse, bytes]:
         validate_public_url(url)
         self.rate_limiter.wait()
-        response = self.session.get(
-            url,
-            headers={"Accept": accept},
-            timeout=self.timeout,
-            allow_redirects=False,
-            stream=True,
-        )
-        return response, read_limited_response(response)
+        if self._candidate_client is None:
+            raise RuntimeError("candidate client is not initialized")
+        response = self._candidate_client.get(url, accept=accept)
+        return response, response.body
 
-    def _home(self, origin: str) -> tuple[str, requests.Response, bytes]:
+    def _home(self, origin: str) -> tuple[str, PinnedResponse, bytes]:
         url = origin + "/"
-        for _ in range(3):
-            response, body = self._get(url, accept="text/html,application/xhtml+xml")
-            if response.status_code not in REDIRECT_STATUSES:
-                return normalize_candidate_origin(url) or origin, response, body
-            location = response.headers.get("Location") or ""
-            target = urllib.parse.urljoin(url, location)
-            target_origin = normalize_candidate_origin(target)
-            if not target_origin or is_excluded_origin(target_origin):
-                raise ValueError("candidate redirected to an invalid origin")
-            if target_origin != origin:
-                raise ValueError("candidate redirected to a different origin")
-            validate_public_url(target)
-            url = target
-        raise ValueError("candidate redirects exceeded limit")
+        response, body = self._get(url, accept="text/html,application/xhtml+xml")
+        return normalize_candidate_origin(url) or origin, response, body
 
     def _products_page(self, origin: str, page: int) -> tuple[list[dict[str, Any]], int | None, int]:
         query = urllib.parse.urlencode({"page": page, "page_size": 100})
@@ -276,6 +284,7 @@ class DujiaoVerifier:
             return result
 
         try:
+            self._candidate_client = self.candidate_client_factory()
             origin, home, home_body = self._home(origin)
             result.origin = origin
             if home.status_code != 200:
@@ -324,9 +333,11 @@ class DujiaoVerifier:
                 result.status = "scan_limited"
             else:
                 result.status = "no_match"
-        except (requests.RequestException, ValueError) as exc:
+        except (requests.RequestException, OSError, ValueError) as exc:
             result.status = "validation_failed"
             result.error = str(exc)[:500]
+        finally:
+            self._candidate_client = None
         result.last_verified_at = utc_now()
         return result
 

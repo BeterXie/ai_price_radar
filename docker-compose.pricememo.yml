@@ -34,8 +34,8 @@ services:
   crawler:
     profiles: ["crawler"]
     build:
-      context: ./crawler/ldxp
-      dockerfile: Dockerfile.remote
+      context: .
+      dockerfile: crawler/ldxp/Dockerfile.remote
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     init: true
@@ -53,8 +53,8 @@ services:
   crawler-bootstrap:
     profiles: ["bootstrap"]
     build:
-      context: ./crawler/ldxp
-      dockerfile: Dockerfile.bootstrap
+      context: .
+      dockerfile: crawler/ldxp/Dockerfile.bootstrap
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     init: true

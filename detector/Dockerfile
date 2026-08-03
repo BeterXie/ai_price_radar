@@ -5,7 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN useradd --create-home --uid 10002 detector
 WORKDIR /app
-COPY probe.py worker.py ./
+COPY shared_http /tmp/shared_http
+RUN pip install --no-cache-dir /tmp/shared_http \
+    && rm -rf /tmp/shared_http
+COPY detector/probe.py detector/worker.py ./
 USER detector
 
 CMD ["python", "worker.py"]

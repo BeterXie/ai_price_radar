@@ -77,7 +77,8 @@ services:
 
   source-detector:
     build:
-      context: ./detector
+      context: .
+      dockerfile: detector/Dockerfile
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]
@@ -139,7 +140,8 @@ services:
   importer:
     profiles: ["tools"]
     build:
-      context: ./pipeline
+      context: .
+      dockerfile: pipeline/Dockerfile
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
       INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}

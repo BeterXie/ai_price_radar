@@ -3,9 +3,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from connectors import get_connector
-from connectors import dujiao_next
+from connectors import dujiao_next, merchant_json
 from connectors.merchant_json import _validate_remote_url
 from common import Offer, ensure_products, session_for, upsert_offer
 
@@ -40,9 +41,11 @@ def test_merchant_json_connector_normalizes_feed(tmp_path: Path):
 
 def test_dujiao_next_connector_paginates_and_emits_variants(monkeypatch):
     calls: list[str] = []
+    client_ids: set[int] = set()
 
-    def fake_get_json(url: str):
+    def fake_get_json(url: str, **_kwargs):
         calls.append(url)
+        client_ids.add(id(_kwargs["client"]))
         parsed = urlsplit(url)
         query = parse_qs(parsed.query)
         if parsed.path == "/api/v1/public/config":
@@ -126,6 +129,7 @@ def test_dujiao_next_connector_paginates_and_emits_variants(monkeypatch):
     assert single["category_name"] == "AI Accounts"
     assert single["stock_count"] == 4
     assert any("page=2" in url for url in calls)
+    assert len(client_ids) == 1
 
     db = session_for("sqlite://")
     try:
@@ -137,7 +141,11 @@ def test_dujiao_next_connector_paginates_and_emits_variants(monkeypatch):
 
 def test_dujiao_next_connector_rejects_business_errors(monkeypatch):
     monkeypatch.setattr(dujiao_next, "_validate_store_url", lambda value: urlsplit(value))
-    monkeypatch.setattr(dujiao_next, "_get_json", lambda url: {"status_code": 503, "msg": "maintenance"})
+    monkeypatch.setattr(
+        dujiao_next,
+        "_get_json",
+        lambda url, **_kwargs: {"status_code": 503, "msg": "maintenance"},
+    )
 
     with pytest.raises(ValueError, match="maintenance"):
         list(get_connector("dujiao-next")("https://shop.example"))
@@ -153,11 +161,6 @@ def test_dujiao_next_shop_name_supports_brand_overlay_and_fallbacks():
 
 
 def test_dujiao_next_connector_rejects_unsafe_shop_roots(monkeypatch):
-    monkeypatch.setattr(
-        dujiao_next.socket,
-        "getaddrinfo",
-        lambda *args, **kwargs: [(dujiao_next.socket.AF_INET, dujiao_next.socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
-    )
     for value in (
         "http://shop.example",
         "https://127.0.0.1",
@@ -169,7 +172,7 @@ def test_dujiao_next_connector_rejects_unsafe_shop_roots(monkeypatch):
 
 
 def test_dujiao_next_connector_accepts_verified_empty_catalog(monkeypatch):
-    def fake_get_json(url: str):
+    def fake_get_json(url: str, **_kwargs):
         path = urlsplit(url).path
         if path == "/api/v1/public/config":
             return {"status_code": 0, "msg": "success", "data": {"site_name": "Empty shop", "currency": "CNY"}}
@@ -204,3 +207,44 @@ def test_merchant_connector_rejects_non_public_hosts():
             pass
         else:
             raise AssertionError(f"unsafe URL should fail: {value}")
+
+
+def test_remote_connectors_read_through_the_pinned_https_client(monkeypatch):
+    calls: list[tuple[str, str]] = []
+
+    class FakeClient:
+        normalize_url = staticmethod(PinnedHTTPSClient.normalize_url)
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def get(self, url: str, *, accept: str):
+            calls.append((url, accept))
+            if "dujiao" in url:
+                payload = {"status_code": 0, "data": {"brand": {"site_name": "Pinned"}}}
+            else:
+                payload = {
+                    "shop": {"name": "Pinned feed", "url": "https://merchant.example"},
+                    "items": [{
+                        "id": "plus",
+                        "name": "ChatGPT Plus monthly",
+                        "url": "https://merchant.example/products/plus",
+                    }],
+                }
+            return PinnedResponse(
+                200,
+                {"content-type": "application/json"},
+                json.dumps(payload).encode(),
+            )
+
+    dujiao_document = dujiao_next._get_json("https://dujiao.example/api/v1/public/config", client=FakeClient())
+    assert dujiao_document["data"]["brand"]["site_name"] == "Pinned"
+
+    monkeypatch.setattr(merchant_json, "PinnedHTTPSClient", FakeClient)
+    records = list(merchant_json.load_records("https://feed.example/catalog.json"))
+    assert len(records) == 1
+    assert records[0]["shop_name"] == "Pinned feed"
+    assert calls == [
+        ("https://dujiao.example/api/v1/public/config", "application/json"),
+        ("https://feed.example/catalog.json", "application/json"),
+    ]

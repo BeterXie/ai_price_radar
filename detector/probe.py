@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import http.client
-import ipaddress
 import json
 import re
-import socket
-import ssl
-import time
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
+
+from price_radar_http import PinnedHTTPSClient, PinnedResponse as ProbeResponse
 
 
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -21,129 +18,12 @@ LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
-class ProbeResponse:
-    status: int
-    headers: dict[str, str]
-    body: bytes
-
-
-@dataclass(frozen=True, slots=True)
 class ProbeResult:
     detected_platform: str
     source_url: str
     source_key: str
     shop_name: str = ""
     product_count: int = 0
-
-
-class PinnedHTTPSClient:
-    def __init__(
-        self,
-        *,
-        resolver: Callable[..., list[tuple[Any, ...]]] = socket.getaddrinfo,
-        connector: Callable[..., socket.socket] = socket.create_connection,
-        ssl_context: ssl.SSLContext | None = None,
-        max_task_bytes: int = MAX_TASK_BYTES,
-        max_task_seconds: float = MAX_TASK_SECONDS,
-    ):
-        self.resolver = resolver
-        self.connector = connector
-        self.ssl_context = ssl_context or ssl.create_default_context()
-        self.remaining_bytes = max_task_bytes
-        self.deadline = time.monotonic() + max_task_seconds
-
-    @staticmethod
-    def normalize_url(value: object) -> str:
-        parsed = urllib.parse.urlsplit(str(value))
-        host = (parsed.hostname or "").casefold().rstrip(".")
-        if parsed.scheme.casefold() != "https" or not host or parsed.username or parsed.password:
-            raise ValueError("source must be a public HTTPS URL")
-        try:
-            port = parsed.port
-        except ValueError as exc:
-            raise ValueError("source port is invalid") from exc
-        if port not in (None, 443):
-            raise ValueError("source detector only permits HTTPS port 443")
-        host = host.encode("idna").decode("ascii")
-        rendered_host = f"[{host}]" if ":" in host else host
-        return urllib.parse.urlunsplit(("https", rendered_host, parsed.path or "/", parsed.query, ""))
-
-    def _remaining_seconds(self) -> float:
-        remaining = self.deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("source detection exceeded total time limit")
-        return remaining
-
-    def _public_addresses(self, host: str) -> list[str]:
-        infos = self.resolver(host, 443, type=socket.SOCK_STREAM)
-        addresses = sorted({str(info[4][0]) for info in infos})
-        if not addresses:
-            raise ValueError("source hostname did not resolve")
-        parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
-        if any(
-            not address.is_global
-            or address.is_private
-            or address.is_loopback
-            or address.is_link_local
-            or address.is_reserved
-            or address.is_unspecified
-            or address.is_multicast
-            for address in parsed_addresses
-        ):
-            raise ValueError("source hostname resolved to a non-public address")
-        return addresses
-
-    def get(self, value: object, *, accept: str) -> ProbeResponse:
-        url = self.normalize_url(value)
-        parsed = urllib.parse.urlsplit(url)
-        host = parsed.hostname or ""
-        address = self._public_addresses(host)[0]
-        timeout = min(5.0, self._remaining_seconds())
-        raw_socket = self.connector((address, 443), timeout=timeout)
-        tls_socket: ssl.SSLSocket | None = None
-        response: http.client.HTTPResponse | None = None
-        try:
-            raw_socket.settimeout(min(5.0, self._remaining_seconds()))
-            tls_socket = self.ssl_context.wrap_socket(raw_socket, server_hostname=host)
-            target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
-            request = (
-                f"GET {target} HTTP/1.1\r\n"
-                f"Host: {host}\r\n"
-                f"Accept: {accept}\r\n"
-                "User-Agent: AI-Price-Radar-Detector/1\r\n"
-                "Connection: close\r\n\r\n"
-            ).encode("ascii")
-            tls_socket.sendall(request)
-            response = http.client.HTTPResponse(tls_socket)
-            response.begin()
-            headers = {key.casefold(): value for key, value in response.getheaders()}
-            if 300 <= response.status < 400:
-                raise ValueError("source redirects are not followed")
-            content_length = int(headers.get("content-length") or 0)
-            limit = min(MAX_RESPONSE_BYTES, self.remaining_bytes)
-            if content_length > limit:
-                raise ValueError("source response exceeds size limit")
-            chunks: list[bytes] = []
-            total = 0
-            while True:
-                tls_socket.settimeout(min(5.0, self._remaining_seconds()))
-                chunk = response.read(min(64 * 1024, limit - total + 1))
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > limit:
-                    raise ValueError("source response exceeds size limit")
-                chunks.append(chunk)
-            self.remaining_bytes -= total
-            return ProbeResponse(response.status, headers, b"".join(chunks))
-        finally:
-            if response is not None:
-                response.close()
-            if tls_socket is not None:
-                tls_socket.close()
-            else:
-                raw_socket.close()
-
 
 def _json(response: ProbeResponse) -> Any:
     if response.status != 200:
@@ -167,7 +47,12 @@ def _localized(value: Any) -> str:
 
 
 def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> ProbeResult:
-    client = client or PinnedHTTPSClient()
+    client = client or PinnedHTTPSClient(
+        max_response_bytes=MAX_RESPONSE_BYTES,
+        max_task_bytes=MAX_TASK_BYTES,
+        max_task_seconds=MAX_TASK_SECONDS,
+        user_agent="AI-Price-Radar-Detector/1",
+    )
     normalized = client.normalize_url(value)
     parsed = urllib.parse.urlsplit(normalized)
     host = parsed.hostname or ""

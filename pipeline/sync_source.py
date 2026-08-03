@@ -74,6 +74,9 @@ def main() -> int:
     print(json.dumps({
         "connector": imported.connector,
         "total": imported.total,
+        "raw_record_count": imported.raw_record_count,
+        "classified_offer_count": imported.classified_offer_count,
+        "public_offer_count": imported.public_offer_count,
         "created": imported.created,
         "changed": imported.changed,
         "failed": 0,

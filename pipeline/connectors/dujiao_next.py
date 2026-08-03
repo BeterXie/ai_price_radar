@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import json
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from price_radar_http import PinnedHTTPSClient
 
 from currencies import normalize_currency
 
@@ -24,25 +22,10 @@ PAGE_SIZE = 100
 
 
 def _validate_public_url(value: str) -> urllib.parse.SplitResult:
-    parsed = urllib.parse.urlsplit(value)
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-        raise ValueError("Dujiao-Next source must be a public HTTPS URL")
-    if host == "localhost" or host.endswith((".local", ".internal")):
-        raise ValueError("Dujiao-Next host must be public")
     try:
-        literal_ip = ipaddress.ip_address(host)
-    except ValueError:
-        literal_ip = None
-    if literal_ip is not None and not literal_ip.is_global:
-        raise ValueError("Dujiao-Next host must be public")
-    try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
-    except socket.gaierror as exc:
-        raise ValueError("Dujiao-Next host could not be resolved") from exc
-    if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
-        raise ValueError("Dujiao-Next host resolves to a non-public address")
-    return parsed
+        return urllib.parse.urlsplit(PinnedHTTPSClient.normalize_url(value))
+    except ValueError as exc:
+        raise ValueError("Dujiao-Next source must be a public HTTPS URL on port 443") from exc
 
 
 def _validate_store_url(value: str) -> urllib.parse.SplitResult:
@@ -52,28 +35,21 @@ def _validate_store_url(value: str) -> urllib.parse.SplitResult:
     return parsed
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
-        raise urllib.error.HTTPError(req.full_url, code, "Dujiao-Next redirects are disabled", headers, fp)
-
-
-def _get_json(url: str) -> Any:
-    _validate_public_url(url)
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "AI-Price-Radar-Importer/3.2", "Accept": "application/json"},
+def _get_json(url: str, *, client: PinnedHTTPSClient | None = None) -> Any:
+    client = client or PinnedHTTPSClient(
+        max_response_bytes=MAX_BYTES,
+        max_task_bytes=MAX_BYTES,
+        max_task_seconds=60,
+        request_timeout=20,
+        user_agent="AI-Price-Radar-Importer/3.4",
     )
-    opener = urllib.request.build_opener(_NoRedirect)
-    with opener.open(request, timeout=20) as response:
-        content_type = (response.headers.get("Content-Type") or "").lower()
-        if content_type and "json" not in content_type:
-            raise ValueError("Dujiao-Next API must return JSON content")
-        if int(response.headers.get("Content-Length") or 0) > MAX_BYTES:
-            raise ValueError("Dujiao-Next API response exceeds 5 MiB")
-        payload = response.read(MAX_BYTES + 1)
-    if len(payload) > MAX_BYTES:
-        raise ValueError("Dujiao-Next API response exceeds 5 MiB")
-    return json.loads(payload.decode("utf-8"))
+    response = client.get(url, accept="application/json")
+    if response.status != 200:
+        raise ValueError(f"Dujiao-Next API returned HTTP {response.status}")
+    content_type = response.headers.get("content-type", "").casefold()
+    if content_type and "json" not in content_type:
+        raise ValueError("Dujiao-Next API must return JSON content")
+    return json.loads(response.body.decode("utf-8"))
 
 
 def _origin(parsed: urllib.parse.SplitResult) -> str:
@@ -85,8 +61,13 @@ def _api_url(origin: str, path: str, query: dict[str, int] | None = None) -> str
     return f"{url}?{urllib.parse.urlencode(query)}" if query else url
 
 
-def _data(url: str, expected_type: type) -> tuple[Any, dict[str, Any]]:
-    document = _get_json(url)
+def _data(
+    url: str,
+    expected_type: type,
+    *,
+    client: PinnedHTTPSClient | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    document = _get_json(url, client=client)
     if not isinstance(document, dict):
         raise ValueError("Dujiao-Next API response must be an object")
     if document.get("status_code") != 0:
@@ -221,17 +202,24 @@ def _record(
 def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     parsed = _validate_store_url(str(source))
     origin = _origin(parsed)
+    client = PinnedHTTPSClient(
+        max_response_bytes=MAX_BYTES,
+        max_task_bytes=30 * MAX_BYTES,
+        max_task_seconds=120,
+        request_timeout=20,
+        user_agent="AI-Price-Radar-Importer/3.4",
+    )
 
-    probe_items, probe = _data(_api_url(origin, "products", {"page": 1, "page_size": 1}), list)
+    probe_items, probe = _data(_api_url(origin, "products", {"page": 1, "page_size": 1}), list, client=client)
     _pagination(probe, 1, len(probe_items))
 
-    config, _ = _data(_api_url(origin, "config"), dict)
+    config, _ = _data(_api_url(origin, "config"), dict, client=client)
     currency = normalize_currency(config.get("currency"))
     languages = [str(value) for value in config.get("languages", []) if str(value).strip()] if isinstance(config.get("languages"), list) else []
     shop_name = _shop_name(config, parsed.hostname)
     token = "dujiao-next-" + hashlib.sha256(origin.encode()).hexdigest()[:20]
 
-    category_items, _ = _data(_api_url(origin, "categories"), list)
+    category_items, _ = _data(_api_url(origin, "categories"), list, client=client)
     categories = {
         str(item.get("id")): _localized(item.get("name"), languages)
         for item in category_items
@@ -242,7 +230,11 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     seen_slugs: set[str] = set()
     page = 1
     while True:
-        items, document = _data(_api_url(origin, "products", {"page": page, "page_size": PAGE_SIZE}), list)
+        items, document = _data(
+            _api_url(origin, "products", {"page": page, "page_size": PAGE_SIZE}),
+            list,
+            client=client,
+        )
         total_page = _pagination(document, page, len(items))
         for summary in items:
             if not isinstance(summary, dict):
@@ -254,7 +246,11 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
             product_count += 1
             if product_count > MAX_PRODUCTS:
                 raise ValueError("Dujiao-Next source exceeds 2000 products")
-            detail, _ = _data(_api_url(origin, f"products/{urllib.parse.quote(slug, safe='')}"), dict)
+            detail, _ = _data(
+                _api_url(origin, f"products/{urllib.parse.quote(slug, safe='')}"),
+                dict,
+                client=client,
+            )
             if str(detail.get("slug") or "").strip() != slug:
                 raise ValueError("Dujiao-Next product detail slug mismatch")
             product = {**summary, **detail}

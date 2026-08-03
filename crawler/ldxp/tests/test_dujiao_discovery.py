@@ -7,7 +7,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+import requests
+from price_radar_http import PinnedHTTPSClient as RealPinnedHTTPSClient, PinnedResponse
 
+import ldxp_crawler.dujiao_discovery as discovery_module
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.dujiao_discovery import (
     MAX_RESPONSE_BYTES,
@@ -164,6 +167,40 @@ def test_white_label_site_with_matching_api_and_ai_product_enters_review(monkeyp
     assert result.api_verified is True
     assert result.fingerprints == []
     assert result.site_name == "Example Store"
+
+
+def test_production_verifier_uses_one_pinned_client_for_the_whole_candidate(monkeypatch):
+    instances = []
+
+    class FakePinnedClient:
+        normalize_url = staticmethod(RealPinnedHTTPSClient.normalize_url)
+
+        def __init__(self, **_kwargs):
+            self.calls: list[str] = []
+            instances.append(self)
+
+        def get(self, url: str, *, accept: str):
+            self.calls.append(url)
+            if urlsplit(url).path == "/":
+                body = b"<title>Pinned Store</title> Dujiao-Next"
+                content_type = "text/html"
+            else:
+                body = json.dumps(_products([
+                    {"slug": "chatgpt", "title": {"en-US": "ChatGPT Plus"}},
+                ])).encode()
+                content_type = "application/json"
+            return PinnedResponse(200, {"content-type": content_type}, body)
+
+    monkeypatch.setattr(discovery_module, "PinnedHTTPSClient", FakePinnedClient)
+    verifier = DujiaoVerifier(requests.Session(), timeout=5, request_interval=0)
+    result = verifier.verify("https://shop.example", discovered_by="seed")
+
+    assert result.status == "pending_review"
+    assert len(instances) == 1
+    assert instances[0].calls == [
+        "https://shop.example/",
+        "https://shop.example/api/v1/public/products?page=1&page_size=100",
+    ]
 
 
 @pytest.mark.parametrize(

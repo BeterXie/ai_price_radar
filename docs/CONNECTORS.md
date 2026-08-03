@@ -45,13 +45,13 @@ Required per item: stable `id`, human-readable `name`, and public `url`. Price a
 
 `currency` defaults to `CNY`, is normalized to an ISO 4217 code, and is preserved on the offer and its history. `stock_count` is the canonical stock field; `stock` remains accepted for compatibility with the example above. Product-level minimum prices, price filters, trends and watch thresholds currently aggregate CNY offers only. Other currencies remain visible on individual offers and are never relabeled or exchange-rate converted.
 
-Merchant JSON Feed submissions share the `source_intakes` review state machine, but the LDXP Worker bridge never claims them. Detection and administrator approval move a feed to `approved`; the authoritative multi-source publisher then validates and imports it. Only a successful snapshot transaction changes the intake to `published`; an empty or failed feed remains `approved` for investigation and retry.
+Merchant JSON Feed submissions share the `source_intakes` review state machine, but the LDXP Worker bridge never claims them. Detection and administrator approval move a feed to `approved`; the authoritative multi-source publisher then validates and imports it. A source becomes `published` only when the new snapshot contains at least one public offer for it. A successful read with no public offers becomes `no_products`; a technical import failure rolls back and preserves the previous intake and snapshot state.
 
 ## Dujiao-Next
 
 Pass the public shop root URL, without a path, query string or credentials. The connector validates the public HTTPS origin, disables redirects, reads `/api/v1/public/config` and `/categories`, paginates `/products`, and fetches each product detail by slug. Multi-SKU products emit one record per active SKU so that monthly, quarterly and annual variants cannot overwrite each other. Conditional promotion and member prices remain in `raw_json`; the normalized `listed_price` uses the public base price until the common offer model can express price conditions.
 
-The connector caps response size, pages and product count. Run it behind an outbound allow-list or proxy in production because application-level DNS validation cannot fully eliminate DNS rebinding.
+Detector, Dujiao-Next, Merchant JSON and Dujiao discovery use the same pinned HTTPS client. It validates every resolved address, rejects the whole set if any address is non-public, selects one numeric IP for the entire source sync, and uses the original hostname for TLS SNI, certificate validation and `Host`. Only HTTPS 443 is allowed; redirects are rejected and per-response plus per-source byte/time limits are enforced. A production egress allow-list or proxy remains recommended as defense in depth against a compromised process.
 
 ### Public candidate discovery
 
@@ -65,7 +65,9 @@ The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-
 
 `POST /api/v1/shop-requests` is deliberately syntax-only: it normalizes an HTTPS URL and creates a `submitted` record without opening the URL. The separate detector validates a resolved public IP and connects directly to that IP while retaining the submitted hostname for TLS SNI and certificate checks. It permits only port 443, does not follow redirects, and enforces response-size and processing-time limits.
 
-The normal asynchronous path is `submitted -> detecting -> pending_review -> approved -> published`. Detection only identifies a source; administrator approval only authorizes it for a later publication. LDXP uses its existing queued validation path, while `other` remains an explicit manual-integration case.
+Detection can reduce several submitted product URLs to the same canonical shop or feed. The result transaction serializes by canonical identity, merges contact details, notes and evidence into the existing record, preserves terminal states such as `published` or `disabled`, and removes the duplicate request instead of surfacing a unique-constraint error.
+
+The normal asynchronous path is `submitted -> detecting -> pending_review -> approved -> published`. Detection only identifies a source; administrator approval only authorizes it for a later publication. `published` Dujiao/Merchant sources remain active inputs on every later authoritative refresh until an administrator moves them to an excluded state such as `disabled` or `needs_re_review`. LDXP uses its existing queued validation path, while `other` remains an explicit manual-integration case.
 
 ## Adding a connector
 

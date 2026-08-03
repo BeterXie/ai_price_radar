@@ -170,7 +170,7 @@ class SourceIntake(Base):
     __table_args__ = (
         UniqueConstraint("source_type", "source_key", name="uq_source_intakes_source"),
         CheckConstraint(
-            "source_type IN ('unknown', 'ldxp', 'merchant_feed', 'merchant_json', 'dujiao_next', 'other')",
+            "source_type IN ('unknown', 'ldxp', 'merchant_json', 'dujiao_next', 'other')",
             name="ck_source_intakes_type",
         ),
         CheckConstraint(

@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
@@ -56,6 +57,87 @@ def _response(intake: SourceIntake) -> dict[str, object]:
         "lease_expires_at": intake.lease_expires_at,
         "finished_at": intake.finished_at,
     }
+
+
+def _joined_text(*values: object) -> str:
+    return "\n".join(dict.fromkeys(str(value).strip() for value in values if str(value or "").strip()))
+
+
+def _merge_detected_intake(
+    db: Session,
+    *,
+    existing: SourceIntake,
+    duplicate: SourceIntake,
+    platform: str,
+    source_url: str,
+    source_key: str,
+    shop_name: str,
+    product_count: int,
+) -> SourceIntake:
+    duplicate_email_note = ""
+    if duplicate.contact_email and existing.contact_email and duplicate.contact_email != existing.contact_email:
+        duplicate_email_note = f"重复申请联系邮箱：{duplicate.contact_email}"
+    report_id = existing.report_id or duplicate.report_id
+    if report_id == duplicate.report_id and duplicate.report_id is not None:
+        duplicate.report_id = None
+        db.flush()
+    existing.report_id = report_id
+    existing.declared_platform = (
+        duplicate.declared_platform
+        if existing.declared_platform == "auto" and duplicate.declared_platform != "auto"
+        else existing.declared_platform
+    )
+    existing.detected_platform = platform
+    existing.source_url = source_url
+    existing.source_key = source_key
+    existing.shop_name = existing.shop_name or shop_name or duplicate.shop_name
+    existing.contact_email = existing.contact_email or duplicate.contact_email
+    existing.note = _joined_text(existing.note, duplicate.note, duplicate_email_note)
+    existing.decision_note = _joined_text(
+        existing.decision_note,
+        duplicate.decision_note,
+        f"已合并重复收录申请 #{duplicate.id}",
+    )
+    existing.failure_reason = _joined_text(existing.failure_reason, duplicate.failure_reason)
+    existing.origin = "manual" if "manual" in {existing.origin, duplicate.origin} else existing.origin
+    existing.attempt_count += duplicate.attempt_count
+    existing.product_count = max(existing.product_count, duplicate.product_count, product_count)
+    existing.created_at = min(existing.created_at, duplicate.created_at)
+    existing.updated_at = utcnow()
+    existing.lease_expires_at = None
+    if existing.status in {"submitted", "detecting"}:
+        existing.status = "pending_review"
+        existing.finished_at = utcnow()
+    db.delete(duplicate)
+    return existing
+
+
+def _canonical_intake(
+    db: Session,
+    *,
+    intake_id: int,
+    platform: str,
+    source_key: str,
+) -> SourceIntake | None:
+    return db.scalar(
+        select(SourceIntake)
+        .where(
+            SourceIntake.id != intake_id,
+            SourceIntake.source_type == platform,
+            SourceIntake.source_key == source_key,
+        )
+        .order_by(SourceIntake.id)
+        .with_for_update()
+        .limit(1)
+    )
+
+
+def _lock_canonical_identity(db: Session, platform: str, source_key: str) -> None:
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+            {"identity": f"{platform}\n{source_key}"},
+        )
 
 
 @detector_router.post("/claim", response_model=list[SourceDetectionClaimOut])
@@ -130,9 +212,34 @@ def report_source_detection_result(
         normalized = prepare_source_submission(payload.source_url or intake.source_url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    source_key = payload.source_key.strip() or normalized.source_key
-    if not source_key:
-        raise HTTPException(status_code=422, detail="detector did not return a source key")
+    source_key = normalized.source_key
+    reported_source_key = payload.source_key.strip()
+    if reported_source_key:
+        if platform == "ldxp":
+            canonical_reported_key = reported_source_key.casefold()
+        else:
+            try:
+                canonical_reported_key = prepare_source_submission(reported_source_key).source_key
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="detector returned an invalid source key") from exc
+        if canonical_reported_key != source_key:
+            raise HTTPException(status_code=422, detail="detector returned a non-canonical source key")
+    _lock_canonical_identity(db, platform, source_key)
+    existing = _canonical_intake(db, intake_id=intake.id, platform=platform, source_key=source_key)
+    if existing is not None:
+        merged = _merge_detected_intake(
+            db,
+            existing=existing,
+            duplicate=intake,
+            platform=platform,
+            source_url=normalized.source_url,
+            source_key=source_key,
+            shop_name=payload.shop_name.strip(),
+            product_count=payload.product_count,
+        )
+        db.commit()
+        return _response(merged)
+
     intake.source_type = platform
     intake.detected_platform = platform
     intake.source_url = normalized.source_url
@@ -142,8 +249,29 @@ def report_source_detection_result(
     intake.product_count = payload.product_count
     intake.failure_reason = ""
     intake.status = "pending_review"
+    try:
+        db.commit()
+        return _response(intake)
+    except IntegrityError:
+        db.rollback()
+
+    _lock_canonical_identity(db, platform, source_key)
+    duplicate = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id).with_for_update())
+    existing = _canonical_intake(db, intake_id=intake_id, platform=platform, source_key=source_key)
+    if duplicate is None or existing is None:
+        raise HTTPException(status_code=409, detail="concurrent source normalization conflict; retry detection result")
+    merged = _merge_detected_intake(
+        db,
+        existing=existing,
+        duplicate=duplicate,
+        platform=platform,
+        source_url=normalized.source_url,
+        source_key=source_key,
+        shop_name=payload.shop_name.strip(),
+        product_count=payload.product_count,
+    )
     db.commit()
-    return _response(intake)
+    return _response(merged)
 
 
 @router.post("/claim", response_model=list[SourceIntakeClaimOut])

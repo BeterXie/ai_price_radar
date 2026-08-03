@@ -280,6 +280,107 @@ def test_approved_dujiao_intake_publishes_atomically_and_becomes_published(monke
         db.close()
 
 
+def test_published_intake_remains_in_later_snapshots_until_disabled(monkeypatch: pytest.MonkeyPatch):
+    def loader(source: str | Path):
+        label = "replacement" if "replacement" in str(source) else "persistent-dujiao"
+        item = record(label)
+        item["source_platform"] = "dujiao_next"
+        item["shop_url"] = str(source)
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://persistent.example', 'approved')"
+        ))
+        db.commit()
+
+        first = publish_sources(db, approved_intake_sources(db))
+        assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == "published"
+
+        second_sources = approved_intake_sources(db)
+        assert second_sources == [SourceSpec("dujiao-next", "https://persistent.example", (1,))]
+        second = publish_sources(db, second_sources)
+        assert second.snapshot_id != first.snapshot_id
+        assert db.query(Offer).filter(Offer.snapshot_id == second.snapshot_id).count() == 1
+
+        db.execute(text("UPDATE source_intakes SET status='disabled' WHERE id=1"))
+        db.commit()
+        assert approved_intake_sources(db) == []
+        third = publish_sources(db, [SourceSpec("dujiao-next", "https://replacement.example")])
+        current_tokens = {
+            token for (token,) in db.execute(text(
+                "SELECT shops.token FROM offers JOIN shops ON shops.id=offers.shop_id "
+                "WHERE offers.snapshot_id=:snapshot_id"
+            ), {"snapshot_id": third.snapshot_id})
+        }
+        assert current_tokens == {"shop-replacement"}
+        assert db.query(Offer).filter(Offer.snapshot_id == third.snapshot_id).count() == 1
+    finally:
+        db.close()
+
+
+def test_intake_requires_a_public_offer_before_becoming_published(monkeypatch: pytest.MonkeyPatch):
+    def loader(_source: str | Path):
+        item = record("unclassified")
+        item["product_name"] = "Generic hosting support service"
+        item["category_name"] = "Other"
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "merchant-json", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'merchant_json', 'merchant_json', 'https://feed.example/catalog.json', 'approved')"
+        ))
+        db.commit()
+
+        result = publish_sources(db, approved_intake_sources(db))
+
+        imported = result.imports[0]
+        assert (imported.raw_record_count, imported.classified_offer_count, imported.public_offer_count) == (1, 0, 0)
+        assert db.execute(text("SELECT status, product_count FROM source_intakes WHERE id=1")).one() == (
+            "no_products",
+            0,
+        )
+    finally:
+        db.close()
+
+
+def test_public_offer_count_is_scoped_to_the_intake_import(monkeypatch: pytest.MonkeyPatch):
+    def loader(source: str | Path):
+        item = record(str(source))
+        item["token"] = "shared-shop"
+        if str(source) == "unclassified":
+            item["product_name"] = "Generic hosting support service"
+            item["category_name"] = "Other"
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "merchant-json", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'merchant_json', 'merchant_json', 'unclassified', 'approved')"
+        ))
+        db.commit()
+
+        sources = [SourceSpec("merchant-json", "public"), *approved_intake_sources(db)]
+        result = publish_sources(db, sources)
+
+        assert result.imports[0].public_offer_count == 1
+        assert result.imports[1].public_offer_count == 0
+        assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == "no_products"
+    finally:
+        db.close()
+
+
 def test_approved_dujiao_intake_requires_a_successful_live_import(monkeypatch: pytest.MonkeyPatch):
     def unavailable_loader(_source: str | Path):
         raise ValueError("Dujiao public API validation failed")

@@ -16,6 +16,7 @@ from common import (
     CatalogSnapshot,
     ImportLockUnavailable,
     Offer,
+    Shop,
     begin_snapshot,
     ensure_products,
     import_lock,
@@ -42,6 +43,9 @@ class ImportResult:
     connector: str
     source: str
     total: int = 0
+    raw_record_count: int = 0
+    classified_offer_count: int = 0
+    public_offer_count: int = 0
     created: int = 0
     changed: int = 0
 
@@ -130,7 +134,7 @@ def approved_intake_sources(db: Session) -> list[SourceSpec]:
         return []
     rows = db.execute(text(
         "SELECT id, source_type, source_url FROM source_intakes "
-        "WHERE status='approved' "
+        "WHERE status IN ('approved', 'published') "
         "AND source_type IN ('dujiao_next', 'merchant_json') "
         "AND detected_platform=source_type "
         "ORDER BY id"
@@ -167,12 +171,20 @@ def import_source_into_snapshot(
     loader = get_connector(connector)
     products = products or ensure_products(db)
     result = ImportResult(connector=connector, source=str(source))
+    offer_ids: set[int] = set()
     current_record: dict[str, Any] | None = None
     try:
         for record in loader(source):
             current_record = record
             result.total += 1
-            was_created, was_changed = upsert_offer(db, record, products, snapshot_id)
+            result.raw_record_count += 1
+            was_created, was_changed = upsert_offer(
+                db,
+                record,
+                products,
+                snapshot_id,
+                collected_offer_ids=offer_ids,
+            )
             result.created += int(was_created)
             result.changed += int(was_changed)
             if result.total % 100 == 0:
@@ -182,6 +194,28 @@ def import_source_into_snapshot(
         label = current_record.get("product_name") if current_record else None
         detail = f" at record {label!r}" if label else ""
         raise SourceImportError(f"{connector} import failed for {source}{detail}: {exc}") from exc
+    db.flush()
+    if offer_ids:
+        source_offers = (
+            Offer.snapshot_id == snapshot_id,
+            Offer.id.in_(offer_ids),
+        )
+        result.classified_offer_count = int(db.scalar(
+            select(func.count(Offer.id))
+            .join(Shop, Shop.id == Offer.shop_id)
+            .where(*source_offers, Offer.product_id.is_not(None))
+        ) or 0)
+        result.public_offer_count = int(db.scalar(
+            select(func.count(Offer.id))
+            .join(Shop, Shop.id == Offer.shop_id)
+            .where(
+                *source_offers,
+                Offer.active.is_(True),
+                Offer.approved.is_(True),
+                Offer.product_id.is_not(None),
+                Shop.is_visible.is_(True),
+            )
+        ) or 0)
     return result
 
 
@@ -223,18 +257,18 @@ def publish_sources(
                     snapshot_id=snapshot.id,
                     products=products,
                 )
-                if spec.intake_ids and imported.total <= 0:
-                    raise SourceImportError(f"approved intake source returned no products: {spec.source}")
                 imports.append(imported)
                 for intake_id in spec.intake_ids:
+                    intake_status = "published" if imported.public_offer_count > 0 else "no_products"
                     db.execute(text(
                         "UPDATE source_intakes "
-                        "SET status='published', product_count=:product_count, "
+                        "SET status=:status, product_count=:product_count, "
                         "finished_at=:published_at, updated_at=:published_at "
-                        "WHERE id=:intake_id AND status='approved'"
+                        "WHERE id=:intake_id AND status IN ('approved', 'published')"
                     ), {
                         "intake_id": intake_id,
-                        "product_count": imported.total,
+                        "status": intake_status,
+                        "product_count": imported.public_offer_count,
                         "published_at": published_at,
                     })
             snapshot.offer_count = int(

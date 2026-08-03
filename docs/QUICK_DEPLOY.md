@@ -6,7 +6,7 @@
 
 - 只部署已发布且 CI 通过的 Tag，生产源码、API、Detector、Pipeline 和 Web 必须来自同一提交。
 - 先暂停定时器，再等待当前刷新锁一次；部署完成前不要恢复定时器。
-- 按改动范围重建服务：普通发布重建 `api`、`web`，来源检测或收录路由变更同时重建 `source-detector`，邮件代码变更同时重建 `notification-worker`，`crawler/` 或 Crawler Dockerfile 变更必须重建 `crawler`。不重建 `db`，无迁移版本不得执行数据库结构操作。
+- 按改动范围重建服务：普通发布重建 `api`、`web`，来源检测或收录路由变更同时重建 `source-detector`，邮件代码变更同时重建 `notification-worker`，`crawler/` 或 Crawler Dockerfile 变更必须重建 `crawler`。`shared_http/` 变更必须同时重建 `source-detector`、`crawler` 和执行 Pipeline 的镜像。不重建 `db`，无迁移版本不得执行数据库结构操作。
 - 部署前只做一次 PostgreSQL 备份，并保留旧 API/Web 镜像和旧源码包。
 - 普通 API/Web 发布不等待完整爬虫刷新。只有改动 `crawler/`、`pipeline/` 或数据库结构时，才把一次完整刷新作为部署门禁。
 
@@ -203,7 +203,8 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] API、Web、DB、source-detector 容器运行，API/DB 为 healthy
 [ ] source-detector 不含 DATABASE_URL/Redis/Docker socket，且未加入默认数据库网络
 [ ] OpenAPI 包含本版本新增字段
-[ ] 新收录申请按 submitted → detecting → pending_review 流转；批准的 Dujiao/Merchant 只有快照成功后才为 published
+[ ] 新收录申请按 submitted → detecting → pending_review 流转；批准的 Dujiao/Merchant 只有 public_offer_count > 0 才为 published
+[ ] 已 published 且仍启用的 Dujiao/Merchant 在连续两次完整刷新中都存在；disabled 来源在下一快照移除
 [ ] 首页、报价目录和一个商品详情页可正常访问
 [ ] 真实商品的可信最低价与 related_lowest_price 口径正确
 [ ] API/Web 部署后日志无 traceback、exception、critical
