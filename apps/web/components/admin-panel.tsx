@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, X } from "@phosphor-icons/react";
 import { money } from "@/lib/format";
+import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 const PRODUCT_OPTIONS = [
@@ -297,6 +298,10 @@ export function AdminPanel() {
             ))}
           </div>
         </section>
+      )}
+
+      {key && (
+        <SourceDiscoveryPanel apiBase={API} headers={headers} />
       )}
 
       {reports.length > 0 && (
