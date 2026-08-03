@@ -7,16 +7,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/home/crawler
 
 WORKDIR /app
-COPY shared_http /tmp/shared_http
-COPY crawler/ldxp/requirements.txt .
+
+# 1) 依赖与 Playwright 固定版本最先安装；pip 使用 BuildKit cache mount 复用下载。
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PLAYWRIGHT_VERSION=1.61.0
-RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" "playwright==${PLAYWRIGHT_VERSION}" \
-    && pip install --no-cache-dir /tmp/shared_http \
-    && pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" -r requirements.txt \
+COPY crawler/ldxp/requirements.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "${PIP_INDEX_URL}" "playwright==${PLAYWRIGHT_VERSION}" \
+    && pip install --index-url "${PIP_INDEX_URL}" -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
+
+# 2) shared_http 独立一层，只在 shared_http/ 变化时失效。
+COPY shared_http /tmp/shared_http
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "${PIP_INDEX_URL}" /tmp/shared_http \
     && rm -rf /tmp/shared_http \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin crawler
 
+# 3) 业务源码最后复制；日常开发用 docker-compose.crawler-dev.yml 只读挂载覆盖，无需重建。
 COPY crawler/ldxp/ldxp_gpt_crawler.py crawler/ldxp/self_test.py ./
 COPY crawler/ldxp/ldxp_crawler ./ldxp_crawler
 

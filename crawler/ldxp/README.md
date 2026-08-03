@@ -58,6 +58,21 @@
 
 解压后双击：
 
+## 日常开发与冒烟（不重建 Playwright 镜像）
+
+完整构建一次 Crawler 镜像后，日常修改 `crawler/ldxp` 或 `shared_http` 源码时使用只读挂载运行，不需要重建镜像：
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.pricememo.yml `
+  -f docker-compose.crawler-dev.yml run --no-build --rm crawler --version
+
+docker compose -f docker-compose.yml -f docker-compose.pricememo.yml `
+  -f docker-compose.crawler-dev.yml run --no-build --rm crawler `
+  discover-sources --sources seed --api-url http://api:8000 --worker-key dev-key
+```
+
+`docker-compose.crawler-dev.yml` 只读挂载 `crawler/ldxp` 到 `/app`、`shared_http` 到 `/shared_http`（通过 `PYTHONPATH` 优先生效），源码变更立即生效。只有 `requirements.txt`、Dockerfile、系统依赖变化或最终发布门禁时才执行完整构建。
+
 ```text
 run_windows.bat
 ```
