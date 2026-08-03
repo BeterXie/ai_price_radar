@@ -129,3 +129,11 @@ test("guide search data includes Cockpit Sub2API CC Switch and Codex++", async (
     assert.ok(source.includes(keyword), keyword);
   }
 });
+
+test("guide workflow search respects brand product and delivery filters", async () => {
+  const pagePath = fileURLToPath(new URL("../app/guides/page.tsx", import.meta.url));
+  const source = await readFile(pagePath, "utf8");
+  assert.match(source, /brand && brand !== "openai"/);
+  assert.match(source, /productGuide\?\.workflowReferences/);
+  assert.match(source, /reference\.workflowSlug === guide\.slug/);
+});

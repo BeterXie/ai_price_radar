@@ -25,6 +25,9 @@ const TERMS_RISK_NOTE =
 const UI_VERSION_NOTE =
   "以你当前版本界面实际显示的 Base URL、客户端 Key、模型列表和字段名称为准，不要按本文示例端口或旧版字段硬编码。";
 
+const CODEX_PLUS_PLUS_PROTOCOL_NOTE =
+  "选择上游协议：上游原生支持 Responses API 时选择 Responses；上游只支持 Chat Completions 时选择 Chat Completions，由 Codex++ 的本地协议代理转换为 Responses。具体名称以当前 Codex++ 版本界面为准。";
+
 function step(
   title: string,
   action: string,
@@ -154,8 +157,8 @@ export const workflowGuideEntries = [
       ),
       variant(
         "codex-plusplus",
-        "服务器或中转注入路线：Sub2API 或直接 API → Codex++ → Codex Desktop",
-        "适合有服务器账号池或需要 Codex Desktop 中转注入的用户。必须通过 Codex++ 启动入口启动 Codex，注入配置才会生效。",
+        "Cockpit、Sub2API 或直接 API → Codex++ → Codex Desktop",
+        "适合个人本地账号池、服务器账号池或直接 API 用户，需要 Codex Desktop 中转注入时使用。必须通过 Codex++ 启动入口启动 Codex，注入配置才会生效。",
         {
           title: "通过 Codex++ 接入 Codex Desktop",
           intro: "Codex++ 固定指 BigPizzaV3/CodexPlusPlus。先安装官方 Codex Desktop，再安装 Codex++，最后填写中转注入。",
@@ -167,7 +170,7 @@ export const workflowGuideEntries = [
             ),
             step(
               "选择上游并取得 Base URL 与用户 Key",
-              "服务器场景使用 Sub2API 的 HTTPS Base URL 与下游用户 Key；已有直接交付的 Base URL + Key 则直接使用。",
+              "个人电脑可以使用 Cockpit 本地 API 服务，服务器场景使用 Sub2API 的 HTTPS Base URL 与下游用户 Key；已有直接交付的 Base URL + Key 则直接使用。",
               "你有一组可用的 Base URL 与 Key，且知道协议和模型名。",
             ),
             step(
@@ -177,9 +180,12 @@ export const workflowGuideEntries = [
             ),
             step(
               "打开 Codex++ Manager 配置中转注入",
-              "进入中转注入或供应商配置，填写 Base URL 与客户端 Key，选择 OpenAI-compatible / Responses 路径，然后应用配置。",
+              "进入中转注入或供应商配置，填写 Base URL 与客户端 Key，然后选择上游协议并应用配置。",
               "配置已保存，但还没有启动 Codex。",
-              { trouble: "字段名称随版本变化时，以 Codex++ Manager 当前界面为准。" },
+              {
+                items: [CODEX_PLUS_PLUS_PROTOCOL_NOTE],
+                trouble: "字段名称随版本变化时，以 Codex++ Manager 当前界面为准。",
+              },
             ),
             step(
               "退出旧 Codex 并通过 Codex++ 启动",
@@ -328,6 +334,15 @@ export const workflowGuideEntries = [
           intro: `从 Cockpit 复制 Base URL 与客户端 Key 后，再按顺序配置 CC Switch。${UI_VERSION_NOTE}`,
           steps: [
             step(
+              "先把非 Cockpit JSON 转换成 Cockpit 格式（如适用）",
+              "如果商家交付的是 CPA、Sub2 或其他非 Cockpit JSON，先在浏览器本地打开站内转换工具，下载转换后的 Cockpit JSON；没有收到 JSON 时直接跳过。",
+              "需要转换的文件已转换为 Cockpit JSON，且转换页只在本机处理文件。",
+              {
+                links: [{ label: "打开站内 JSON 转换工具", url: "/tools/json-to-cockpit" }],
+                trouble: "转换只改变文件结构，不会修复过期令牌或缺失字段；转换失败时先查看跳过原因，再联系原商家。",
+              },
+            ),
+            step(
               "从官方 Release 安装 CC Switch",
               "只从 farion1231/cc-switch 的 GitHub Releases 页面下载对应系统版本。",
               "CC Switch 安装完成。",
@@ -404,6 +419,15 @@ export const workflowGuideEntries = [
           intro: "必须从 Codex++ 启动入口启动 Codex，相关增强和中转配置才会生效。",
           steps: [
             step(
+              "先把非 Cockpit JSON 转换成 Cockpit 格式（如适用）",
+              "如果商家交付的是 CPA、Sub2 或其他非 Cockpit JSON，先在浏览器本地打开站内转换工具，下载转换后的 Cockpit JSON；没有收到 JSON 时直接跳过。",
+              "需要转换的文件已转换为 Cockpit JSON，且转换页只在本机处理文件。",
+              {
+                links: [{ label: "打开站内 JSON 转换工具", url: "/tools/json-to-cockpit" }],
+                trouble: "转换只改变文件结构，不会修复过期令牌或缺失字段；转换失败时先查看跳过原因，再联系原商家。",
+              },
+            ),
+            step(
               "确认项目来源",
               "Codex++ 固定使用 BigPizzaV3/CodexPlusPlus，从官方仓库或官方 Release 获取。",
               "你已确认使用正确的项目，而不是同名 loader 项目。",
@@ -432,9 +456,10 @@ export const workflowGuideEntries = [
               "配置已填写，没有使用固定端口或旧字段名。",
             ),
             step(
-              "选择 OpenAI-compatible / Responses 路径",
-              "按 Cockpit 当前接口选择路径，Codex 通常使用 Responses。",
-              "路径与上游接口一致。",
+              "选择上游协议",
+              "按 Cockpit 当前接口选择协议，然后应用配置。",
+              "协议与上游接口一致，具体名称以当前 Codex++ 版本界面为准。",
+              { items: [CODEX_PLUS_PLUS_PROTOCOL_NOTE] },
             ),
             step(
               "应用配置",
@@ -675,9 +700,10 @@ export const workflowGuideEntries = [
               "客户端只持有用户 Key。",
             ),
             step(
-              "选择路径并应用配置",
-              "选择 OpenAI-compatible / Responses 路径并应用配置。",
+              "选择上游协议并应用配置",
+              "按 Sub2API 当前接口选择协议并应用配置。",
               "配置已保存。",
+              { items: [CODEX_PLUS_PLUS_PROTOCOL_NOTE] },
             ),
             step(
               "退出旧 Codex 并通过 Codex++ 启动",
@@ -905,9 +931,10 @@ export const workflowGuideEntries = [
               "配置已填写。",
             ),
             step(
-              "选择路径并应用配置",
-              "选择 OpenAI-compatible / Responses 路径并应用。",
+              "选择上游协议并应用配置",
+              "按供应商支持的协议选择并应用配置。",
               "配置已保存。",
+              { items: [CODEX_PLUS_PLUS_PROTOCOL_NOTE] },
             ),
             step(
               "退出旧 Codex 并通过 Codex++ 启动",

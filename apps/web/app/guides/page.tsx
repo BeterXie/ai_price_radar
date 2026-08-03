@@ -5,6 +5,7 @@ import { GuideCard } from "@/components/guides/guide-card";
 import { GuideIndex } from "@/components/guides/guide-index";
 import { GuideJsonLd } from "@/components/guides/guide-json-ld";
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
+import type { ProductSlug } from "@/lib/guides/types";
 import { BRAND_NAMES, breadcrumbJsonLd } from "./_shared";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -53,8 +54,27 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
     (!delivery || guide.deliveryType === delivery) && includesQuery([guide.title, guide.summary, guide.shortLabel], query),
   );
   const general = Object.values(generalGuides).filter((guide) => includesQuery([guide.title, guide.description], query));
-  const workflows = Object.values(workflowGuides).filter((guide) =>
-    includesQuery(
+  const workflows = Object.values(workflowGuides).filter((guide) => {
+    if (brand && brand !== "openai") return false;
+    if (product) {
+      const productGuide = productGuides[product as ProductSlug];
+      const referenced = productGuide?.workflowReferences?.some(
+        (reference) => reference.workflowSlug === guide.slug,
+      ) ?? false;
+      if (!referenced) return false;
+    }
+    if (delivery) {
+      const referencedByDelivery = Object.values(productGuides).some(
+        (productGuide) =>
+          productGuide.brand === "openai" &&
+          (productGuide.supportedDeliveryTypes as readonly string[]).includes(delivery) &&
+          (productGuide.workflowReferences ?? []).some(
+            (reference) => reference.workflowSlug === guide.slug,
+          ),
+      );
+      if (!referencedByDelivery) return false;
+    }
+    return includesQuery(
       [
         guide.title,
         guide.description,
@@ -65,8 +85,8 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
         "Codex++",
       ],
       query,
-    ),
-  );
+    );
+  });
   const hasFilters = Boolean(query || brand || product || delivery);
   const guideCount = Object.keys(brandGuides).length
     + Object.keys(productGuides).length
