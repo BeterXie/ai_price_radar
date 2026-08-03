@@ -2,6 +2,23 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.6.0] - 2026-08-03
+
+### Added
+
+- WooCommerce Store API connector with exact minor-unit pricing, complete pagination validation, and safe variation fallback.
+- Schema.org sitemap and product-page JSON-LD connector with bounded discovery and same-origin HTTPS validation.
+- Dujiao-Next qualified candidates are auto-approved, and GitHub public repository homepages are a new passive discovery source.
+- Source intake, detector, pipeline publication, Web labels, and a v9 database migration for the new source platforms.
+
+### Changed
+
+- Detector platform probing order is now Dujiao-Next, WooCommerce, Merchant JSON, then Schema.org.
+- Directly submitted sitemap and product-page URLs are preserved exactly through detection and publication.
+- WooCommerce products that are not purchasable never count as in-stock or enter lowest-price comparisons.
+
+## [3.5.0] - 2026-08-03
+
 ## [3.5.0] - 2026-08-03
 
 ### Added
