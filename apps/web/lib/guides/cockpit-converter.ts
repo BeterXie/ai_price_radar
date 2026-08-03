@@ -391,27 +391,29 @@ export function convertJsonDocuments(documents: readonly JsonDocument[], now = n
       issues.push({ sourceName: document.sourceName, path: "$", reason: "未找到包含 accessToken 和账号信息的对象" });
       continue;
     }
-    const remainingBudget = COCKPIT_LIMITS.maxAccountsPerBatch - accounts.length;
-    if (remainingBudget <= 0) {
+    if (accounts.length >= COCKPIT_LIMITS.maxAccountsPerBatch) {
       if (!budgetExceededReported) {
         issues.push({
           sourceName: document.sourceName,
           path: "$",
-          reason: `账号总数已超过单次批次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，后续文件不再转换`,
+          reason: `账号总数已达到单次批次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，后续记录不再转换`,
         });
         budgetExceededReported = true;
       }
       continue;
     }
-    const boundedRecords = records.slice(0, remainingBudget);
-    if (records.length > boundedRecords.length) {
-      issues.push({
-        sourceName: document.sourceName,
-        path: "$",
-        reason: `当前文件超出剩余账号预算，已转换前 ${remainingBudget} 个`,
-      });
-    }
-    for (const { record, path } of boundedRecords) {
+    for (const { record, path } of records) {
+      if (accounts.length >= COCKPIT_LIMITS.maxAccountsPerBatch) {
+        if (!budgetExceededReported) {
+          issues.push({
+            sourceName: document.sourceName,
+            path: "$",
+            reason: `账号总数已达到单次批次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，后续记录不再转换`,
+          });
+          budgetExceededReported = true;
+        }
+        break;
+      }
       try {
         const converted = convertRecord(record, document.sourceName, path, now);
         if (seenAccessTokens.has(converted.account.access_token)) {

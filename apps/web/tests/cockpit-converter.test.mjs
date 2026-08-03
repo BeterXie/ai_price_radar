@@ -288,7 +288,7 @@ test("caps the number of converted accounts per batch", () => {
 
   assert.equal(result.accounts.length, COCKPIT_LIMITS.maxAccountsPerBatch);
   assert.equal(result.issues.length, 1);
-  assert.match(result.issues[0].reason, /剩余账号预算/);
+  assert.match(result.issues[0].reason, /已达到单次批次 500/);
 });
 
 test("caps total accounts across multiple files", () => {
@@ -310,7 +310,49 @@ test("caps total accounts across multiple files", () => {
 
   assert.equal(result.accounts.length, COCKPIT_LIMITS.maxAccountsPerBatch);
   assert.equal(result.issues.length, 1);
-  assert.match(result.issues[0].reason, /账号总数已超过单次批次 500/);
+  assert.match(result.issues[0].reason, /已达到单次批次 500/);
+});
+
+test("invalid records do not consume the account budget", () => {
+  const records = Array.from({ length: COCKPIT_LIMITS.maxAccountsPerBatch }, (_, index) => ({
+    email: `bad${index}@example.com`,
+    access_token: opaqueToken(`bad-${index}`),
+  }));
+  records.push({
+    email: "good@example.com",
+    account_id: "good",
+    access_token: opaqueToken("good"),
+  });
+  const result = convertJsonDocuments([{
+    sourceName: "mixed.json",
+    value: { accounts: records },
+  }], NOW);
+
+  assert.equal(result.accounts.length, 1);
+  assert.equal(result.accounts[0].account.account_id, "good");
+  assert.ok(result.issues.some((issue) => /account_id/.test(issue.reason)));
+});
+
+test("duplicate records do not consume the account budget", () => {
+  const sharedToken = opaqueToken("dup");
+  const records = Array.from({ length: COCKPIT_LIMITS.maxAccountsPerBatch + 10 }, () => ({
+    email: "dup@example.com",
+    account_id: "dup",
+    access_token: sharedToken,
+  }));
+  records.push({
+    email: "good@example.com",
+    account_id: "good",
+    access_token: opaqueToken("good"),
+  });
+  const result = convertJsonDocuments([{
+    sourceName: "duplicates.json",
+    value: { accounts: records },
+  }], NOW);
+
+  assert.equal(result.accounts.length, 2);
+  assert.equal(result.accounts[0].account.account_id, "dup");
+  assert.equal(result.accounts[1].account.account_id, "good");
 });
 
 test("parses JSON text and reports invalid syntax", () => {
