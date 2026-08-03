@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.0] - unreleased
+
+### Added
+
+- Unified source discovery engine: seed/Bing/GitHub/Common Crawl adapters submit normalized candidates to a PostgreSQL candidate pool (`source_discovery_runs`, `source_candidates`, v10 migration).
+- Source Detector qualification of discovered candidates with bounded public samples and AI product classification, plus strict auto-approval for Dujiao-Next and WooCommerce and manual review for Schema.org and Merchant JSON.
+- Internal candidate claim/lease/result APIs, idempotent promotion into `source_intakes`, and admin discovery funnel/controls.
+- Production Dujiao discovery now runs GitHub sources with optional token, full AI keywords, and env-driven budgets.
+
 ## [3.6.0] - 2026-08-03
 
 ### Added
