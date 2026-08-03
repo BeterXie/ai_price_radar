@@ -28,6 +28,7 @@ class SourceHealthPublic(BaseModel):
 
 class PriceTrendPoint(BaseModel):
     bucket_at: datetime
+    price_currency: str
     trusted_lowest_price: Decimal | None
     median_price: Decimal | None
     in_stock_count: int
@@ -38,6 +39,10 @@ class OfferPublic(BaseModel):
     id: int
     shop_token: str
     shop_name: str
+    source_platform: str
+    source_platform_label: str
+    source_kind: str
+    source_kind_label: str
     original_name: str
     original_category: str
     original_description: str = ""
@@ -69,9 +74,11 @@ class OfferPublic(BaseModel):
 class ProductCard(BaseModel):
     slug: str
     platform: str
+    brand: str
     display_name: str
     subtitle: str
     product_type: str
+    price_currency: str
     lowest_price: Decimal | None
     related_lowest_price: Decimal | None
     offer_count: int
@@ -90,11 +97,13 @@ class ProductCard(BaseModel):
 class PricePoint(BaseModel):
     observed_at: datetime
     price: Decimal | None
+    currency: str
     stock_status: str
 
 
 class DeliveryPriceSummary(BaseModel):
     delivery_type: str
+    price_currency: str
     lowest_price: Decimal | None
     offer_count: int
     in_stock_count: int
@@ -108,6 +117,7 @@ class OfferGroupPublic(BaseModel):
     offer_count: int
     shop_count: int
     in_stock_count: int
+    price_currency: str
     lowest_price: Decimal | None
     highest_price: Decimal | None
     latest_observed_at: datetime | None
@@ -160,6 +170,10 @@ class ShopDetail(BaseModel):
     name: str
     source_url: str
     platform: str
+    source_platform: str
+    source_platform_label: str
+    source_kind: str
+    source_kind_label: str
     status: str
     first_seen_at: datetime
     last_success_at: datetime | None
@@ -187,8 +201,15 @@ class CatalogSnapshotPublic(BaseModel):
     published_at: datetime | None
 
 
+class SourcePlatformMeta(BaseModel):
+    id: str
+    label: str
+
+
 class MetaResponse(BaseModel):
     platforms: list[str]
+    brands: list[str]
+    source_platforms: list[SourcePlatformMeta]
     product_types: list[str]
     tags: list[str]
 
@@ -216,7 +237,8 @@ class ReportOut(BaseModel):
 
 
 class ShopRequestCreate(BaseModel):
-    source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
+    source_type: Literal["auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "other"] = "auto"
+    declared_platform: Literal["auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "other"] | None = None
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)
     contact: str = Field(min_length=3, max_length=200)
@@ -232,7 +254,11 @@ class ShopRequestCreate(BaseModel):
 
 
 class ShopRequestOut(BaseModel):
-    source_type: Literal["ldxp", "merchant_feed"] = "ldxp"
+    source_type: str
+    declared_platform: str
+    detected_platform: str
+    detection_message: str = ""
+    workflow_status: str
     status: Literal["submitted", "already_pending", "already_known"]
     request_id: int | None = None
     shop_token: str
@@ -243,7 +269,10 @@ class SourceIntakeOut(BaseModel):
 
     id: int
     report_id: int | None
-    source_type: Literal["ldxp", "merchant_feed"]
+    source_type: str
+    declared_platform: str
+    detected_platform: str
+    workflow_status: str
     source_key: str
     source_url: str
     shop_name: str
@@ -279,6 +308,30 @@ class SourceIntakeReject(BaseModel):
 class SourceIntakeClaimRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
+
+
+class SourceDetectionClaimRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+    lease_seconds: int = Field(default=300, ge=30, le=30 * 60)
+
+
+class SourceDetectionClaimOut(BaseModel):
+    intake_id: int
+    source_url: str
+    declared_platform: str
+    attempt_count: int
+    lease_expires_at: datetime
+
+
+class SourceDetectionResult(BaseModel):
+    status: Literal["pending_review", "validation_failed"]
+    attempt_count: int = Field(ge=1)
+    detected_platform: Literal["ldxp", "dujiao_next", "merchant_json", "other", "unknown"] = "unknown"
+    source_url: str = Field(default="", max_length=2000)
+    source_key: str = Field(default="", max_length=300)
+    shop_name: str = Field(default="", max_length=120)
+    product_count: int = Field(default=0, ge=0)
+    failure_reason: str = Field(default="", max_length=500)
 
 
 class SourceIntakeClaimOut(BaseModel):

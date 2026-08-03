@@ -159,7 +159,7 @@ def test_watch_atom_feed_contains_threshold_state():
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("application/atom+xml")
         assert "达到提醒条件" in response.text
-        assert "¥15.00" in response.text
+        assert "CNY 15.00" in response.text
     finally:
         app.dependency_overrides.clear()
 
@@ -189,9 +189,11 @@ def test_merchant_feed_submission_accepts_public_https_and_rejects_private_host(
         with Session(engine) as db:
             intake = db.scalar(select(SourceIntake))
             assert intake is not None
-            assert intake.source_type == "merchant_feed"
+            assert intake.source_type == "unknown"
+            assert intake.declared_platform == "merchant_json"
+            assert intake.detected_platform == "unknown"
             assert intake.source_key == "https://merchant.example/catalog.json"
-            assert intake.status == "pending_review"
+            assert intake.status == "submitted"
 
         rejected = client.post("/api/v1/shop-requests", json={
             "source_type": "merchant_feed",

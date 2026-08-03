@@ -11,7 +11,7 @@ from .routers import admin, internal, public
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.4.0"
+VERSION = "3.5.0"
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.add_middleware(
 app.include_router(public.router)
 app.include_router(admin.router)
 app.include_router(internal.router)
+app.include_router(internal.detector_router)
 
 
 @app.get("/health")

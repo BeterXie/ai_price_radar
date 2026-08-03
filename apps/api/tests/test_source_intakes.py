@@ -31,6 +31,7 @@ def api_client(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "admin_api_key", "admin-test")
     monkeypatch.setattr(settings, "intake_worker_key", "worker-test")
+    monkeypatch.setattr(settings, "detector_worker_key", "detector-test")
     monkeypatch.setattr(settings, "report_rate_limit_count", 100)
     monkeypatch.setattr(settings, "public_site_url", "https://ai.pricememo.cn")
 
@@ -53,6 +54,36 @@ def _payload(token: str = "ABC123", **extra):
         "note": "公开 AI 商品申请",
         **extra,
     }
+
+
+def _detect(client: TestClient, intake_id: int, *, platform: str = "ldxp", source_url: str = "", source_key: str = ""):
+    headers = {"X-Detector-Worker-Key": "detector-test"}
+    claimed = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=headers,
+        json={"limit": 1, "lease_seconds": 300},
+    )
+    assert claimed.status_code == 200
+    task = claimed.json()[0]
+    assert task["intake_id"] == intake_id
+    if not source_url:
+        source_url = task["source_url"]
+    if not source_key:
+        source_key = source_url.rsplit("/", 1)[-1].casefold() if platform == "ldxp" else source_url
+    result = client.post(
+        f"/api/v1/internal/source-detections/{intake_id}/result",
+        headers=headers,
+        json={
+            "status": "pending_review",
+            "attempt_count": task["attempt_count"],
+            "detected_platform": platform,
+            "source_url": source_url,
+            "source_key": source_key,
+            "product_count": 1,
+        },
+    )
+    assert result.status_code == 200
+    return result
 
 
 def test_shop_request_requires_valid_contact_email(api_client):
@@ -81,7 +112,10 @@ def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
         intake = db.get(SourceIntake, intake_id)
         assert intake is not None
         assert intake.source_key == "abc123"
-        assert intake.status == "pending_review"
+        assert intake.declared_platform == "auto"
+        assert intake.source_type == "unknown"
+        assert intake.detected_platform == "unknown"
+        assert intake.status == "submitted"
         outbox = list(db.scalars(select(NotificationOutbox).order_by(NotificationOutbox.id)))
         assert len(outbox) == 2
         assert {row.event_type for row in outbox} == {
@@ -93,16 +127,208 @@ def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
         assert "输入管理密钥" in admin_mail.text_body
 
 
+def test_public_submission_never_resolves_or_fetches_user_url(api_client, monkeypatch):
+    client, engine = api_client
+    monkeypatch.setattr(
+        "app.services.source_platform.socket.getaddrinfo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("public API must not resolve source hosts")),
+    )
+    monkeypatch.setattr(
+        "app.services.source_platform._fetch_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("public API must not fetch source URLs")),
+    )
+    response = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://untrusted.example/catalog.json"},
+    )
+    assert response.status_code == 201
+    assert response.json()["workflow_status"] == "submitted"
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, response.json()["request_id"])
+        assert (intake.source_type, intake.detected_platform, intake.status) == ("unknown", "unknown", "submitted")
+
+
+def test_detector_key_lease_recovery_and_failure_sanitization(api_client):
+    client, engine = api_client
+    intake_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://untrusted.example/catalog.json"},
+    ).json()["request_id"]
+    detector_headers = {"X-Detector-Worker-Key": "detector-test"}
+
+    unauthorized = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers={"X-Intake-Worker-Key": "worker-test"},
+        json={"limit": 1, "lease_seconds": 300},
+    )
+    assert unauthorized.status_code == 401
+
+    first_claim = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=detector_headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        intake.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+    second_claim = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=detector_headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    assert first_claim["attempt_count"] == 1
+    assert second_claim["attempt_count"] == 2
+
+    stale = client.post(
+        f"/api/v1/internal/source-detections/{intake_id}/result",
+        headers=detector_headers,
+        json={"status": "validation_failed", "attempt_count": 1, "failure_reason": "secret=stale"},
+    )
+    assert stale.status_code == 409
+    current = client.post(
+        f"/api/v1/internal/source-detections/{intake_id}/result",
+        headers=detector_headers,
+        json={"status": "validation_failed", "attempt_count": 2, "failure_reason": "secret=current"},
+    )
+    assert current.status_code == 200
+    assert current.json()["status"] == "validation_failed"
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.source_type == "unknown"
+        assert intake.status == "validation_failed"
+        assert intake.failure_reason == "来源安全检测失败"
+        assert "secret" not in intake.failure_reason
+        assert intake.lease_expires_at is None
+        assert intake.finished_at is not None
+
+
+def test_legacy_merchant_feed_input_is_canonicalized_without_persisting_alias(api_client):
+    client, engine = api_client
+    url = "https://feed.example/catalog.json"
+    response = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "source_type": "merchant_feed", "shop_url": url},
+    )
+    assert response.status_code == 201
+    assert response.json()["declared_platform"] == "merchant_json"
+    with Session(engine) as db:
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.source_key == url))
+        assert intake is not None
+        assert intake.source_type == "unknown"
+        assert intake.declared_platform == "merchant_json"
+
+
+def test_detection_merges_two_product_pages_into_one_canonical_dujiao_source(api_client):
+    client, engine = api_client
+    first = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://shop.example/products/a", "note": "first note"},
+    ).json()["request_id"]
+    second = client.post(
+        "/api/v1/shop-requests",
+        json={
+            **_payload(),
+            "shop_url": "https://shop.example/products/b",
+            "contact": "second@example.com",
+            "note": "second note",
+        },
+    ).json()["request_id"]
+    headers = {"X-Detector-Worker-Key": "detector-test"}
+    claims = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=headers,
+        json={"limit": 2, "lease_seconds": 300},
+    ).json()
+    assert {task["intake_id"] for task in claims} == {first, second}
+    attempts = {task["intake_id"]: task["attempt_count"] for task in claims}
+
+    for intake_id in (first, second):
+        response = client.post(
+            f"/api/v1/internal/source-detections/{intake_id}/result",
+            headers=headers,
+            json={
+                "status": "pending_review",
+                "attempt_count": attempts[intake_id],
+                "detected_platform": "dujiao_next",
+                "source_url": "https://shop.example",
+                "source_key": "https://shop.example/",
+                "shop_name": "Canonical Shop",
+                "product_count": intake_id,
+            },
+        )
+        assert response.status_code == 200
+
+    with Session(engine) as db:
+        rows = list(db.scalars(select(SourceIntake)))
+        assert len(rows) == 1
+        intake = rows[0]
+        assert (intake.source_type, intake.source_key, intake.status) == (
+            "dujiao_next",
+            "https://shop.example/",
+            "pending_review",
+        )
+        assert "first note" in intake.note and "second note" in intake.note
+        assert "second@example.com" in intake.note
+
+
+def test_detection_merges_resubmission_into_published_source_without_downgrade(api_client):
+    client, engine = api_client
+    with Session(engine) as db:
+        db.add(SourceIntake(
+            source_type="dujiao_next",
+            declared_platform="dujiao_next",
+            detected_platform="dujiao_next",
+            source_key="https://shop.example/",
+            source_url="https://shop.example/",
+            contact_email="owner@example.com",
+            status="published",
+            product_count=3,
+        ))
+        db.commit()
+    duplicate_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://shop.example/products/new"},
+    ).json()["request_id"]
+    headers = {"X-Detector-Worker-Key": "detector-test"}
+    task = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    response = client.post(
+        f"/api/v1/internal/source-detections/{duplicate_id}/result",
+        headers=headers,
+        json={
+            "status": "pending_review",
+            "attempt_count": task["attempt_count"],
+            "detected_platform": "dujiao_next",
+            "source_url": "https://shop.example",
+            "source_key": "https://shop.example/",
+            "product_count": 1,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "published"
+    with Session(engine) as db:
+        rows = list(db.scalars(select(SourceIntake)))
+        assert len(rows) == 1
+        assert rows[0].status == "published"
+        assert rows[0].product_count == 3
+
+
 def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_client):
     client, engine = api_client
     created = client.post("/api/v1/shop-requests", json=_payload("APPROVE1"))
     intake_id = created.json()["request_id"]
+    _detect(client, intake_id)
     admin_headers = {"X-Admin-Key": "admin-test"}
     worker_headers = {"X-Intake-Worker-Key": "worker-test"}
 
     approved = client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers)
     assert approved.status_code == 200
     assert approved.json()["status"] == "queued"
+    assert approved.json()["workflow_status"] == "approved"
     repeated = client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers)
     assert repeated.status_code == 200
 
@@ -116,18 +342,19 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         json={"limit": 1, "lease_seconds": 300},
     )
     assert claimed.status_code == 200
-    assert claimed.json()[0]["attempt_count"] == 1
+    claim_attempt = claimed.json()[0]["attempt_count"]
+    assert claim_attempt == 2
 
     validated = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
-        json={"status": "validated", "attempt_count": 1, "product_count": 2},
+        json={"status": "validated", "attempt_count": claim_attempt, "product_count": 2},
     )
     assert validated.status_code == 200
     not_published = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
-        json={"status": "onboarded", "attempt_count": 1, "product_count": 2},
+        json={"status": "onboarded", "attempt_count": claim_attempt, "product_count": 2},
     )
     assert not_published.status_code == 409
 
@@ -138,14 +365,15 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
     onboarded = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
-        json={"status": "onboarded", "attempt_count": 1, "product_count": 2, "published": True},
+        json={"status": "onboarded", "attempt_count": claim_attempt, "product_count": 2, "published": True},
     )
     assert onboarded.status_code == 200
     assert onboarded.json()["status"] == "onboarded"
+    assert onboarded.json()["workflow_status"] == "published"
     repeated_onboard = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
-        json={"status": "onboarded", "attempt_count": 1, "product_count": 2, "published": True},
+        json={"status": "onboarded", "attempt_count": claim_attempt, "product_count": 2, "published": True},
     )
     assert repeated_onboard.status_code == 200
 
@@ -157,12 +385,78 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         assert "https://ai.pricememo.cn/shops/APPROVE1" in onboarded_mail.text_body
 
 
+def test_declared_platform_mismatch_is_saved_and_reported(api_client, monkeypatch):
+    client, engine = api_client
+    response = client.post(
+        "/api/v1/shop-requests",
+        json={
+            **_payload(),
+            "source_type": "ldxp",
+            "shop_url": "https://shop.example.com",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["declared_platform"] == "ldxp"
+    assert response.json()["detected_platform"] == "unknown"
+    assert response.json()["workflow_status"] == "submitted"
+    intake_id = response.json()["request_id"]
+    detected = _detect(
+        client,
+        intake_id,
+        platform="dujiao_next",
+        source_url="https://shop.example.com",
+        source_key="https://shop.example.com",
+    )
+    assert detected.json()["workflow_status"] == "pending_review"
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.declared_platform == "ldxp"
+        assert intake.detected_platform == "dujiao_next"
+
+
+def test_non_ldxp_approval_routes_to_atomic_publisher_or_stays_manual(api_client):
+    client, _ = api_client
+    admin_headers = {"X-Admin-Key": "admin-test"}
+
+    dujiao_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://dujiao.example", "source_type": "dujiao_next"},
+    ).json()["request_id"]
+    _detect(
+        client,
+        dujiao_id,
+        platform="dujiao_next",
+        source_url="https://dujiao.example",
+        source_key="https://dujiao.example",
+    )
+    approved = client.post(f"/api/v1/admin/source-intakes/{dujiao_id}/approve", headers=admin_headers)
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+    ldxp_claim = client.post(
+        "/api/v1/internal/source-intakes/claim",
+        headers={"X-Intake-Worker-Key": "worker-test"},
+        json={"limit": 10},
+    )
+    assert ldxp_claim.status_code == 200
+    assert ldxp_claim.json() == []
+
+    other_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload("OTHER"), "shop_url": "https://other.example", "source_type": "other"},
+    ).json()["request_id"]
+    _detect(client, other_id, platform="other", source_url="https://other.example", source_key="https://other.example")
+    blocked = client.post(f"/api/v1/admin/source-intakes/{other_id}/approve", headers=admin_headers)
+    assert blocked.status_code == 409
+
+
 def test_reject_retry_and_lease_generation_are_idempotent(api_client):
     client, engine = api_client
     admin_headers = {"X-Admin-Key": "admin-test"}
     worker_headers = {"X-Intake-Worker-Key": "worker-test"}
 
     rejected_id = client.post("/api/v1/shop-requests", json=_payload("REJECT1")).json()["request_id"]
+    _detect(client, rejected_id)
     rejected = client.post(
         f"/api/v1/admin/source-intakes/{rejected_id}/reject",
         headers=admin_headers,
@@ -177,6 +471,7 @@ def test_reject_retry_and_lease_generation_are_idempotent(api_client):
     assert repeated_reject.status_code == 200
 
     intake_id = client.post("/api/v1/shop-requests", json=_payload("LEASE1")).json()["request_id"]
+    _detect(client, intake_id)
     assert client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers).status_code == 200
     first_claim = client.post(
         "/api/v1/internal/source-intakes/claim",
@@ -192,18 +487,18 @@ def test_reject_retry_and_lease_generation_are_idempotent(api_client):
         headers=worker_headers,
         json={"limit": 1, "lease_seconds": 300},
     ).json()[0]
-    assert first_claim["attempt_count"] == 1
-    assert second_claim["attempt_count"] == 2
+    assert first_claim["attempt_count"] == 2
+    assert second_claim["attempt_count"] == 3
     stale = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
-        json={"status": "validation_failed", "attempt_count": 1, "failure_reason": "旧任务"},
+        json={"status": "validation_failed", "attempt_count": 2, "failure_reason": "旧任务"},
     )
     assert stale.status_code == 409
     current = client.post(
         f"/api/v1/internal/source-intakes/{intake_id}/result",
         headers=worker_headers,
-        json={"status": "no_products", "attempt_count": 2},
+        json={"status": "no_products", "attempt_count": 3},
     )
     assert current.status_code == 200
     retried = client.post(f"/api/v1/admin/source-intakes/{intake_id}/retry", headers=admin_headers)
@@ -289,7 +584,8 @@ def test_admin_can_requeue_failed_notifications_by_source_intake(api_client):
 
 def test_admin_stats_separate_corrections_and_pending_intakes(api_client):
     client, engine = api_client
-    client.post("/api/v1/shop-requests", json=_payload("STAT1"))
+    intake_id = client.post("/api/v1/shop-requests", json=_payload("STAT1")).json()["request_id"]
+    _detect(client, intake_id)
     with Session(engine) as db:
         db.add(Report(kind="correction", message="这是待处理的纠错信息", status="open"))
         db.commit()
@@ -304,6 +600,7 @@ def test_admin_stats_separate_corrections_and_pending_intakes(api_client):
 def test_internal_validation_failure_does_not_store_raw_error_details(api_client):
     client, engine = api_client
     intake_id = client.post("/api/v1/shop-requests", json=_payload("SANITIZE1")).json()["request_id"]
+    _detect(client, intake_id)
     admin_headers = {"X-Admin-Key": "admin-test"}
     worker_headers = {"X-Intake-Worker-Key": "worker-test"}
     client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers)

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, X } from "@phosphor-icons/react";
+import { money } from "@/lib/format";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 const PRODUCT_OPTIONS = [
@@ -46,6 +47,7 @@ type AdminOffer = {
   title: string;
   product_slug: string | null;
   price: string | null;
+  currency: string;
   stock_status: string;
   approved: boolean;
   active: boolean;
@@ -64,9 +66,11 @@ type Report = {
   created_at: string;
 };
 
+type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "other";
+
 type SourceIntake = {
   id: number;
-  source_type: "ldxp" | "merchant_feed";
+  source_type: SourceType;
   source_url: string;
   shop_name: string;
   contact_email: string;
@@ -191,14 +195,27 @@ export function AdminPanel() {
   }
 
   const intakeStatusLabels: Record<string, string> = {
+    submitted: "等待安全检测",
+    detecting: "安全检测中",
     pending_review: "待初审",
+    approved: "已获准，等待完整发布",
     queued: "等待验证",
     validating: "验证中",
     validated: "已验证待发布",
     onboarded: "已收录",
+    published: "已发布",
+    needs_re_review: "需要重新审核",
+    disabled: "已停用",
     rejected: "已驳回",
     no_products: "未发现目标商品",
     validation_failed: "验证失败",
+  };
+  const sourceTypeLabels: Record<string, string> = {
+    unknown: "待识别来源",
+    ldxp: "链动小铺",
+    dujiao_next: "Dujiao-Next",
+    merchant_json: "商家 JSON Feed",
+    other: "其他独立站",
   };
 
   function emailStatusLabel(status: string) {
@@ -256,20 +273,22 @@ export function AdminPanel() {
               <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--accent)]" : ""}`}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="mono text-xs text-black/40">#{intake.id} · {intake.source_type === "ldxp" ? "链动小铺" : "商家 JSON Feed"}</p>
+                    <p className="mono text-xs text-black/40">#{intake.id} · {sourceTypeLabels[intake.source_type] || intake.source_type}</p>
                     <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-xs">{intakeStatusLabels[intake.status] || intake.status}</span>
                   </div>
                   <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
                   <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
                   <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                   {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
+                  {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">其他独立站仅支持管理员人工接入，不会进入自动验证或发布队列。</p>}
+                  {intake.source_type === "merchant_json" && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程校验 JSON Feed；成功进入完整快照后才会公开。</p>}
                   {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[#f2d8d2] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
                   {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {intake.status === "pending_review" && <><button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />批准并验证</button><button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
-                  {(intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
+                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />{intake.source_type === "ldxp" ? "批准并验证" : "批准并进入完整发布"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
+                  {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
                   {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>
               </div>
@@ -322,7 +341,7 @@ export function AdminPanel() {
                   {PRODUCT_OPTIONS.map((slug) => <option key={slug} value={slug}>{slug}</option>)}
                 </select>
                 <div className="text-sm">
-                  ¥{offer.price || "暂无"}<br />
+                  {money(offer.price, offer.currency)}<br />
                   <span className="text-black/40">{offer.stock_status}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">

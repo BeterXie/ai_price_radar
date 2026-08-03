@@ -1,12 +1,13 @@
 {
   "name": "ai-price-radar-web",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/source-intake.test.mjs"
   },
   "dependencies": {
     "@icons-pack/react-simple-icons": "12.0.0",

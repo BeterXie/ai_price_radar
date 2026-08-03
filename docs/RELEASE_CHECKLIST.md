@@ -20,11 +20,11 @@
 ## Publish
 
 ```powershell
-git tag -a v3.4.0 -m "AI Price Radar v3.4.0 — Community & Support"
-git push origin v3.4.0
+git tag -a v3.5.0 -m "AI Price Radar v3.5.0 — Multi-Source Discovery"
+git push origin v3.5.0
 ```
 
-Create a GitHub Release from `v3.4.0` using `RELEASE_NOTES_v3.4.0.md`.
+Create a GitHub Release from `v3.5.0` using `RELEASE_NOTES_v3.5.0.md`.
 
 ## After publishing
 

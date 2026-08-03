@@ -13,6 +13,12 @@ from ldxp_crawler import __version__
 from ldxp_crawler.browser_scanner import BrowserShopScanner
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.discovery import Discovery, build_session
+from ldxp_crawler.dujiao_discovery import (
+    DEFAULT_AI_KEYWORDS,
+    DujiaoDiscovery,
+    DujiaoVerifier,
+    normalize_candidate_origin,
+)
 from ldxp_crawler.exporter import export_results
 from ldxp_crawler.intake_bridge import IntakeBridge, IntakeBridgeError
 from ldxp_crawler.utils import extract_shop_token, merge_unique
@@ -71,6 +77,20 @@ def add_discovery_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-discovered", type=int, default=10000)
 
 
+def add_dujiao_discovery_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--sources", default="seed,bing", help="逗号分隔：seed,bing")
+    parser.add_argument("--seed", action="append", default=[], help="候选页面或店铺 URL，可重复")
+    parser.add_argument("--seed-file", type=Path, default=Path("dujiao_seeds.txt"))
+    parser.add_argument("--bing-pages", type=int, default=2)
+    parser.add_argument("--bing-count", type=int, default=20)
+    parser.add_argument("--bing-delay", type=float, default=2.0)
+    parser.add_argument("--request-interval", type=float, default=2.0, help="候选站公开请求最小间隔")
+    parser.add_argument("--max-api-pages", type=int, default=5, help="单个候选最多读取的公开商品页数")
+    parser.add_argument("--max-new-candidates", type=int, default=500, help="本次最多新增候选数；0 不限制")
+    parser.add_argument("--max-processed-candidates", type=int, default=2000, help="本次最多验证候选数；0 不限制")
+    parser.add_argument("--reverify-stale-hours", type=float, default=24.0, help="复验超过该小时数未验证的候选")
+
+
 def add_scan_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--headless", action="store_true", help="无头运行；首次运行建议不要开启")
     parser.add_argument("--executable-path", type=Path, default=None, help="可选的 Chromium/Chrome 可执行文件")
@@ -105,6 +125,19 @@ def build_parser() -> argparse.ArgumentParser:
     discover = sub.add_parser("discover", help="发现公开店铺 URL")
     add_common_args(discover)
     add_discovery_args(discover)
+
+    dujiao = sub.add_parser("discover-dujiao", help="发现并验证 Dujiao-Next 公开候选")
+    add_common_args(dujiao)
+    add_dujiao_discovery_args(dujiao)
+    dujiao.set_defaults(user_agent="AI-Price-Radar-Discovery/1.0", timeout=10.0)
+
+    dujiao_review = sub.add_parser("review-dujiao", help="记录 Dujiao-Next 候选人工审核决定")
+    dujiao_review.add_argument("--db", default="ldxp_crawler.db")
+    dujiao_review.add_argument("--origin", required=True, help="候选店铺根地址")
+    dujiao_review.add_argument("--decision", required=True, choices=("approve", "reject", "disable"))
+    dujiao_review.add_argument("--note", default="", help="可选审核备注")
+    dujiao_review.add_argument("-v", "--verbose", action="store_true")
+    dujiao_review.set_defaults(keywords=[])
 
     scan = sub.add_parser("scan", help="使用 Chromium 扫描数据库中的候选店铺")
     add_common_args(scan)
@@ -155,6 +188,84 @@ def run_discovery(args: argparse.Namespace, db: StateDB, logger: logging.Logger)
     if "wayback" in sources and not discovery.reached_limit():
         discovery.from_wayback()
     logger.info("发现完成：新增 %s 家，累计 %s 家。", db.candidate_count() - before, db.candidate_count())
+
+
+def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> None:
+    session = build_session(args.user_agent, retries=0)
+    verifier = DujiaoVerifier(
+        session,
+        timeout=args.timeout,
+        request_interval=args.request_interval,
+        max_pages=args.max_api_pages,
+    )
+    discovery = DujiaoDiscovery(
+        db,
+        verifier,
+        logger=logger,
+        max_new_candidates=args.max_new_candidates,
+        max_processed_candidates=args.max_processed_candidates,
+        reverify_stale_hours=args.reverify_stale_hours,
+    )
+    sources = {value.strip().casefold() for value in args.sources.split(",") if value.strip()}
+    unsupported = sources - {"seed", "bing"}
+    if unsupported:
+        raise ValueError(f"unsupported Dujiao discovery sources: {', '.join(sorted(unsupported))}")
+    filter_keywords = merge_unique([*DEFAULT_AI_KEYWORDS, *args.keywords])
+    before = db.dujiao_candidate_count()
+    reverified = discovery.reverify_stale(filter_keywords)
+    if "seed" in sources:
+        discovery.from_seeds(args.seed, args.seed_file, filter_keywords)
+    if "bing" in sources and not discovery.reached_limit():
+        discovery.from_bing(args.keywords, pages=args.bing_pages, count=args.bing_count, delay=args.bing_delay)
+    pending = db.list_dujiao_candidates(
+        review_status="pending_review",
+        verification_status="pending_review",
+    )
+    logger.info(
+        "Dujiao 发现完成：处理 %s 个（复验 %s），新增 %s 个，累计 %s 个，待人工审核 %s 个。",
+        discovery.processed_count,
+        reverified,
+        db.dujiao_candidate_count() - before,
+        db.dujiao_candidate_count(),
+        len(pending),
+    )
+    for row in pending:
+        print(json.dumps({
+            "origin": row["origin"],
+            "discovered_urls": json.loads(row["discovered_urls"]),
+            "discovered_by": json.loads(row["sources"]),
+            "fingerprints": json.loads(row["fingerprints"]),
+            "api_verified": bool(row["api_verified"]),
+            "product_count": row["product_count"],
+            "matched_products": json.loads(row["matched_products"]),
+            "first_seen_at": row["first_seen_at"],
+            "last_verified_at": row["last_verified_at"],
+            "review_status": row["review_status"],
+            "site_name": row["site_name"],
+            "re_review_reason": row["re_review_reason"],
+        }, ensure_ascii=False))
+
+
+def run_dujiao_review(args: argparse.Namespace, db: StateDB) -> None:
+    origin = normalize_candidate_origin(args.origin)
+    if not origin:
+        raise ValueError("invalid Dujiao candidate origin")
+    decision = {
+        "approve": "approved",
+        "reject": "rejected",
+        "disable": "disabled",
+    }[args.decision]
+    if not db.review_dujiao_candidate(origin, decision, args.note):
+        raise ValueError("Dujiao candidate was not found")
+    row = next(item for item in db.list_dujiao_candidates() if item["origin"] == origin)
+    print(json.dumps({
+        "origin": origin,
+        "verification_status": row["status"],
+        "review_status": row["review_status"],
+        "review_note": row["review_note"],
+        "reviewed_at": row["reviewed_at"],
+        "published": False,
+    }, ensure_ascii=False))
 
 
 def intake_result_payload(result) -> tuple[str, int, str]:
@@ -355,6 +466,14 @@ def main() -> int:
             )
             discovery.from_seeds([], seed_file)
             run_scan(args, db, logger)
+            return 0
+
+        if args.command == "discover-dujiao":
+            run_dujiao_discovery(args, db, logger)
+            return 0
+
+        if args.command == "review-dujiao":
+            run_dujiao_review(args, db)
             return 0
 
         if args.command in {"discover", "all"}:

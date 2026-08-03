@@ -16,12 +16,13 @@ def price_median(values: Iterable[Decimal | None]) -> Decimal | None:
     return Decimal(str(median(normalized)))
 
 
-def low_price_warning(price: Decimal | None, median_price: Decimal | None) -> str | None:
+def low_price_warning(price: Decimal | None, median_price: Decimal | None, currency: str = "CNY") -> str | None:
     """Explain why a price should be reviewed instead of promoted as trustworthy."""
     if price is None or price <= 0:
         return None
     if price < MIN_TRUSTED_PRICE:
-        return "价格低于 ¥1，请核对是否为体验、余额或受限商品。"
+        unit = "¥1" if currency == "CNY" else f"{currency} 1"
+        return f"价格低于 {unit}，请核对是否为体验、余额或受限商品。"
     if median_price and median_price > 0 and price < median_price * LOW_PRICE_RATIO:
         percentage = max(1, round((Decimal("1") - price / median_price) * 100))
         return f"该报价比同交付形态中位价低约 {percentage}%，请重点核对。"

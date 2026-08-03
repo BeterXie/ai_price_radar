@@ -19,6 +19,8 @@ function fulfillmentLabel(value: boolean | null) {
 function DecisionFacts({ offer }: { offer: Offer }) {
   return (
     <dl className="grid grid-cols-2 gap-x-5 gap-y-4 text-sm lg:grid-cols-4">
+      <div><dt className="text-xs text-black/40">来源平台</dt><dd className="mt-1 font-medium">{offer.source_platform_label}</dd></div>
+      <div><dt className="text-xs text-black/40">采集方式</dt><dd className="mt-1">{offer.source_kind_label}</dd></div>
       <div><dt className="text-xs text-black/40">交付形态</dt><dd className="mt-1 font-medium">{DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type}</dd></div>
       <div><dt className="text-xs text-black/40">使用期限</dt><dd className="mt-1">{PERIOD_LABELS[offer.service_period] || offer.service_period}</dd></div>
       <div><dt className="text-xs text-black/40">质保</dt><dd className="mt-1">{WARRANTY_LABELS[offer.warranty] || offer.warranty}</dd></div>
@@ -35,7 +37,7 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
     <div className="mt-5 overflow-hidden rounded-[12px] border hairline bg-white/70">
       {offers.map((offer) => (
         <div key={offer.id} className="grid gap-2 border-b hairline px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_110px_90px_auto] sm:items-center">
-          <Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link>
+          <div><Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link><p className="mt-1 text-[11px] text-black/40">{offer.source_platform_label} · {offer.source_kind_label}</p></div>
           <span className="text-xs text-black/50">{stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}</span>
           <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
           <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" aria-label={`前往 ${offer.shop_name} 查看报价`} className="inline-flex items-center gap-1 text-xs hover:opacity-60">查看原站 <ArrowSquareOut size={14} /></a>
@@ -80,6 +82,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   };
 
   const shownPrice = group?.lowest_price ?? offer.price;
+  const shownCurrency = group?.lowest_price ? group.price_currency : offer.currency;
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
 
   return (
@@ -94,6 +97,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">
             <span className="flex items-center gap-1.5"><Storefront size={15} />{group ? `${group.shop_count} 家店铺 · ${group.offer_count} 条报价` : offer.shop_name}</span>
+            <span>{offer.source_platform_label} · {offer.source_kind_label}</span>
             <span>{DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type}</span>
             <span>{PERIOD_LABELS[offer.service_period] || offer.service_period}</span>
             <span>{WARRANTY_LABELS[offer.warranty] || offer.warranty}</span>
@@ -108,7 +112,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         </div>
 
         <div>
-          <p className="mono text-xl font-semibold tracking-[-.04em]">{money(shownPrice, offer.currency)}</p>
+          <p className="mono text-xl font-semibold tracking-[-.04em]">{money(shownPrice, shownCurrency)}</p>
           <p className="mt-1 text-xs text-black/45">{fulfillmentLabel(offer.auto_delivery)}</p>
         </div>
 

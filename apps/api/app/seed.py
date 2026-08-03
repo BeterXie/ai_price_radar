@@ -124,6 +124,7 @@ def seed() -> None:
                 db.add(OfferHistory(
                     offer_id=offer.id,
                     price=Decimal(price) + delta,
+                    currency=offer.currency,
                     stock_count=stock,
                     stock_status=stock_status,
                     observed_at=now - timedelta(days=days, minutes=age_minutes),

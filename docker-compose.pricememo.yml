@@ -6,6 +6,7 @@ services:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     networks:
       default:
+      detector_control:
       pricememo_frontend:
         aliases:
           - ai-radar-api
@@ -33,8 +34,8 @@ services:
   crawler:
     profiles: ["crawler"]
     build:
-      context: ./crawler/ldxp
-      dockerfile: Dockerfile.remote
+      context: .
+      dockerfile: crawler/ldxp/Dockerfile.remote
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     init: true
@@ -46,13 +47,14 @@ services:
       INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
     volumes:
       - ./crawler/ldxp/seeds.txt:/config/seeds.txt:ro
+      - ./crawler/ldxp/dujiao_seeds.txt:/config/dujiao_seeds.txt:ro
       - ./data/crawler:/data
 
   crawler-bootstrap:
     profiles: ["bootstrap"]
     build:
-      context: ./crawler/ldxp
-      dockerfile: Dockerfile.bootstrap
+      context: .
+      dockerfile: crawler/ldxp/Dockerfile.bootstrap
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     init: true

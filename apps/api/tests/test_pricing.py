@@ -11,6 +11,7 @@ def test_sub_yuan_price_is_not_trusted():
     price = Decimal("0.01")
     assert is_trusted_price(price, Decimal("20")) is False
     assert low_price_warning(price, Decimal("20")) == "价格低于 ¥1，请核对是否为体验、余额或受限商品。"
+    assert low_price_warning(price, Decimal("20"), "USD") == "价格低于 USD 1，请核对是否为体验、余额或受限商品。"
 
 
 def test_large_downward_outlier_is_not_trusted():

@@ -1,7 +1,8 @@
+import { money } from "@/lib/format";
 import type { PriceTrendPoint } from "@/lib/types";
 
-function formatPrice(value: number) {
-  return `¥${value.toFixed(2)}`;
+function formatPrice(value: number, currency: string) {
+  return money(value, currency);
 }
 
 function linePath(values: (number | null)[], min: number, max: number, width: number, height: number) {
@@ -24,6 +25,7 @@ function linePath(values: (number | null)[], min: number, max: number, width: nu
 
 export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
   const recent = points.slice(-90);
+  const currency = recent[0]?.price_currency || "CNY";
   const priceValues = recent.flatMap((point) => [point.trusted_lowest_price, point.median_price])
     .filter((value): value is string => value !== null)
     .map(Number)
@@ -48,13 +50,13 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
     <figure className="rounded-[18px] border hairline bg-[color:var(--panel)] p-5">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap gap-4">
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-black" />近期有货最低价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest)}</span>
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-black/45" />常见价格 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-black" />近期有货最低价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest, currency)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-black/45" />常见价格 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian, currency)}</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 bg-[color:var(--accent)]" />有货观测</span>
         </div>
         <span className="text-black/40">最近 {recent.length} 天</span>
       </div>
-      <div className="relative overflow-hidden" aria-label={`价格趋势，范围 ${formatPrice(min)} 至 ${formatPrice(max)}`}>
+      <div className="relative overflow-hidden" aria-label={`价格趋势，范围 ${formatPrice(min, currency)} 至 ${formatPrice(max, currency)}`}>
         <svg viewBox={`0 0 ${width} ${height + 40}`} role="img" className="h-auto w-full" preserveAspectRatio="none">
           {[0, 0.5, 1].map((ratio) => <line key={ratio} x1="0" x2={width} y1={ratio * height} y2={ratio * height} stroke="currentColor" opacity="0.08" />)}
           {recent.map((point, index) => {
@@ -67,7 +69,7 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
           <path d={linePath(lowest, min, max, width, height)} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
         </svg>
       </div>
-      <figcaption className="mt-3 flex justify-between mono text-[11px] text-black/40"><span>{firstDate}</span><span>低 {formatPrice(min)} · 高 {formatPrice(max)}</span><span>{lastDate}</span></figcaption>
+      <figcaption className="mt-3 flex justify-between mono text-[11px] text-black/40"><span>{firstDate}</span><span>低 {formatPrice(min, currency)} · 高 {formatPrice(max, currency)}</span><span>{lastDate}</span></figcaption>
     </figure>
   );
 }

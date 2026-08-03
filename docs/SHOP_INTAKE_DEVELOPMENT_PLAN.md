@@ -1,5 +1,7 @@
 # 店铺收录与邮件通知开发任务
 
+> 本文记录最初只覆盖 LDXP 的第一阶段设计。当前多来源流程以 [Architecture](ARCHITECTURE.md)、[Source connectors](CONNECTORS.md) 和 `CONTEXT.md` 为准：公开提交从 `submitted` 异步检测，Dujiao-Next/Merchant JSON 经批准后进入 `approved`，成功参与原子快照后才成为 `published`；下文的统一 `pending_review -> queued` 不适用于这些来源。
+
 ## 目标
 
 把当前“关闭一条 `shop_request` Report”的假收录流程，改造成可追踪、可重试、可通知的真实收录流程。第一阶段必须完整覆盖 LDXP 人工申请；Merchant JSON Feed 复用同一状态机，连接器消费可作为独立后续任务，不得在未发布商品时标记为已收录。

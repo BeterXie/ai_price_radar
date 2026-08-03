@@ -47,15 +47,19 @@ from ..services.catalog import (
     get_snapshot,
     list_product_cards,
 )
+from ..services.source_platform import (
+    SOURCE_PLATFORM_LABELS,
+    canonical_source_platform,
+    prepare_source_submission,
+    source_platform_label,
+    workflow_status,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 settings = get_settings()
-LDXP_SHOP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
-LDXP_SHOP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
-
-
 def _offer_filters(
     *,
+    source_platform: str = "",
     delivery_type: str = "",
     period: str = "",
     warranty: str = "",
@@ -68,6 +72,7 @@ def _offer_filters(
     max_price: Decimal | None = None,
 ) -> OfferFilters:
     return OfferFilters(
+        source_platform=canonical_source_platform(source_platform),
         delivery_type=delivery_type,
         service_period=period,
         warranty=warranty,
@@ -140,58 +145,13 @@ def _enforce_report_rate_limit(request: Request, db: Session) -> None:
     rate.request_count += 1
 
 
-def _normalize_ldxp_shop_url(value: object) -> tuple[str, str]:
-    parsed = urllib.parse.urlsplit(str(value))
-    host = (parsed.hostname or "").lower()
-    match = LDXP_SHOP_PATH.fullmatch(parsed.path.rstrip("/"))
-    if host not in LDXP_SHOP_HOSTS or match is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="请提交有效的链动小铺公开店铺链接",
-        )
-    token = urllib.parse.unquote(match.group(1)).strip()
-    if not token or len(token) > 128 or re.fullmatch(r"[A-Za-z0-9._~-]+", token) is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="店铺链接中的 token 无效",
-        )
-    normalized = f"https://pay.ldxp.cn/shop/{urllib.parse.quote(token, safe='._~-')}"
-    return token, normalized
-
-
-def _normalize_merchant_feed_url(value: object) -> tuple[str, str]:
-    parsed = urllib.parse.urlsplit(str(value))
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="商家 Feed 必须使用公开 HTTPS URL",
-        )
-    if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
-        raise HTTPException(status_code=422, detail="Feed 地址不能指向本地或内部主机")
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        ip = None
-    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved):
-        raise HTTPException(status_code=422, detail="Feed 地址不能使用私有或保留 IP")
-    try:
-        port = parsed.port
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Feed 地址端口无效") from None
-    netloc = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    if port is not None and port != 443:
-        netloc = f"{netloc}:{port}"
-    normalized = urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
-    token = "feed-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
-    return token, normalized
-
-
 @router.get("/products", response_model=CatalogResponse)
 def products(
     q: str = Query(default="", max_length=100),
     platform: str = Query(default="", max_length=50),
+    brand: str = Query(default="", max_length=50),
     product: str = Query(default="", max_length=160),
+    source_platform: str = Query(default="", max_length=50),
     product_type: str = Query(default="", max_length=60),
     tag: str = Query(default="", max_length=80),
     in_stock: bool = False,
@@ -211,11 +171,12 @@ def products(
     items = list_product_cards(
         db,
         q=q,
-        platform=platform,
+        platform=brand or platform,
         product_slug=product,
         product_type=product_type,
         tag=tag,
         filters=_offer_filters(
+            source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
             warranty=warranty,
@@ -255,6 +216,9 @@ def snapshot(db: Session = Depends(get_db)) -> CatalogSnapshotPublic:
 @router.get("/catalog/groups", response_model=CatalogOfferGroupPageResponse)
 def catalog_groups(
     platform: str = Query(default="", max_length=50),
+    brand: str = Query(default="", max_length=50),
+    product: str = Query(default="", max_length=160),
+    source_platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
     delivery_type: str = Query(default="", max_length=40),
@@ -273,10 +237,12 @@ def catalog_groups(
     current = get_snapshot(db, snapshot)
     items, total, offer_total, in_stock_count, comparable_offer_count, trusted_offer_count, last_updated_at = get_catalog_group_page(
         db,
-        platform=platform,
+        platform=brand or platform,
+        product_slug=product,
         offset=offset,
         limit=limit,
         filters=_offer_filters(
+            source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
             warranty=warranty,
@@ -306,6 +272,7 @@ def catalog_groups(
 @router.get("/products/{slug}", response_model=ProductDetail)
 def product_detail(
     slug: str,
+    source_platform: str = Query(default="", max_length=50),
     delivery_type: str = Query(default="", max_length=40),
     period: str = Query(default="", max_length=40),
     warranty: str = Query(default="", max_length=40),
@@ -323,6 +290,7 @@ def product_detail(
         db,
         slug,
         filters=_offer_filters(
+            source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
             warranty=warranty,
@@ -344,12 +312,20 @@ def product_detail(
 @router.get("/products/{slug}/offers", response_model=OfferPageResponse)
 def product_offers(
     slug: str,
+    source_platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> OfferPageResponse:
-    items = get_product_offer_page(db, slug, offset=offset, limit=limit, snapshot_id=snapshot)
+    items = get_product_offer_page(
+        db,
+        slug,
+        offset=offset,
+        limit=limit,
+        filters=_offer_filters(source_platform=source_platform),
+        snapshot_id=snapshot,
+    )
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
     return OfferPageResponse(items=items)
@@ -358,6 +334,7 @@ def product_offers(
 @router.get("/products/{slug}/groups", response_model=OfferGroupPageResponse)
 def product_groups(
     slug: str,
+    source_platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
     delivery_type: str = Query(default="", max_length=40),
@@ -383,6 +360,7 @@ def product_groups(
         offset=offset,
         limit=limit,
         filters=_offer_filters(
+            source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
             warranty=warranty,
@@ -408,6 +386,8 @@ def product_groups(
 def product_group_offers(
     slug: str,
     fingerprint: str,
+    currency: str = Query(default="", min_length=0, max_length=10),
+    source_platform: str = Query(default="", max_length=50),
     delivery_type: str = Query(default="", max_length=40),
     period: str = Query(default="", max_length=40),
     warranty: str = Query(default="", max_length=40),
@@ -424,7 +404,9 @@ def product_group_offers(
         db,
         slug,
         fingerprint,
+        currency=currency,
         filters=_offer_filters(
+            source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
             warranty=warranty,
@@ -475,8 +457,16 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     if current is not None:
         offer_stmt = offer_stmt.where(Offer.snapshot_id == current.id)
     offers = list(db.scalars(offer_stmt))
+    brands = sorted({x.platform for x in products})
+    source_platform_ids = sorted({canonical_source_platform(offer.shop.platform) for offer in offers})
     return MetaResponse(
-        platforms=sorted({x.platform for x in products}),
+        platforms=brands,
+        brands=brands,
+        source_platforms=[
+            {"id": platform_id, "label": source_platform_label(platform_id)}
+            for platform_id in source_platform_ids
+            if platform_id in SOURCE_PLATFORM_LABELS
+        ],
         product_types=sorted({x.product_type for x in products}),
         tags=sorted({tag for offer in offers for tag in (offer.tags or [])}),
     )
@@ -554,10 +544,10 @@ def watch_feed(
         price = card.lowest_price
         hit = card.in_stock_count > 0 and (threshold is None or (price is not None and price <= threshold))
         state = "达到提醒条件" if hit else "持续关注"
-        price_text = f"¥{price:.2f}" if price is not None else "暂无可信价格"
-        threshold_text = f"，目标价 ¥{threshold:.2f}" if threshold is not None else ""
+        price_text = f"{card.price_currency} {price:.2f}" if price is not None else "暂无可信价格"
+        threshold_text = f"，目标价 {card.price_currency} {threshold:.2f}" if threshold is not None else ""
         content = f"{card.display_name}：{price_text}，{card.in_stock_count} 条有货，{card.trusted_offer_count} 条可信报价{threshold_text}。状态：{state}。"
-        entry_id = hashlib.sha256(f"{slug}:{price}:{card.in_stock_count}:{threshold}:{card.last_updated_at}".encode()).hexdigest()
+        entry_id = hashlib.sha256(f"{slug}:{card.price_currency}:{price}:{card.in_stock_count}:{threshold}:{card.last_updated_at}".encode()).hexdigest()
         url = f"{str(settings.public_site_url).rstrip('/')}/products/{urllib.parse.quote(slug)}"
         entries.append(
             "<entry>"
@@ -606,92 +596,104 @@ def create_shop_request(
     response: Response,
     db: Session = Depends(get_db),
 ) -> ShopRequestOut:
-    if payload.source_type == "merchant_feed":
-        token, shop_url = _normalize_merchant_feed_url(payload.shop_url)
-    else:
-        token, shop_url = _normalize_ldxp_shop_url(payload.shop_url)
     _enforce_report_rate_limit(request, db)
-    source_key = token.casefold() if payload.source_type == "ldxp" else shop_url
+    declared_platform = canonical_source_platform(payload.declared_platform or payload.source_type)
+    try:
+        submission = prepare_source_submission(payload.shop_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    detected_platform = "unknown"
+    persisted_source_type = "unknown"
+    source_key = submission.source_key
+    shop_url = submission.source_url
+    token = submission.shop_token
+    detection_message = "来源已提交，正在等待隔离检测器确认来源类型和公开契约。"
+
+    def build_response(
+        status_value: str,
+        response_status: str,
+        *,
+        request_id: int | None = None,
+    ) -> ShopRequestOut:
+        return ShopRequestOut(
+            source_type=payload.source_type,
+            declared_platform=declared_platform,
+            detected_platform=detected_platform,
+            detection_message=detection_message,
+            workflow_status=workflow_status(status_value),
+            status=response_status,
+            request_id=request_id,
+            shop_token=token,
+        )
 
     known_shop = db.scalar(select(Shop.id).where(
         (func.lower(Shop.token) == token.lower()) | (func.lower(Shop.source_url) == shop_url.lower())
     ))
     if known_shop is not None:
         db.commit()
-        return ShopRequestOut(source_type=payload.source_type, status="already_known", shop_token=token)
+        return build_response("published", "already_known")
 
     existing = db.scalar(
         select(SourceIntake)
-        .where(
-            SourceIntake.source_type == payload.source_type,
-            SourceIntake.source_key == source_key,
-        )
+        .where(SourceIntake.source_key == source_key)
         .order_by(SourceIntake.id.desc())
     )
     if existing is not None:
         db.commit()
-        return ShopRequestOut(
-            source_type=payload.source_type,
-            status="already_known" if existing.status == "onboarded" else "already_pending",
-            request_id=existing.id,
-            shop_token=token,
-        )
+        response_status = "already_known" if workflow_status(existing.status) == "published" else "already_pending"
+        return build_response(existing.status, response_status, request_id=existing.id)
 
     intake_values = {
-        "source_type": payload.source_type,
+        "source_type": persisted_source_type,
+        "declared_platform": declared_platform,
+        "detected_platform": detected_platform,
         "source_key": source_key,
         "source_url": shop_url,
         "shop_name": payload.shop_name.strip(),
         "contact_email": payload.contact.strip(),
         "note": payload.note.strip(),
         "origin": "manual",
-        "status": "pending_review",
+        "status": "submitted",
     }
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import insert
 
-        result = db.execute(
+        insert_result = db.execute(
             insert(SourceIntake)
             .values(**intake_values)
             .on_conflict_do_nothing(index_elements=["source_type", "source_key"])
         )
         intake = db.scalar(
             select(SourceIntake).where(
-                SourceIntake.source_type == payload.source_type,
+                SourceIntake.source_type == persisted_source_type,
                 SourceIntake.source_key == source_key,
             )
         )
-        if result.rowcount == 0:
+        if insert_result.rowcount == 0:
             db.commit()
-            return ShopRequestOut(
-                source_type=payload.source_type,
-                status="already_known" if intake and intake.status == "onboarded" else "already_pending",
-                request_id=intake.id if intake else None,
-                shop_token=token,
-            )
+            existing_status = intake.status if intake else "submitted"
+            response_status = "already_known" if workflow_status(existing_status) == "published" else "already_pending"
+            return build_response(existing_status, response_status, request_id=intake.id if intake else None)
     elif dialect == "sqlite":
         from sqlalchemy.dialects.sqlite import insert
 
-        result = db.execute(
+        insert_result = db.execute(
             insert(SourceIntake)
             .values(**intake_values)
             .on_conflict_do_nothing(index_elements=["source_type", "source_key"])
         )
         intake = db.scalar(
             select(SourceIntake).where(
-                SourceIntake.source_type == payload.source_type,
+                SourceIntake.source_type == persisted_source_type,
                 SourceIntake.source_key == source_key,
             )
         )
-        if result.rowcount == 0:
+        if insert_result.rowcount == 0:
             db.commit()
-            return ShopRequestOut(
-                source_type=payload.source_type,
-                status="already_known" if intake and intake.status == "onboarded" else "already_pending",
-                request_id=intake.id if intake else None,
-                shop_token=token,
-            )
+            existing_status = intake.status if intake else "submitted"
+            response_status = "already_known" if workflow_status(existing_status) == "published" else "already_pending"
+            return build_response(existing_status, response_status, request_id=intake.id if intake else None)
     else:
         intake = SourceIntake(**intake_values)
         db.add(intake)
@@ -702,4 +704,4 @@ def create_shop_request(
     db.commit()
     db.refresh(intake)
     response.status_code = status.HTTP_201_CREATED
-    return ShopRequestOut(source_type=payload.source_type, status="submitted", request_id=intake.id, shop_token=token)
+    return build_response("submitted", "submitted", request_id=intake.id)

@@ -1,46 +1,60 @@
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import json
-import socket
-import urllib.error
+import re
 import urllib.parse
-import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from price_radar_http import PinnedHTTPSClient
+
+from currencies import normalize_currency
 
 from .base import validate_record
 
 
 name = "merchant-json"
 MAX_BYTES = 5 * 1024 * 1024
+UPSTREAM_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 
 
 def _validate_remote_url(value: str) -> urllib.parse.SplitResult:
-    parsed = urllib.parse.urlsplit(value)
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
-        raise ValueError("merchant feed URL must be a public HTTPS URL")
-    if host == "localhost" or host.endswith((".local", ".internal")):
-        raise ValueError("merchant feed host must be public")
     try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
-    except socket.gaierror as exc:
-        raise ValueError("merchant feed host could not be resolved") from exc
-    if not addresses:
-        raise ValueError("merchant feed host did not resolve")
-    for address in addresses:
-        ip = ipaddress.ip_address(address)
-        if not ip.is_global:
-            raise ValueError("merchant feed host resolves to a non-public address")
-    return parsed
+        return urllib.parse.urlsplit(PinnedHTTPSClient.normalize_url(value))
+    except ValueError as exc:
+        raise ValueError("merchant feed URL must be public HTTPS on port 443") from exc
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
-        raise urllib.error.HTTPError(req.full_url, code, "merchant feed redirects are disabled", headers, fp)
+def _validate_public_link(value: object, field: str) -> str:
+    raw = str(value or "")
+    if not raw or raw != raw.strip():
+        raise ValueError(f"merchant feed {field} must be an absolute public HTTPS URL")
+    if any(ord(character) < 32 or ord(character) == 127 for character in raw):
+        raise ValueError(f"merchant feed {field} must not contain control characters")
+    if "#" in raw:
+        raise ValueError(f"merchant feed {field} must not contain a fragment")
+    try:
+        return PinnedHTTPSClient.normalize_url(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"merchant feed {field} must be an absolute public HTTPS URL on port 443"
+        ) from exc
+
+
+def _internal_shop_token(source_url: str) -> str:
+    digest = hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:24]
+    return f"merchant-json-{digest}"
+
+
+def _upstream_shop_token(shop: dict[str, Any], metadata: dict[str, Any]) -> str:
+    value = str(shop.get("token") or metadata.get("shop_token") or "").strip()
+    if value and UPSTREAM_TOKEN_PATTERN.fullmatch(value) is None:
+        raise ValueError(
+            "merchant feed shop token must be 1-128 ASCII letters, digits, dots, underscores, colons, or hyphens"
+        )
+    return value
 
 
 def _read_source(source: str | Path) -> tuple[bytes, str]:
@@ -54,19 +68,21 @@ def _read_source(source: str | Path) -> tuple[bytes, str]:
 
     parsed = urllib.parse.urlsplit(value)
     if parsed.scheme:
-        _validate_remote_url(value)
-        request = urllib.request.Request(value, headers={"User-Agent": "AI-Price-Radar-Importer/3.2", "Accept": "application/json"})
-        opener = urllib.request.build_opener(_NoRedirect)
-        with opener.open(request, timeout=20) as response:
-            content_type = (response.headers.get("Content-Type") or "").lower()
-            if content_type and "json" not in content_type:
-                raise ValueError("merchant feed must return JSON content")
-            if int(response.headers.get("Content-Length") or 0) > MAX_BYTES:
-                raise ValueError("merchant feed exceeds 5 MiB")
-            payload = response.read(MAX_BYTES + 1)
-            if len(payload) > MAX_BYTES:
-                raise ValueError("merchant feed exceeds 5 MiB")
-            return payload, value
+        normalized = _validate_remote_url(value).geturl()
+        client = PinnedHTTPSClient(
+            max_response_bytes=MAX_BYTES,
+            max_task_bytes=MAX_BYTES,
+            max_task_seconds=30,
+            request_timeout=20,
+            user_agent="AI-Price-Radar-Importer/3.4",
+        )
+        response = client.get(normalized, accept="application/json")
+        if response.status != 200:
+            raise ValueError(f"merchant feed returned HTTP {response.status}")
+        content_type = response.headers.get("content-type", "").casefold()
+        if content_type and "json" not in content_type:
+            raise ValueError("merchant feed must return JSON content")
+        return response.body, normalized
     payload = path.read_bytes()
     if len(payload) > MAX_BYTES:
         raise ValueError("merchant feed exceeds 5 MiB")
@@ -88,16 +104,27 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     document = json.loads(payload.decode("utf-8"))
     items, metadata = _items(document)
     shop = metadata.get("shop") if isinstance(metadata.get("shop"), dict) else {}
-    shop_url = str(shop.get("url") or metadata.get("shop_url") or source_url)
+    shop_url = _validate_public_link(
+        shop.get("url") or metadata.get("shop_url") or source_url,
+        "shop URL",
+    )
     shop_name = str(shop.get("name") or metadata.get("shop_name") or urllib.parse.urlsplit(shop_url).hostname or "Merchant feed")
-    token = str(shop.get("token") or metadata.get("shop_token") or "").strip()
-    if not token:
-        token = "feed-" + hashlib.sha256(shop_url.encode()).hexdigest()[:20]
+    token = _internal_shop_token(source_url)
+    upstream_shop_token = _upstream_shop_token(shop, metadata)
 
     for index, item in enumerate(items):
-        product_url = str(item.get("url") or item.get("product_url") or "").strip()
+        product_url = _validate_public_link(
+            item.get("url") or item.get("product_url"),
+            f"item {index} product URL",
+        )
         product_name = str(item.get("name") or item.get("product_name") or "").strip()
         key = str(item.get("id") or item.get("sku") or item.get("product_key") or product_url or f"item-{index}")
+        raw_json = dict(item)
+        source_updated_at = item.get("observed_at") or metadata.get("updated_at")
+        if source_updated_at not in (None, ""):
+            raw_json["source_updated_at"] = source_updated_at
+        if upstream_shop_token:
+            raw_json["upstream_shop_token"] = upstream_shop_token
         raw = {
             "token": token,
             "shop_name": shop_name,
@@ -109,10 +136,10 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
             "category_name": item.get("category") or item.get("category_name") or "",
             "product_url": product_url,
             "listed_price": item.get("price"),
-            "stock_count": item.get("stock_count"),
+            "currency": normalize_currency(item.get("currency")),
+            "stock_count": item.get("stock_count") if item.get("stock_count") not in (None, "") else item.get("stock"),
             "product_status": item.get("stock_status") or item.get("status") or "",
             "auto_delivery": item.get("auto_delivery"),
-            "collected_at": item.get("observed_at") or metadata.get("updated_at"),
-            "raw_json": item,
+            "raw_json": raw_json,
         }
         yield validate_record(raw)

@@ -17,6 +17,7 @@ export type SourceHealth = {
 
 export type PriceTrendPoint = {
   bucket_at: string;
+  price_currency: string;
   trusted_lowest_price: string | null;
   median_price: string | null;
   in_stock_count: number;
@@ -26,9 +27,11 @@ export type PriceTrendPoint = {
 export type ProductCard = {
   slug: string;
   platform: string;
+  brand: string;
   display_name: string;
   subtitle: string;
   product_type: string;
+  price_currency: string;
   lowest_price: string | null;
   related_lowest_price: string | null;
   offer_count: number;
@@ -48,6 +51,10 @@ export type Offer = {
   id: number;
   shop_token: string;
   shop_name: string;
+  source_platform: string;
+  source_platform_label: string;
+  source_kind: string;
+  source_kind_label: string;
   original_name: string;
   original_category: string;
   original_description: string;
@@ -85,12 +92,13 @@ export type ProductDetail = ProductCard & {
   snapshot_at: string | null;
   offers: Offer[];
   offer_groups: OfferGroup[];
-  history: { observed_at: string; price: string | null; stock_status: string }[];
+  history: { observed_at: string; price: string | null; currency: string; stock_status: string }[];
   trend: PriceTrendPoint[];
 };
 
 export type DeliveryPriceSummary = {
   delivery_type: string;
+  price_currency: string;
   lowest_price: string | null;
   offer_count: number;
   in_stock_count: number;
@@ -104,6 +112,7 @@ export type OfferGroup = {
   offer_count: number;
   shop_count: number;
   in_stock_count: number;
+  price_currency: string;
   lowest_price: string | null;
   highest_price: string | null;
   latest_observed_at: string | null;
@@ -138,6 +147,10 @@ export type ShopDetail = {
   name: string;
   source_url: string;
   platform: string;
+  source_platform: string;
+  source_platform_label: string;
+  source_kind: string;
+  source_kind_label: string;
   status: string;
   first_seen_at: string;
   last_success_at: string | null;
@@ -150,6 +163,8 @@ export type ShopDetail = {
 
 export type Meta = {
   platforms: string[];
+  brands: string[];
+  source_platforms: { id: string; label: string }[];
   product_types: string[];
   tags: string[];
 };

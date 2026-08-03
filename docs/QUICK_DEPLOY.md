@@ -4,9 +4,9 @@
 
 ## 原则
 
-- 只部署已发布且 CI 通过的 Tag，生产源码、API 和 Web 必须来自同一提交。
+- 只部署已发布且 CI 通过的 Tag，生产源码、API、Detector、Pipeline 和 Web 必须来自同一提交。
 - 先暂停定时器，再等待当前刷新锁一次；部署完成前不要恢复定时器。
-- 按改动范围重建服务：普通发布重建 `api`、`web`，邮件代码变更同时重建 `notification-worker`，`crawler/` 或 Crawler Dockerfile 变更必须重建 `crawler`。不重建 `db`，无迁移版本不得执行数据库结构操作。
+- 按改动范围重建服务：普通发布重建 `api`、`web` 和执行完整目录发布的 `importer`，来源检测或收录路由变更同时重建 `source-detector`，邮件代码变更同时重建 `notification-worker`，`crawler/` 或 Crawler Dockerfile 变更必须重建 `crawler`。`shared_http/` 变更必须同时重建 `source-detector`、`crawler` 和 `importer`。不重建 `db`，无迁移版本不得执行数据库结构操作。
 - 部署前只做一次 PostgreSQL 备份，并保留旧 API/Web 镜像和旧源码包。
 - 普通 API/Web 发布不等待完整爬虫刷新。只有改动 `crawler/`、`pipeline/` 或数据库结构时，才把一次完整刷新作为部署门禁。
 
@@ -71,6 +71,10 @@ docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-api-1)" \
 docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-web-1)" \
   "ai-price-radar-web:rollback-STAMP"
 
+# 已经部署 source-detector 时执行；首次部署没有旧容器，记录为“不适用”
+docker image tag "$(docker inspect -f '{{.Image}}' ai-price-radar-source-detector-1)" \
+  "ai-price-radar-source-detector:rollback-STAMP"
+
 # 本次改动 crawler/ 或 Crawler Dockerfile 时执行
 docker image tag "$(docker image inspect -f '{{.Id}}' ai-price-radar-crawler:latest)" \
   "ai-price-radar-crawler:rollback-STAMP"
@@ -116,20 +120,21 @@ scp "C:\Users\59908\Pictures\alipay.jpg" "pricememo-prod:/tmp/alipay.jpg"
 1. sha256sum -c 检查两个上传包
 2. 解压源码到 /opt/ai-price-radar-staging-$Stamp
 3. 解压 .next/standalone 和 .next/static
-4. 从当前运行目录复制 .env
+4. 从当前运行目录复制 .env；确认新增的 `DETECTOR_WORKER_KEY` 至少 32 字节，且不同于 Admin/Intake Worker Key
 5. python3 scripts/production_preflight.py
-6. docker compose ... config -q
+6. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
 7. 覆盖 /opt/ai-price-radar-v3，但保留 .env、data/、backups/
 8. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
 ```
 
-随后只构建并依次切换 API、Web：
+随后构建并依次切换 API、来源检测 Worker、Web：
 
 ```bash
 cd /opt/ai-price-radar-v3
 COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
 
-$COMPOSE build api web
+$COMPOSE build api source-detector web
+$COMPOSE build importer
 
 # 本次改动邮件通知配置或 Worker 代码时，取消下一行注释后执行
 # $COMPOSE build notification-worker
@@ -155,8 +160,30 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_shop_intake_v6.py
 
+# 报价历史币种迁移；在切换读取 offer_history.currency 的 API 前执行，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_currency_v7.py
+
+# 来源自动识别与收录状态约束迁移；会把 merchant_feed 规范为 merchant_json，
+# 合并同 URL 冲突记录；在切换读取新字段的 API 前执行，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_source_intake_v8.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
+
+$COMPOSE up -d --no-deps source-detector
+# 确认 Worker 仅连接 detector_control/detector_egress，日志无持续领取或回报错误
 
 $COMPOSE up -d --no-deps web
 # 若本次发布包含邮件通知配置或 Worker 代码，同时取消下一行注释并切换 notification-worker
@@ -174,15 +201,19 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 
 ```text
 [ ] https://ai.pricememo.cn/health 返回 status=ok 和目标版本
-[ ] API、Web、DB 容器运行，API/DB 为 healthy
+[ ] API、Web、DB、source-detector 容器运行，API/DB 为 healthy
+[ ] source-detector 不含 DATABASE_URL/Redis/Docker socket，且未加入默认数据库网络
 [ ] OpenAPI 包含本版本新增字段
+[ ] 新收录申请按 submitted → detecting → pending_review 流转；批准的 Dujiao/Merchant 只有 public_offer_count > 0 才为 published
+[ ] 已 published 且仍启用的 Dujiao/Merchant 在连续两次完整刷新中都存在；disabled 来源在下一快照移除
 [ ] 首页、报价目录和一个商品详情页可正常访问
 [ ] 真实商品的可信最低价与 related_lowest_price 口径正确
 [ ] API/Web 部署后日志无 traceback、exception、critical
 [ ] 三个 systemd timer 已恢复为 active
 [ ] 数据库备份、旧源码包和旧镜像回滚标签存在
 [ ] 本次改动 crawler/ 时，新 Crawler 镜像已构建且旧镜像回滚标签存在
-[ ] 本次改动 crawler/、pipeline/ 或数据库结构时，一次完整刷新结束且日志确认 failed=0
+[ ] `ai-price-radar-importer` 已从当前 Tag 构建，且完整发布由该镜像执行
+[ ] 本次改动 crawler/、pipeline/ 或数据库结构时，一次完整多来源发布结束，日志确认所有来源成功且 published=true
 ```
 
 恢复定时器：
@@ -204,7 +235,9 @@ COMPOSE="docker compose -f docker-compose.yml -f docker-compose.pricememo.yml"
 
 docker image tag ai-price-radar-api:rollback-STAMP ai-price-radar-api:latest
 docker image tag ai-price-radar-web:rollback-STAMP ai-price-radar-web:latest
-$COMPOSE up -d --no-deps --force-recreate api web
+# 仅在部署前已保存 source-detector 回滚标签时执行下一行
+docker image tag ai-price-radar-source-detector:rollback-STAMP ai-price-radar-source-detector:latest
+$COMPOSE up -d --no-deps --force-recreate api source-detector web
 
 # 本次发布改动 crawler/ 时同时恢复 Crawler 镜像
 docker image tag ai-price-radar-crawler:rollback-STAMP ai-price-radar-crawler:latest

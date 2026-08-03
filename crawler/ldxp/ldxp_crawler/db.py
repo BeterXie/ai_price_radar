@@ -113,9 +113,30 @@ class StateDB:
                 FOREIGN KEY(run_id) REFERENCES scan_runs(id)
             );
 
+            CREATE TABLE IF NOT EXISTS dujiao_candidates (
+                origin TEXT PRIMARY KEY,
+                discovered_urls TEXT NOT NULL DEFAULT '[]',
+                sources TEXT NOT NULL DEFAULT '[]',
+                fingerprints TEXT NOT NULL DEFAULT '[]',
+                api_verified INTEGER NOT NULL DEFAULT 0,
+                product_count INTEGER,
+                matched_product_count INTEGER NOT NULL DEFAULT 0,
+                matched_products TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'validation_failed',
+                review_status TEXT NOT NULL DEFAULT 'pending_review',
+                review_note TEXT,
+                reviewed_at TEXT,
+                first_seen_at TEXT NOT NULL,
+                last_verified_at TEXT NOT NULL,
+                last_error TEXT,
+                site_name TEXT,
+                re_review_reason TEXT
+            );
+
             CREATE INDEX IF NOT EXISTS idx_candidates_status ON candidates(status);
             CREATE INDEX IF NOT EXISTS idx_matches_token ON matches(token);
             CREATE INDEX IF NOT EXISTS idx_snapshots_token ON product_snapshots(token, observed_at);
+            CREATE INDEX IF NOT EXISTS idx_dujiao_candidates_status ON dujiao_candidates(status, last_verified_at);
             """
         )
 
@@ -131,6 +152,20 @@ class StateDB:
         }
         for name, ddl in migrations.items():
             self._ensure_column("candidates", name, ddl)
+        dujiao_migrations = {
+            "site_name": "TEXT",
+            "re_review_reason": "TEXT",
+        }
+        for name, ddl in dujiao_migrations.items():
+            self._ensure_column("dujiao_candidates", name, ddl)
+        self.conn.execute(
+            """
+            UPDATE dujiao_candidates SET review_status='pending_review'
+            WHERE review_status NOT IN (
+                'pending_review', 'approved', 'rejected', 'needs_re_review', 'disabled'
+            )
+            """
+        )
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_candidates_priority ON candidates(source_score DESC, last_attempt_at)")
         self.conn.commit()
 
@@ -206,6 +241,179 @@ class StateDB:
             inserted = True
         self.conn.commit()
         return inserted
+
+    @staticmethod
+    def _dujiao_re_review_reason(row: sqlite3.Row, result: Any) -> str:
+        if result.status != "pending_review":
+            detail = str(result.error or "").strip()
+            return f"verification changed to {result.status}" + (f": {detail}" if detail else "")
+        old_name = " ".join(str(row["site_name"] or "").casefold().split())
+        new_name = " ".join(str(result.site_name or "").casefold().split())
+        if old_name and new_name and old_name not in new_name and new_name not in old_name:
+            return f"site identity changed from {row['site_name']!r} to {result.site_name!r}"
+        return ""
+
+    def get_dujiao_candidate(self, origin: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM dujiao_candidates WHERE origin=?",
+            (origin,),
+        ).fetchone()
+
+    def record_dujiao_discovery(self, origin: str, discovered_url: str, source: str) -> bool:
+        row = self.get_dujiao_candidate(origin)
+        if row is None:
+            return False
+        discovered_urls = merge_unique([*json_loads_or(row["discovered_urls"], []), discovered_url])
+        sources = merge_unique([*json_loads_or(row["sources"], []), source])
+        self.conn.execute(
+            "UPDATE dujiao_candidates SET discovered_urls=?, sources=? WHERE origin=?",
+            (
+                json.dumps(discovered_urls, ensure_ascii=False),
+                json.dumps(sources, ensure_ascii=False),
+                origin,
+            ),
+        )
+        self.conn.commit()
+        return True
+
+    def upsert_dujiao_candidate(self, result: Any) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT discovered_urls, sources, review_status, first_seen_at,
+                   site_name, re_review_reason
+            FROM dujiao_candidates WHERE origin=?
+            """,
+            (result.origin,),
+        ).fetchone()
+        discovered_urls = merge_unique([
+            *(json_loads_or(row["discovered_urls"], []) if row else []),
+            result.discovered_url,
+        ])
+        sources = merge_unique([
+            *(json_loads_or(row["sources"], []) if row else []),
+            result.discovered_by,
+        ])
+        first_seen_at = row["first_seen_at"] if row else result.last_verified_at
+        review_status = "pending_review"
+        re_review_reason = ""
+        if row:
+            previous_review = row["review_status"]
+            if previous_review == "approved":
+                re_review_reason = self._dujiao_re_review_reason(row, result)
+                review_status = "needs_re_review" if re_review_reason else "approved"
+            elif previous_review == "needs_re_review":
+                review_status = previous_review
+                re_review_reason = self._dujiao_re_review_reason(row, result) or str(row["re_review_reason"] or "")
+            elif previous_review in {"rejected", "disabled"}:
+                review_status = previous_review
+        self.conn.execute(
+            """
+            INSERT INTO dujiao_candidates(
+                origin, discovered_urls, sources, fingerprints, api_verified,
+                product_count, matched_product_count, matched_products, status,
+                review_status, first_seen_at, last_verified_at, last_error,
+                site_name, re_review_reason
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(origin) DO UPDATE SET
+                discovered_urls=excluded.discovered_urls,
+                sources=excluded.sources,
+                fingerprints=excluded.fingerprints,
+                api_verified=excluded.api_verified,
+                product_count=excluded.product_count,
+                matched_product_count=excluded.matched_product_count,
+                matched_products=excluded.matched_products,
+                status=excluded.status,
+                review_status=excluded.review_status,
+                last_verified_at=excluded.last_verified_at,
+                last_error=excluded.last_error,
+                site_name=excluded.site_name,
+                re_review_reason=excluded.re_review_reason
+            """,
+            (
+                result.origin,
+                json.dumps(discovered_urls, ensure_ascii=False),
+                json.dumps(sources, ensure_ascii=False),
+                json.dumps(result.fingerprints, ensure_ascii=False),
+                int(result.api_verified),
+                result.product_count,
+                len(result.matched_products),
+                json.dumps(result.matched_products, ensure_ascii=False),
+                result.status,
+                review_status,
+                first_seen_at,
+                result.last_verified_at,
+                result.error[-500:] if result.error else None,
+                result.site_name or None,
+                re_review_reason[:500] or None,
+            ),
+        )
+        self.conn.commit()
+        return row is None
+
+    def dujiao_candidate_count(self) -> int:
+        return int(self.conn.execute("SELECT COUNT(*) FROM dujiao_candidates").fetchone()[0])
+
+    def list_stale_dujiao_candidates(self, stale_before: str, *, limit: int | None = None) -> list[sqlite3.Row]:
+        sql = """
+            SELECT * FROM dujiao_candidates
+            WHERE last_verified_at <= ? AND review_status <> 'disabled'
+            ORDER BY CASE review_status
+                WHEN 'approved' THEN 0
+                WHEN 'needs_re_review' THEN 1
+                ELSE 2
+            END, last_verified_at, origin
+        """
+        params: list[Any] = [stale_before]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        return list(self.conn.execute(sql, params).fetchall())
+
+    def review_dujiao_candidate(self, origin: str, decision: str, note: str = "") -> bool:
+        if decision not in {"approved", "rejected", "disabled"}:
+            raise ValueError("invalid Dujiao review decision")
+        row = self.conn.execute(
+            "SELECT status FROM dujiao_candidates WHERE origin=?",
+            (origin,),
+        ).fetchone()
+        if row is None:
+            return False
+        if decision == "approved" and row["status"] != "pending_review":
+            raise ValueError("Dujiao candidate is not eligible for review")
+        self.conn.execute(
+            """
+            UPDATE dujiao_candidates
+            SET review_status=?, review_note=?, reviewed_at=?, re_review_reason=NULL
+            WHERE origin=?
+            """,
+            (decision, note.strip()[:1000] or None, utc_now(), origin),
+        )
+        self.conn.commit()
+        return True
+
+    def list_dujiao_candidates(
+        self,
+        *,
+        review_status: str | None = None,
+        verification_status: str | None = None,
+    ) -> list[sqlite3.Row]:
+        conditions: list[str] = []
+        params: list[str] = []
+        if review_status:
+            conditions.append("review_status=?")
+            params.append(review_status)
+        if verification_status:
+            conditions.append("status=?")
+            params.append(verification_status)
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        return list(self.conn.execute(
+            f"""
+            SELECT * FROM dujiao_candidates{where}
+            ORDER BY CASE WHEN review_status='pending_review' THEN 0 ELSE 1 END,
+                     matched_product_count DESC, last_verified_at DESC, origin
+            """,
+            params,
+        ).fetchall())
 
     def upsert_intake_candidate(
         self,

@@ -7,6 +7,7 @@ cd "$ROOT"
 MODE="${1:-scan}"
 DATA_DIR="$ROOT/data/crawler"
 CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
+MERCHANT_SOURCES="$DATA_DIR/merchant_sources.json"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.pricememo.yml)
 KEYWORDS=(gpt chatgpt openai "open ai" codex claude gemini "google one ai" grok supergrok xai "x.ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
 
@@ -28,6 +29,18 @@ run_browser_crawler() {
     -a python ldxp_gpt_crawler.py "$@"
 }
 
+run_dujiao_discovery() {
+  run_crawler discover-dujiao \
+    --db /data/ldxp_crawler.db \
+    --seed-file /config/dujiao_seeds.txt \
+    --sources seed,bing \
+    --bing-pages 2 \
+    --bing-count 20 \
+    --max-new-candidates 500 \
+    --max-processed-candidates 2000 \
+    --reverify-stale-hours 24
+}
+
 case "$MODE" in
   discover)
     run_crawler discover \
@@ -38,6 +51,7 @@ case "$MODE" in
       --bing-pages 5 \
       --cc-indexes 3 \
       --max-discovered 500
+    run_dujiao_discovery
     exit 0
     ;;
   full)
@@ -55,6 +69,7 @@ case "$MODE" in
       --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
+    run_dujiao_discovery
     ;;
   inventory)
     if [[ ! -f "$CRAWLER_DB" ]]; then
@@ -136,11 +151,20 @@ fi
 find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_crawler_*.db' \
   ! -path "$BACKUP_DB" -delete
 
+PUBLISH_ARGS=(
+  python publish_catalog.py
+  --ldxp-db /tmp/ldxp_crawler.db
+  --dujiao-db /tmp/ldxp_crawler.db
+)
+if [[ -f "$MERCHANT_SOURCES" ]]; then
+  PUBLISH_ARGS+=(--merchant-sources /workspace/data/crawler/merchant_sources.json)
+fi
+
 docker run --rm --user 0 \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
   -v "$ROOT:/workspace:ro" \
   -v "$BACKUP_DB:/tmp/ldxp_crawler.db:ro" \
   -w /workspace/pipeline \
-  ai-price-radar-api \
-  python sync_ldxp.py --source-db /tmp/ldxp_crawler.db
+  ai-price-radar-importer \
+  "${PUBLISH_ARGS[@]}"

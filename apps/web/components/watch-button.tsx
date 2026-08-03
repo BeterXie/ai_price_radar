@@ -9,6 +9,7 @@ export const WATCHLIST_EVENT = "ai-price-radar:watchlist-change";
 export type WatchItem = {
   slug: string;
   name: string;
+  currency?: string;
   threshold: string;
   added_at: string;
 };
@@ -30,7 +31,7 @@ export function writeWatchlist(items: WatchItem[]) {
   window.dispatchEvent(new Event(WATCHLIST_EVENT));
 }
 
-export function WatchButton({ slug, name, suggestedPrice = "" }: { slug: string; name: string; suggestedPrice?: string | null }) {
+export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" }: { slug: string; name: string; currency?: string; suggestedPrice?: string | null }) {
   const [watched, setWatched] = useState(false);
 
   useEffect(() => {
@@ -55,6 +56,7 @@ export function WatchButton({ slug, name, suggestedPrice = "" }: { slug: string;
       {
         slug,
         name,
+        currency,
         threshold: suggestedPrice || "",
         added_at: new Date().toISOString(),
       },
