@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
 from .database import Base, engine
-from .routers import admin, internal, public
+from .routers import admin, discovery, internal, public
 from .seed import seed
 
 settings = get_settings()
@@ -38,6 +38,9 @@ app.include_router(public.router)
 app.include_router(admin.router)
 app.include_router(internal.router)
 app.include_router(internal.detector_router)
+app.include_router(discovery.router)
+app.include_router(discovery.runs_router)
+discovery.register_discovery_payload_guard(app)
 
 
 @app.get("/health")

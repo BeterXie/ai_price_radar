@@ -365,6 +365,135 @@ class SourceIntakeResult(BaseModel):
         return " ".join(value.split())[:500]
 
 
+class DiscoveryRunCreate(BaseModel):
+    trigger: Literal["scheduled", "manual", "deploy"] = "scheduled"
+    adapters: list[str] = Field(default_factory=list, max_length=20)
+
+
+class DiscoveryRunFinish(BaseModel):
+    status: Literal["succeeded", "partial", "failed"]
+    discovered_raw_count: int = Field(default=0, ge=0)
+    normalized_count: int = Field(default=0, ge=0)
+    duplicate_count: int = Field(default=0, ge=0)
+    new_candidate_count: int = Field(default=0, ge=0)
+    reverified_count: int = Field(default=0, ge=0)
+    detected_count: int = Field(default=0, ge=0)
+    ai_matched_count: int = Field(default=0, ge=0)
+    auto_approved_count: int = Field(default=0, ge=0)
+    pending_review_count: int = Field(default=0, ge=0)
+    validation_failed_count: int = Field(default=0, ge=0)
+    promoted_intake_count: int = Field(default=0, ge=0)
+    adapter_stats: dict[str, int] = Field(default_factory=dict)
+    platform_stats: dict[str, int] = Field(default_factory=dict)
+    failure_stats: dict[str, int] = Field(default_factory=dict)
+    note: str = Field(default="", max_length=2000)
+
+
+class DiscoveryCandidateUpsert(BaseModel):
+    run_id: int | None = None
+    discovered_url: str = Field(min_length=1, max_length=2000)
+    platform_hint: str = Field(default="unknown", max_length=30)
+    discovered_by: str = Field(min_length=1, max_length=100)
+    matched_query: str = Field(default="", max_length=300)
+
+
+class DiscoveryCandidateBatch(BaseModel):
+    items: list[DiscoveryCandidateUpsert] = Field(min_length=1, max_length=100)
+
+
+class DiscoveryCandidateClaimRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+    lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
+
+
+class DiscoveryCandidateClaimOut(BaseModel):
+    candidate_id: int
+    candidate_key: str
+    canonical_url: str
+    platform_hint: str
+    attempt_count: int
+    lease_expires_at: datetime
+
+
+class DiscoveryCandidateResult(BaseModel):
+    status: Literal["detected", "no_match", "validation_failed"]
+    attempt_count: int = Field(ge=1)
+    detected_platform: str = Field(default="unknown", max_length=30)
+    detected_source_key: str = Field(default="", max_length=300)
+    detected_source_url: str = Field(default="", max_length=2000)
+    total_product_count: int = Field(default=0, ge=0)
+    ai_product_count: int = Field(default=0, ge=0)
+    sample_products: list[dict[str, object]] = Field(default_factory=list, max_length=5)
+    fingerprints: list[str] = Field(default_factory=list, max_length=50)
+    confidence_score: int = Field(default=0, ge=0, le=100)
+    failure_reason: str = Field(default="", max_length=500)
+
+
+class SourceCandidateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    candidate_key: str
+    canonical_origin: str
+    discovered_url: str
+    canonical_url: str
+    platform_hint: str
+    detected_platform: str
+    detected_source_key: str
+    detected_source_url: str
+    discovery_sources: list[str]
+    matched_queries: list[str]
+    fingerprints: list[str]
+    sample_products: list[dict[str, object]]
+    total_product_count: int
+    ai_product_count: int
+    confidence_score: int
+    status: str
+    failure_reason: str
+    decision_note: str
+    attempt_count: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    last_verified_at: datetime | None
+    next_verify_at: datetime | None
+    lease_expires_at: datetime | None
+    promoted_intake_id: int | None
+    discovery_run_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceDiscoveryRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    trigger: str
+    adapters: list[str]
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    discovered_raw_count: int
+    normalized_count: int
+    duplicate_count: int
+    new_candidate_count: int
+    reverified_count: int
+    detected_count: int
+    ai_matched_count: int
+    auto_approved_count: int
+    pending_review_count: int
+    validation_failed_count: int
+    promoted_intake_count: int
+    adapter_stats: dict[str, int]
+    platform_stats: dict[str, int]
+    failure_stats: dict[str, int]
+    note: str
+    created_at: datetime
+
+
+class SourceCandidateAction(BaseModel):
+    reason: str = Field(default="", max_length=500)
+
+
 class NotificationOutboxOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
