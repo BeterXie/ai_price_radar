@@ -47,6 +47,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 - Keep the crawler and public web process in separate containers/users.
 - Do not mount browser profiles into the public web container.
 - Set `INTAKE_WORKER_KEY` to a secret distinct from `ADMIN_API_KEY`; the crawler and importer use it only for internal intake callbacks.
+- Set `DETECTOR_WORKER_KEY` to a third secret, distinct from both `ADMIN_API_KEY` and `INTAKE_WORKER_KEY`; only the API and `source-detector` receive it.
+- Keep `source-detector` off the default database network. It must not receive `DATABASE_URL`, Redis credentials, Docker socket mounts, or internal service credentials; retain only its API control network and outbound probe network.
 - Configure real `SHOP_INTAKE_ADMIN_EMAILS`, `RESEND_API_KEY` and a verified `RESEND_FROM` before production deployment. SMTP remains available as a local/fallback provider. The API can start without either provider and retain messages in `notification_outbox`, but production preflight rejects incomplete mail configuration.
 
 ## Backup and restore rehearsal
@@ -100,7 +102,9 @@ After the v5 migration and before switching API/Web, run the idempotent v6 migra
 python scripts/migrate_shop_intake_v6.py --database-url "$DATABASE_URL"
 ```
 
-The migration creates `source_intakes` and `notification_outbox`, then converts historical `shop_request` Reports. Running it again is safe. Start the `notification-worker` service with the API stack; it is the only process allowed to call Resend or connect to SMTP. LDXP crawler and pipeline jobs must receive the same `INTAKE_WORKER_KEY` and `INTAKE_API_URL`, while Merchant JSON Feed remains a queued state-machine source until a separate safe consumer is delivered.
+The migration creates `source_intakes` and `notification_outbox`, then converts historical `shop_request` Reports. Running it again is safe. Start the `notification-worker` service with the API stack; it is the only process allowed to call Resend or connect to SMTP. LDXP crawler and pipeline jobs receive `INTAKE_WORKER_KEY` and `INTAKE_API_URL`; the isolated detector receives only `DETECTOR_WORKER_KEY` and its API control URL.
+
+Public submissions are asynchronous. The API saves `submitted` without contacting the URL, `source-detector` reports a detected platform, and an administrator reviews the resulting `pending_review` record. LDXP approval uses its queued crawler path. Dujiao-Next and Merchant JSON approval produces `approved`, which the authoritative publisher consumes; only a successful snapshot changes those records to `published`. Unknown `other` sources remain manual.
 
 ## Offer-history currency migration
 
@@ -120,7 +124,7 @@ After the v7 currency migration, add the source detection fields and expanded in
 python scripts/migrate_source_intake_v8.py --database-url "$DATABASE_URL"
 ```
 
-The migration preserves legacy intake states, backfills existing declared/detected platforms, and is safe to run again. After both migrations succeed, deploy API, Pipeline and Web from the same tested release, then run one complete publication:
+The migration preserves legacy intake states, backfills existing declared/detected platforms, normalizes legacy `merchant_feed` rows to `merchant_json`, and merges same-URL conflicts before restoring the unique constraint. It is safe to run again. Rehearse it against a PostgreSQL 16 copy before production. After both migrations succeed, deploy API, Pipeline, Detector and Web from the same tested release, then run one complete publication:
 
 ```bash
 python pipeline/publish_catalog.py \
@@ -132,4 +136,4 @@ python pipeline/publish_catalog.py \
 
 The Dujiao database is the crawler SQLite containing `dujiao_candidates`; only approved and currently API-verified rows are selected. Omit `--merchant-sources` when no reviewed Merchant Feed configuration exists. Do not run individual Dujiao URLs as a production publication shortcut. If any connector fails, stop and investigate while the previous published snapshot remains active.
 
-Required order for this release is: v7 migration, v8 migration, API, Pipeline, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` or the new intake columns before its migration succeeds.
+Required order for this release is: v7 migration, v8 migration, API, source detector, Pipeline, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` or the new intake columns before its migration succeeds.

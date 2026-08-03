@@ -11,6 +11,7 @@ PLACEHOLDERS = {
     "change-me-now",
     "replace-with-a-long-random-string",
     "replace-with-a-separate-intake-worker-key",
+    "replace-with-a-separate-detector-worker-key",
     "admin@example.invalid",
     "re_xxxxxxxxx",
     "onboarding@resend.dev",

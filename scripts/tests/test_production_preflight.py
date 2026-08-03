@@ -39,6 +39,13 @@ def test_production_preflight_requires_a_distinct_detector_key():
     assert any("DETECTOR_WORKER_KEY" in error for error in errors)
 
 
+def test_production_preflight_rejects_detector_key_placeholder():
+    env = _valid_env()
+    env["DETECTOR_WORKER_KEY"] = "replace-with-a-separate-detector-worker-key"
+    errors = validate_production_env(env)
+    assert any("DETECTOR_WORKER_KEY" in error for error in errors)
+
+
 def test_production_preflight_rejects_resend_placeholders():
     env = _valid_env()
     env["RESEND_API_KEY"] = "re_xxxxxxxxx"

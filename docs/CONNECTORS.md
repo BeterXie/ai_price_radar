@@ -45,7 +45,7 @@ Required per item: stable `id`, human-readable `name`, and public `url`. Price a
 
 `currency` defaults to `CNY`, is normalized to an ISO 4217 code, and is preserved on the offer and its history. `stock_count` is the canonical stock field; `stock` remains accepted for compatibility with the example above. Product-level minimum prices, price filters, trends and watch thresholds currently aggregate CNY offers only. Other currencies remain visible on individual offers and are never relabeled or exchange-rate converted.
 
-Merchant JSON Feed submissions share the `source_intakes` review state machine, but the LDXP Worker bridge does not claim them. A feed remains non-onboarded until a separately reviewed consumer can prove a successful published sync.
+Merchant JSON Feed submissions share the `source_intakes` review state machine, but the LDXP Worker bridge never claims them. Detection and administrator approval move a feed to `approved`; the authoritative multi-source publisher then validates and imports it. Only a successful snapshot transaction changes the intake to `published`; an empty or failed feed remains `approved` for investigation and retry.
 
 ## Dujiao-Next
 
@@ -60,6 +60,12 @@ The crawler CLI provides a separate `discover-dujiao` flow for seed pages and lo
 Discovery evidence is stored privately in the crawler SQLite `dujiao_candidates` table. Human `approve` or `reject` decisions never publish by themselves. The production publisher reads only candidates that are approved, API-verified, and still in a publishable verification state; an arbitrary Dujiao URL cannot enter the public snapshot. The development-only bypass requires both `--allow-unreviewed-source` and `AI_PRICE_RADAR_ALLOW_UNREVIEWED_DUJIAO=1`.
 
 The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-domain discovery from template prose requires a separate URL Index/WARC content-analysis job; the low-frequency discovery command deliberately does not issue broad or misleading CDX queries.
+
+## Public source intake
+
+`POST /api/v1/shop-requests` is deliberately syntax-only: it normalizes an HTTPS URL and creates a `submitted` record without opening the URL. The separate detector validates a resolved public IP and connects directly to that IP while retaining the submitted hostname for TLS SNI and certificate checks. It permits only port 443, does not follow redirects, and enforces response-size and processing-time limits.
+
+The normal asynchronous path is `submitted -> detecting -> pending_review -> approved -> published`. Detection only identifies a source; administrator approval only authorizes it for a later publication. LDXP uses its existing queued validation path, while `other` remains an explicit manual-integration case.
 
 ## Adding a connector
 
