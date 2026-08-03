@@ -7,11 +7,11 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b hairline bg-[color:var(--paper)]/95 backdrop-blur">
       <div className="shell flex h-16 items-center justify-between gap-3 lg:gap-6">
-        <Link href="/" className="flex items-center gap-3 font-semibold tracking-[-0.03em]">
+        <Link href="/" className="flex shrink-0 items-center gap-3 whitespace-nowrap font-semibold tracking-[-0.03em]">
           <Image src="/icon.svg" alt="" width={32} height={32} priority />
           <span>AI Price Radar</span>
         </Link>
-        <nav className="hidden items-center gap-5 text-sm lg:flex">
+        <nav className="hidden shrink-0 items-center gap-3 whitespace-nowrap text-xs lg:flex xl:gap-5 xl:text-sm">
           <Link href="/products" className="hover:opacity-60">全部报价</Link>
           {[
             ["OpenAI", "OpenAI"],
@@ -24,6 +24,7 @@ export function SiteHeader() {
               <PlatformIcon platform={platform} size={14} />{label}
             </Link>
           ))}
+          <Link href="/guides" className="hover:opacity-60">使用教程</Link>
         </nav>
         <div className="flex shrink-0 items-center gap-2">
           <Link href="/watchlist" className="tactile hidden h-10 items-center gap-2 rounded-[10px] border hairline bg-[color:var(--panel)] px-3 text-sm font-medium sm:flex"><Bell size={18} />关注</Link>

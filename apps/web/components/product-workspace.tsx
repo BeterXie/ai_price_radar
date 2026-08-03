@@ -1,10 +1,13 @@
+import Link from "next/link";
 import { ArrowSquareOut, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
 import { PriceHistory } from "@/components/price-history";
 import { ReportForm } from "@/components/report-form";
 import { WatchButton } from "@/components/watch-button";
+import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime } from "@/lib/format";
+import { getProductGuide } from "@/lib/guides/registry";
 import { getProductSeoContent } from "@/lib/product-seo";
 import type { ProductDetail } from "@/lib/types";
 
@@ -78,6 +81,8 @@ export function ProductWorkspace({
     },
   } : null;
   const filters = filterValues(rawParams);
+  const productGuide = getProductGuide(product.slug);
+  const guideFaq = productGuide?.faq[0];
 
   return (
     <>
@@ -104,6 +109,45 @@ export function ProductWorkspace({
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <div><p className="mono text-xs tracking-[.12em] text-black/45">官方价格 · 更新于 {product.official_reference.checked_at}</p><h2 className="mt-2 text-xl font-semibold">{product.official_reference.plan} · {product.official_reference.currency} {product.official_reference.price} / 月</h2><p className="mt-2 max-w-3xl text-xs leading-5 text-black/50">{product.official_reference.note}</p></div>
             <a href={product.official_reference.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-black px-4 py-2.5 text-sm">查看官方来源 <ArrowSquareOut size={16} /></a>
+          </div>
+        </section>
+      )}
+
+      {productGuide && (
+        <section className="mt-6 rounded-[18px] border hairline bg-[color:var(--panel)] p-5 md:p-6" aria-labelledby="buying-and-usage-guide">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
+            <div>
+              <p className="mono text-xs tracking-[.14em] text-black/45">产品教程</p>
+              <h2 id="buying-and-usage-guide" className="mt-2 text-2xl font-semibold tracking-[-.03em]">购买与使用</h2>
+              <h3 className="mt-4 text-lg font-semibold">{productGuide.title}</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-black/60">{productGuide.description}</p>
+              <div className="mt-5 flex flex-wrap gap-2" aria-label="教程支持的交付类型">
+                {productGuide.supportedDeliveryTypes.map((deliveryType) => (
+                  <span key={deliveryType} className="rounded-full border hairline px-2.5 py-1 text-xs">
+                    {DELIVERY_TYPE_LABELS[deliveryType] || deliveryType}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-5">
+              <div>
+                <h3 className="text-sm font-semibold">购买前提示</h3>
+                <ul className="mt-3 grid gap-2 text-sm leading-6 text-black/60">
+                  {productGuide.buyingChecklist.slice(0, 3).map((item) => <li key={item} className="border-l-2 border-[color:var(--accent)] pl-3">{item}</li>)}
+                </ul>
+              </div>
+              {guideFaq && (
+                <div>
+                  <h3 className="text-sm font-semibold">常见问题</h3>
+                  <p className="mt-2 text-sm font-medium">{guideFaq.question}</p>
+                  <p className="mt-1 text-sm leading-6 text-black/60">{guideFaq.answer}</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="mt-6 flex flex-wrap gap-3 border-t hairline pt-5">
+            <Link href={`/guides/products/${productGuide.productSlug}`} className="tactile inline-flex min-h-11 items-center justify-center rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white">查看完整使用教程</Link>
+            <Link href="/guides" className="tactile inline-flex min-h-11 items-center justify-center rounded-[10px] border border-black px-4 py-2.5 text-sm font-medium">查看全部教程</Link>
           </div>
         </section>
       )}

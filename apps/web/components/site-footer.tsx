@@ -13,10 +13,12 @@ export function SiteFooter() {
           <p>本站仅聚合公开可访问的价格、库存、商品标题和来源链接，不参与交易、收款、交付或售后。</p>
           <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-2 text-white">
             <Link href="/products">报价目录</Link><Link href="/watchlist">关注清单</Link>
-            <Link href="/methodology">数据方法</Link><Link href="/corrections">纠错记录</Link>
-            <Link href="/developers">开发者</Link><Link href="/shops/submit">申请收录</Link>
-            <Link href="/about">关于本站</Link><Link href="/privacy">隐私政策</Link>
-            <Link href="/terms">使用条款</Link><Link href="/security">安全说明</Link>
+            <Link href="/guides">教程中心</Link><Link href="/guides/buying-checklist">购买前检查</Link>
+            <Link href="/guides/security">账号安全</Link><Link href="/methodology">数据方法</Link>
+            <Link href="/corrections">纠错记录</Link><Link href="/developers">开发者</Link>
+            <Link href="/shops/submit">申请收录</Link><Link href="/about">关于本站</Link>
+            <Link href="/privacy">隐私政策</Link><Link href="/terms">使用条款</Link>
+            <Link href="/security">安全说明</Link>
             <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub 点 Star</a>
             {SUPPORT_AVAILABLE && <a href="#support-author">支持作者</a>}
           </div>

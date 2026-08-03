@@ -6,6 +6,7 @@ import { ArrowSquareOut, CaretDown, Clock, Package, Storefront, Tag, Warning } f
 import type { GroupOffers, Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
 import { DELIVERY_TYPE_LABELS, PERIOD_LABELS, SCENARIO_LABELS, WARRANTY_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime, stockLabel } from "@/lib/format";
+import { getGuideLinkLabel, resolveGuideHref } from "@/lib/guides/matcher";
 
 const OFFER_BATCH_SIZE = 30;
 const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -44,6 +45,21 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function ContextualGuideLink({ productSlug, deliveryType }: { productSlug?: string; deliveryType?: string | null }) {
+  const href = resolveGuideHref({ productSlug, deliveryType });
+  return (
+    <aside className="mt-6 flex flex-col gap-3 border-t hairline pt-5 sm:flex-row sm:items-center sm:justify-between" aria-label="商品购买教程">
+      <div>
+        <h4 className="text-sm font-semibold">第一次购买这类商品？</h4>
+        <p className="mt-1 text-xs text-black/50">先了解交付、使用和账号安全注意事项。</p>
+      </div>
+      <Link href={href} className="tactile inline-flex min-h-11 shrink-0 items-center justify-center rounded-[10px] border border-black px-4 py-2.5 text-sm font-medium">
+        {getGuideLinkLabel(deliveryType)}
+      </Link>
+    </aside>
   );
 }
 
@@ -145,6 +161,8 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           </section>
         )}
 
+        <ContextualGuideLink productSlug={productSlug} deliveryType={offer.delivery_type} />
+
         {!group && (
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" className="tactile inline-flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm text-white">去原站查看 <ArrowSquareOut size={16} /></a>
@@ -230,7 +248,7 @@ export function OfferGroupTable({
   );
 }
 
-export function OfferTable({ offers }: { offers: Offer[] }) {
+export function OfferTable({ offers, productSlug }: { offers: Offer[]; productSlug?: string }) {
   const [visibleCount, setVisibleCount] = useState(OFFER_BATCH_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const visibleOffers = offers.slice(0, visibleCount);
@@ -249,7 +267,7 @@ export function OfferTable({ offers }: { offers: Offer[] }) {
   if (!offers.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前没有可展示的报价。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45">{hasMore ? `继续滚动加载，已显示 ${visibleOffers.length} / ${offers.length} 条` : `已显示全部 ${offers.length} 条报价`}</div>}>
-      {visibleOffers.map((offer) => <OfferRow key={offer.id} offer={offer} />)}
+      {visibleOffers.map((offer) => <OfferRow key={offer.id} offer={offer} productSlug={productSlug} />)}
     </TableFrame>
   );
 }

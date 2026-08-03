@@ -1,9 +1,11 @@
 import type { MetadataRoute } from "next";
 import { getProducts } from "@/lib/api";
+import { brandGuides, deliveryGuides, generalGuides, productGuides } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
 
 const SITE_URL = "https://ai.pricememo.cn";
+const GUIDE_LAST_MODIFIED = new Date("2026-08-03");
 
 function validDate(value: string | null) {
   if (!value) return undefined;
@@ -25,6 +27,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/terms` },
     { url: `${SITE_URL}/security` },
   ];
+  const guidePages: MetadataRoute.Sitemap = [
+    { url: `${SITE_URL}/guides`, lastModified: GUIDE_LAST_MODIFIED },
+    ...Object.keys(brandGuides).map((brand) => ({ url: `${SITE_URL}/guides/brands/${encodeURIComponent(brand)}`, lastModified: GUIDE_LAST_MODIFIED })),
+    ...Object.keys(productGuides).map((productSlug) => ({ url: `${SITE_URL}/guides/products/${encodeURIComponent(productSlug)}`, lastModified: GUIDE_LAST_MODIFIED })),
+    ...Object.keys(deliveryGuides).map((deliveryType) => ({ url: `${SITE_URL}/guides/delivery/${encodeURIComponent(deliveryType)}`, lastModified: GUIDE_LAST_MODIFIED })),
+    ...Object.keys(generalGuides).map((slug) => ({ url: `${SITE_URL}/guides/${encodeURIComponent(slug)}`, lastModified: GUIDE_LAST_MODIFIED })),
+  ];
   try {
     const catalog = await getProducts("sort=quality");
     const snapshotAt = validDate(catalog.snapshot_at);
@@ -32,6 +41,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages[1].lastModified = snapshotAt;
     return [
       ...staticPages,
+      ...guidePages,
       ...catalog.items
         .filter((product) => product.offer_count > 0)
         .map((product) => ({
@@ -40,6 +50,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         })),
     ];
   } catch {
-    return staticPages;
+    return [...staticPages, ...guidePages];
   }
 }
