@@ -269,7 +269,7 @@ def test_bing_queries_and_rss_extraction_preserve_discovery_pages():
     ]
 
 
-def test_verified_candidates_are_deduplicated_and_stay_pending_review(tmp_path: Path, monkeypatch):
+def test_verified_candidates_are_deduplicated_and_auto_approved(tmp_path: Path, monkeypatch):
     db = StateDB(tmp_path / "state.db")
     try:
         def handler(url: str, _kwargs: dict):
@@ -294,7 +294,7 @@ def test_verified_candidates_are_deduplicated_and_stay_pending_review(tmp_path: 
         assert discovery.add_url("https://shop.example.com/products/claude-pro", "bing:query") is False
         assert len(verifier.session.calls) == 2
 
-        rows = db.list_dujiao_candidates(review_status="pending_review")
+        rows = db.list_dujiao_candidates(review_status="approved")
         assert len(rows) == 1
         row = rows[0]
         assert json.loads(row["sources"]) == ["seed", "bing:query"]
@@ -305,13 +305,59 @@ def test_verified_candidates_are_deduplicated_and_stay_pending_review(tmp_path: 
         assert row["api_verified"] == 1
         assert row["matched_product_count"] == 1
         assert row["status"] == "pending_review"
-        assert row["review_status"] == "pending_review"
+        assert row["review_status"] == "approved"
 
         assert db.review_dujiao_candidate("https://shop.example.com", "approved", "来源页面已人工确认") is True
         assert discovery.add_url("https://shop.example.com/products/claude-pro", "bing:repeat") is False
         reviewed = db.list_dujiao_candidates()[0]
         assert reviewed["review_status"] == "approved"
         assert reviewed["review_note"] == "来源页面已人工确认"
+    finally:
+        db.close()
+
+
+def test_existing_pending_candidate_is_auto_approved_after_qualified_reverification(tmp_path: Path):
+    db = StateDB(tmp_path / "pending.db")
+    try:
+        origin = "https://pending.example.com"
+        db.upsert_dujiao_candidate(DujiaoVerificationResult(
+            origin=origin,
+            discovered_by="seed",
+            discovered_url=origin,
+            status="no_match",
+            api_verified=True,
+            product_count=1,
+        ))
+        assert db.get_dujiao_candidate(origin)["review_status"] == "pending_review"
+
+        db.upsert_dujiao_candidate(DujiaoVerificationResult(
+            origin=origin,
+            discovered_by="stale-reverify",
+            discovered_url=origin,
+            status="pending_review",
+            api_verified=True,
+            product_count=1,
+            matched_products=[{"slug": "gpt", "name": "GPT"}],
+        ))
+        assert db.get_dujiao_candidate(origin)["review_status"] == "approved"
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("status", ["invalid_url", "no_match"])
+def test_unqualified_candidate_is_not_auto_approved(tmp_path: Path, status: str):
+    db = StateDB(tmp_path / f"{status}.db")
+    try:
+        origin = f"https://{status.replace('_', '-')}.example.com"
+        db.upsert_dujiao_candidate(DujiaoVerificationResult(
+            origin=origin,
+            discovered_by="seed",
+            discovered_url=origin,
+            status=status,
+            api_verified=status == "no_match",
+            product_count=1 if status == "no_match" else None,
+        ))
+        assert db.get_dujiao_candidate(origin)["review_status"] == "pending_review"
     finally:
         db.close()
 
@@ -451,6 +497,16 @@ def test_approved_verification_failure_requires_re_review_and_manual_states_are_
             product_count=1,
             matched_products=[{"slug": "gpt", "name": "GPT"}],
             site_name="Different Store",
+        ))
+        db.upsert_dujiao_candidate(DujiaoVerificationResult(
+            origin="https://approved.example.com",
+            discovered_by="stale-reverify",
+            discovered_url="https://approved.example.com",
+            status="pending_review",
+            api_verified=True,
+            product_count=1,
+            matched_products=[{"slug": "gpt", "name": "GPT"}],
+            site_name="Stable Store",
         ))
         for label in ("rejected", "disabled"):
             db.upsert_dujiao_candidate(DujiaoVerificationResult(
