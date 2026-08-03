@@ -237,16 +237,16 @@ const productSeeds = [
           title: "先把商家 JSON 转成 Cockpit 格式",
           action: "卡网下载的文件可能是 CPA、Sub2 或其他结构，Cockpit Tools 不能直接识别时，需要先用转换页面生成 Cockpit 格式。转换页在浏览器本地解析，但 JSON 内含登录令牌，仍要按账号密码同等级别保存。",
           items: [
-            "打开转换工具，先点击顶部的“Cockpit”，把输出格式切换为 Cockpit。",
-            "点击“选择文件”，选中商家交付的一个或多个 JSON；需要批量处理时可以一次多选。",
-            "等待页面完成解析，核对账号数、跳过项和输出格式，确认输出显示为 Cockpit。",
+            "打开站内 JSON 转 Cockpit 工具。",
+            "点击“选择 JSON 文件（支持多选）”，选中商家交付的一个或多个 JSON；也可以直接粘贴 JSON 内容。",
+            "等待页面完成解析，核对“已校验账号”和“跳过项目”数量，确认输出显示为 Cockpit JSON。",
             "点击“下载 JSON”，把转换后的文件保存到单独文件夹；不要覆盖商家交付的原文件。",
           ],
           links: [
             { label: "打开站内 JSON 转换工具", url: "/tools/json-to-cockpit" },
           ],
-          result: "下载目录中同时保留原始 JSON 和新生成的 Cockpit JSON，转换页面显示的账号数量与所选文件基本一致。",
-          trouble: "出现“跳过项”、字段缺失或账号数为 0 时，不要手工编造 token；先确认文件没有损坏，并把不含完整令牌的错误截图发给原商家。",
+          result: "下载目录中同时保留原始 JSON 和新生成的 Cockpit JSON，页面“已校验账号”数量与有效账号一致。",
+          trouble: "出现“跳过项目”、字段缺失或账号数为 0 时，先查看具体原因（例如缺少 account_id、accessToken 过短），不要手工编造 token；确认文件没有损坏后再联系原商家。",
         },
         {
           title: "下载并安装 Cockpit Tools",

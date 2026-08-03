@@ -2,19 +2,32 @@
  * Cockpit field mapping is adapted from the MIT-licensed
  * gtxx3600/GPTSession2CPAandSub2API project and reimplemented here as a
  * Cockpit-only, browser-local converter.
+ *
+ * The generated portable token shape follows Cockpit Tools v1.3.16
+ * (CodexPortableTokenStorage in src/utils/codexExportFormats.ts).
  */
 
 type UnknownRecord = Record<string, unknown>;
 
+export const COCKPIT_LIMITS = {
+  maxFileBytes: 10 * 1024 * 1024,
+  maxFilesPerBatch: 50,
+  maxDepth: 64,
+  maxVisitedNodes: 200_000,
+  maxAccountsPerBatch: 500,
+  minAccessTokenLength: 40,
+  maxAccessTokenLength: 100_000,
+} as const;
+
 export interface CockpitAccount {
   type: "codex";
-  id_token?: string;
+  id_token: string;
   access_token: string;
   refresh_token: string;
-  account_id?: string;
+  account_id: string;
   last_refresh: string;
-  email?: string;
-  expired?: string;
+  email: string;
+  expired: string;
   account_note?: string;
 }
 
@@ -40,6 +53,11 @@ export interface CockpitConversionResult {
 export interface JsonDocument {
   sourceName: string;
   value: unknown;
+}
+
+export interface JsonTextDocument {
+  sourceName: string;
+  text: string;
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -167,11 +185,19 @@ function accessTokenOf(record: UnknownRecord): string | undefined {
 function collectSessionRecords(value: unknown): readonly { record: UnknownRecord; path: string }[] {
   const found: { record: UnknownRecord; path: string }[] = [];
   const visited = new WeakSet<object>();
+  let visitedNodes = 0;
 
-  function visit(item: unknown, path: string): void {
+  function visit(item: unknown, path: string, depth: number): void {
     if (!isRecord(item) && !Array.isArray(item)) return;
     if (visited.has(item)) return;
     visited.add(item);
+    visitedNodes += 1;
+    if (visitedNodes > COCKPIT_LIMITS.maxVisitedNodes) {
+      throw new Error(`对象节点数超过 ${COCKPIT_LIMITS.maxVisitedNodes}，已停止解析`);
+    }
+    if (depth > COCKPIT_LIMITS.maxDepth) {
+      throw new Error(`嵌套层级超过 ${COCKPIT_LIMITS.maxDepth} 层，已停止解析`);
+    }
 
     if (isRecord(item)) {
       const accessToken = accessTokenOf(item);
@@ -194,16 +220,29 @@ function collectSessionRecords(value: unknown): readonly { record: UnknownRecord
       }
       for (const [key, child] of Object.entries(item)) {
         if (["accessToken", "access_token", "sessionToken", "session_token"].includes(key)) continue;
-        visit(child, `${path}.${key}`);
+        visit(child, `${path}.${key}`, depth + 1);
       }
       return;
     }
 
-    item.forEach((child, index) => visit(child, `${path}[${index}]`));
+    item.forEach((child, index) => visit(child, `${path}[${index}]`, depth + 1));
   }
 
-  visit(value, "$");
+  visit(value, "$", 0);
   return found;
+}
+
+function validateCockpitAccount(accessToken: string, accountId: string | undefined): readonly string[] {
+  const reasons: string[] = [];
+  if (accessToken.length < COCKPIT_LIMITS.minAccessTokenLength) {
+    reasons.push(`accessToken 长度不足（至少 ${COCKPIT_LIMITS.minAccessTokenLength} 个字符）`);
+  } else if (accessToken.length > COCKPIT_LIMITS.maxAccessTokenLength) {
+    reasons.push(`accessToken 长度超过 ${COCKPIT_LIMITS.maxAccessTokenLength} 个字符上限`);
+  }
+  if (!accountId) {
+    reasons.push("缺少 account_id，无法从账号信息或令牌中识别");
+  }
+  return reasons;
 }
 
 function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: string, now: Date): ConvertedCockpitAccount {
@@ -235,7 +274,7 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
   const auth = recordSection(payload, "https://api.openai.com/auth");
   const idAuth = recordSection(idPayload, "https://api.openai.com/auth");
   const profile = recordSection(payload, "https://api.openai.com/profile");
-  const expiresAt = refreshToken ? undefined : firstString(
+  const expiresAt = firstString(
     payload ? timestampFromUnixSeconds(payload.exp) : undefined,
     normalizeTimestamp(record.expires),
     normalizeTimestamp(record.expiresAt),
@@ -290,17 +329,23 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     auth.chatgpt_plan_type,
     idAuth.chatgpt_plan_type,
   );
+
+  const validationReasons = validateCockpitAccount(accessToken, accountId);
+  if (validationReasons.length) {
+    throw new Error(validationReasons.join("；"));
+  }
+
   const idToken = inputIdToken ?? syntheticIdToken(email, accountId, planType, userId, expiresAt, now);
   const account: CockpitAccount = {
     type: "codex",
+    id_token: idToken ?? "",
     access_token: accessToken,
     refresh_token: refreshToken ?? "",
+    account_id: accountId ?? "",
     last_refresh: now.toISOString(),
+    email: email ?? "",
+    expired: expiresAt ?? "",
   };
-  if (idToken) account.id_token = idToken;
-  if (accountId) account.account_id = accountId;
-  if (email) account.email = email;
-  if (expiresAt) account.expired = expiresAt;
   const note = firstString(record.account_note, record.accountInfo, record.account_info, record.note, record.notes, record.remark);
   if (note) account.account_note = note;
 
@@ -310,16 +355,41 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
 export function convertJsonDocuments(documents: readonly JsonDocument[], now = new Date()): CockpitConversionResult {
   const accounts: ConvertedCockpitAccount[] = [];
   const issues: CockpitConversionIssue[] = [];
+  const seenAccessTokens = new Set<string>();
 
   for (const document of documents) {
-    const records = collectSessionRecords(document.value);
+    let records: readonly { record: UnknownRecord; path: string }[];
+    try {
+      records = collectSessionRecords(document.value);
+    } catch (error) {
+      issues.push({
+        sourceName: document.sourceName,
+        path: "$",
+        reason: error instanceof Error ? error.message : "解析失败",
+      });
+      continue;
+    }
     if (!records.length) {
       issues.push({ sourceName: document.sourceName, path: "$", reason: "未找到包含 accessToken 和账号信息的对象" });
       continue;
     }
-    for (const { record, path } of records) {
+    const boundedRecords = records.slice(0, COCKPIT_LIMITS.maxAccountsPerBatch);
+    if (records.length > boundedRecords.length) {
+      issues.push({
+        sourceName: document.sourceName,
+        path: "$",
+        reason: `账号数超过单次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，已转换前 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个`,
+      });
+    }
+    for (const { record, path } of boundedRecords) {
       try {
-        accounts.push(convertRecord(record, document.sourceName, path, now));
+        const converted = convertRecord(record, document.sourceName, path, now);
+        if (seenAccessTokens.has(converted.account.access_token)) {
+          issues.push({ sourceName: document.sourceName, path, reason: "重复账号已跳过（access_token 相同）" });
+          continue;
+        }
+        seenAccessTokens.add(converted.account.access_token);
+        accounts.push(converted);
       } catch (error) {
         issues.push({
           sourceName: document.sourceName,
@@ -331,6 +401,26 @@ export function convertJsonDocuments(documents: readonly JsonDocument[], now = n
   }
 
   return { accounts, issues };
+}
+
+export function convertJsonTexts(documents: readonly JsonTextDocument[], now = new Date()): CockpitConversionResult {
+  const parsedDocuments: JsonDocument[] = [];
+  const parseIssues: CockpitConversionIssue[] = [];
+
+  for (const document of documents) {
+    try {
+      parsedDocuments.push({ sourceName: document.sourceName, value: parseJsonText(document.text) });
+    } catch (error) {
+      parseIssues.push({
+        sourceName: document.sourceName,
+        path: "$",
+        reason: error instanceof Error ? error.message : "JSON 解析失败",
+      });
+    }
+  }
+
+  const converted = convertJsonDocuments(parsedDocuments, now);
+  return { accounts: converted.accounts, issues: [...converted.issues, ...parseIssues] };
 }
 
 export function parseJsonText(text: string): unknown {

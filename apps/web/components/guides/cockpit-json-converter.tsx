@@ -15,10 +15,14 @@ import {
 } from "@phosphor-icons/react";
 import {
   buildCockpitDocument,
+  COCKPIT_LIMITS,
   convertJsonDocuments,
+  convertJsonTexts,
   parseJsonText,
+  type CockpitConversionIssue,
   type CockpitConversionResult,
   type JsonDocument,
+  type JsonTextDocument,
 } from "@/lib/guides/cockpit-converter";
 
 function maskEmail(email: string | undefined): string {
@@ -38,6 +42,7 @@ export function CockpitJsonConverter() {
   const [selectedFiles, setSelectedFiles] = useState<readonly string[]>([]);
   const [result, setResult] = useState<CockpitConversionResult>({ accounts: [], issues: [] });
   const [error, setError] = useState("");
+  const [fileSummary, setFileSummary] = useState("");
 
   const outputText = useMemo(() => {
     if (!result.accounts.length) return "";
@@ -58,6 +63,7 @@ export function CockpitJsonConverter() {
     try {
       applyConversion([{ sourceName: "粘贴内容", value: parseJsonText(inputText) }]);
       setSelectedFiles([]);
+      setFileSummary("");
     } catch (conversionError) {
       setResult({ accounts: [], issues: [] });
       setError(conversionError instanceof Error ? conversionError.message : "JSON 转换失败");
@@ -66,18 +72,49 @@ export function CockpitJsonConverter() {
 
   async function convertFiles(files: FileList | null): Promise<void> {
     if (!files?.length) return;
-    try {
-      const documents = await Promise.all(Array.from(files).map(async (file) => ({
-        sourceName: file.name,
-        value: parseJsonText(await file.text()),
-      })));
-      setInputText("");
-      setSelectedFiles(documents.map((document) => document.sourceName));
-      applyConversion(documents);
-    } catch (conversionError) {
-      setResult({ accounts: [], issues: [] });
-      setError(conversionError instanceof Error ? conversionError.message : "文件读取失败");
+    const allFiles = Array.from(files);
+    const inScopeFiles = allFiles.slice(0, COCKPIT_LIMITS.maxFilesPerBatch);
+    const overflowFiles = allFiles.slice(COCKPIT_LIMITS.maxFilesPerBatch);
+    const textDocuments: JsonTextDocument[] = [];
+    const fileIssues: CockpitConversionIssue[] = [];
+
+    for (const file of inScopeFiles) {
+      if (file.size > COCKPIT_LIMITS.maxFileBytes) {
+        fileIssues.push({
+          sourceName: file.name,
+          path: "$",
+          reason: `文件超过 ${COCKPIT_LIMITS.maxFileBytes / (1024 * 1024)} MB 上限`,
+        });
+        continue;
+      }
+      try {
+        textDocuments.push({ sourceName: file.name, text: await file.text() });
+      } catch (readError) {
+        fileIssues.push({
+          sourceName: file.name,
+          path: "$",
+          reason: readError instanceof Error ? readError.message : "文件读取失败",
+        });
+      }
     }
+    for (const file of overflowFiles) {
+      fileIssues.push({
+        sourceName: file.name,
+        path: "$",
+        reason: `超过单次 ${COCKPIT_LIMITS.maxFilesPerBatch} 个文件上限`,
+      });
+    }
+
+    const nextResult = convertJsonTexts(textDocuments);
+    setResult({ accounts: nextResult.accounts, issues: [...nextResult.issues, ...fileIssues] });
+    setInputText("");
+    setSelectedFiles(textDocuments.map((document) => document.sourceName));
+    setFileSummary(`解析文件：${textDocuments.length} 个成功，${allFiles.length - textDocuments.length} 个跳过`);
+    setError(
+      nextResult.accounts.length
+        ? ""
+        : (nextResult.issues[0] || fileIssues[0])?.reason || "没有找到可转换账号",
+    );
   }
 
   function clearAll(): void {
@@ -85,6 +122,7 @@ export function CockpitJsonConverter() {
     setSelectedFiles([]);
     setResult({ accounts: [], issues: [] });
     setError("");
+    setFileSummary("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -162,10 +200,13 @@ export function CockpitJsonConverter() {
             <UploadSimple size={19} aria-hidden="true" />
             选择 JSON 文件（支持多选）
           </button>
+          <p className="mt-2 text-xs leading-5 text-black/45">
+            单次最多 {COCKPIT_LIMITS.maxFilesPerBatch} 个文件，每个不超过 {COCKPIT_LIMITS.maxFileBytes / (1024 * 1024)} MB。
+          </p>
 
           {selectedFiles.length ? (
             <div className="mt-4 rounded-[12px] border hairline bg-black/[.035] p-4 text-sm leading-6">
-              <p className="font-semibold">已读取 {selectedFiles.length} 个文件</p>
+              <p className="font-semibold">已解析 {selectedFiles.length} 个文件</p>
               <ul className="mt-2 space-y-1 text-black/60">
                 {selectedFiles.map((name) => <li key={name}>{name}</li>)}
               </ul>
@@ -218,13 +259,17 @@ export function CockpitJsonConverter() {
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-[12px] border hairline p-4">
               <p className="mono text-2xl font-semibold">{result.accounts.length}</p>
-              <p className="mt-1 text-xs text-black/45">转换账号</p>
+              <p className="mt-1 text-xs text-black/45">已校验账号</p>
             </div>
             <div className="rounded-[12px] border hairline p-4">
               <p className="mono text-2xl font-semibold">{result.issues.length}</p>
               <p className="mt-1 text-xs text-black/45">跳过项目</p>
             </div>
           </div>
+
+          {fileSummary ? (
+            <p className="mt-3 text-xs leading-5 text-black/50">{fileSummary}</p>
+          ) : null}
 
           {result.accounts.length ? (
             <div className="mt-4 overflow-hidden rounded-[12px] border hairline">
@@ -242,7 +287,7 @@ export function CockpitJsonConverter() {
 
           {result.issues.length ? (
             <div className="mt-4 rounded-[12px] border border-[color:var(--danger)]/30 bg-red-50 p-4 text-sm leading-6 text-[color:var(--danger)]">
-              {result.issues.map((issue) => <p key={`${issue.sourceName}-${issue.path}`}>{issue.sourceName} {issue.path}：{issue.reason}</p>)}
+              {result.issues.map((issue) => <p key={`${issue.sourceName}-${issue.path}-${issue.reason}`}>{issue.sourceName} {issue.path}：{issue.reason}</p>)}
             </div>
           ) : null}
 
@@ -259,9 +304,21 @@ export function CockpitJsonConverter() {
           />
 
           {outputText ? (
-            <div className="mt-4 flex gap-3 rounded-[12px] bg-[color:var(--accent)] p-4 text-sm leading-6 text-[color:var(--accent-ink)]">
-              <CheckCircle size={21} weight="fill" className="shrink-0" aria-hidden="true" />
-              <p>转换完成。下载后回到 Cockpit Tools，进入 Codex → “+” → “导入”，选择刚生成的文件。</p>
+            <div className="mt-4 rounded-[12px] bg-[color:var(--accent)] p-4 text-sm leading-6 text-[color:var(--accent-ink)]">
+              <div className="flex gap-3">
+                <CheckCircle size={21} weight="fill" className="shrink-0" aria-hidden="true" />
+                <p>
+                  转换完成：{result.accounts.length} 个账号已通过必要字段校验（accessToken、account_id、id_token）。下载后回到 Cockpit Tools，进入 Codex → “+” → “导入”，选择刚生成的文件。
+                </p>
+              </div>
+              {result.issues.length ? (
+                <p className="mt-2 text-xs opacity-80">
+                  另有 {result.issues.length} 个项目因缺少关键字段或解析失败被跳过，未写入输出。
+                </p>
+              ) : null}
+              <p className="mt-2 text-xs opacity-80">
+                字段校验不等于账号当前可用；过期、封禁等状态仍需导入 Cockpit 后确认。
+              </p>
             </div>
           ) : null}
         </section>
