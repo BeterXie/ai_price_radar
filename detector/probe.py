@@ -4,12 +4,12 @@ import hashlib
 import json
 import re
 import urllib.parse
-import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
 
 from price_radar_http import PinnedHTTPSClient, PinnedResponse as ProbeResponse
+from sitemap import product_page_urls, sitemap_locations
 
 
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -17,8 +17,6 @@ MAX_TASK_BYTES = 2 * 1024 * 1024
 MAX_TASK_SECONDS = 15.0
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
-MAX_SCHEMA_SITEMAPS = 3
-MAX_SCHEMA_PAGES = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,34 +96,6 @@ def _schema_product_count(body: bytes) -> int:
     return sum(1 for document in parser.documents for _ in walk(document))
 
 
-def _same_origin_url(value: str, origin: str, client: PinnedHTTPSClient) -> str | None:
-    try:
-        normalized = client.normalize_url(value)
-    except ValueError:
-        return None
-    parsed = urllib.parse.urlsplit(normalized)
-    expected = urllib.parse.urlsplit(origin)
-    if (parsed.scheme, parsed.netloc) != (expected.scheme, expected.netloc):
-        return None
-    return normalized
-
-
-def _sitemap_locations(response: ProbeResponse) -> tuple[str, list[str]]:
-    if response.status != 200:
-        return "", []
-    try:
-        root = ElementTree.fromstring(response.body)
-    except ElementTree.ParseError:
-        return "", []
-    kind = root.tag.rsplit("}", 1)[-1].casefold()
-    locations = [
-        str(node.text or "").strip()
-        for node in root.iter()
-        if node.tag.rsplit("}", 1)[-1].casefold() == "loc" and str(node.text or "").strip()
-    ]
-    return kind, locations
-
-
 def _schema_from_sitemap(
     origin: str,
     client: PinnedHTTPSClient,
@@ -136,34 +106,16 @@ def _schema_from_sitemap(
     try:
         if entry_url is not None:
             response = preloaded or client.get(entry_url, accept="application/xml,text/xml")
-            kind, locations = _sitemap_locations(response)
-        else:
-            kind, locations = _sitemap_locations(
-                client.get(f"{origin}/sitemap.xml", accept="application/xml,text/xml")
-            )
+            sitemap_locations(response.body)
+        page_urls = product_page_urls(
+            entry_url or f"{origin}/sitemap.xml",
+            origin,
+            client,
+            preloaded=response if entry_url is not None else None,
+        )
     except (OSError, TimeoutError, ValueError):
         return None
-    page_urls: list[str] = []
-    if kind == "sitemapindex":
-        for value in locations[:MAX_SCHEMA_SITEMAPS]:
-            sitemap_url = _same_origin_url(value, origin, client)
-            if sitemap_url is None:
-                continue
-            try:
-                child_kind, child_locations = _sitemap_locations(
-                    client.get(sitemap_url, accept="application/xml,text/xml")
-                )
-            except (OSError, TimeoutError, ValueError):
-                continue
-            if child_kind == "urlset":
-                page_urls.extend(child_locations)
-    elif kind == "urlset":
-        page_urls = locations
-
-    for value in page_urls[:MAX_SCHEMA_PAGES]:
-        page_url = _same_origin_url(value, origin, client)
-        if page_url is None:
-            continue
+    for page_url in page_urls:
         try:
             response = client.get(page_url, accept="text/html,application/xhtml+xml")
         except (OSError, TimeoutError, ValueError):

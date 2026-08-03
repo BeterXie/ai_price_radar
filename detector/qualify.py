@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
-import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import Any, Iterable
 
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from probe import probe_source
+from sitemap import product_page_urls, sitemap_locations
 
 try:
     from classifier import classify_product
@@ -26,9 +27,9 @@ MAX_SAMPLE_PRODUCTS = 5
 MAX_DUJIAO_PAGES = 3
 MAX_WOO_PAGES = 3
 MAX_SCHEMA_PAGES = 3
-MAX_SCHEMA_LOCATIONS = 50
 MAX_JSONLD_SCRIPTS = 50
 MAX_JSONLD_NODES = 500
+MONEY_PATTERN = re.compile(r"[0-9]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,7 +179,7 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
             if item.get("is_purchasable") is not True:
                 continue
             prices = item.get("prices")
-            if not isinstance(prices, dict) or prices.get("price") is None or not prices.get("currency_code"):
+            if not _valid_woo_price(prices):
                 continue
             name = str(item.get("name") or "").strip()
             permalink = _same_origin_url(item.get("permalink"), origin, client)
@@ -268,120 +269,173 @@ def _jsonld_product_nodes(body: bytes) -> list[dict[str, Any]]:
     return nodes
 
 
-def _sitemap_locations(body: bytes) -> tuple[str, list[str]]:
+def _valid_woo_price(prices: Any) -> bool:
+    if not isinstance(prices, dict):
+        return False
+    currency = str(prices.get("currency_code") or "").strip()
+    if not currency:
+        return False
+    minor_unit = prices.get("currency_minor_unit")
+    if isinstance(minor_unit, bool) or not isinstance(minor_unit, int) or not 0 <= minor_unit <= 12:
+        return False
+    raw = prices.get("price")
+    if isinstance(raw, bool) or raw in (None, ""):
+        return False
+    text = str(raw).strip()
+    if MONEY_PATTERN.fullmatch(text) is None:
+        return False
+    return True
+
+
+def _valid_amount(value: Any) -> Decimal | None:
+    if isinstance(value, bool) or value in (None, ""):
+        return None
     try:
-        root = ElementTree.fromstring(body)
-    except ElementTree.ParseError:
-        return "", []
-    kind = root.tag.rsplit("}", 1)[-1].casefold()
-    if kind not in {"urlset", "sitemapindex"}:
-        return "", []
-    locations = [
-        str(node.text or "").strip()
-        for node in root.iter()
-        if node.tag.rsplit("}", 1)[-1].casefold() == "loc" and str(node.text or "").strip()
-    ]
-    return kind, locations
+        amount = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    if not amount.is_finite() or amount < 0:
+        return None
+    return amount
 
 
 def _price_of_product(product: dict[str, Any]) -> tuple[str | None, str | None]:
     offers = product.get("offers")
     values = offers if isinstance(offers, list) else [offers]
-    prices: list[str] = []
+    prices: list[Decimal] = []
     currencies: set[str] = set()
     for offer in values:
         if not isinstance(offer, dict):
             continue
         amount = offer.get("lowPrice") or offer.get("price")
         currency = offer.get("priceCurrency") or product.get("priceCurrency")
-        if amount in (None, "") or currency in (None, ""):
+        if not isinstance(currency, str) or not currency.strip():
             continue
-        if isinstance(amount, bool) or not isinstance(amount, (str, int, float)):
+        parsed_amount = _valid_amount(amount)
+        if parsed_amount is None:
             continue
-        prices.append(str(amount))
-        currencies.add(str(currency))
+        prices.append(parsed_amount)
+        currencies.add(str(currency).strip())
     if not prices or len(currencies) != 1:
         return None, None
-    return min(prices, key=lambda value: float(value) if str(value).replace(".", "", 1).isdigit() else float("inf")), currencies.pop()
+    return format(min(prices), "f"), currencies.pop()
+
+
+def _schema_scan_pages(
+    page_urls: list[str],
+    origin: str,
+    client: PinnedHTTPSClient,
+) -> tuple[int, int, list[dict[str, str]]]:
+    samples: list[dict[str, str]] = []
+    ai_count = 0
+    total = 0
+    for page_url in page_urls:
+        try:
+            page = client.get(page_url, accept="text/html,application/xhtml+xml")
+        except (OSError, TimeoutError, ValueError):
+            continue
+        nodes = _jsonld_product_nodes(page.body)
+        total += len(nodes)
+        for product in nodes:
+            name = str(product.get("name") or "").strip()
+            if not name or not _classify(name):
+                continue
+            price, currency = _price_of_product(product)
+            if price is None or currency is None:
+                continue
+            url = _same_origin_url(product.get("url") or product.get("@id") or page_url, origin, client)
+            if url is None:
+                continue
+            ai_count += 1
+            _append_sample(samples, name, url)
+        if ai_count:
+            break
+    return total, ai_count, samples
 
 
 def _schema_qualify(entry: str, client: PinnedHTTPSClient) -> QualificationResult:
     origin = _origin(entry)
-    samples: list[dict[str, str]] = []
-    ai_count = 0
-    total = 0
-    fingerprints: list[str] = []
     response = client.get(entry, accept="application/xml,text/xml,text/html;q=0.9,*/*;q=0.1")
-    kind, locations = _sitemap_locations(response.body)
-    if kind in {"urlset", "sitemapindex"}:
-        fingerprints.append("schema-org-sitemap")
-        page_urls = [_same_origin_url(value, origin, client) for value in locations[:MAX_SCHEMA_LOCATIONS]]
-        page_urls = [value for value in page_urls if value]
-        for page_url in page_urls[:MAX_SCHEMA_PAGES]:
-            try:
-                page = client.get(page_url, accept="text/html,application/xhtml+xml")
-            except (OSError, TimeoutError, ValueError):
-                continue
-            nodes = _jsonld_product_nodes(page.body)
-            total += len(nodes)
-            for product in nodes:
-                name = str(product.get("name") or "").strip()
-                if not name or not _classify(name):
-                    continue
-                price, currency = _price_of_product(product)
-                if price is None or currency is None:
-                    continue
-                url = _same_origin_url(product.get("url") or product.get("@id") or page_url, origin, client)
-                if url is None:
-                    continue
-                ai_count += 1
-                _append_sample(samples, name, url)
-            if nodes:
-                break
-        return QualificationResult(
-            status="detected",
-            detected_platform="schema_org",
-            detected_source_key=entry,
-            detected_source_url=entry,
-            total_product_count=max(total, len(samples)),
-            ai_product_count=ai_count,
-            sample_products=samples,
-            fingerprints=fingerprints,
-            confidence_score=80,
-        )
-
-    nodes = _jsonld_product_nodes(response.body)
-    if not nodes and urllib.parse.urlsplit(entry).path in ("", "/"):
-        try:
-            sitemap = client.get(f"{origin}/sitemap.xml", accept="application/xml,text/xml")
-            kind, locations = _sitemap_locations(sitemap.body)
-        except (OSError, TimeoutError, ValueError):
+    try:
+        kind, _locations = sitemap_locations(response.body)
+    except ValueError as exc:
+        if b"<html" in response.body.lower():
             kind = ""
-        if kind in {"urlset", "sitemapindex"}:
-            return _schema_qualify(f"{origin}/sitemap.xml", client)
-    for product in nodes:
-        total += 1
-        name = str(product.get("name") or "").strip()
-        if not name or not _classify(name):
-            continue
-        price, currency = _price_of_product(product)
-        if price is None or currency is None:
-            continue
-        url = _same_origin_url(product.get("url") or product.get("@id") or entry, origin, client)
-        if url is None:
-            continue
-        ai_count += 1
-        _append_sample(samples, name, url)
+        else:
+            return _schema_failure(entry, str(exc))
+    is_root = urllib.parse.urlsplit(entry).path in ("", "/")
+    sitemap_entry: str | None = None
+    fingerprints: list[str] = []
+
+    if kind in {"urlset", "sitemapindex"}:
+        sitemap_entry = entry
+        fingerprints.append("schema-org-sitemap")
+    else:
+        nodes = _jsonld_product_nodes(response.body)
+        if nodes:
+            fingerprints.append("schema-org-jsonld")
+            total, ai_count, samples = _schema_scan_pages([entry], origin, client)
+            return _schema_result(entry, total, ai_count, samples, fingerprints)
+        if not is_root:
+            return _schema_result(entry, 0, 0, [], [])
+        try:
+            sitemap_response = client.get(f"{origin}/sitemap.xml", accept="application/xml,text/xml")
+            sitemap_kind, _ignored_locations = sitemap_locations(sitemap_response.body)
+        except (OSError, TimeoutError, ValueError):
+            sitemap_kind = ""
+        if sitemap_kind in {"urlset", "sitemapindex"}:
+            sitemap_entry = f"{origin}/sitemap.xml"
+            fingerprints.append("schema-org-sitemap")
+        else:
+            return _schema_result(entry, 0, 0, [], [])
+
+    if sitemap_entry is not None:
+        try:
+            preloaded = (
+                sitemap_response
+                if sitemap_entry != entry
+                else response
+            )
+            page_urls = product_page_urls(sitemap_entry, origin, client, preloaded=preloaded)
+        except ValueError as exc:
+            return _schema_failure(entry, str(exc))
+        total, ai_count, samples = _schema_scan_pages(page_urls, origin, client)
+        return _schema_result(entry, total, ai_count, samples, fingerprints)
+    return _schema_result(entry, 0, 0, [], fingerprints)
+
+
+def _schema_result(
+    entry: str,
+    total: int,
+    ai_count: int,
+    samples: list[dict[str, str]],
+    fingerprints: list[str],
+) -> QualificationResult:
     return QualificationResult(
         status="detected",
         detected_platform="schema_org",
         detected_source_key=entry,
         detected_source_url=entry,
-        total_product_count=max(total, len(samples)),
+        total_product_count=total or len(samples),
         ai_product_count=ai_count,
         sample_products=samples,
-        fingerprints=["schema-org-jsonld"] if nodes else [],
+        fingerprints=fingerprints,
         confidence_score=80,
+    )
+
+
+def _schema_failure(entry: str, reason: str) -> QualificationResult:
+    return QualificationResult(
+        status="validation_failed",
+        detected_platform="schema_org",
+        detected_source_key=entry,
+        detected_source_url=entry,
+        total_product_count=0,
+        ai_product_count=0,
+        sample_products=[],
+        fingerprints=[],
+        confidence_score=0,
+        failure_reason=_normalized_failure(reason),
     )
 
 
@@ -433,6 +487,11 @@ def qualify_candidate(
         source_key = probe.source_key or canonical_url
         source_url = probe.source_url or canonical_url
         if platform in {"other", "unknown"}:
+            if _looks_like_schema_candidate(canonical_url, platform_hint):
+                try:
+                    return _schema_qualify(canonical_url, client)
+                except (OSError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+                    return _schema_failure(canonical_url, str(exc))
             return QualificationResult(
                 status="no_match",
                 detected_platform=platform,
@@ -491,3 +550,11 @@ def qualify_candidate(
             confidence_score=0,
             failure_reason=_normalized_failure(type(exc).__name__ + ": " + str(exc)),
         )
+
+
+def _looks_like_schema_candidate(value: str, platform_hint: str) -> bool:
+    hint = str(platform_hint or "").strip().casefold().replace("-", "_")
+    if hint == "schema_org":
+        return True
+    path = urllib.parse.urlsplit(str(value)).path.casefold()
+    return path.endswith(".xml") or "sitemap" in path
