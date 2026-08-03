@@ -136,6 +136,17 @@ def _integer(value: Any) -> int | None:
         return None
 
 
+def _shop_name(config: dict[str, Any], hostname: str | None) -> str:
+    brand = config.get("brand")
+    brand = brand if isinstance(brand, dict) else {}
+    return str(
+        brand.get("site_name")
+        or config.get("site_name")
+        or hostname
+        or "Dujiao-Next"
+    ).strip()
+
+
 def _stock(product: dict[str, Any], sku: dict[str, Any] | None = None) -> tuple[int | None, str]:
     item = sku or product
     if item.get("is_sold_out") is True or product.get("is_sold_out") is True:
@@ -217,7 +228,7 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     config, _ = _data(_api_url(origin, "config"), dict)
     currency = normalize_currency(config.get("currency"))
     languages = [str(value) for value in config.get("languages", []) if str(value).strip()] if isinstance(config.get("languages"), list) else []
-    shop_name = str(config.get("site_name") or parsed.hostname or "Dujiao-Next").strip()
+    shop_name = _shop_name(config, parsed.hostname)
     token = "dujiao-next-" + hashlib.sha256(origin.encode()).hexdigest()[:20]
 
     category_items, _ = _data(_api_url(origin, "categories"), list)

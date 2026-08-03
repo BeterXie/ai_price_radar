@@ -193,14 +193,28 @@ export function AdminPanel() {
   }
 
   const intakeStatusLabels: Record<string, string> = {
+    submitted: "等待安全检测",
+    detecting: "安全检测中",
     pending_review: "待初审",
+    approved: "已获准，等待完整发布",
     queued: "等待验证",
     validating: "验证中",
     validated: "已验证待发布",
     onboarded: "已收录",
+    published: "已发布",
+    needs_re_review: "需要重新审核",
+    disabled: "已停用",
     rejected: "已驳回",
     no_products: "未发现目标商品",
     validation_failed: "验证失败",
+  };
+  const sourceTypeLabels: Record<string, string> = {
+    unknown: "待识别来源",
+    ldxp: "链动小铺",
+    dujiao_next: "Dujiao-Next",
+    merchant_json: "商家 JSON Feed",
+    merchant_feed: "商家 JSON Feed",
+    other: "其他独立站",
   };
 
   function emailStatusLabel(status: string) {
@@ -258,7 +272,7 @@ export function AdminPanel() {
               <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--accent)]" : ""}`}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="mono text-xs text-black/40">#{intake.id} · {intake.source_type === "ldxp" ? "链动小铺" : "商家 JSON Feed"}</p>
+                    <p className="mono text-xs text-black/40">#{intake.id} · {sourceTypeLabels[intake.source_type] || intake.source_type}</p>
                     <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-xs">{intakeStatusLabels[intake.status] || intake.status}</span>
                   </div>
                   <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
@@ -270,7 +284,7 @@ export function AdminPanel() {
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {intake.status === "pending_review" && <><button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />批准并验证</button><button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
+                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />{intake.source_type === "ldxp" ? "批准并验证" : "批准并进入完整发布"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
                   {(intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
                   {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>

@@ -6,6 +6,7 @@ def _valid_env() -> dict[str, str]:
         "POSTGRES_PASSWORD": "a" * 24,
         "ADMIN_API_KEY": "b" * 40,
         "INTAKE_WORKER_KEY": "c" * 40,
+        "DETECTOR_WORKER_KEY": "e" * 40,
         "SHOP_INTAKE_ADMIN_EMAILS": "ops@example.com",
         "RESEND_API_KEY": "re_" + "d" * 32,
         "RESEND_FROM": "notice@example.com",
@@ -29,6 +30,13 @@ def test_production_preflight_requires_working_mail_configuration():
 
 def test_production_preflight_accepts_real_mail_configuration():
     assert validate_production_env(_valid_env()) == []
+
+
+def test_production_preflight_requires_a_distinct_detector_key():
+    env = _valid_env()
+    env["DETECTOR_WORKER_KEY"] = env["INTAKE_WORKER_KEY"]
+    errors = validate_production_env(env)
+    assert any("DETECTOR_WORKER_KEY" in error for error in errors)
 
 
 def test_production_preflight_rejects_resend_placeholders():

@@ -31,6 +31,7 @@ services:
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       SHOP_INTAKE_ADMIN_EMAILS: ${SHOP_INTAKE_ADMIN_EMAILS:-admin@example.invalid}
       INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
+      DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
       INTAKE_LEASE_SECONDS: ${INTAKE_LEASE_SECONDS:-900}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
@@ -43,6 +44,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      default:
+      detector_control:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -70,6 +74,26 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+
+  source-detector:
+    build:
+      context: ./detector
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      DETECTOR_API_URL: http://api:8000
+      DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
+      DETECTOR_POLL_SECONDS: ${DETECTOR_POLL_SECONDS:-5}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      detector_control:
+      detector_egress:
 
   web:
     build:
@@ -131,3 +155,8 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+
+networks:
+  detector_control:
+    internal: true
+  detector_egress:

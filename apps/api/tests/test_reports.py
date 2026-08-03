@@ -91,7 +91,7 @@ def test_shop_request_is_validated_normalized_and_deduplicated(monkeypatch):
     try:
         client = TestClient(app)
         payload = {
-            "shop_url": "http://PAY.LDXP.CN/shop/JBJJWNA5/?from=merchant",
+            "shop_url": "https://PAY.LDXP.CN/shop/JBJJWNA5/?from=merchant",
             "shop_name": "测试店铺",
             "contact": "merchant@example.com",
             "note": "主营 AI 订阅商品，请审核公开报价。",

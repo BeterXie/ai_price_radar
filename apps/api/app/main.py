@@ -37,6 +37,7 @@ app.add_middleware(
 app.include_router(public.router)
 app.include_router(admin.router)
 app.include_router(internal.router)
+app.include_router(internal.detector_router)
 
 
 @app.get("/health")

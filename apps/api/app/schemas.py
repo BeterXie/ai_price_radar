@@ -310,6 +310,30 @@ class SourceIntakeClaimRequest(BaseModel):
     lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
 
 
+class SourceDetectionClaimRequest(BaseModel):
+    limit: int = Field(default=20, ge=1, le=100)
+    lease_seconds: int = Field(default=300, ge=30, le=30 * 60)
+
+
+class SourceDetectionClaimOut(BaseModel):
+    intake_id: int
+    source_url: str
+    declared_platform: str
+    attempt_count: int
+    lease_expires_at: datetime
+
+
+class SourceDetectionResult(BaseModel):
+    status: Literal["pending_review", "validation_failed"]
+    attempt_count: int = Field(ge=1)
+    detected_platform: Literal["ldxp", "dujiao_next", "merchant_json", "other", "unknown"] = "unknown"
+    source_url: str = Field(default="", max_length=2000)
+    source_key: str = Field(default="", max_length=300)
+    shop_name: str = Field(default="", max_length=120)
+    product_count: int = Field(default=0, ge=0)
+    failure_reason: str = Field(default="", max_length=500)
+
+
 class SourceIntakeClaimOut(BaseModel):
     intake_id: int
     source_type: Literal["ldxp"]

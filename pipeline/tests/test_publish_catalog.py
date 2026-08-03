@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from common import CatalogSnapshot, Offer, begin_snapshot, ensure_products, session_for
 from connectors import CONNECTORS
@@ -12,6 +13,7 @@ from publish_catalog import (
     SourceSpec,
     UNREVIEWED_DUJIAO_ENV,
     approved_dujiao_sources,
+    approved_intake_sources,
     import_source_into_snapshot,
     publish_sources,
     validate_dujiao_source_access,
@@ -65,6 +67,16 @@ def create_review_db(path: Path) -> None:
                 ("https://rejected.example", 1, "pending_review", "rejected"),
             ],
         )
+
+
+def create_source_intakes(db) -> None:
+    db.execute(text(
+        "CREATE TABLE source_intakes ("
+        "id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, detected_platform TEXT NOT NULL, "
+        "source_url TEXT NOT NULL, status TEXT NOT NULL, product_count INTEGER NOT NULL DEFAULT 0, "
+        "finished_at TEXT, updated_at TEXT)"
+    ))
+    db.commit()
 
 
 def test_multiple_sources_share_one_published_snapshot(monkeypatch: pytest.MonkeyPatch):
@@ -236,5 +248,53 @@ def test_dry_run_does_not_publish_or_change_current_snapshot(monkeypatch: pytest
 
         assert db.query(CatalogSnapshot).count() == 1
         assert db.query(Offer).one().snapshot_id == previous.snapshot_id
+    finally:
+        db.close()
+
+
+def test_approved_dujiao_intake_publishes_atomically_and_becomes_published(monkeypatch: pytest.MonkeyPatch):
+    def loader(source: str | Path):
+        item = record("approved-dujiao")
+        item["source_platform"] = "dujiao_next"
+        item["shop_url"] = str(source)
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://approved.example', 'approved')"
+        ))
+        db.commit()
+
+        sources = approved_intake_sources(db)
+        assert sources == [SourceSpec("dujiao-next", "https://approved.example", (1,))]
+        result = publish_sources(db, sources)
+
+        row = db.execute(text("SELECT status, product_count FROM source_intakes WHERE id=1")).one()
+        assert row == ("published", 1)
+        assert db.query(Offer).filter(Offer.snapshot_id == result.snapshot_id).count() == 1
+    finally:
+        db.close()
+
+
+def test_approved_intake_stays_approved_when_atomic_publish_fails(monkeypatch: pytest.MonkeyPatch):
+    install_loader(monkeypatch, failing_source="https://feed.example/catalog.json")
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'merchant_json', 'merchant_json', 'https://feed.example/catalog.json', 'approved')"
+        ))
+        db.commit()
+
+        with pytest.raises(SourceImportError):
+            publish_sources(db, approved_intake_sources(db))
+
+        assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == "approved"
+        assert db.query(CatalogSnapshot).count() == 0
     finally:
         db.close()

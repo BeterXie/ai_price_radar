@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.orm import Session
 
 from common import (
@@ -34,6 +34,7 @@ PUBLISHABLE_DUJIAO_STATUSES = ("pending_review", "verified")
 class SourceSpec:
     connector: str
     source: str
+    intake_ids: tuple[int, ...] = ()
 
 
 @dataclass(slots=True)
@@ -124,6 +125,36 @@ def load_merchant_sources(path: str | Path) -> list[str]:
     return [value.strip() for value in values]
 
 
+def approved_intake_sources(db: Session) -> list[SourceSpec]:
+    if not inspect(db.get_bind()).has_table("source_intakes"):
+        return []
+    rows = db.execute(text(
+        "SELECT id, source_type, source_url FROM source_intakes "
+        "WHERE status='approved' "
+        "AND source_type IN ('dujiao_next', 'merchant_json') "
+        "AND detected_platform=source_type "
+        "ORDER BY id"
+    )).mappings()
+    connector_by_type = {
+        "dujiao_next": "dujiao-next",
+        "merchant_json": "merchant-json",
+    }
+    return [
+        SourceSpec(connector_by_type[row["source_type"]], row["source_url"], (int(row["id"]),))
+        for row in rows
+    ]
+
+
+def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:
+    merged: dict[tuple[str, str], SourceSpec] = {}
+    for spec in sources:
+        key = (spec.connector, spec.source)
+        previous = merged.get(key)
+        intake_ids = tuple(dict.fromkeys([*(previous.intake_ids if previous else ()), *spec.intake_ids]))
+        merged[key] = SourceSpec(spec.connector, spec.source, intake_ids)
+    return list(merged.values())
+
+
 def import_source_into_snapshot(
     db: Session,
     *,
@@ -182,16 +213,30 @@ def publish_sources(
             snapshot = begin_snapshot(db, source_label)
             if carry_forward_current:
                 _carry_forward_current_snapshot(db, snapshot.id)
-            imports = [
-                import_source_into_snapshot(
+            imports: list[ImportResult] = []
+            published_at = utcnow()
+            for spec in sources:
+                imported = import_source_into_snapshot(
                     db,
                     connector=spec.connector,
                     source=spec.source,
                     snapshot_id=snapshot.id,
                     products=products,
                 )
-                for spec in sources
-            ]
+                if spec.intake_ids and imported.total <= 0:
+                    raise SourceImportError(f"approved intake source returned no products: {spec.source}")
+                imports.append(imported)
+                for intake_id in spec.intake_ids:
+                    db.execute(text(
+                        "UPDATE source_intakes "
+                        "SET status='published', product_count=:product_count, "
+                        "finished_at=:published_at, updated_at=:published_at "
+                        "WHERE id=:intake_id AND status='approved'"
+                    ), {
+                        "intake_id": intake_id,
+                        "product_count": imported.total,
+                        "published_at": published_at,
+                    })
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0
             )
@@ -199,7 +244,7 @@ def publish_sources(
             if dry_run:
                 db.rollback()
             else:
-                snapshot.published_at = utcnow()
+                snapshot.published_at = published_at
                 db.commit()
             return result
     except Exception:
@@ -244,11 +289,11 @@ def main() -> int:
         sources = _build_sources(args)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
-    if not sources:
-        parser.error("no importable sources were configured")
-
     db = session_for(args.database_url)
     try:
+        sources = merge_sources([*sources, *approved_intake_sources(db)])
+        if not sources:
+            parser.error("no importable sources were configured or approved")
         result = publish_sources(db, sources)
     except ImportLockUnavailable as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))

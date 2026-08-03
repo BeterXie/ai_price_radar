@@ -50,7 +50,7 @@ from ..services.catalog import (
 from ..services.source_platform import (
     SOURCE_PLATFORM_LABELS,
     canonical_source_platform,
-    detect_source_platform,
+    prepare_source_submission,
     source_platform_label,
     workflow_status,
 )
@@ -599,24 +599,15 @@ def create_shop_request(
     _enforce_report_rate_limit(request, db)
     declared_platform = canonical_source_platform(payload.declared_platform or payload.source_type)
     try:
-        detection = detect_source_platform(payload.shop_url)
+        submission = prepare_source_submission(payload.shop_url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    detected_platform = canonical_source_platform(detection.platform)
-    persisted_source_type = (
-        "merchant_feed"
-        if payload.source_type == "merchant_feed" and detected_platform == "other"
-        else detected_platform
-    )
-    source_key = detection.source_key
-    shop_url = detection.source_url
-    token = detection.shop_token
-    mismatch = declared_platform not in {"auto", detected_platform}
-    detection_message = (
-        f"系统已识别为 {source_platform_label(detected_platform)}，将按该来源类型进行验证。"
-        if mismatch or declared_platform == "auto"
-        else f"系统已确认来源类型为 {source_platform_label(detected_platform)}。"
-    )
+    detected_platform = "unknown"
+    persisted_source_type = "unknown"
+    source_key = submission.source_key
+    shop_url = submission.source_url
+    token = submission.shop_token
+    detection_message = "来源已提交，正在等待隔离检测器确认来源类型和公开契约。"
 
     def build_response(
         status_value: str,
@@ -644,10 +635,7 @@ def create_shop_request(
 
     existing = db.scalar(
         select(SourceIntake)
-        .where(
-            SourceIntake.source_type == persisted_source_type,
-            SourceIntake.source_key == source_key,
-        )
+        .where(SourceIntake.source_key == source_key)
         .order_by(SourceIntake.id.desc())
     )
     if existing is not None:
@@ -665,7 +653,7 @@ def create_shop_request(
         "contact_email": payload.contact.strip(),
         "note": payload.note.strip(),
         "origin": "manual",
-        "status": "pending_review",
+        "status": "submitted",
     }
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
@@ -684,7 +672,7 @@ def create_shop_request(
         )
         if insert_result.rowcount == 0:
             db.commit()
-            existing_status = intake.status if intake else "pending_review"
+            existing_status = intake.status if intake else "submitted"
             response_status = "already_known" if workflow_status(existing_status) == "published" else "already_pending"
             return build_response(existing_status, response_status, request_id=intake.id if intake else None)
     elif dialect == "sqlite":
@@ -703,7 +691,7 @@ def create_shop_request(
         )
         if insert_result.rowcount == 0:
             db.commit()
-            existing_status = intake.status if intake else "pending_review"
+            existing_status = intake.status if intake else "submitted"
             response_status = "already_known" if workflow_status(existing_status) == "published" else "already_pending"
             return build_response(existing_status, response_status, request_id=intake.id if intake else None)
     else:
@@ -716,4 +704,4 @@ def create_shop_request(
     db.commit()
     db.refresh(intake)
     response.status_code = status.HTTP_201_CREATED
-    return build_response("pending_review", "submitted", request_id=intake.id)
+    return build_response("submitted", "submitted", request_id=intake.id)

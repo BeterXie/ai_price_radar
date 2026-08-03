@@ -46,7 +46,7 @@ def test_dujiao_next_connector_paginates_and_emits_variants(monkeypatch):
         parsed = urlsplit(url)
         query = parse_qs(parsed.query)
         if parsed.path == "/api/v1/public/config":
-            return {"status_code": 0, "msg": "success", "data": {"site_name": "Example Dujiao", "currency": "usd"}}
+            return {"status_code": 0, "msg": "success", "data": {"brand": {"site_name": "Example Dujiao"}, "currency": "usd"}}
         if parsed.path == "/api/v1/public/categories":
             return {"status_code": 0, "msg": "success", "data": [
                 {"id": 10, "name": {"zh-CN": "订阅服务"}},
@@ -141,6 +141,15 @@ def test_dujiao_next_connector_rejects_business_errors(monkeypatch):
 
     with pytest.raises(ValueError, match="maintenance"):
         list(get_connector("dujiao-next")("https://shop.example"))
+
+
+def test_dujiao_next_shop_name_supports_brand_overlay_and_fallbacks():
+    assert dujiao_next._shop_name(
+        {"brand": {"site_name": "Overlay Store"}, "site_name": "Base Store"},
+        "shop.example",
+    ) == "Overlay Store"
+    assert dujiao_next._shop_name({"site_name": "Base Store"}, "shop.example") == "Base Store"
+    assert dujiao_next._shop_name({"brand": {}}, "shop.example") == "shop.example"
 
 
 def test_dujiao_next_connector_rejects_unsafe_shop_roots(monkeypatch):

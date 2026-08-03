@@ -196,9 +196,18 @@ def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Sour
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status == "pending_review":
-        intake.status = "queued"
+        if intake.source_type == "ldxp":
+            intake.status = "queued"
+            next_step = "等待链动小铺 Worker 验证"
+        elif intake.source_type in {"dujiao_next", "merchant_json"}:
+            intake.status = "approved"
+            next_step = "等待下一次完整目录发布"
+        elif intake.source_type == "other":
+            raise HTTPException(status_code=409, detail="其他独立站仅支持人工接入，不能进入自动队列")
+        else:
+            raise HTTPException(status_code=409, detail="来源尚未完成安全检测")
         intake.approved_at = utcnow()
-        intake.decision_note = "已通过初审，等待验证"
+        intake.decision_note = f"已通过初审，{next_step}"
         enqueue_transition_notification(
             db,
             intake,
@@ -206,11 +215,11 @@ def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Sour
             subject="店铺收录申请已通过初审",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）已通过初审。\n"
-                "当前状态：等待系统验证；验证成功且商品发布后才会正式收录。"
+                f"当前状态：{next_step}；商品成功进入完整快照后才会正式收录。"
             ),
         )
         db.commit()
-    elif intake.status not in {"queued", "validating", "validated", "onboarded"}:
+    elif intake.status not in {"approved", "queued", "validating", "validated", "published", "onboarded"}:
         raise HTTPException(status_code=409, detail=f"cannot approve intake in status {intake.status}")
     return _source_intake_response(db, intake)
 
@@ -251,12 +260,12 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status in {"no_products", "validation_failed"}:
-        intake.status = "queued"
+        intake.status = "submitted" if intake.source_type == "unknown" else "queued"
         intake.lease_expires_at = None
         intake.finished_at = None
-        intake.decision_note = "已重新排队，等待验证"
+        intake.decision_note = "已重新排队，等待安全检测" if intake.status == "submitted" else "已重新排队，等待验证"
         db.commit()
-    elif intake.status not in {"queued", "validating", "validated", "onboarded"}:
+    elif intake.status not in {"submitted", "queued", "validating", "validated", "published", "onboarded"}:
         raise HTTPException(status_code=409, detail=f"cannot retry intake in status {intake.status}")
     return _source_intake_response(db, intake)
 

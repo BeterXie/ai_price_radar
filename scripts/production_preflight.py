@@ -39,6 +39,7 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
     password = env.get("POSTGRES_PASSWORD", "")
     admin_key = env.get("ADMIN_API_KEY", "")
     intake_worker_key = env.get("INTAKE_WORKER_KEY", "")
+    detector_worker_key = env.get("DETECTOR_WORKER_KEY", "")
     intake_admin_emails = env.get("SHOP_INTAKE_ADMIN_EMAILS", "")
     resend_api_key = env.get("RESEND_API_KEY", "").strip()
     resend_from = env.get("RESEND_FROM", "").strip()
@@ -54,6 +55,10 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
         errors.append("INTAKE_WORKER_KEY must contain at least 32 bytes")
     if intake_worker_key and intake_worker_key == admin_key:
         errors.append("INTAKE_WORKER_KEY must be different from ADMIN_API_KEY")
+    if not detector_worker_key or detector_worker_key in PLACEHOLDERS or len(detector_worker_key.encode()) < 32:
+        errors.append("DETECTOR_WORKER_KEY must contain at least 32 bytes")
+    if detector_worker_key and detector_worker_key in {admin_key, intake_worker_key}:
+        errors.append("DETECTOR_WORKER_KEY must be different from ADMIN_API_KEY and INTAKE_WORKER_KEY")
     admin_emails = [value.strip() for value in intake_admin_emails.split(",") if value.strip()]
     if (
         not admin_emails

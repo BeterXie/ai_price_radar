@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     trusted_proxy_cidrs: str = ""
     shop_intake_admin_emails: str = "admin@example.invalid"
     intake_worker_key: str = ""
+    detector_worker_key: str = ""
     intake_lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
     resend_api_key: str = ""
     resend_from: str = ""

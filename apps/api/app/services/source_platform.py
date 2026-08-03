@@ -115,6 +115,15 @@ def _ldxp_detection(url: str) -> SourceDetection | None:
     return SourceDetection("ldxp", source_url, token.casefold(), token)
 
 
+def prepare_source_submission(value: object) -> SourceDetection:
+    """Normalize a submission without DNS resolution or outbound network access."""
+    normalized = _normalized_https_url(value)
+    if ldxp := _ldxp_detection(normalized):
+        return SourceDetection("unknown", ldxp.source_url, ldxp.source_key, ldxp.shop_token)
+    token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
+    return SourceDetection("unknown", normalized, normalized, token)
+
+
 def _ensure_public_host(url: str, resolver: Callable[..., list[tuple[Any, ...]]]) -> bool:
     parsed = urllib.parse.urlsplit(url)
     host = parsed.hostname or ""

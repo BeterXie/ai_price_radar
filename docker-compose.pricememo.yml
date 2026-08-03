@@ -6,6 +6,7 @@ services:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     networks:
       default:
+      detector_control:
       pricememo_frontend:
         aliases:
           - ai-radar-api

@@ -9,15 +9,28 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..database import get_db
 from ..models import Shop, SourceIntake
-from ..schemas import SourceIntakeClaimOut, SourceIntakeClaimRequest, SourceIntakeResult
-from ..security import require_intake_worker
+from ..schemas import (
+    SourceDetectionClaimOut,
+    SourceDetectionClaimRequest,
+    SourceDetectionResult,
+    SourceIntakeClaimOut,
+    SourceIntakeClaimRequest,
+    SourceIntakeResult,
+)
+from ..security import require_detector_worker, require_intake_worker
 from ..services.source_intake import enqueue_transition_notification, site_url, utcnow
-from ..services.source_platform import workflow_status
+from ..services.source_platform import canonical_source_platform, prepare_source_submission, workflow_status
 
 router = APIRouter(
     prefix="/api/v1/internal/source-intakes",
     tags=["internal-source-intakes"],
     dependencies=[Depends(require_intake_worker)],
+)
+
+detector_router = APIRouter(
+    prefix="/api/v1/internal/source-detections",
+    tags=["internal-source-detections"],
+    dependencies=[Depends(require_detector_worker)],
 )
 
 PUBLIC_VALIDATION_FAILURE_REASONS = {
@@ -43,6 +56,94 @@ def _response(intake: SourceIntake) -> dict[str, object]:
         "lease_expires_at": intake.lease_expires_at,
         "finished_at": intake.finished_at,
     }
+
+
+@detector_router.post("/claim", response_model=list[SourceDetectionClaimOut])
+def claim_source_detections(
+    payload: SourceDetectionClaimRequest,
+    db: Session = Depends(get_db),
+) -> list[SourceDetectionClaimOut]:
+    now = utcnow()
+    lease_expires_at = now + timedelta(seconds=payload.lease_seconds)
+    available = or_(
+        SourceIntake.status == "submitted",
+        and_(
+            SourceIntake.status == "detecting",
+            or_(SourceIntake.lease_expires_at.is_(None), SourceIntake.lease_expires_at <= now),
+        ),
+    )
+    rows = list(
+        db.scalars(
+            select(SourceIntake)
+            .where(SourceIntake.source_type == "unknown", available)
+            .order_by(SourceIntake.created_at, SourceIntake.id)
+            .with_for_update(skip_locked=True)
+            .limit(payload.limit)
+        )
+    )
+    for intake in rows:
+        intake.status = "detecting"
+        intake.attempt_count += 1
+        intake.started_at = now
+        intake.lease_expires_at = lease_expires_at
+    db.commit()
+    return [
+        SourceDetectionClaimOut(
+            intake_id=intake.id,
+            source_url=intake.source_url,
+            declared_platform=intake.declared_platform,
+            attempt_count=intake.attempt_count,
+            lease_expires_at=intake.lease_expires_at,
+        )
+        for intake in rows
+    ]
+
+
+@detector_router.post("/{intake_id}/result")
+def report_source_detection_result(
+    intake_id: int,
+    payload: SourceDetectionResult,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id).with_for_update())
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    if intake.status != "detecting" or intake.source_type != "unknown":
+        raise HTTPException(status_code=409, detail=f"cannot report detection from status {intake.status}")
+    if payload.attempt_count != intake.attempt_count:
+        raise HTTPException(status_code=409, detail="stale detection attempt")
+    if _is_expired(intake.lease_expires_at, utcnow()):
+        raise HTTPException(status_code=409, detail="detection lease expired")
+
+    intake.lease_expires_at = None
+    intake.finished_at = utcnow()
+    if payload.status == "validation_failed":
+        intake.status = "validation_failed"
+        intake.failure_reason = "来源安全检测失败"
+        db.commit()
+        return _response(intake)
+
+    platform = canonical_source_platform(payload.detected_platform)
+    if platform not in {"ldxp", "dujiao_next", "merchant_json", "other"}:
+        raise HTTPException(status_code=422, detail="invalid detected source platform")
+    try:
+        normalized = prepare_source_submission(payload.source_url or intake.source_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    source_key = payload.source_key.strip() or normalized.source_key
+    if not source_key:
+        raise HTTPException(status_code=422, detail="detector did not return a source key")
+    intake.source_type = platform
+    intake.detected_platform = platform
+    intake.source_url = normalized.source_url
+    intake.source_key = source_key
+    if payload.shop_name.strip():
+        intake.shop_name = payload.shop_name.strip()
+    intake.product_count = payload.product_count
+    intake.failure_reason = ""
+    intake.status = "pending_review"
+    db.commit()
+    return _response(intake)
 
 
 @router.post("/claim", response_model=list[SourceIntakeClaimOut])

@@ -15,3 +15,11 @@ def require_intake_worker(x_intake_worker_key: str = Header(default="")) -> None
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="intake worker is not configured")
     if x_intake_worker_key != expected:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid intake worker key")
+
+
+def require_detector_worker(x_detector_worker_key: str = Header(default="")) -> None:
+    expected = get_settings().detector_worker_key
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="detector worker is not configured")
+    if x_detector_worker_key != expected:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid detector worker key")
