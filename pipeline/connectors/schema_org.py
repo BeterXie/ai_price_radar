@@ -163,7 +163,7 @@ def _entry(source: str | Path) -> tuple[str, str, str]:
     if parsed.path == "/" and not parsed.query:
         sitemap_url = f"{origin}/sitemap.xml"
     else:
-        sitemap_url = normalized
+        sitemap_url = None
     return normalized, origin, sitemap_url
 
 
@@ -190,7 +190,13 @@ def _sitemap_locations(body: bytes) -> tuple[str, list[str]]:
     return kind, locations
 
 
-def _discover_product_pages(sitemap_url: str, origin: str, budget: _FetchBudget) -> list[str]:
+def _discover_product_pages(
+    sitemap_url: str,
+    origin: str,
+    budget: _FetchBudget,
+    *,
+    preloaded: PinnedResponse | None = None,
+) -> list[str]:
     queue: list[tuple[str, int]] = [(sitemap_url, 0)]
     seen_sitemaps = {sitemap_url}
     product_urls: list[str] = []
@@ -198,10 +204,14 @@ def _discover_product_pages(sitemap_url: str, origin: str, budget: _FetchBudget)
 
     while queue:
         current_url, depth = queue.pop(0)
-        response = budget.get(
-            current_url,
-            accept="application/xml,text/xml;q=0.9,*/*;q=0.1",
-        )
+        if preloaded is not None and current_url == sitemap_url:
+            response = preloaded
+            preloaded = None
+        else:
+            response = budget.get(
+                current_url,
+                accept="application/xml,text/xml;q=0.9,*/*;q=0.1",
+            )
         kind, locations = _sitemap_locations(response.body)
         if kind == "sitemapindex":
             if depth >= MAX_SITEMAP_DEPTH and locations:
@@ -233,6 +243,39 @@ def _discover_product_pages(sitemap_url: str, origin: str, budget: _FetchBudget)
                 raise ValueError("Schema.org source exceeds product URL limit")
             product_urls.append(candidate)
     return product_urls
+
+
+def _looks_like_sitemap_url(url: str) -> bool:
+    path = urllib.parse.urlsplit(url).path.casefold()
+    return path.endswith(".xml") or "sitemap" in path
+
+
+def _entry_pages(
+    entry_url: str,
+    origin: str,
+    budget: _FetchBudget,
+) -> tuple[list[str], dict[str, PinnedResponse]]:
+    response = budget.get(
+        entry_url,
+        accept="application/xml,text/xml,text/html;q=0.9,*/*;q=0.1",
+    )
+    try:
+        _sitemap_locations(response.body)
+    except ValueError as exc:
+        nodes = _jsonld_nodes(response.body)
+        if any(_has_type(node, "Product") for node in nodes):
+            return [entry_url], {entry_url: response}
+        if _looks_like_sitemap_url(entry_url):
+            raise
+        raise ValueError(
+            "Schema.org source is not a sitemap or a page with Product JSON-LD"
+        ) from None
+    return _discover_product_pages(
+        entry_url,
+        origin,
+        budget,
+        preloaded=response,
+    ), {}
 
 
 def _schema_type(value: object) -> str:
@@ -495,12 +538,16 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         user_agent="AI-Price-Radar-Importer/3.6",
     )
     budget = _FetchBudget(client)
-    pages = _discover_product_pages(sitemap_url, origin, budget)
+    preloaded_pages: dict[str, PinnedResponse] = {}
+    if sitemap_url is None:
+        pages, preloaded_pages = _entry_pages(_normalized_entry, origin, budget)
+    else:
+        pages = _discover_product_pages(sitemap_url, origin, budget)
     token = "schema-org-" + hashlib.sha256(origin.encode("utf-8")).hexdigest()[:20]
     seen_products: set[str] = set()
 
     for page_url in pages:
-        response = budget.get(
+        response = preloaded_pages.get(page_url) or budget.get(
             page_url,
             accept="text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
         )

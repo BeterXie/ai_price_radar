@@ -416,3 +416,39 @@ def test_schema_org_connector_never_requests_jsonld_urls(monkeypatch):
 
     assert record["product_url"] == "https://shop.example/products/canonical"
     assert [urlsplit(url).path for url, _accept in calls] == ["/sitemap.xml", "/products/listed"]
+
+
+def test_schema_org_connector_parses_product_page_entry_directly(monkeypatch):
+    page = "https://shop.example/products/direct"
+    responses = {
+        page: _response(_html({
+            "@context": "https://schema.org",
+            "@graph": [{
+                "@type": "Product",
+                "name": "Direct page product",
+                "sku": "DIRECT-1",
+                "offers": {"price": "5.00", "priceCurrency": "USD"},
+            }],
+        })),
+    }
+    calls, _constructor_kwargs = _install_fake_client(monkeypatch, responses)
+
+    records = list(schema_org.load_records(page))
+
+    assert len(records) == 1
+    assert records[0]["product_name"] == "Direct page product"
+    assert records[0]["listed_price"] == "5.00"
+    assert records[0]["currency"] == "USD"
+    assert records[0]["product_url"] == page
+    assert records[0]["raw_json"]["schema_org_page_url"] == page
+    assert [url for url, _accept in calls] == [page]
+
+
+def test_schema_org_connector_rejects_entry_that_is_neither_sitemap_nor_product_page(monkeypatch):
+    page = "https://shop.example/about"
+    _install_fake_client(monkeypatch, {
+        page: _response(_html(visible="<h1>About</h1>")),
+    })
+
+    with pytest.raises(ValueError, match="not a sitemap or a page with Product JSON-LD"):
+        list(schema_org.load_records(page))
