@@ -70,11 +70,21 @@ CREATE TABLE IF NOT EXISTS source_candidates (
     last_verified_at TIMESTAMPTZ,
     next_verify_at TIMESTAMPTZ,
     lease_expires_at TIMESTAMPTZ,
-    promoted_intake_id BIGINT REFERENCES source_intakes(id) ON DELETE SET NULL,
+    promoted_intake_id BIGINT,
     discovery_run_id BIGINT REFERENCES source_discovery_runs(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+DO $$
+BEGIN
+    IF to_regclass('source_intakes') IS NOT NULL THEN
+        ALTER TABLE source_candidates DROP CONSTRAINT IF EXISTS fk_source_candidates_promoted_intake;
+        ALTER TABLE source_candidates
+            ADD CONSTRAINT fk_source_candidates_promoted_intake
+            FOREIGN KEY (promoted_intake_id) REFERENCES source_intakes(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 ALTER TABLE source_candidates DROP CONSTRAINT IF EXISTS uq_source_candidates_key;
 ALTER TABLE source_candidates ADD CONSTRAINT uq_source_candidates_key UNIQUE (candidate_key);
@@ -117,19 +127,19 @@ def migrate(connection: psycopg.Connection) -> None:
 def _summary(connection: psycopg.Connection) -> str:
     with connection.cursor() as cursor:
         cursor.execute(
-            """
-            SELECT
-              (SELECT count(*) FROM information_schema.tables
-                WHERE table_name='source_discovery_runs'),
-              (SELECT count(*) FROM information_schema.tables
-                WHERE table_name='source_candidates'),
-              (SELECT count(*) FROM source_candidates)
-            """
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_name IN ('source_discovery_runs', 'source_candidates')"
         )
-        runs_table, candidates_table, candidate_rows = cursor.fetchone()
+        existing_tables = {row[0] for row in cursor.fetchall()}
+        runs_table = "source_discovery_runs" in existing_tables
+        candidates_table = "source_candidates" in existing_tables
+        candidate_rows = 0
+        if candidates_table:
+            cursor.execute("SELECT count(*) FROM source_candidates")
+            candidate_rows = cursor.fetchone()[0]
     return (
-        f"source_discovery_runs_table={runs_table} "
-        f"source_candidates_table={candidates_table} "
+        f"source_discovery_runs_table={int(runs_table)} "
+        f"source_candidates_table={int(candidates_table)} "
         f"source_candidates_rows={candidate_rows}"
     )
 
