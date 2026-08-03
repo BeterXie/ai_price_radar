@@ -2,6 +2,28 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.5.0] - 2026-08-03
+
+### Added
+
+- Dujiao-Next connector support with brand-aware shop metadata, paginated products, variants, currency preservation, and reviewed-source publication.
+- Public-fingerprint discovery with bounded candidate quotas, stale revalidation, isolated platform detection, and administrator-controlled intake routing.
+- Merchant JSON intake publication and persistent multi-source refresh across LDXP, Dujiao-Next, and approved merchant feeds.
+
+### Changed
+
+- Complete catalog publication is atomic across all sources and now runs in the dedicated Importer image.
+- Intake publication distinguishes raw records, classified offers, and fresh public offers; only a truly visible offer marks a source as published.
+- Published sources remain in later complete refreshes, while disabled or review-required sources leave the next snapshot.
+- Product brand and source platform are exposed separately across the API and Web application.
+
+### Security
+
+- Detector, Pipeline connectors, and Dujiao discovery share a bounded HTTPS client that pins validated public IPs while preserving TLS SNI and certificate verification.
+- Public intake submissions no longer fetch user-controlled URLs inside the API process; the Detector has no database credentials or default-network access.
+- Merchant feed shop identity is derived from the canonical feed URL, and public shop/product links reject credentials, fragments, control characters, and non-HTTPS schemes.
+- Detector egress is designed for a production firewall policy that permits only public TCP/443 destinations.
+
 ## [3.4.0] - 2026-08-02
 
 ### Added
