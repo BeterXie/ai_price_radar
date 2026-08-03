@@ -129,6 +129,9 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
           </div>
         ))}
       </div>
+      <p className="text-xs text-black/50">
+        漏斗口径：统计各运行“首次新增候选”的首次验证转化（检测 / AI 命中 / 自动批准 / 待审 / 失败 / 促进 Intake），不是全量历史累计。
+      </p>
 
       <div className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
         <div className="border-b hairline px-5 py-4 font-semibold">发现运行记录</div>

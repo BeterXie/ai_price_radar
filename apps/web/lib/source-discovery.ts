@@ -55,6 +55,7 @@ export interface DiscoveryFunnel {
 }
 
 export function funnelFromRuns(runs: DiscoveryRunMetrics[]): DiscoveryFunnel {
+  // 口径：只汇总运行记录里已上报的首次验证转化（检测/AI/审批/失败/促进）。
   const total: DiscoveryFunnel = {
     discovered_raw: 0,
     normalized: 0,
