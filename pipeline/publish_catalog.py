@@ -6,6 +6,7 @@ import os
 import sqlite3
 import urllib.parse
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -29,6 +30,9 @@ from connectors import get_connector
 
 UNREVIEWED_DUJIAO_ENV = "AI_PRICE_RADAR_ALLOW_UNREVIEWED_DUJIAO"
 PUBLISHABLE_DUJIAO_STATUSES = ("pending_review", "verified")
+STALE_OFFER_HOURS_ENV = "STALE_OFFER_HOURS"
+DEFAULT_STALE_OFFER_HOURS = 72
+MAX_STALE_OFFER_HOURS = 24 * 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +163,40 @@ def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:
     return list(merged.values())
 
 
+def public_offer_count(
+    db: Session,
+    *,
+    snapshot_id: int,
+    offer_ids: set[int],
+    now: datetime | None = None,
+) -> int:
+    """Count imported offers using the same visibility and freshness rules as the public catalog."""
+    if not offer_ids:
+        return 0
+    try:
+        stale_offer_hours = int(os.environ.get(STALE_OFFER_HOURS_ENV, DEFAULT_STALE_OFFER_HOURS))
+    except ValueError as exc:
+        raise ValueError(f"{STALE_OFFER_HOURS_ENV} must be an integer") from exc
+    if not 1 <= stale_offer_hours <= MAX_STALE_OFFER_HOURS:
+        raise ValueError(
+            f"{STALE_OFFER_HOURS_ENV} must be between 1 and {MAX_STALE_OFFER_HOURS}"
+        )
+    cutoff = (now or utcnow()) - timedelta(hours=stale_offer_hours)
+    return int(db.scalar(
+        select(func.count(Offer.id))
+        .join(Shop, Shop.id == Offer.shop_id)
+        .where(
+            Offer.snapshot_id == snapshot_id,
+            Offer.id.in_(offer_ids),
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            Offer.product_id.is_not(None),
+            Shop.is_visible.is_(True),
+            Offer.observed_at >= cutoff,
+        )
+    ) or 0)
+
+
 def import_source_into_snapshot(
     db: Session,
     *,
@@ -205,17 +243,11 @@ def import_source_into_snapshot(
             .join(Shop, Shop.id == Offer.shop_id)
             .where(*source_offers, Offer.product_id.is_not(None))
         ) or 0)
-        result.public_offer_count = int(db.scalar(
-            select(func.count(Offer.id))
-            .join(Shop, Shop.id == Offer.shop_id)
-            .where(
-                *source_offers,
-                Offer.active.is_(True),
-                Offer.approved.is_(True),
-                Offer.product_id.is_not(None),
-                Shop.is_visible.is_(True),
-            )
-        ) or 0)
+        result.public_offer_count = public_offer_count(
+            db,
+            snapshot_id=snapshot_id,
+            offer_ids=offer_ids,
+        )
     return result
 
 
