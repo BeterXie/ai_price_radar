@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import urllib.parse
 from collections.abc import Iterable
 from pathlib import Path
@@ -16,6 +17,7 @@ from .base import validate_record
 
 name = "merchant-json"
 MAX_BYTES = 5 * 1024 * 1024
+UPSTREAM_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 
 
 def _validate_remote_url(value: str) -> urllib.parse.SplitResult:
@@ -23,6 +25,36 @@ def _validate_remote_url(value: str) -> urllib.parse.SplitResult:
         return urllib.parse.urlsplit(PinnedHTTPSClient.normalize_url(value))
     except ValueError as exc:
         raise ValueError("merchant feed URL must be public HTTPS on port 443") from exc
+
+
+def _validate_public_link(value: object, field: str) -> str:
+    raw = str(value or "")
+    if not raw or raw != raw.strip():
+        raise ValueError(f"merchant feed {field} must be an absolute public HTTPS URL")
+    if any(ord(character) < 32 or ord(character) == 127 for character in raw):
+        raise ValueError(f"merchant feed {field} must not contain control characters")
+    if "#" in raw:
+        raise ValueError(f"merchant feed {field} must not contain a fragment")
+    try:
+        return PinnedHTTPSClient.normalize_url(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"merchant feed {field} must be an absolute public HTTPS URL on port 443"
+        ) from exc
+
+
+def _internal_shop_token(source_url: str) -> str:
+    digest = hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:24]
+    return f"merchant-json-{digest}"
+
+
+def _upstream_shop_token(shop: dict[str, Any], metadata: dict[str, Any]) -> str:
+    value = str(shop.get("token") or metadata.get("shop_token") or "").strip()
+    if value and UPSTREAM_TOKEN_PATTERN.fullmatch(value) is None:
+        raise ValueError(
+            "merchant feed shop token must be 1-128 ASCII letters, digits, dots, underscores, colons, or hyphens"
+        )
+    return value
 
 
 def _read_source(source: str | Path) -> tuple[bytes, str]:
@@ -72,16 +104,27 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     document = json.loads(payload.decode("utf-8"))
     items, metadata = _items(document)
     shop = metadata.get("shop") if isinstance(metadata.get("shop"), dict) else {}
-    shop_url = str(shop.get("url") or metadata.get("shop_url") or source_url)
+    shop_url = _validate_public_link(
+        shop.get("url") or metadata.get("shop_url") or source_url,
+        "shop URL",
+    )
     shop_name = str(shop.get("name") or metadata.get("shop_name") or urllib.parse.urlsplit(shop_url).hostname or "Merchant feed")
-    token = str(shop.get("token") or metadata.get("shop_token") or "").strip()
-    if not token:
-        token = "feed-" + hashlib.sha256(shop_url.encode()).hexdigest()[:20]
+    token = _internal_shop_token(source_url)
+    upstream_shop_token = _upstream_shop_token(shop, metadata)
 
     for index, item in enumerate(items):
-        product_url = str(item.get("url") or item.get("product_url") or "").strip()
+        product_url = _validate_public_link(
+            item.get("url") or item.get("product_url"),
+            f"item {index} product URL",
+        )
         product_name = str(item.get("name") or item.get("product_name") or "").strip()
         key = str(item.get("id") or item.get("sku") or item.get("product_key") or product_url or f"item-{index}")
+        raw_json = dict(item)
+        source_updated_at = item.get("observed_at") or metadata.get("updated_at")
+        if source_updated_at not in (None, ""):
+            raw_json["source_updated_at"] = source_updated_at
+        if upstream_shop_token:
+            raw_json["upstream_shop_token"] = upstream_shop_token
         raw = {
             "token": token,
             "shop_name": shop_name,
@@ -97,7 +140,6 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
             "stock_count": item.get("stock_count") if item.get("stock_count") not in (None, "") else item.get("stock"),
             "product_status": item.get("stock_status") or item.get("status") or "",
             "auto_delivery": item.get("auto_delivery"),
-            "collected_at": item.get("observed_at") or metadata.get("updated_at"),
-            "raw_json": item,
+            "raw_json": raw_json,
         }
         yield validate_record(raw)

@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -8,13 +9,13 @@ from price_radar_http import PinnedHTTPSClient, PinnedResponse
 from connectors import get_connector
 from connectors import dujiao_next, merchant_json
 from connectors.merchant_json import _validate_remote_url
-from common import Offer, ensure_products, session_for, upsert_offer
+from common import Offer, Shop, ensure_products, session_for, upsert_offer
 
 
 def test_merchant_json_connector_normalizes_feed(tmp_path: Path):
     source = tmp_path / "feed.json"
     source.write_text(json.dumps({
-        "shop": {"name": "Example merchant", "url": "https://merchant.example"},
+        "shop": {"name": "Example merchant", "url": "https://merchant.example", "token": "upstream-shop"},
         "updated_at": "2026-07-29T00:00:00+00:00",
         "items": [{
             "id": "plus-1",
@@ -36,7 +37,125 @@ def test_merchant_json_connector_normalizes_feed(tmp_path: Path):
     assert record["listed_price"] == "99.00"
     assert record["currency"] == "USD"
     assert record["stock_count"] == 5
-    assert record["token"].startswith("feed-")
+    source_url = source.resolve().as_uri()
+    assert record["token"] == "merchant-json-" + hashlib.sha256(source_url.encode()).hexdigest()[:24]
+    assert record.get("collected_at") is None
+    assert record["raw_json"]["source_updated_at"] == "2026-07-29T00:00:00+00:00"
+    assert record["raw_json"]["upstream_shop_token"] == "upstream-shop"
+
+
+def test_merchant_json_identity_depends_only_on_feed_source(tmp_path: Path):
+    payload = {
+        "shop": {
+            "name": "Example merchant",
+            "url": "https://merchant.example",
+            "token": "same-upstream-token",
+        },
+        "items": [{
+            "id": "plus-1",
+            "name": "ChatGPT Plus monthly",
+            "url": "https://merchant.example/products/plus-1",
+        }],
+    }
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    first.write_text(json.dumps(payload), encoding="utf-8")
+    second.write_text(json.dumps(payload), encoding="utf-8")
+
+    first_token = next(iter(merchant_json.load_records(first)))["token"]
+    repeated_token = next(iter(merchant_json.load_records(first)))["token"]
+    second_token = next(iter(merchant_json.load_records(second)))["token"]
+
+    assert first_token == repeated_token
+    assert first_token != second_token
+    assert first_token.startswith("merchant-json-")
+
+
+def test_merchant_json_upstream_token_cannot_hijack_existing_shop(tmp_path: Path):
+    source = tmp_path / "feed.json"
+    source.write_text(json.dumps({
+        "shop": {
+            "name": "Attacker merchant",
+            "url": "https://attacker.example",
+            "token": "existing-ldxp-token",
+        },
+        "items": [{
+            "id": "plus-1",
+            "name": "ChatGPT Plus monthly",
+            "url": "https://attacker.example/products/plus-1",
+        }],
+    }), encoding="utf-8")
+    record = next(iter(merchant_json.load_records(source)))
+
+    db = session_for("sqlite://")
+    try:
+        original = Shop(
+            token="existing-ldxp-token",
+            name="Original LDXP shop",
+            source_url="https://original.example",
+            platform="ldxp",
+        )
+        db.add(original)
+        db.flush()
+        upsert_offer(db, record, ensure_products(db))
+
+        existing = db.query(Shop).filter(Shop.token == "existing-ldxp-token").one()
+        merchant = db.query(Shop).filter(Shop.token == record["token"]).one()
+        assert db.query(Shop).count() == 2
+        assert existing.name == "Original LDXP shop"
+        assert existing.source_url == "https://original.example"
+        assert existing.platform == "ldxp"
+        assert merchant.name == "Attacker merchant"
+        assert merchant.source_url == "https://attacker.example/"
+        assert merchant.platform == "merchant_json"
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,hello",
+        "file:///C:/secrets.txt",
+        "http://merchant.example/products/plus-1",
+        "https://user:password@merchant.example/products/plus-1",
+        "https://merchant.example/products/plus-1#details",
+        "https://merchant.example/products/plus-1\nheader: value",
+    ],
+)
+def test_merchant_json_rejects_unsafe_product_urls(tmp_path: Path, unsafe_url: str):
+    source = tmp_path / "feed.json"
+    source.write_text(json.dumps({
+        "shop": {"url": "https://merchant.example"},
+        "items": [{"name": "Unsafe product", "url": unsafe_url}],
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="product URL"):
+        list(merchant_json.load_records(source))
+
+
+@pytest.mark.parametrize(
+    "unsafe_url",
+    [
+        "http://merchant.example",
+        "https://user:password@merchant.example",
+        "https://merchant.example/#about",
+        "https://merchant.example/\x00about",
+    ],
+)
+def test_merchant_json_rejects_unsafe_shop_urls(tmp_path: Path, unsafe_url: str):
+    source = tmp_path / "feed.json"
+    source.write_text(json.dumps({
+        "shop": {"url": unsafe_url},
+        "items": [{
+            "name": "ChatGPT Plus monthly",
+            "url": "https://merchant.example/products/plus-1",
+        }],
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="shop URL"):
+        list(merchant_json.load_records(source))
 
 
 def test_dujiao_next_connector_paginates_and_emits_variants(monkeypatch):
