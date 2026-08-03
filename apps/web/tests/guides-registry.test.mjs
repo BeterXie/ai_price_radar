@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { guideRegistry } from "../lib/guides/registry.ts";
-import { PRODUCT_SLUGS, KNOWN_DELIVERY_TYPES, BRAND_SLUGS, GENERAL_GUIDE_SLUGS } from "../lib/guides/types.ts";
+import { PRODUCT_SLUGS, KNOWN_DELIVERY_TYPES, BRAND_SLUGS, GENERAL_GUIDE_SLUGS, WORKFLOW_GUIDE_SLUGS } from "../lib/guides/types.ts";
 import { validateGuideRegistry } from "../lib/guides/validation.ts";
 
 const EXPECTED_MATRIX = {
@@ -30,11 +30,12 @@ const EXPECTED_MATRIX = {
   "x-premium-plus": ["subscription_recharge", "finished_account"],
 };
 
-test("registry covers every required brand, product, delivery type, and general guide", () => {
+test("registry covers every required brand, product, delivery type, general guide, and workflow guide", () => {
   assert.deepEqual(Object.keys(guideRegistry.brands).sort(), [...BRAND_SLUGS].sort());
   assert.deepEqual(Object.keys(guideRegistry.products).sort(), [...PRODUCT_SLUGS].sort());
   assert.deepEqual(Object.keys(guideRegistry.delivery).sort(), [...KNOWN_DELIVERY_TYPES].sort());
   assert.deepEqual(Object.keys(guideRegistry.general).sort(), [...GENERAL_GUIDE_SLUGS].sort());
+  assert.deepEqual(Object.keys(guideRegistry.workflows).sort(), [...WORKFLOW_GUIDE_SLUGS].sort());
   assert.equal("unknown" in guideRegistry.delivery, false);
   assert.doesNotThrow(() => validateGuideRegistry(guideRegistry));
 });
