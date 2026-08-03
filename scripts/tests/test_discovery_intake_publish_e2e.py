@@ -276,6 +276,32 @@ def test_schema_org_sitemap_stays_exact_and_publishes_after_admin_approval(tmp_p
         _cleanup()
 
 
+def test_schema_org_root_entry_keeps_root_url_through_intake(tmp_path, monkeypatch):
+    engine, database_url, client = _setup(tmp_path, monkeypatch)
+    try:
+        root = "https://root-schema-e2e.example.com"
+        _candidate_id, reported = _upsert_claim_report(
+            client,
+            url=root,
+            hint="schema_org",
+            platform="schema_org",
+            source_key=root,
+            source_url=root,
+            total_product_count=2,
+            confidence=80,
+        )
+        assert reported["status"] == "promoted"
+        assert reported["detected_source_url"].rstrip("/") == root
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.id == reported["promoted_intake_id"]))
+            assert intake.source_url.rstrip("/") == root
+            assert intake.source_key.rstrip("/") == root
+            assert "/sitemap.xml" not in intake.source_url
+            assert intake.status == "pending_review"
+    finally:
+        _cleanup()
+
+
 def test_woocommerce_no_public_offers_stays_no_products_and_meta_unchanged(tmp_path, monkeypatch):
     engine, database_url, client = _setup(tmp_path, monkeypatch)
     try:

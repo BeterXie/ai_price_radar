@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
-from ..models import SourceCandidate, SourceIntake
+from ..models import SourceCandidate, SourceDiscoveryRun, SourceIntake
 from .source_intake import utcnow
 from .source_platform import canonical_source_platform, normalize_public_https_url
 
@@ -281,8 +281,18 @@ def auto_approval_enabled(platform: str) -> bool:
     return bool(getattr(get_settings(), setting))
 
 
-def promote_candidate_to_intake(db: Session, candidate: SourceCandidate) -> int | None:
-    """Promote a qualified candidate to the existing Source Intake, idempotently."""
+def promote_candidate_to_intake(
+    db: Session,
+    candidate: SourceCandidate,
+    *,
+    approve: bool,
+) -> int | None:
+    """Promote a qualified candidate to the existing Source Intake, idempotently.
+
+    The intake approval state is decided by the caller (``approve``), never by
+    re-reading the global auto-approval configuration: a candidate that did not
+    satisfy the strict conditions must not be written as ``approved``.
+    """
     platform = canonical_source_platform(candidate.detected_platform)
     if platform not in PROMOTABLE_PLATFORMS:
         return None
@@ -302,7 +312,6 @@ def promote_candidate_to_intake(db: Session, candidate: SourceCandidate) -> int 
         return existing.id
 
     now = utcnow()
-    auto_approved = auto_approval_enabled(platform)
     intake = SourceIntake(
         source_type=platform,
         declared_platform="auto",
@@ -313,23 +322,22 @@ def promote_candidate_to_intake(db: Session, candidate: SourceCandidate) -> int 
         contact_email="",
         note="",
         origin="discovery",
-        status="approved" if auto_approved else "pending_review",
+        status="approved" if approve else "pending_review",
         decision_note=(
             "自动审批：检测契约与 AI 商品条件满足"
-            if auto_approved
+            if approve
             else "发现引擎合格候选，等待管理员初审"
         ),
         attempt_count=0,
         product_count=candidate.ai_product_count,
-        approved_at=now if auto_approved else None,
-        finished_at=now if auto_approved else None,
+        approved_at=now if approve else None,
+        finished_at=now if approve else None,
     )
     try:
-        db.add(intake)
-        db.flush()
+        with db.begin_nested():
+            db.add(intake)
+            db.flush()
     except IntegrityError:
-        db.rollback()
-        _lock_identity(db, f"intake\n{platform}\n{source_key}")
         existing = db.scalar(
             select(SourceIntake).where(
                 SourceIntake.source_type == platform,
@@ -344,6 +352,58 @@ def promote_candidate_to_intake(db: Session, candidate: SourceCandidate) -> int 
         return existing.id
     candidate.promoted_intake_id = intake.id
     return intake.id
+
+
+def _update_run_stats(
+    db: Session,
+    candidate: SourceCandidate,
+    *,
+    first_verification: bool,
+    detected: bool,
+    ai_matched: bool,
+    auto_approved: bool,
+    pending_review: bool,
+    validation_failed: bool,
+    promoted: bool,
+    platform: str,
+    failure_reason: str = "",
+) -> None:
+    """Update the discovery run that first created this candidate.
+
+    Counters reflect the first verification outcome of candidates newly
+    discovered by that run (``discovery_run_id`` is written only on first
+    insertion), so the funnel is explicitly "per run first-added candidates",
+    not a global total.
+    """
+    if not first_verification or candidate.discovery_run_id is None:
+        return
+    run = db.get(SourceDiscoveryRun, candidate.discovery_run_id)
+    if run is None:
+        return
+    if validation_failed:
+        run.validation_failed_count += 1
+        category = _normalized_failure_reason(failure_reason).casefold()
+        marker = next(
+            (marker for marker in FAILURE_BACKOFF_HOURS if marker in category),
+            "validation_failed",
+        )
+        failure_stats = dict(run.failure_stats or {})
+        failure_stats[marker] = failure_stats.get(marker, 0) + 1
+        run.failure_stats = failure_stats
+        return
+    run.detected_count += 1
+    if platform:
+        platform_stats = dict(run.platform_stats or {})
+        platform_stats[platform] = platform_stats.get(platform, 0) + 1
+        run.platform_stats = platform_stats
+    if ai_matched:
+        run.ai_matched_count += 1
+    if auto_approved:
+        run.auto_approved_count += 1
+    if pending_review:
+        run.pending_review_count += 1
+    if promoted:
+        run.promoted_intake_count += 1
 
 
 def report_candidate_result(
@@ -378,6 +438,7 @@ def report_candidate_result(
     ):
         raise ValueError("detection lease expired")
 
+    first_verification = candidate.last_verified_at is None
     candidate.lease_expires_at = None
     candidate.last_verified_at = now
     candidate.failure_reason = ""
@@ -390,6 +451,19 @@ def report_candidate_result(
         candidate.ai_product_count = 0
         candidate.sample_products = []
         candidate.fingerprints = []
+        _update_run_stats(
+            db,
+            candidate,
+            first_verification=first_verification,
+            detected=False,
+            ai_matched=False,
+            auto_approved=False,
+            pending_review=False,
+            validation_failed=True,
+            promoted=False,
+            platform=candidate.detected_platform,
+            failure_reason=reason,
+        )
         db.commit()
         return candidate
 
@@ -399,6 +473,18 @@ def report_candidate_result(
         candidate.next_verify_at = now + timedelta(hours=7 * 24)
         candidate.ai_product_count = 0
         candidate.sample_products = []
+        _update_run_stats(
+            db,
+            candidate,
+            first_verification=first_verification,
+            detected=True,
+            ai_matched=False,
+            auto_approved=False,
+            pending_review=False,
+            validation_failed=False,
+            promoted=False,
+            platform=candidate.detected_platform,
+        )
         db.commit()
         return candidate
 
@@ -448,6 +534,18 @@ def report_candidate_result(
         candidate.status = "no_match"
         candidate.failure_reason = "没有可发布的 AI 商品"
         candidate.next_verify_at = now + timedelta(hours=7 * 24)
+        _update_run_stats(
+            db,
+            candidate,
+            first_verification=first_verification,
+            detected=True,
+            ai_matched=False,
+            auto_approved=False,
+            pending_review=False,
+            validation_failed=False,
+            promoted=False,
+            platform=platform,
+        )
         db.commit()
         return candidate
 
@@ -469,17 +567,38 @@ def report_candidate_result(
             f"{candidate.decision_note}\n等待人工审核（自动审批关闭或条件不满足）"
         )
     candidate.next_verify_at = now + timedelta(days=30)
-    db.commit()
 
+    promoted_intake_id: int | None = None
     if platform in PROMOTABLE_PLATFORMS:
-        promoted_intake_id = promote_candidate_to_intake(db, candidate)
+        promoted_intake_id = promote_candidate_to_intake(
+            db,
+            candidate,
+            approve=strict_auto,
+        )
         if promoted_intake_id is not None:
             candidate.status = "promoted"
             candidate.promoted_intake_id = promoted_intake_id
             candidate.decision_note = _trim_note(
                 f"{candidate.decision_note}\n已进入 Source Intake #{promoted_intake_id}"
             )
-            db.commit()
+        elif candidate.status == "auto_approved":
+            candidate.status = "pending_review"
+            candidate.decision_note = _trim_note(
+                f"{candidate.decision_note}\n已存在 rejected/disabled 的 Intake，等待管理员处理"
+            )
+    _update_run_stats(
+        db,
+        candidate,
+        first_verification=first_verification,
+        detected=True,
+        ai_matched=True,
+        auto_approved=strict_auto and promoted_intake_id is not None,
+        pending_review=(not strict_auto) or promoted_intake_id is None,
+        validation_failed=False,
+        promoted=promoted_intake_id is not None,
+        platform=platform,
+    )
+    db.commit()
     return candidate
 
 
@@ -525,7 +644,7 @@ def admin_promote_candidate(db: Session, candidate: SourceCandidate, *, reason: 
         raise ValueError("candidate platform is not promotable")
     if candidate.ai_product_count <= 0 or not (candidate.detected_source_url or candidate.canonical_url):
         raise ValueError("candidate must have AI products and a validated source URL")
-    promoted_intake_id = promote_candidate_to_intake(db, candidate)
+    promoted_intake_id = promote_candidate_to_intake(db, candidate, approve=True)
     if promoted_intake_id is None:
         candidate.status = "pending_review"
         candidate.decision_note = _trim_note(
@@ -540,3 +659,43 @@ def admin_promote_candidate(db: Session, candidate: SourceCandidate, *, reason: 
     )
     db.commit()
     return candidate
+
+
+def recover_unpromoted_candidates(db: Session, *, limit: int = 100) -> int:
+    """Idempotently re-promote candidates that were approved but lost their intake link."""
+    rows = list(
+        db.scalars(
+            select(SourceCandidate)
+            .where(
+                SourceCandidate.status.in_({"auto_approved", "pending_review"}),
+                SourceCandidate.promoted_intake_id.is_(None),
+            )
+            .order_by(SourceCandidate.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+    )
+    recovered = 0
+    for candidate in rows:
+        platform = canonical_source_platform(candidate.detected_platform)
+        if platform not in PROMOTABLE_PLATFORMS:
+            continue
+        promoted_intake_id = promote_candidate_to_intake(
+            db,
+            candidate,
+            approve=candidate.status == "auto_approved",
+        )
+        if promoted_intake_id is None:
+            candidate.status = "pending_review"
+            candidate.decision_note = _trim_note(
+                f"{candidate.decision_note}\n恢复促进失败：已存在 rejected/disabled 的 Intake"
+            )
+            continue
+        candidate.status = "promoted"
+        candidate.promoted_intake_id = promoted_intake_id
+        candidate.decision_note = _trim_note(
+            f"{candidate.decision_note}\n恢复任务：重新进入 Source Intake #{promoted_intake_id}"
+        )
+        recovered += 1
+    db.commit()
+    return recovered

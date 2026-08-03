@@ -57,16 +57,19 @@ DISCOVERY_HEADERS = {"X-Discovery-Worker-Key": "discovery-test"}
 ADMIN_HEADERS = {"X-Admin-Key": "admin-test"}
 
 
-def upsert(client, url, *, hint="unknown", source="bing", query="\"ChatGPT Plus\""):
+def upsert(client, url, *, hint="unknown", source="bing", query="\"ChatGPT Plus\"", run_id=None):
+    payload = {
+        "discovered_url": url,
+        "platform_hint": hint,
+        "discovered_by": source,
+        "matched_query": query,
+    }
+    if run_id is not None:
+        payload["run_id"] = run_id
     return client.post(
         "/api/v1/internal/source-candidates/upsert",
         headers=DISCOVERY_HEADERS,
-        json={
-            "discovered_url": url,
-            "platform_hint": hint,
-            "discovered_by": source,
-            "matched_query": query,
-        },
+        json=payload,
     )
 
 
@@ -259,6 +262,43 @@ def test_woocommerce_auto_approval_promotes_to_approved_intake(client, engine):
         assert intake.product_count == 3
 
 
+def test_auto_approval_low_confidence_keeps_intake_pending(client, engine):
+    upsert(client, "https://low-confidence.example.com", hint="woocommerce")
+    task = claim(client)[0]
+    response = report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        confidence_score=49,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "promoted"
+    with Session(engine) as db:
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.id == body["promoted_intake_id"]))
+        assert intake.status == "pending_review"
+        assert intake.approved_at is None
+
+
+def test_auto_approval_empty_samples_keeps_intake_pending(client, engine):
+    upsert(client, "https://no-samples.example.com", hint="woocommerce")
+    task = claim(client)[0]
+    response = report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        sample_products=[],
+        confidence_score=90,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "promoted"
+    with Session(engine) as db:
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.id == body["promoted_intake_id"]))
+        assert intake.status == "pending_review"
+        assert intake.approved_at is None
+
+
 def test_schema_org_promotes_to_pending_review_intake_by_default(client, engine):
     upsert(client, "https://structured.example.com/product-sitemap.xml", hint="schema_org")
     task = claim(client)[0]
@@ -444,6 +484,71 @@ def test_discovery_runs_lifecycle_and_admin_listing(client):
     assert rows[0]["adapter_stats"] == {"seed": 1, "bing": 9}
     detail = client.get(f"/api/v1/admin/source-discovery/runs/{run_id}", headers=ADMIN_HEADERS)
     assert detail.status_code == 200
+
+
+def test_discovery_run_funnel_counts_follow_candidate_results(client, engine):
+    run_id = client.post(
+        "/api/v1/internal/source-discovery/runs",
+        headers=DISCOVERY_HEADERS,
+        json={"trigger": "manual", "adapters": ["bing"]},
+    ).json()["run_id"]
+    upsert(client, "https://funnel-one.example.com", hint="woocommerce", run_id=run_id)
+    task = claim(client)[0]
+    reported = report(client, task["candidate_id"], task["attempt_count"])
+    assert reported.json()["status"] == "promoted"
+    with Session(engine) as db:
+        candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == task["candidate_id"]))
+        assert candidate.discovery_run_id == run_id
+    run = client.get(f"/api/v1/admin/source-discovery/runs/{run_id}", headers=ADMIN_HEADERS).json()
+    assert run["detected_count"] == 1
+    assert run["ai_matched_count"] == 1
+    assert run["auto_approved_count"] == 1
+    assert run["promoted_intake_count"] == 1
+    assert run["platform_stats"] == {"woocommerce": 1}
+
+
+def test_discovery_run_validation_failure_is_counted(client, engine):
+    run_id = client.post(
+        "/api/v1/internal/source-discovery/runs",
+        headers=DISCOVERY_HEADERS,
+        json={"trigger": "manual", "adapters": ["seed"]},
+    ).json()["run_id"]
+    upsert(client, "https://funnel-fail.example.com", hint="dujiao_next", run_id=run_id)
+    task = claim(client)[0]
+    report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        status="validation_failed",
+        failure_reason="timeout",
+    )
+    run = client.get(f"/api/v1/admin/source-discovery/runs/{run_id}", headers=ADMIN_HEADERS).json()
+    assert run["validation_failed_count"] == 1
+    assert run["failure_stats"] == {"timeout": 1}
+    assert run["detected_count"] == 0
+
+
+def test_recovery_task_repromotes_orphaned_candidates(client, engine):
+    upsert(client, "https://orphan.example.com", hint="woocommerce")
+    task = claim(client)[0]
+    report(client, task["candidate_id"], task["attempt_count"])
+    with Session(engine) as db:
+        candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == task["candidate_id"]))
+        candidate.status = "auto_approved"
+        candidate.promoted_intake_id = None
+        db.commit()
+    recovered = client.post(
+        "/api/v1/admin/source-candidates/recover",
+        headers=ADMIN_HEADERS,
+    )
+    assert recovered.status_code == 200
+    assert recovered.json()["recovered"] == 1
+    with Session(engine) as db:
+        candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == task["candidate_id"]))
+        assert candidate.status == "promoted"
+        assert candidate.promoted_intake_id is not None
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.id == candidate.promoted_intake_id))
+        assert intake.status == "approved"
 
 
 def test_discovery_run_must_exist_and_be_running_for_upsert(client):

@@ -36,6 +36,7 @@ from ..services.source_discovery import (
     admin_promote_candidate,
     admin_reject_candidate,
     admin_retry_candidate,
+    recover_unpromoted_candidates,
 )
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
 from ..services.source_platform import workflow_status
@@ -447,6 +448,15 @@ def _candidate_action(candidate_id: int, payload: SourceCandidateAction, action:
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     raise HTTPException(status_code=400, detail="unknown candidate action")
+
+
+@router.post("/source-candidates/recover")
+def recover_source_candidate_promotions(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    recovered = recover_unpromoted_candidates(db, limit=limit)
+    return {"recovered": recovered}
 
 
 @router.post("/source-candidates/{candidate_id}/retry", response_model=SourceCandidateOut)
