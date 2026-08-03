@@ -156,15 +156,10 @@ def _safe_same_origin_url(value: object, *, base_url: str, origin: str) -> str |
     return candidate if _same_origin(candidate, origin) else None
 
 
-def _entry(source: str | Path) -> tuple[str, str, str]:
+def _entry(source: str | Path) -> tuple[str, str]:
     normalized = _normalized_url(str(source))
     origin = _origin(normalized)
-    parsed = urllib.parse.urlsplit(normalized)
-    if parsed.path == "/" and not parsed.query:
-        sitemap_url = f"{origin}/sitemap.xml"
-    else:
-        sitemap_url = None
-    return normalized, origin, sitemap_url
+    return normalized, origin
 
 
 def _local_name(tag: str) -> str:
@@ -250,6 +245,11 @@ def _looks_like_sitemap_url(url: str) -> bool:
     return path.endswith(".xml") or "sitemap" in path
 
 
+def _is_root_url(url: str) -> bool:
+    parsed = urllib.parse.urlsplit(url)
+    return parsed.path in ("", "/") and not parsed.query
+
+
 def _entry_pages(
     entry_url: str,
     origin: str,
@@ -267,6 +267,12 @@ def _entry_pages(
             return [entry_url], {entry_url: response}
         if _looks_like_sitemap_url(entry_url):
             raise
+        if _is_root_url(entry_url):
+            return _discover_product_pages(
+                f"{origin}/sitemap.xml",
+                origin,
+                budget,
+            ), {}
         raise ValueError(
             "Schema.org source is not a sitemap or a page with Product JSON-LD"
         ) from None
@@ -529,7 +535,7 @@ def _record(
 
 
 def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
-    _normalized_entry, origin, sitemap_url = _entry(source)
+    _normalized_entry, origin = _entry(source)
     client = PinnedHTTPSClient(
         max_response_bytes=MAX_RESPONSE_BYTES,
         max_task_bytes=MAX_TOTAL_BYTES,
@@ -538,11 +544,7 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         user_agent="AI-Price-Radar-Importer/3.6",
     )
     budget = _FetchBudget(client)
-    preloaded_pages: dict[str, PinnedResponse] = {}
-    if sitemap_url is None:
-        pages, preloaded_pages = _entry_pages(_normalized_entry, origin, budget)
-    else:
-        pages = _discover_product_pages(sitemap_url, origin, budget)
+    pages, preloaded_pages = _entry_pages(_normalized_entry, origin, budget)
     token = "schema-org-" + hashlib.sha256(origin.encode("utf-8")).hexdigest()[:20]
     seen_products: set[str] = set()
 

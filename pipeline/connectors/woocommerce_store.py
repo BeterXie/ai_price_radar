@@ -271,7 +271,10 @@ def _stock(product: dict[str, Any]) -> tuple[int | None, str, bool | None, str]:
     is_on_backorder = _boolean(product, "is_on_backorder")
     is_purchasable = _boolean(product, "is_purchasable")
 
-    if is_in_stock is False:
+    if is_purchasable is False:
+        stock_count = 0
+        stock_status = "unavailable"
+    elif is_in_stock is False:
         stock_count = 0
         stock_status = "out_of_stock"
     else:
@@ -362,7 +365,7 @@ def _record(
         "shop_name": shop_name,
         "shop_url": origin,
         "shop_status": "success",
-        "source_platform": "woocommerce_store",
+        "source_platform": "woocommerce",
         "source_kind": "public_api",
         "product_key": product_key,
         "variant_key": str(item_id) if parent_id is not None else "",

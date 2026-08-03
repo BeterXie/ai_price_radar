@@ -126,9 +126,21 @@ def _sitemap_locations(response: ProbeResponse) -> tuple[str, list[str]]:
     return kind, locations
 
 
-def _schema_from_sitemap(origin: str, client: PinnedHTTPSClient) -> tuple[str, int] | None:
+def _schema_from_sitemap(
+    origin: str,
+    client: PinnedHTTPSClient,
+    *,
+    entry_url: str | None = None,
+    preloaded: ProbeResponse | None = None,
+) -> tuple[str, int] | None:
     try:
-        kind, locations = _sitemap_locations(client.get(f"{origin}/sitemap.xml", accept="application/xml,text/xml"))
+        if entry_url is not None:
+            response = preloaded or client.get(entry_url, accept="application/xml,text/xml")
+            kind, locations = _sitemap_locations(response)
+        else:
+            kind, locations = _sitemap_locations(
+                client.get(f"{origin}/sitemap.xml", accept="application/xml,text/xml")
+            )
     except (OSError, TimeoutError, ValueError):
         return None
     page_urls: list[str] = []
@@ -237,6 +249,14 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         raise ValueError(f"source returned HTTP {page.status}")
     if product_count := _schema_product_count(page.body):
         return ProbeResult("schema_org", normalized, normalized, host, product_count)
+    if sitemap_result := _schema_from_sitemap(
+        origin,
+        client,
+        entry_url=normalized,
+        preloaded=page,
+    ):
+        _page_url, product_count = sitemap_result
+        return ProbeResult("schema_org", origin, origin, host, product_count)
     if sitemap_result := _schema_from_sitemap(origin, client):
         _page_url, product_count = sitemap_result
         return ProbeResult("schema_org", origin, origin, host, product_count)

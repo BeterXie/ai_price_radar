@@ -77,6 +77,10 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         assert legacy.json()["items"][0]["platform"] == "OpenAI"
         assert legacy.json()["items"][0]["brand"] == "OpenAI"
 
+        woo = client.get("/api/v1/products", params={"platform": "OpenAI", "source_platform": "woocommerce"})
+        assert woo.status_code == 200
+        assert woo.json()["offer_count"] == 1
+
         combined = client.get(
             "/api/v1/catalog/groups",
             params={"brand": "OpenAI", "product": "chatgpt-plus", "source_platform": "ldxp"},

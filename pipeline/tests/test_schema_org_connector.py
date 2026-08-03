@@ -59,6 +59,7 @@ def test_schema_org_connector_reads_sitemap_index_and_jsonld_shapes(monkeypatch)
     product_sitemap = "https://shop.example/products-sitemap.xml"
     page_urls = [f"https://shop.example/products/{index}" for index in range(1, 5)]
     responses = {
+        "https://shop.example/": _response(_html(), **{"content-type": "text/html"}),
         root: _response(_sitemap_index(product_sitemap), **{"content-type": "application/xml"}),
         product_sitemap: _response(_urlset(*page_urls), **{"content-type": "application/xml"}),
         page_urls[0]: _response(_html({
@@ -150,7 +151,12 @@ def test_schema_org_connector_reads_sitemap_index_and_jsonld_shapes(monkeypatch)
     assert all(record["source_platform"] == "schema_org" for record in records)
     assert all(record["source_kind"] == "sitemap_jsonld" for record in records)
     assert len({record["token"] for record in records}) == 1
-    assert [url for url, _accept in calls] == [root, product_sitemap, *page_urls]
+    assert [url for url, _accept in calls] == [
+        "https://shop.example/",
+        root,
+        product_sitemap,
+        *page_urls,
+    ]
     assert constructor_kwargs == [{
         "max_response_bytes": schema_org.MAX_RESPONSE_BYTES,
         "max_task_bytes": schema_org.MAX_TOTAL_BYTES,
@@ -442,6 +448,51 @@ def test_schema_org_connector_parses_product_page_entry_directly(monkeypatch):
     assert records[0]["product_url"] == page
     assert records[0]["raw_json"]["schema_org_page_url"] == page
     assert [url for url, _accept in calls] == [page]
+
+
+def test_schema_org_connector_parses_root_product_page_without_sitemap(monkeypatch):
+    root = "https://shop.example/"
+    responses = {
+        root: _response(_html({
+            "@type": "Product",
+            "name": "Root product",
+            "sku": "ROOT-1",
+            "offers": {"price": "8.00", "priceCurrency": "USD"},
+        })),
+    }
+    calls, _constructor_kwargs = _install_fake_client(monkeypatch, responses)
+
+    records = list(schema_org.load_records(root))
+
+    assert len(records) == 1
+    assert records[0]["product_name"] == "Root product"
+    assert records[0]["listed_price"] == "8.00"
+    assert records[0]["product_url"] == root
+    assert [url for url, _accept in calls] == [root]
+
+
+def test_schema_org_connector_root_without_jsonld_falls_back_to_sitemap(monkeypatch):
+    root = "https://shop.example/"
+    sitemap = "https://shop.example/sitemap.xml"
+    page = "https://shop.example/products/from-sitemap"
+    responses = {
+        root: _response(_html(visible="<h1>Home</h1>")),
+        sitemap: _response(_urlset(page)),
+        page: _response(_html({
+            "@type": "Product",
+            "name": "Sitemap product",
+            "sku": "SM-1",
+            "offers": {"price": "3.00", "priceCurrency": "CNY"},
+        })),
+    }
+    calls, _constructor_kwargs = _install_fake_client(monkeypatch, responses)
+
+    records = list(schema_org.load_records(root))
+
+    assert len(records) == 1
+    assert records[0]["product_name"] == "Sitemap product"
+    assert records[0]["product_url"] == page
+    assert [url for url, _accept in calls] == [root, sitemap, page]
 
 
 def test_schema_org_connector_rejects_entry_that_is_neither_sitemap_nor_product_page(monkeypatch):

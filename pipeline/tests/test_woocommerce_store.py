@@ -88,11 +88,12 @@ def test_woocommerce_paginates_and_converts_minor_units_exactly(
     assert by_id[3]["regular_price"] == "12.345"
     assert by_id[3]["sale_price"] is None
     assert by_id[3]["currency"] == "KWD"
+    assert all(record["source_platform"] == "woocommerce" for record in records)
 
     assert by_id[1]["product_key"] == "woocommerce:1"
     assert by_id[1]["sku"] == "JPY-1"
     assert by_id[1]["stock_count"] == 0
-    assert by_id[1]["product_status"] == "out_of_stock"
+    assert by_id[1]["product_status"] == "unavailable"
     assert by_id[1]["purchase_status"] == "not_purchasable"
     assert by_id[2]["stock_count"] == 3
     assert by_id[2]["product_status"] == "in_stock"
@@ -319,3 +320,53 @@ def test_woocommerce_keeps_parent_when_variation_data_is_incomplete(
     assert record["product_name"] == "ChatGPT team plan"
     assert record["listed_price"] == "15.00"
     assert all(urlsplit(url).path == "/wp-json/wc/store/v1/products" for url, _ in fake_client.calls)
+
+
+def test_woocommerce_not_purchasable_never_counts_as_in_stock(
+    monkeypatch,
+    woocommerce_payload,
+):
+    product = copy.deepcopy(woocommerce_payload["products"][1])
+    product["is_in_stock"] = True
+    product["is_purchasable"] = False
+    _install_client(monkeypatch, _catalog_responder([product]))
+
+    record = next(iter(woocommerce_store.load_records("https://shop.example")))
+
+    assert record["stock_count"] == 0
+    assert record["product_status"] == "unavailable"
+    assert record["purchase_status"] == "not_purchasable"
+
+    from sqlalchemy import select
+
+    from common import Offer, ensure_products, session_for, upsert_offer
+
+    db = session_for("sqlite://")
+    try:
+        products = ensure_products(db)
+        upsert_offer(db, record, products)
+        db.flush()
+        offer = db.scalars(select(Offer)).one()
+        assert offer.stock_status != "in_stock"
+    finally:
+        db.close()
+
+
+def test_woocommerce_records_persist_canonical_platform(monkeypatch, woocommerce_payload):
+    _install_client(monkeypatch, _catalog_responder(woocommerce_payload["products"]))
+
+    from sqlalchemy import select
+
+    from common import Shop, ensure_products, session_for, upsert_offer
+
+    db = session_for("sqlite://")
+    try:
+        products = ensure_products(db)
+        for record in woocommerce_store.load_records("https://shop.example"):
+            upsert_offer(db, record, products)
+        db.flush()
+        shops = list(db.scalars(select(Shop)))
+        assert len(shops) == 1
+        assert shops[0].platform == "woocommerce"
+    finally:
+        db.close()

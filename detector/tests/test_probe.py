@@ -97,6 +97,26 @@ def test_detector_finds_schema_org_product_through_same_origin_sitemap():
     assert result.source_url == result.source_key == "https://structured.example"
 
 
+def test_detector_recognizes_direct_nonstandard_sitemap_entry():
+    sitemap = b"""<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://structured.example/products/chatgpt</loc></url>
+    </urlset>"""
+    product = b"""<script type="application/ld+json">
+    {"@type":"Product","name":"ChatGPT Plus"}
+    </script>"""
+    client = StubClient([
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(200, {"content-type": "application/xml"}, sitemap),
+        ProbeResponse(200, {"content-type": "text/html"}, product),
+    ])
+    result = probe_source("https://structured.example/product-sitemap.xml", client=client)
+    assert result.detected_platform == "schema_org"
+    assert result.source_url == result.source_key == "https://structured.example"
+    assert result.product_count == 1
+
+
 @pytest.mark.parametrize(
     "address",
     [
