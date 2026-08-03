@@ -66,9 +66,11 @@ type Report = {
   created_at: string;
 };
 
+type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "merchant_feed" | "other";
+
 type SourceIntake = {
   id: number;
-  source_type: "ldxp" | "merchant_feed";
+  source_type: SourceType;
   source_url: string;
   shop_name: string;
   contact_email: string;
@@ -279,13 +281,15 @@ export function AdminPanel() {
                   <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
                   <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                   {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
+                  {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">其他独立站仅支持管理员人工接入，不会进入自动验证或发布队列。</p>}
+                  {intake.source_type === "merchant_json" && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程校验 JSON Feed；成功进入完整快照后才会公开。</p>}
                   {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[#f2d8d2] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
                   {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">
                   {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />{intake.source_type === "ldxp" ? "批准并验证" : "批准并进入完整发布"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
-                  {(intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
+                  {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
                   {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>
               </div>

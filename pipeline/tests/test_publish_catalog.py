@@ -280,6 +280,30 @@ def test_approved_dujiao_intake_publishes_atomically_and_becomes_published(monke
         db.close()
 
 
+def test_approved_dujiao_intake_requires_a_successful_live_import(monkeypatch: pytest.MonkeyPatch):
+    def unavailable_loader(_source: str | Path):
+        raise ValueError("Dujiao public API validation failed")
+        yield
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", unavailable_loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://approved.example', 'approved')"
+        ))
+        db.commit()
+
+        with pytest.raises(SourceImportError, match="public API validation failed"):
+            publish_sources(db, approved_intake_sources(db))
+
+        assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == "approved"
+        assert db.query(CatalogSnapshot).count() == 0
+    finally:
+        db.close()
+
+
 def test_approved_intake_stays_approved_when_atomic_publish_fails(monkeypatch: pytest.MonkeyPatch):
     install_loader(monkeypatch, failing_source="https://feed.example/catalog.json")
     db = session_for("sqlite://")

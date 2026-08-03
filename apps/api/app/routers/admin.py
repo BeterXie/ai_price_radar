@@ -260,12 +260,35 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status in {"no_products", "validation_failed"}:
-        intake.status = "submitted" if intake.source_type == "unknown" else "queued"
+        if intake.source_type == "unknown":
+            intake.status = "submitted"
+            decision_note = "已重新排队，等待安全检测"
+        elif intake.source_type == "ldxp":
+            intake.status = "queued"
+            decision_note = "已重新排队，等待链动小铺 Worker 验证"
+        elif intake.source_type in {"dujiao_next", "merchant_json", "merchant_feed"}:
+            intake.status = "approved" if intake.approved_at is not None else "pending_review"
+            decision_note = (
+                "已恢复，等待下一次完整目录发布"
+                if intake.status == "approved"
+                else "已恢复，等待管理员初审"
+            )
+        else:
+            raise HTTPException(status_code=409, detail="其他独立站仅支持人工接入，不能进入自动队列")
         intake.lease_expires_at = None
         intake.finished_at = None
-        intake.decision_note = "已重新排队，等待安全检测" if intake.status == "submitted" else "已重新排队，等待验证"
+        intake.decision_note = decision_note
         db.commit()
-    elif intake.status not in {"submitted", "queued", "validating", "validated", "published", "onboarded"}:
+    elif intake.status not in {
+        "submitted",
+        "pending_review",
+        "approved",
+        "queued",
+        "validating",
+        "validated",
+        "published",
+        "onboarded",
+    }:
         raise HTTPException(status_code=409, detail=f"cannot retry intake in status {intake.status}")
     return _source_intake_response(db, intake)
 
