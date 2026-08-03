@@ -211,7 +211,7 @@ export function CockpitJsonConverter() {
             选择 JSON 文件（支持多选）
           </button>
           <p className="mt-2 text-xs leading-5 text-black/45">
-            单次最多 {COCKPIT_LIMITS.maxFilesPerBatch} 个文件，单个不超过 {COCKPIT_LIMITS.maxFileBytes / (1024 * 1024)} MB，累计不超过 {COCKPIT_LIMITS.maxTotalFileBytes / (1024 * 1024)} MB。
+            单次最多 {COCKPIT_LIMITS.maxFilesPerBatch} 个文件，累计不超过 {COCKPIT_LIMITS.maxTotalFileBytes / (1024 * 1024)} MB。
           </p>
 
           {selectedFiles.length ? (

@@ -11,7 +11,7 @@ type UnknownRecord = Record<string, unknown>;
 
 export const COCKPIT_LIMITS = {
   maxFileBytes: 10 * 1024 * 1024,
-  maxTotalFileBytes: 40 * 1024 * 1024,
+  maxTotalFileBytes: 10 * 1024 * 1024,
   maxFilesPerBatch: 50,
   maxDepth: 64,
   maxVisitedNodes: 200_000,
