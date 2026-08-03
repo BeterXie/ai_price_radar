@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.mjs"
+    "test": "node --import tsx --test"
   },
   "dependencies": {
     "@icons-pack/react-simple-icons": "12.0.0",
