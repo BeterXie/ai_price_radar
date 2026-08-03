@@ -88,7 +88,10 @@ services:
     environment:
       DETECTOR_API_URL: http://api:8000
       DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
+      DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
       DETECTOR_POLL_SECONDS: ${DETECTOR_POLL_SECONDS:-5}
+      DISCOVERY_CLAIM_LIMIT: ${DISCOVERY_CLAIM_LIMIT:-5}
+      DISCOVERY_LEASE_SECONDS: ${DISCOVERY_LEASE_SECONDS:-900}
     depends_on:
       api:
         condition: service_healthy
