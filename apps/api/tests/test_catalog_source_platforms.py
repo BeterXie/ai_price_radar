@@ -51,12 +51,16 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         claude = Product(slug="claude-pro", platform="Claude", display_name="Claude Pro")
         ldxp = Shop(token="ldxp-shop", name="LDXP", source_url="https://pay.ldxp.cn/shop/example", platform="ldxp")
         dujiao = Shop(token="dujiao-shop", name="Dujiao", source_url="https://shop.example.com", platform="dujiao_next")
+        woo = Shop(token="woo-shop", name="Woo", source_url="https://woo.example.com", platform="woocommerce")
+        structured = Shop(token="structured-shop", name="Structured", source_url="https://structured.example.com", platform="schema_org")
         old_feed = Shop(token="feed-shop", name="Feed", source_url="https://feed.example.com/catalog.json", platform="merchant_json")
-        db.add_all([old, current, openai, claude, ldxp, dujiao, old_feed])
+        db.add_all([old, current, openai, claude, ldxp, dujiao, woo, structured, old_feed])
         db.flush()
         _offer(db, snapshot=current, product=openai, shop=ldxp, key="openai-ldxp")
         _offer(db, snapshot=current, product=openai, shop=dujiao, key="openai-dujiao")
         _offer(db, snapshot=current, product=claude, shop=dujiao, key="claude-dujiao")
+        _offer(db, snapshot=current, product=openai, shop=woo, key="openai-woo")
+        _offer(db, snapshot=current, product=openai, shop=structured, key="openai-structured")
         _offer(db, snapshot=old, product=openai, shop=old_feed, key="old-feed")
         db.commit()
 
@@ -72,6 +76,10 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         assert legacy.json()["offer_count"] == 1
         assert legacy.json()["items"][0]["platform"] == "OpenAI"
         assert legacy.json()["items"][0]["brand"] == "OpenAI"
+
+        woo = client.get("/api/v1/products", params={"platform": "OpenAI", "source_platform": "woocommerce"})
+        assert woo.status_code == 200
+        assert woo.json()["offer_count"] == 1
 
         combined = client.get(
             "/api/v1/catalog/groups",
@@ -89,6 +97,8 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         assert meta["source_platforms"] == [
             {"id": "dujiao_next", "label": "Dujiao-Next"},
             {"id": "ldxp", "label": "链动小铺"},
+            {"id": "schema_org", "label": "独立站"},
+            {"id": "woocommerce", "label": "WooCommerce"},
         ]
     finally:
         app.dependency_overrides.clear()

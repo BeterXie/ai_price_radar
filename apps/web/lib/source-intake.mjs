@@ -2,6 +2,8 @@ export const SOURCE_INTAKE_OPTIONS = [
   { id: "auto", label: "自动识别（推荐）" },
   { id: "ldxp", label: "链动小铺" },
   { id: "dujiao_next", label: "Dujiao-Next" },
+  { id: "woocommerce", label: "WooCommerce" },
+  { id: "schema_org", label: "Schema.org 独立站" },
   { id: "merchant_json", label: "商家 JSON Feed" },
   { id: "other", label: "其他独立站" },
 ];
@@ -21,6 +23,16 @@ export const SOURCE_INTAKE_COPY = {
     fieldLabel: "店铺根地址",
     placeholder: "https://shop.example.com",
     hint: "请输入店铺根地址。请勿提交后台、订单查询或支付回调地址。",
+  },
+  woocommerce: {
+    fieldLabel: "WooCommerce 店铺地址",
+    placeholder: "https://shop.example.com",
+    hint: "请输入公开店铺根地址；系统会验证无需登录的 WooCommerce Store API。",
+  },
+  schema_org: {
+    fieldLabel: "独立站或商品页地址",
+    placeholder: "https://shop.example.com/products/example",
+    hint: "站点须通过 Sitemap 和 Schema.org Product/Offer JSON-LD 公开商品信息。",
   },
   merchant_json: {
     fieldLabel: "公开 JSON Feed 地址",

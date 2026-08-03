@@ -37,11 +37,84 @@ def test_detector_recognizes_dujiao_brand_overlay():
 def test_detector_recognizes_merchant_feed_after_dujiao_probe_fails():
     client = StubClient([
         ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
         response({"items": [{"name": "ChatGPT Plus"}], "shop": {"name": "Feed Store"}}),
     ])
     result = probe_source("https://feed.example/catalog.json", client=client)
     assert result.detected_platform == "merchant_json"
     assert result.shop_name == "Feed Store"
+
+
+def test_detector_recognizes_woocommerce_store_api_before_generic_json():
+    client = StubClient([
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(
+            200,
+            {"content-type": "application/json", "x-wp-total": "12"},
+            json.dumps([{"id": 42, "name": "ChatGPT Plus", "prices": {"currency_code": "USD"}}]).encode(),
+        ),
+    ])
+    result = probe_source("https://woo.example/products/chatgpt", client=client)
+    assert result.detected_platform == "woocommerce"
+    assert result.source_url == result.source_key == "https://woo.example"
+    assert result.product_count == 12
+
+
+def test_detector_recognizes_schema_org_product_page():
+    document = b"""<html><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"Product","name":"ChatGPT Plus"}
+    </script></html>"""
+    client = StubClient([
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(200, {"content-type": "text/html"}, document),
+    ])
+    result = probe_source("https://structured.example/products/chatgpt", client=client)
+    assert result.detected_platform == "schema_org"
+    assert result.source_url == "https://structured.example/products/chatgpt"
+    assert result.product_count == 1
+
+
+def test_detector_finds_schema_org_product_through_same_origin_sitemap():
+    sitemap = b"""<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://structured.example/products/chatgpt</loc></url>
+    <url><loc>https://other.example/products/ignored</loc></url>
+    </urlset>"""
+    product = b"""<script type="application/ld+json">
+    {"@graph":[{"@type":"Product","name":"ChatGPT Plus"}]}
+    </script>"""
+    client = StubClient([
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(200, {"content-type": "text/html"}, b"<html></html>"),
+        ProbeResponse(200, {"content-type": "application/xml"}, sitemap),
+        ProbeResponse(200, {"content-type": "text/html"}, product),
+    ])
+    result = probe_source("https://structured.example", client=client)
+    assert result.detected_platform == "schema_org"
+    assert result.source_url == result.source_key == "https://structured.example"
+
+
+def test_detector_recognizes_direct_nonstandard_sitemap_entry():
+    sitemap = b"""<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://structured.example/products/chatgpt</loc></url>
+    </urlset>"""
+    product = b"""<script type="application/ld+json">
+    {"@type":"Product","name":"ChatGPT Plus"}
+    </script>"""
+    client = StubClient([
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(200, {"content-type": "application/xml"}, sitemap),
+        ProbeResponse(200, {"content-type": "text/html"}, product),
+    ])
+    result = probe_source("https://structured.example/product-sitemap.xml", client=client)
+    assert result.detected_platform == "schema_org"
+    assert result.source_url == result.source_key == "https://structured.example/product-sitemap.xml"
+    assert result.product_count == 1
 
 
 @pytest.mark.parametrize(

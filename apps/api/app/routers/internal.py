@@ -206,7 +206,7 @@ def report_source_detection_result(
         return _response(intake)
 
     platform = canonical_source_platform(payload.detected_platform)
-    if platform not in {"ldxp", "dujiao_next", "merchant_json", "other"}:
+    if platform not in {"ldxp", "dujiao_next", "merchant_json", "woocommerce", "schema_org", "other"}:
         raise HTTPException(status_code=422, detail="invalid detected source platform")
     try:
         normalized = prepare_source_submission(payload.source_url or intake.source_url)

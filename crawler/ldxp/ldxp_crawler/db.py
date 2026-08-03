@@ -294,7 +294,7 @@ class StateDB:
             result.discovered_by,
         ])
         first_seen_at = row["first_seen_at"] if row else result.last_verified_at
-        review_status = "pending_review"
+        review_status = "approved" if result.status == "pending_review" else "pending_review"
         re_review_reason = ""
         if row:
             previous_review = row["review_status"]

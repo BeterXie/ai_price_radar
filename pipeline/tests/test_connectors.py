@@ -12,6 +12,13 @@ from connectors.merchant_json import _validate_remote_url
 from common import Offer, Shop, ensure_products, session_for, upsert_offer
 
 
+def test_connector_registry_includes_all_structured_platform_loaders():
+    assert "woocommerce-store" in get_connector.__globals__["CONNECTORS"]
+    assert "schema-org" in get_connector.__globals__["CONNECTORS"]
+    assert callable(get_connector("woocommerce-store"))
+    assert callable(get_connector("schema-org"))
+
+
 def test_merchant_json_connector_normalizes_feed(tmp_path: Path):
     source = tmp_path / "feed.json"
     source.write_text(json.dumps({

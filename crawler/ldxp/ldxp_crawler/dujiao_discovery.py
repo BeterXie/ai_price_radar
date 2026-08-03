@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import random
@@ -40,6 +41,21 @@ HOME_FINGERPRINTS = (
     ("premium-digital-assets", "discover our premium collection of digital assets"),
 )
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+GITHUB_API_ORIGIN = "https://api.github.com"
+GITHUB_REPOSITORY_QUERY = '"Dujiao-Next" in:name,description,readme is:public fork:true'
+GITHUB_MAX_PAGES = 10
+GITHUB_MAX_CANDIDATES = 500
+GITHUB_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+GITHUB_MAX_REQUEST_TIMEOUT = 30.0
+GITHUB_EXCLUDED_HOSTS = frozenset({
+    "github.com",
+    "api.github.com",
+    "githubusercontent.com",
+    "githubassets.com",
+    "example.com",
+    "example.net",
+    "example.org",
+})
 TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
@@ -93,6 +109,47 @@ def is_excluded_origin(origin: str) -> bool:
     return host == "dujiao-next.com" or host.endswith(".dujiao-next.com")
 
 
+def normalize_github_homepage(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    if not raw or any(ord(character) < 32 or ord(character) == 127 for character in raw):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+        port = parsed.port
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    if (
+        parsed.scheme.casefold() != "https"
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or port not in (None, 443)
+    ):
+        return None
+    if (
+        host in GITHUB_EXCLUDED_HOSTS
+        or any(host.endswith("." + excluded) for excluded in GITHUB_EXCLUDED_HOSTS)
+        or host.endswith(".example")
+    ):
+        return None
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return None
+    try:
+        normalized = PinnedHTTPSClient.normalize_url(raw)
+    except (UnicodeError, ValueError):
+        return None
+    origin = normalize_candidate_origin(normalized)
+    if not origin or is_excluded_origin(origin):
+        return None
+    return normalized
+
+
 def validate_public_url(url: str) -> None:
     try:
         PinnedHTTPSClient.normalize_url(url)
@@ -127,14 +184,20 @@ def _product_text(product: dict[str, Any]) -> str:
     return _normalized_search_text(" ".join(values))
 
 
-def read_limited_response(response: requests.Response, max_bytes: int = MAX_RESPONSE_BYTES) -> bytes:
+def read_limited_response(
+    response: requests.Response,
+    max_bytes: int = MAX_RESPONSE_BYTES,
+    *,
+    description: str = "candidate",
+) -> bytes:
+    limit_label = f"{max_bytes // (1024 * 1024)} MiB" if max_bytes % (1024 * 1024) == 0 else f"{max_bytes} bytes"
     try:
         content_length = int(response.headers.get("Content-Length") or 0)
     except (TypeError, ValueError):
         content_length = 0
     if content_length > max_bytes:
         response.close()
-        raise ValueError("candidate response exceeds 5 MiB")
+        raise ValueError(f"{description} response exceeds {limit_label}")
 
     chunks: list[bytes] = []
     total = 0
@@ -144,7 +207,7 @@ def read_limited_response(response: requests.Response, max_bytes: int = MAX_RESP
                 continue
             total += len(chunk)
             if total > max_bytes:
-                raise ValueError("candidate response exceeds 5 MiB")
+                raise ValueError(f"{description} response exceeds {limit_label}")
             chunks.append(chunk)
         return b"".join(chunks)
     finally:
@@ -499,4 +562,98 @@ class DujiaoDiscovery:
                     if self.reached_limit():
                         break
                 time.sleep(max(0.0, delay) + random.uniform(0, 0.4))
+        return found
+
+    def from_github(
+        self,
+        keywords: Sequence[str],
+        *,
+        pages: int,
+        count: int,
+        max_candidates: int,
+        timeout: float,
+    ) -> int:
+        page_limit = min(max(1, pages), GITHUB_MAX_PAGES)
+        per_page = min(max(1, count), 100)
+        candidate_limit = min(max(0, max_candidates), GITHUB_MAX_CANDIDATES)
+        request_timeout = min(max(1.0, timeout), GITHUB_MAX_REQUEST_TIMEOUT)
+        if candidate_limit == 0:
+            return 0
+
+        found = 0
+        fetched_repositories = 0
+        submitted_origins: set[str] = set()
+        filter_keywords = merge_unique([*DEFAULT_AI_KEYWORDS, *keywords])
+        for page in range(1, page_limit + 1):
+            if self.reached_limit():
+                break
+            params = {
+                "q": GITHUB_REPOSITORY_QUERY,
+                "sort": "updated",
+                "order": "desc",
+                "per_page": per_page,
+                "page": page,
+            }
+            url = GITHUB_API_ORIGIN + "/search/repositories?" + urllib.parse.urlencode(params)
+            try:
+                response = self.verifier.session.get(
+                    url,
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2022-11-28",
+                    },
+                    timeout=request_timeout,
+                    allow_redirects=False,
+                    stream=True,
+                )
+                body = read_limited_response(
+                    response,
+                    GITHUB_MAX_RESPONSE_BYTES,
+                    description="GitHub API",
+                )
+            except (requests.RequestException, OSError, ValueError) as exc:
+                self.logger.warning("Dujiao GitHub API 请求失败：%s", exc)
+                break
+            if response.status_code in {403, 429}:
+                self.logger.warning(
+                    "Dujiao GitHub API 限流（HTTP %s，remaining=%s）",
+                    response.status_code,
+                    response.headers.get("X-RateLimit-Remaining", "unknown"),
+                )
+                break
+            if response.status_code != 200:
+                self.logger.warning("Dujiao GitHub API HTTP %s", response.status_code)
+                break
+            try:
+                document = json.loads(body.decode("utf-8"))
+                items = document.get("items")
+                total_count = int(document.get("total_count"))
+            except (AttributeError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+                self.logger.warning("Dujiao GitHub API 响应无效：%s", exc)
+                break
+            if not isinstance(items, list) or total_count < 0:
+                self.logger.warning("Dujiao GitHub API 响应缺少有效仓库列表")
+                break
+
+            fetched_repositories += len(items)
+            for item in items:
+                if not isinstance(item, dict) or item.get("private") is True:
+                    continue
+                homepage = normalize_github_homepage(item.get("homepage"))
+                origin = normalize_candidate_origin(homepage or "")
+                if not homepage or not origin:
+                    continue
+                if origin not in submitted_origins:
+                    if len(submitted_origins) >= candidate_limit:
+                        return found
+                    submitted_origins.add(origin)
+                repository = str(item.get("full_name") or "").strip()[:100]
+                source = f"github:{repository}" if repository else "github:repository-homepage"
+                found += int(self.add_url(homepage, source, filter_keywords))
+                if self.reached_limit():
+                    return found
+            if len(submitted_origins) >= candidate_limit:
+                break
+            if not items or fetched_repositories >= min(total_count, 1000):
+                break
         return found

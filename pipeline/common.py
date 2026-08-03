@@ -458,7 +458,7 @@ def stock_status(value: str, count: int | None) -> str:
     text = norm(value)
     if any(x in text for x in ["有货", "in stock", "low stock", "unlimited"]): return "in_stock"
     if any(x in text for x in ["缺货", "售罄", "out of stock"]): return "out_of_stock"
-    if any(x in text for x in ["下架", "不可用", "暂停", "关闭"]): return "unavailable"
+    if any(x in text for x in ["下架", "不可用", "暂停", "关闭", "unavailable", "not purchasable"]): return "unavailable"
     if count is not None: return "in_stock" if count > 0 else "out_of_stock"
     return "unknown"
 

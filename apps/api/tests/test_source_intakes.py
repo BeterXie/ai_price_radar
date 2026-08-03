@@ -97,6 +97,33 @@ def test_shop_request_requires_valid_contact_email(api_client):
     assert invalid.status_code == 422
 
 
+@pytest.mark.parametrize("platform", ["woocommerce", "schema_org"])
+def test_structured_platform_submission_can_be_detected_and_reviewed(api_client, platform):
+    client, engine = api_client
+    source_url = f"https://{platform.replace('_', '-')}.example/products/example"
+    response = client.post(
+        "/api/v1/shop-requests",
+        json={
+            **_payload(),
+            "shop_url": source_url,
+            "source_type": platform,
+        },
+    )
+    assert response.status_code == 201
+    intake_id = response.json()["request_id"]
+
+    _detect(client, intake_id, platform=platform, source_url=source_url, source_key=source_url)
+
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert (intake.source_type, intake.detected_platform, intake.status) == (
+            platform,
+            platform,
+            "pending_review",
+        )
+        assert intake.source_url == source_url
+
+
 def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
     client, engine = api_client
     created = client.post("/api/v1/shop-requests", json=_payload())

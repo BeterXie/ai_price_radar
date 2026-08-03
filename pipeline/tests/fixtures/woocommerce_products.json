@@ -1,0 +1,200 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "name": "AI Credits JPY",
+      "slug": "ai-credits-jpy",
+      "type": "simple",
+      "permalink": "https://shop.example/product/ai-credits-jpy/",
+      "sku": "JPY-1",
+      "on_sale": true,
+      "prices": {
+        "currency_code": "JPY",
+        "currency_minor_unit": 0,
+        "price": "900",
+        "regular_price": "1000",
+        "sale_price": "900",
+        "price_range": null
+      },
+      "categories": [
+        {
+          "id": 11,
+          "name": "AI Credits",
+          "slug": "ai-credits",
+          "link": "https://shop.example/product-category/ai-credits/"
+        }
+      ],
+      "images": [
+        {
+          "id": 101,
+          "name": "credits.jpg",
+          "alt": "AI credits",
+          "src": "https://cdn.example/images/credits.jpg",
+          "thumbnail": "javascript:alert(1)"
+        }
+      ],
+      "is_purchasable": false,
+      "is_in_stock": false,
+      "is_on_backorder": false,
+      "low_stock_remaining": null
+    },
+    {
+      "id": 2,
+      "name": "ChatGPT Plus monthly",
+      "slug": "chatgpt-plus-monthly",
+      "type": "simple",
+      "permalink": "https://shop.example/product/chatgpt-plus-monthly/",
+      "sku": "PLUS-USD",
+      "on_sale": true,
+      "prices": {
+        "currency_code": "USD",
+        "currency_minor_unit": 2,
+        "price": "1999",
+        "regular_price": "2499",
+        "sale_price": "1999",
+        "price_range": null
+      },
+      "categories": [
+        {
+          "id": 12,
+          "name": "AI Subscriptions",
+          "slug": "ai-subscriptions",
+          "link": "http://shop.example/product-category/ai-subscriptions/"
+        }
+      ],
+      "images": [
+        {
+          "id": 102,
+          "src": "data:image/png;base64,AAAA",
+          "thumbnail": "https://cdn.example/images/plus-thumbnail.jpg"
+        }
+      ],
+      "is_purchasable": true,
+      "is_in_stock": true,
+      "is_on_backorder": false,
+      "low_stock_remaining": 3
+    },
+    {
+      "id": 3,
+      "name": "API Tokens KWD",
+      "slug": "api-tokens-kwd",
+      "type": "simple",
+      "permalink": "https://shop.example/product/api-tokens-kwd/",
+      "sku": "KWD-3",
+      "on_sale": false,
+      "prices": {
+        "currency_code": "KWD",
+        "currency_minor_unit": 3,
+        "price": "12345",
+        "regular_price": "12345",
+        "sale_price": "",
+        "price_range": null
+      },
+      "categories": [],
+      "images": [],
+      "is_purchasable": true,
+      "is_in_stock": true,
+      "is_on_backorder": true,
+      "low_stock_remaining": null
+    }
+  ],
+  "variable_parent": {
+    "id": 10,
+    "name": "ChatGPT team plan",
+    "slug": "chatgpt-team-plan",
+    "type": "variable",
+    "permalink": "https://shop.example/product/chatgpt-team-plan/",
+    "sku": "TEAM-PARENT",
+    "on_sale": true,
+    "prices": {
+      "currency_code": "USD",
+      "currency_minor_unit": 2,
+      "price": "1500",
+      "regular_price": "2000",
+      "sale_price": "1500",
+      "price_range": {
+        "min_amount": "1500",
+        "max_amount": "18000"
+      }
+    },
+    "categories": [
+      {
+        "id": 20,
+        "name": "Team Plans",
+        "slug": "team-plans",
+        "link": "https://shop.example/product-category/team-plans/"
+      }
+    ],
+    "images": [],
+    "is_purchasable": true,
+    "is_in_stock": true,
+    "is_on_backorder": false,
+    "low_stock_remaining": null,
+    "variations": [
+      {
+        "id": 101,
+        "attributes": [
+          {"name": "Billing", "value": "Monthly"},
+          {"name": "Seats", "value": "5"}
+        ]
+      },
+      {
+        "id": 102,
+        "attributes": [
+          {"name": "Billing", "value": "Annual"},
+          {"name": "Seats", "value": "5"}
+        ]
+      }
+    ]
+  },
+  "variations": [
+    {
+      "id": 101,
+      "parent": 10,
+      "name": "ChatGPT team plan - Monthly",
+      "slug": "chatgpt-team-plan-monthly",
+      "type": "variation",
+      "variation": "Billing: Monthly, Seats: 5",
+      "permalink": "https://shop.example/product/chatgpt-team-plan/?attribute_billing=monthly&attribute_seats=5",
+      "sku": "TEAM-MONTHLY-5",
+      "on_sale": true,
+      "prices": {
+        "currency_code": "USD",
+        "currency_minor_unit": 2,
+        "price": "1800",
+        "regular_price": "2000",
+        "sale_price": "1800",
+        "price_range": null
+      },
+      "images": [],
+      "is_purchasable": true,
+      "is_in_stock": true,
+      "is_on_backorder": false,
+      "low_stock_remaining": 4
+    },
+    {
+      "id": 102,
+      "parent": 10,
+      "name": "ChatGPT team plan - Annual",
+      "slug": "chatgpt-team-plan-annual",
+      "type": "variation",
+      "variation": "Billing: Annual, Seats: 5",
+      "permalink": "https://shop.example/product/chatgpt-team-plan/?attribute_billing=annual&attribute_seats=5",
+      "sku": "TEAM-ANNUAL-5",
+      "on_sale": false,
+      "prices": {
+        "currency_code": "USD",
+        "currency_minor_unit": 2,
+        "price": "18000",
+        "regular_price": "18000",
+        "sale_price": "",
+        "price_range": null
+      },
+      "images": [],
+      "is_purchasable": true,
+      "is_in_stock": false,
+      "is_on_backorder": false,
+      "low_stock_remaining": null
+    }
+  ]
+}
