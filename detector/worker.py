@@ -59,27 +59,28 @@ def _request(
 
 def run_once() -> int:
     processed = 0
-    tasks = _request("/api/v1/internal/source-detections/claim", {"limit": 10, "lease_seconds": 300})
-    for task in tasks:
-        try:
-            result = _probe_with_timeout(task["source_url"])
-            payload = {
-                "status": "pending_review",
-                "attempt_count": task["attempt_count"],
-                "detected_platform": result.detected_platform,
-                "source_url": result.source_url,
-                "source_key": result.source_key,
-                "shop_name": result.shop_name,
-                "product_count": result.product_count,
-            }
-        except Exception:
-            payload = {
-                "status": "validation_failed",
-                "attempt_count": task["attempt_count"],
-                "failure_reason": "source detection failed",
-            }
-        _request(f"/api/v1/internal/source-detections/{task['intake_id']}/result", payload)
-        processed += 1
+    if WORKER_KEY:
+        tasks = _request("/api/v1/internal/source-detections/claim", {"limit": 10, "lease_seconds": 300})
+        for task in tasks:
+            try:
+                result = _probe_with_timeout(task["source_url"])
+                payload = {
+                    "status": "pending_review",
+                    "attempt_count": task["attempt_count"],
+                    "detected_platform": result.detected_platform,
+                    "source_url": result.source_url,
+                    "source_key": result.source_key,
+                    "shop_name": result.shop_name,
+                    "product_count": result.product_count,
+                }
+            except Exception:
+                payload = {
+                    "status": "validation_failed",
+                    "attempt_count": task["attempt_count"],
+                    "failure_reason": "source detection failed",
+                }
+            _request(f"/api/v1/internal/source-detections/{task['intake_id']}/result", payload)
+            processed += 1
 
     if DISCOVERY_WORKER_KEY:
         candidates = _request(
