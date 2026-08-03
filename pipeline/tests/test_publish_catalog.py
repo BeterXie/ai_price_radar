@@ -280,6 +280,27 @@ def test_approved_dujiao_intake_publishes_atomically_and_becomes_published(monke
         db.close()
 
 
+def test_all_structured_intake_platforms_use_the_atomic_publish_path():
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) VALUES "
+            "(1, 'woocommerce', 'woocommerce', 'https://woo.example', 'approved'), "
+            "(2, 'schema_org', 'schema_org', 'https://structured.example', 'published'), "
+            "(3, 'schema_org', 'other', 'https://mismatch.example', 'approved'), "
+            "(4, 'woocommerce', 'woocommerce', 'https://disabled.example', 'disabled')"
+        ))
+        db.commit()
+
+        assert approved_intake_sources(db) == [
+            SourceSpec("woocommerce-store", "https://woo.example", (1,)),
+            SourceSpec("schema-org", "https://structured.example", (2,)),
+        ]
+    finally:
+        db.close()
+
+
 def test_published_intake_remains_in_later_snapshots_until_disabled(monkeypatch: pytest.MonkeyPatch):
     def loader(source: str | Path):
         label = "replacement" if "replacement" in str(source) else "persistent-dujiao"

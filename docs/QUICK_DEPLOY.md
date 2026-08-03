@@ -179,6 +179,16 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_source_intake_v8.py
 
+# 来源平台枚举迁移：允许 WooCommerce 与 Schema.org 独立站来源进入收录与发布流程；
+# 在切换读取新平台字段的 API 前执行，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_source_platforms_v9.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
@@ -204,8 +214,8 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] API、Web、DB、source-detector 容器运行，API/DB 为 healthy
 [ ] source-detector 不含 DATABASE_URL/Redis/Docker socket，且未加入默认数据库网络
 [ ] OpenAPI 包含本版本新增字段
-[ ] 新收录申请按 submitted → detecting → pending_review 流转；批准的 Dujiao/Merchant 只有 public_offer_count > 0 才为 published
-[ ] 已 published 且仍启用的 Dujiao/Merchant 在连续两次完整刷新中都存在；disabled 来源在下一快照移除
+[ ] 新收录申请按 submitted → detecting → pending_review 流转；批准的 Dujiao/Merchant/WooCommerce/Schema.org 来源只有 public_offer_count > 0 才为 published
+[ ] 已 published 且仍启用的 Dujiao/Merchant/WooCommerce/Schema.org 来源在连续两次完整刷新中都存在；disabled 来源在下一快照移除
 [ ] 首页、报价目录和一个商品详情页可正常访问
 [ ] 真实商品的可信最低价与 related_lowest_price 口径正确
 [ ] API/Web 部署后日志无 traceback、exception、critical
