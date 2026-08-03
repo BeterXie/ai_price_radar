@@ -13,6 +13,23 @@ def test_refresh_entrypoints_use_atomic_multi_source_publisher():
         assert "sync_ldxp.py" not in script
 
 
+def test_remote_refresh_uses_dedicated_importer_image():
+    refresh = (ROOT / "scripts" / "refresh_remote.sh").read_text(encoding="utf-8")
+    publish_block = refresh.split("PUBLISH_ARGS=(", 1)[1]
+    assert "ai-price-radar-importer" in publish_block
+    assert "ai-price-radar-api" not in publish_block
+    assert '-v "$ROOT:/workspace:ro"' in publish_block
+    assert '-v "$BACKUP_DB:/tmp/ldxp_crawler.db:ro"' in publish_block
+    assert "-w /workspace/pipeline" in publish_block
+
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    importer = compose.split("  importer:\n", 1)[1].split("\nvolumes:\n", 1)[0]
+    assert "image: ai-price-radar-importer" in importer
+
+    quick_deploy = (ROOT / "docs" / "QUICK_DEPLOY.md").read_text(encoding="utf-8")
+    assert "$COMPOSE build importer" in quick_deploy
+
+
 def test_remote_crawler_mounts_and_runs_dujiao_discovery_seeds():
     compose = (ROOT / "docker-compose.pricememo.yml").read_text(encoding="utf-8")
     refresh = (ROOT / "scripts/refresh_remote.sh").read_text(encoding="utf-8")

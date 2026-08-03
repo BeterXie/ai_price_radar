@@ -138,6 +138,7 @@ services:
       - "443:443/udp"
 
   importer:
+    image: ai-price-radar-importer
     profiles: ["tools"]
     build:
       context: .

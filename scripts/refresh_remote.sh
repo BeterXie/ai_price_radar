@@ -166,5 +166,5 @@ docker run --rm --user 0 \
   -v "$ROOT:/workspace:ro" \
   -v "$BACKUP_DB:/tmp/ldxp_crawler.db:ro" \
   -w /workspace/pipeline \
-  ai-price-radar-api \
+  ai-price-radar-importer \
   "${PUBLISH_ARGS[@]}"

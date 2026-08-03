@@ -49,7 +49,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 - Set `INTAKE_WORKER_KEY` to a secret distinct from `ADMIN_API_KEY`; the crawler and importer use it only for internal intake callbacks.
 - Set `DETECTOR_WORKER_KEY` to a third secret, distinct from both `ADMIN_API_KEY` and `INTAKE_WORKER_KEY`; only the API and `source-detector` receive it.
 - Keep `source-detector` off the default database network. It must not receive `DATABASE_URL`, Redis credentials, Docker socket mounts, or internal service credentials; retain only its API control network and outbound probe network.
-- Build Detector, Pipeline and Crawler images from the repository root so each installs the same `shared_http` package. A release that changes `shared_http/` must rebuild all three images.
+- Build Detector, Importer and Crawler images from the repository root so each installs the same `shared_http` package. A release that changes `shared_http/` must rebuild all three images.
 - Configure real `SHOP_INTAKE_ADMIN_EMAILS`, `RESEND_API_KEY` and a verified `RESEND_FROM` before production deployment. SMTP remains available as a local/fallback provider. The API can start without either provider and retain messages in `notification_outbox`, but production preflight rejects incomplete mail configuration.
 
 ## Backup and restore rehearsal
@@ -125,16 +125,13 @@ After the v7 currency migration, add the source detection fields and expanded in
 python scripts/migrate_source_intake_v8.py --database-url "$DATABASE_URL"
 ```
 
-The migration preserves legacy intake states, backfills existing declared/detected platforms, normalizes legacy `merchant_feed` rows to `merchant_json`, and merges same-URL conflicts before restoring the unique constraint. It is safe to run again. Rehearse it against a PostgreSQL 16 copy before production. After both migrations succeed, deploy API, Pipeline, Detector and Web from the same tested release, then run one complete publication:
+The migration preserves legacy intake states, backfills existing declared/detected platforms, normalizes legacy `merchant_feed` rows to `merchant_json`, and merges same-URL conflicts before restoring the unique constraint. It is safe to run again. Rehearse it against a PostgreSQL 16 copy before production. After both migrations succeed, deploy API, Importer, Detector and Web from the same tested release, then run one complete publication with the dedicated Importer image. The production refresh script supplies the read-only repository and crawler-backup mounts:
 
 ```bash
-python pipeline/publish_catalog.py \
-  --ldxp-db /data/ldxp_crawler.db \
-  --dujiao-db /data/ldxp_crawler.db \
-  --merchant-sources /data/merchant_sources.json \
-  --database-url "$DATABASE_URL"
+docker compose -f docker-compose.yml -f docker-compose.pricememo.yml build importer
+scripts/refresh_remote.sh
 ```
 
 The Dujiao database is the crawler SQLite containing `dujiao_candidates`; only approved and currently API-verified rows are selected. Omit `--merchant-sources` when no reviewed Merchant Feed configuration exists. Do not run individual Dujiao URLs as a production publication shortcut. If any connector fails, stop and investigate while the previous published snapshot remains active.
 
-Required order for this release is: v7 migration, v8 migration, API, source detector, Pipeline, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` or the new intake columns before its migration succeeds.
+Required order for this release is: v7 migration, v8 migration, API, source detector, Importer, Web, then a successful full multi-source publication. Never switch an API that reads `offer_history.currency` or the new intake columns before its migration succeeds.
