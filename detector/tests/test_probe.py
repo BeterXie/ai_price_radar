@@ -44,30 +44,72 @@ def test_detector_recognizes_merchant_feed_after_dujiao_probe_fails():
     assert result.shop_name == "Feed Store"
 
 
-def test_detector_rejects_private_addresses_and_non_443_ports():
+@pytest.mark.parametrize(
+    "address",
+    [
+        "10.0.0.1",
+        "127.0.0.1",
+        "169.254.1.1",
+        "192.0.2.1",
+        "0.0.0.0",
+        "224.0.0.1",
+        "::1",
+        "fe80::1",
+        "fd00::1",
+        "2001:db8::1",
+        "ff02::1",
+    ],
+)
+def test_detector_rejects_non_public_ipv4_and_ipv6_addresses(address):
     client = PinnedHTTPSClient(resolver=lambda *_args, **_kwargs: [
-        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
+        (socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 443)),
     ])
     with pytest.raises(ValueError, match="non-public"):
         client._public_addresses("example.test")
+
+
+def test_detector_rejects_non_443_ports():
+    client = PinnedHTTPSClient()
     with pytest.raises(ValueError, match="port 443"):
         client.normalize_url("https://example.test:8443")
 
 
 def test_validated_ip_is_used_for_the_actual_connection():
     connected = []
+    server_names = []
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def sendall(self, _request):
+            pass
+
+        def makefile(self, *_args, **_kwargs):
+            return io.BytesIO(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+
+        def close(self):
+            pass
+
+    class FakeContext:
+        def wrap_socket(self, raw, server_hostname):
+            server_names.append(server_hostname)
+            return raw
+
     client = PinnedHTTPSClient(
         resolver=lambda *_args, **_kwargs: [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
         ],
-        connector=lambda address, timeout: connected.append(address) or (_ for _ in ()).throw(OSError("stop")),
+        connector=lambda address, timeout: connected.append(address) or FakeSocket(),
+        ssl_context=FakeContext(),
     )
-    with pytest.raises(OSError, match="stop"):
-        client.get("https://example.com", accept="text/html")
+    response = client.get("https://example.com", accept="text/html")
+    assert response.status == 204
     assert connected == [("93.184.216.34", 443)]
+    assert server_names == ["example.com"]
 
 
-def test_detector_refuses_redirects_and_oversized_bodies(monkeypatch):
+def test_detector_refuses_redirects():
     class FakeSocket:
         def settimeout(self, _timeout):
             pass
@@ -92,3 +134,49 @@ def test_detector_refuses_redirects_and_oversized_bodies(monkeypatch):
     )
     with pytest.raises(ValueError, match="redirects"):
         client.get("https://example.com", accept="text/html")
+
+
+def test_detector_stops_reading_as_soon_as_streamed_body_exceeds_limit():
+    body_stream = None
+
+    class TrackingBody(io.BytesIO):
+        def __init__(self, value):
+            super().__init__(value)
+            self.body_bytes_read = 0
+
+        def read(self, size=-1):
+            chunk = super().read(size)
+            self.body_bytes_read += len(chunk)
+            return chunk
+
+    class FakeSocket:
+        def settimeout(self, _timeout):
+            pass
+
+        def sendall(self, _request):
+            pass
+
+        def makefile(self, *_args, **_kwargs):
+            nonlocal body_stream
+            body_stream = TrackingBody(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" + b"x" * 1024)
+            return body_stream
+
+        def close(self):
+            pass
+
+    class FakeContext:
+        def wrap_socket(self, raw, server_hostname):
+            return raw
+
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+        ],
+        connector=lambda *_args, **_kwargs: FakeSocket(),
+        ssl_context=FakeContext(),
+        max_task_bytes=8,
+    )
+    with pytest.raises(ValueError, match="size limit"):
+        client.get("https://example.com", accept="text/plain")
+    assert body_stream is not None
+    assert body_stream.body_bytes_read == 9

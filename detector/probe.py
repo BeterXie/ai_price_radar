@@ -79,7 +79,17 @@ class PinnedHTTPSClient:
         addresses = sorted({str(info[4][0]) for info in infos})
         if not addresses:
             raise ValueError("source hostname did not resolve")
-        if any(not ipaddress.ip_address(address).is_global for address in addresses):
+        parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
+        if any(
+            not address.is_global
+            or address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+            or address.is_unspecified
+            or address.is_multicast
+            for address in parsed_addresses
+        ):
             raise ValueError("source hostname resolved to a non-public address")
         return addresses
 

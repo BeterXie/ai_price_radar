@@ -148,6 +148,61 @@ def test_public_submission_never_resolves_or_fetches_user_url(api_client, monkey
         assert (intake.source_type, intake.detected_platform, intake.status) == ("unknown", "unknown", "submitted")
 
 
+def test_detector_key_lease_recovery_and_failure_sanitization(api_client):
+    client, engine = api_client
+    intake_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://untrusted.example/catalog.json"},
+    ).json()["request_id"]
+    detector_headers = {"X-Detector-Worker-Key": "detector-test"}
+
+    unauthorized = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers={"X-Intake-Worker-Key": "worker-test"},
+        json={"limit": 1, "lease_seconds": 300},
+    )
+    assert unauthorized.status_code == 401
+
+    first_claim = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=detector_headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        intake.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+    second_claim = client.post(
+        "/api/v1/internal/source-detections/claim",
+        headers=detector_headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    assert first_claim["attempt_count"] == 1
+    assert second_claim["attempt_count"] == 2
+
+    stale = client.post(
+        f"/api/v1/internal/source-detections/{intake_id}/result",
+        headers=detector_headers,
+        json={"status": "validation_failed", "attempt_count": 1, "failure_reason": "secret=stale"},
+    )
+    assert stale.status_code == 409
+    current = client.post(
+        f"/api/v1/internal/source-detections/{intake_id}/result",
+        headers=detector_headers,
+        json={"status": "validation_failed", "attempt_count": 2, "failure_reason": "secret=current"},
+    )
+    assert current.status_code == 200
+    assert current.json()["status"] == "validation_failed"
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.source_type == "unknown"
+        assert intake.status == "validation_failed"
+        assert intake.failure_reason == "来源安全检测失败"
+        assert "secret" not in intake.failure_reason
+        assert intake.lease_expires_at is None
+        assert intake.finished_at is not None
+
+
 def test_legacy_merchant_feed_is_deduplicated_during_compatibility_window(api_client):
     client, engine = api_client
     url = "https://feed.example/catalog.json"

@@ -2,17 +2,35 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import time
 import urllib.error
 import urllib.request
 from typing import Any
 
-from probe import probe_source
+from probe import MAX_TASK_SECONDS, probe_source
 
 
 API_URL = os.getenv("DETECTOR_API_URL", "http://api:8000").rstrip("/")
 WORKER_KEY = os.getenv("DETECTOR_WORKER_KEY", "")
 POLL_SECONDS = max(1.0, float(os.getenv("DETECTOR_POLL_SECONDS", "5")))
+
+
+def _probe_with_timeout(source_url: str, *, timeout_seconds: float = MAX_TASK_SECONDS):
+    """Enforce a wall-clock limit around DNS resolution and all probe I/O."""
+    if not hasattr(signal, "setitimer"):
+        return probe_source(source_url)
+
+    def raise_timeout(_signum, _frame):
+        raise TimeoutError("source detection exceeded total time limit")
+
+    previous_handler = signal.signal(signal.SIGALRM, raise_timeout)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        return probe_source(source_url)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def _request(path: str, payload: dict[str, Any]) -> Any:
@@ -33,7 +51,7 @@ def run_once() -> int:
     tasks = _request("/api/v1/internal/source-detections/claim", {"limit": 10, "lease_seconds": 300})
     for task in tasks:
         try:
-            result = probe_source(task["source_url"])
+            result = _probe_with_timeout(task["source_url"])
             payload = {
                 "status": "pending_review",
                 "attempt_count": task["attempt_count"],
@@ -43,11 +61,11 @@ def run_once() -> int:
                 "shop_name": result.shop_name,
                 "product_count": result.product_count,
             }
-        except Exception as exc:
+        except Exception:
             payload = {
                 "status": "validation_failed",
                 "attempt_count": task["attempt_count"],
-                "failure_reason": str(exc)[:500],
+                "failure_reason": "source detection failed",
             }
         _request(f"/api/v1/internal/source-detections/{task['intake_id']}/result", payload)
     return len(tasks)
