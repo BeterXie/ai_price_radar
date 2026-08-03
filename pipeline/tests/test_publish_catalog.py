@@ -301,6 +301,41 @@ def test_all_structured_intake_platforms_use_the_atomic_publish_path():
         db.close()
 
 
+def test_direct_sitemap_intake_keeps_exact_path_through_atomic_publish(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    sitemap_url = "https://structured.example/product-sitemap.xml"
+    called_with: list[str] = []
+
+    def loader(source: str | Path):
+        called_with.append(str(source))
+        item = record("direct-sitemap")
+        item["source_platform"] = "schema_org"
+        item["shop_url"] = "https://structured.example"
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "schema-org", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'schema_org', 'schema_org', :source_url, 'approved')"
+        ), {"source_url": sitemap_url})
+        db.commit()
+
+        sources = approved_intake_sources(db)
+        assert sources == [SourceSpec("schema-org", sitemap_url, (1,))]
+        result = publish_sources(db, sources)
+
+        assert called_with == [sitemap_url]
+        row = db.execute(text("SELECT status FROM source_intakes WHERE id=1")).one()
+        assert row == ("published",)
+        assert db.query(Offer).filter(Offer.snapshot_id == result.snapshot_id).count() == 1
+    finally:
+        db.close()
+
+
 def test_published_intake_remains_in_later_snapshots_until_disabled(monkeypatch: pytest.MonkeyPatch):
     def loader(source: str | Path):
         label = "replacement" if "replacement" in str(source) else "persistent-dujiao"

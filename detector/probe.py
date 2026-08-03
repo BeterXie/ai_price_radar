@@ -256,7 +256,7 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         preloaded=page,
     ):
         _page_url, product_count = sitemap_result
-        return ProbeResult("schema_org", origin, origin, host, product_count)
+        return ProbeResult("schema_org", normalized, normalized, host, product_count)
     if sitemap_result := _schema_from_sitemap(origin, client):
         _page_url, product_count = sitemap_result
         return ProbeResult("schema_org", origin, origin, host, product_count)

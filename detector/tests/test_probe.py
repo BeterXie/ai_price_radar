@@ -113,7 +113,7 @@ def test_detector_recognizes_direct_nonstandard_sitemap_entry():
     ])
     result = probe_source("https://structured.example/product-sitemap.xml", client=client)
     assert result.detected_platform == "schema_org"
-    assert result.source_url == result.source_key == "https://structured.example"
+    assert result.source_url == result.source_key == "https://structured.example/product-sitemap.xml"
     assert result.product_count == 1
 
 

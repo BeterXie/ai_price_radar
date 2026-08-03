@@ -121,6 +121,7 @@ def test_structured_platform_submission_can_be_detected_and_reviewed(api_client,
             platform,
             "pending_review",
         )
+        assert intake.source_url == source_url
 
 
 def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
