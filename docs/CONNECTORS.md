@@ -57,6 +57,10 @@ Detector, Dujiao-Next, Merchant JSON and Dujiao discovery use the same pinned HT
 
 The crawler CLI provides a separate `discover-dujiao` flow for seed pages and low-frequency Bing RSS results. It reduces `/buy/...` and `/products/...` hits to a validated HTTPS origin, excludes official Dujiao-Next domains, checks the homepage fingerprint and public product API, and only queues stores whose real product data matches the AI catalog vocabulary.
 
+Production Dujiao discovery runs `seed,bing,github` (controlled by `DISCOVERY_DUJIAO_SOURCES`). GitHub search stays within a hard total page budget (`DISCOVERY_GITHUB_PAGES`, capped at 10), extracts only public repository homepages that are valid HTTPS origins, and never uses GitHub homepages as proof of a working store: every candidate still goes through the real Dujiao-Next public API contract. `GITHUB_TOKEN` is optional; when set it is sent only to `api.github.com`, is never logged, and is never inherited by candidate requests. Rate limits (403/429) stop the GitHub adapter for that run.
+
+Seed files live in `config/discovery/dujiao_seeds.txt` and `config/discovery/general_seeds.txt`. They support comments and blank lines, are normalized and deduplicated, and never publish by themselves: seeds still pass Detector and AI product verification.
+
 Discovery evidence is stored privately in the crawler SQLite `dujiao_candidates` table. Human `approve` or `reject` decisions never publish by themselves. The production publisher reads only candidates that are approved, API-verified, and still in a publishable verification state; an arbitrary Dujiao URL cannot enter the public snapshot. The development-only bypass requires both `--allow-unreviewed-source` and `AI_PRICE_RADAR_ALLOW_UNREVIEWED_DUJIAO=1`.
 
 The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-domain discovery from template prose requires a separate URL Index/WARC content-analysis job; the low-frequency discovery command deliberately does not issue broad or misleading CDX queries.

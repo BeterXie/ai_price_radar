@@ -9,7 +9,7 @@ DATA_DIR="$ROOT/data/crawler"
 CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
 MERCHANT_SOURCES="$DATA_DIR/merchant_sources.json"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.pricememo.yml)
-KEYWORDS=(gpt chatgpt openai "open ai" codex claude gemini "google one ai" grok supergrok xai "x.ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
+KEYWORDS=(gpt chatgpt "chatgpt plus" "chatgpt pro" "chatgpt team" "chatgpt business" "openai api" codex claude "claude pro" "claude api" anthropic gemini "gemini advanced" "google one ai" "gemini api" grok supergrok "xai api" "x.ai" cursor windsurf augment "github copilot" 账号 成品号 代充 直充 团队席位 车位 卡密 兑换码 API 额度 中转 自动发货 "open ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
 
 mkdir -p "$DATA_DIR/output" "$DATA_DIR/backups"
 chown 10001:10001 "$DATA_DIR" "$DATA_DIR/output"
@@ -33,12 +33,17 @@ run_dujiao_discovery() {
   run_crawler discover-dujiao \
     --db /data/ldxp_crawler.db \
     --seed-file /config/dujiao_seeds.txt \
-    --sources seed,bing \
-    --bing-pages 2 \
-    --bing-count 20 \
-    --max-new-candidates 500 \
-    --max-processed-candidates 2000 \
-    --reverify-stale-hours 24
+    --sources "${DISCOVERY_DUJIAO_SOURCES:-seed,bing,github}" \
+    --bing-pages "${DISCOVERY_BING_PAGES:-5}" \
+    --bing-count "${DISCOVERY_BING_COUNT:-30}" \
+    --github-pages "${DISCOVERY_GITHUB_PAGES:-3}" \
+    --github-count "${DISCOVERY_GITHUB_COUNT:-100}" \
+    --github-max-candidates "${DISCOVERY_GITHUB_MAX_CANDIDATES:-300}" \
+    --max-new-candidates "${DISCOVERY_MAX_NEW_CANDIDATES:-1000}" \
+    --max-processed-candidates "${DISCOVERY_MAX_PROCESSED_CANDIDATES:-3000}" \
+    --reverify-stale-hours "${DISCOVERY_REVERIFY_STALE_HOURS:-24}" \
+    --request-interval "${DISCOVERY_REQUEST_INTERVAL_SECONDS:-2}" \
+    --keywords "${KEYWORDS[@]}"
 }
 
 case "$MODE" in

@@ -45,9 +45,21 @@ services:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
       INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      DISCOVERY_DUJIAO_SOURCES: ${DISCOVERY_DUJIAO_SOURCES:-seed,bing,github}
+      DISCOVERY_BING_PAGES: ${DISCOVERY_BING_PAGES:-5}
+      DISCOVERY_BING_COUNT: ${DISCOVERY_BING_COUNT:-30}
+      DISCOVERY_GITHUB_PAGES: ${DISCOVERY_GITHUB_PAGES:-3}
+      DISCOVERY_GITHUB_COUNT: ${DISCOVERY_GITHUB_COUNT:-100}
+      DISCOVERY_GITHUB_MAX_CANDIDATES: ${DISCOVERY_GITHUB_MAX_CANDIDATES:-300}
+      DISCOVERY_MAX_NEW_CANDIDATES: ${DISCOVERY_MAX_NEW_CANDIDATES:-1000}
+      DISCOVERY_MAX_PROCESSED_CANDIDATES: ${DISCOVERY_MAX_PROCESSED_CANDIDATES:-3000}
+      DISCOVERY_REVERIFY_STALE_HOURS: ${DISCOVERY_REVERIFY_STALE_HOURS:-24}
+      DISCOVERY_REQUEST_INTERVAL_SECONDS: ${DISCOVERY_REQUEST_INTERVAL_SECONDS:-2}
     volumes:
       - ./crawler/ldxp/seeds.txt:/config/seeds.txt:ro
-      - ./crawler/ldxp/dujiao_seeds.txt:/config/dujiao_seeds.txt:ro
+      - ./config/discovery/general_seeds.txt:/config/general_seeds.txt:ro
+      - ./config/discovery/dujiao_seeds.txt:/config/dujiao_seeds.txt:ro
       - ./data/crawler:/data
 
   crawler-bootstrap:
