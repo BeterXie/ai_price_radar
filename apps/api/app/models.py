@@ -209,6 +209,100 @@ class SourceIntake(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class SourceDiscoveryRun(Base):
+    __tablename__ = "source_discovery_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'succeeded', 'partial', 'failed')",
+            name="ck_source_discovery_runs_status",
+        ),
+        Index("ix_source_discovery_runs_status_started", "status", "started_at"),
+        Index("ix_source_discovery_runs_finished", "finished_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trigger: Mapped[str] = mapped_column(String(30), default="scheduled", index=True)
+    adapters: Mapped[list[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(30), default="running", index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discovered_raw_count: Mapped[int] = mapped_column(Integer, default=0)
+    normalized_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    new_candidate_count: Mapped[int] = mapped_column(Integer, default=0)
+    reverified_count: Mapped[int] = mapped_column(Integer, default=0)
+    detected_count: Mapped[int] = mapped_column(Integer, default=0)
+    ai_matched_count: Mapped[int] = mapped_column(Integer, default=0)
+    auto_approved_count: Mapped[int] = mapped_column(Integer, default=0)
+    pending_review_count: Mapped[int] = mapped_column(Integer, default=0)
+    validation_failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    promoted_intake_count: Mapped[int] = mapped_column(Integer, default=0)
+    adapter_stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    platform_stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    failure_stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SourceCandidate(Base):
+    __tablename__ = "source_candidates"
+    __table_args__ = (
+        UniqueConstraint("candidate_key", name="uq_source_candidates_key"),
+        CheckConstraint(
+            "status IN ('discovered', 'queued', 'detecting', 'detected', 'no_match', "
+            "'validation_failed', 'pending_review', 'auto_approved', 'promoted', "
+            "'rejected', 'needs_re_review', 'disabled')",
+            name="ck_source_candidates_status",
+        ),
+        CheckConstraint(
+            "detected_platform IN ('unknown', 'ldxp', 'dujiao_next', 'merchant_json', "
+            "'woocommerce', 'schema_org', 'other')",
+            name="ck_source_candidates_platform",
+        ),
+        Index("ix_source_candidates_status_next_verify", "status", "next_verify_at"),
+        Index("ix_source_candidates_platform_status", "detected_platform", "status"),
+        Index("ix_source_candidates_promoted_intake", "promoted_intake_id"),
+        Index("ix_source_candidates_last_seen", "last_seen_at"),
+        Index("ix_source_candidates_lease", "lease_expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_key: Mapped[str] = mapped_column(String(300))
+    canonical_origin: Mapped[str] = mapped_column(Text, default="")
+    discovered_url: Mapped[str] = mapped_column(Text)
+    canonical_url: Mapped[str] = mapped_column(Text)
+    platform_hint: Mapped[str] = mapped_column(String(30), default="unknown", index=True)
+    detected_platform: Mapped[str] = mapped_column(String(30), default="unknown", index=True)
+    detected_source_key: Mapped[str] = mapped_column(String(300), default="")
+    detected_source_url: Mapped[str] = mapped_column(Text, default="")
+    discovery_sources: Mapped[list[str]] = mapped_column(JSON, default=list)
+    matched_queries: Mapped[list[str]] = mapped_column(JSON, default=list)
+    fingerprints: Mapped[list[str]] = mapped_column(JSON, default=list)
+    sample_products: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    total_product_count: Mapped[int] = mapped_column(Integer, default=0)
+    ai_product_count: Mapped[int] = mapped_column(Integer, default=0)
+    confidence_score: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="discovered", index=True)
+    failure_reason: Mapped[str] = mapped_column(Text, default="")
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_verify_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=utcnow, index=True
+    )
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    promoted_intake_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_intakes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    discovery_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_discovery_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class NotificationOutbox(Base):
     __tablename__ = "notification_outbox"
     __table_args__ = (
