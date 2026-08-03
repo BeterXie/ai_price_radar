@@ -302,6 +302,7 @@ def test_runner_submits_batches_deduplicates_and_finishes_run():
     assert len(bridge.runs) == 1
     assert bridge.runs[0]["adapters"] == ["seed", "bing"]
     assert bridge.upserts[0][0]["discovered_by"] == "seed"
+    assert bridge.upserts[0][0]["run_id"] == 1
     assert bridge.finished[0]["status"] == "partial"
     assert bridge.finished[0]["new_candidate_count"] == 2
 

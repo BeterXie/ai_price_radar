@@ -87,6 +87,7 @@ class DiscoveryRunner:
                             self.stats.note = "unique candidate budget reached"
                             break
                         batch.append({
+                            "run_id": run_id,
                             "discovered_url": normalized,
                             "platform_hint": candidate.platform_hint,
                             "discovered_by": candidate.discovered_by,
