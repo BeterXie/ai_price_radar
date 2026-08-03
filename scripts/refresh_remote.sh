@@ -46,6 +46,27 @@ run_dujiao_discovery() {
     --keywords "${KEYWORDS[@]}"
 }
 
+run_source_discovery() {
+  run_crawler discover-sources \
+    --db /data/ldxp_crawler.db \
+    --seed-file /config/general_seeds.txt \
+    --api-url "${DISCOVERY_API_URL:-http://api:8000}" \
+    --worker-key "${DISCOVERY_WORKER_KEY:-}" \
+    --sources "${DISCOVERY_SOURCES:-seed,bing,github,commoncrawl}" \
+    --max-raw-urls "${DISCOVERY_MAX_RAW_URLS:-2000}" \
+    --max-unique-candidates "${DISCOVERY_MAX_NEW_CANDIDATES:-1000}" \
+    --request-interval "${DISCOVERY_REQUEST_INTERVAL_SECONDS:-2}" \
+    --bing-pages "${DISCOVERY_BING_PAGES:-5}" \
+    --bing-count "${DISCOVERY_BING_COUNT:-30}" \
+    --bing-delay "${DISCOVERY_BING_DELAY_SECONDS:-2}" \
+    --github-pages "${DISCOVERY_GITHUB_PAGES:-3}" \
+    --github-count "${DISCOVERY_GITHUB_COUNT:-100}" \
+    --github-max-candidates "${DISCOVERY_GITHUB_MAX_CANDIDATES:-300}" \
+    --cc-indexes "${DISCOVERY_COMMONCRAWL_INDEXES:-2}" \
+    --cc-max-urls "${DISCOVERY_COMMONCRAWL_MAX_URLS:-500}" \
+    --keywords "${KEYWORDS[@]}"
+}
+
 case "$MODE" in
   discover)
     run_crawler discover \
@@ -57,6 +78,11 @@ case "$MODE" in
       --cc-indexes 3 \
       --max-discovered 500
     run_dujiao_discovery
+    if [[ -n "${DISCOVERY_WORKER_KEY:-}" ]]; then
+      run_source_discovery
+    else
+      echo "DISCOVERY_WORKER_KEY is empty; unified source discovery skipped"
+    fi
     exit 0
     ;;
   full)

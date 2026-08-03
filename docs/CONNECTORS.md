@@ -65,6 +65,12 @@ Discovery evidence is stored privately in the crawler SQLite `dujiao_candidates`
 
 The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-domain discovery from template prose requires a separate URL Index/WARC content-analysis job; the low-frequency discovery command deliberately does not issue broad or misleading CDX queries.
 
+## Unified source discovery engine
+
+`discover-sources` runs the unified candidate pool flow: seed, Bing AI-product queries, bounded GitHub homepage discovery and fixed Common Crawl CDX patterns submit normalized candidates to the internal API through the Discovery Bridge (`X-Discovery-Worker-Key`, independent from the intake/detector keys). The runner never holds database credentials, deduplicates by candidate key, submits in batches of 100, isolates adapter failures and records one structured run summary.
+
+The Source Detector worker claims candidates with `FOR UPDATE SKIP LOCKED` leases, probes the platform with `PinnedHTTPSClient` budgets, reads a bounded public product sample, classifies product names with the catalog classifier, and reports exact `detected_source_url` / `detected_source_key` values. WooCommerce auto-approval requires a valid Store API contract, purchasable products, valid prices/currencies and at least one classified AI product. Schema.org candidates default to `pending_review`; `DISCOVERY_SCHEMA_AUTO_APPROVE` must be explicitly enabled before any strict auto-approval can occur. Qualified candidates are promoted idempotently into `source_intakes` (`origin='discovery'`) and enter the existing atomic publisher; no second publication path exists.
+
 ## Public source intake
 
 `POST /api/v1/shop-requests` is deliberately syntax-only: it normalizes an HTTPS URL and creates a `submitted` record without opening the URL. The separate detector validates a resolved public IP and connects directly to that IP while retaining the submitted hostname for TLS SNI and certificate checks. It permits only port 443, does not follow redirects, and enforces response-size and processing-time limits.

@@ -12,6 +12,7 @@ PLACEHOLDERS = {
     "replace-with-a-long-random-string",
     "replace-with-a-separate-intake-worker-key",
     "replace-with-a-separate-detector-worker-key",
+    "replace-with-a-separate-discovery-worker-key",
     "admin@example.invalid",
     "re_xxxxxxxxx",
     "onboarding@resend.dev",
@@ -41,6 +42,7 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
     admin_key = env.get("ADMIN_API_KEY", "")
     intake_worker_key = env.get("INTAKE_WORKER_KEY", "")
     detector_worker_key = env.get("DETECTOR_WORKER_KEY", "")
+    discovery_worker_key = env.get("DISCOVERY_WORKER_KEY", "")
     intake_admin_emails = env.get("SHOP_INTAKE_ADMIN_EMAILS", "")
     resend_api_key = env.get("RESEND_API_KEY", "").strip()
     resend_from = env.get("RESEND_FROM", "").strip()
@@ -60,6 +62,12 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
         errors.append("DETECTOR_WORKER_KEY must contain at least 32 bytes")
     if detector_worker_key and detector_worker_key in {admin_key, intake_worker_key}:
         errors.append("DETECTOR_WORKER_KEY must be different from ADMIN_API_KEY and INTAKE_WORKER_KEY")
+    if not discovery_worker_key or discovery_worker_key in PLACEHOLDERS or len(discovery_worker_key.encode()) < 32:
+        errors.append("DISCOVERY_WORKER_KEY must contain at least 32 bytes")
+    if discovery_worker_key and discovery_worker_key in {admin_key, intake_worker_key, detector_worker_key}:
+        errors.append(
+            "DISCOVERY_WORKER_KEY must be different from ADMIN_API_KEY, INTAKE_WORKER_KEY and DETECTOR_WORKER_KEY"
+        )
     admin_emails = [value.strip() for value in intake_admin_emails.split(",") if value.strip()]
     if (
         not admin_emails
