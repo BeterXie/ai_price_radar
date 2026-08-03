@@ -78,12 +78,16 @@ def add_discovery_args(parser: argparse.ArgumentParser) -> None:
 
 
 def add_dujiao_discovery_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--sources", default="seed,bing", help="逗号分隔：seed,bing")
+    parser.add_argument("--sources", default="seed,bing", help="逗号分隔：seed,bing,github")
     parser.add_argument("--seed", action="append", default=[], help="候选页面或店铺 URL，可重复")
     parser.add_argument("--seed-file", type=Path, default=Path("dujiao_seeds.txt"))
     parser.add_argument("--bing-pages", type=int, default=2)
     parser.add_argument("--bing-count", type=int, default=20)
     parser.add_argument("--bing-delay", type=float, default=2.0)
+    parser.add_argument("--github-pages", type=int, default=2, help="GitHub 仓库搜索页数，硬上限 10")
+    parser.add_argument("--github-count", type=int, default=50, help="每页 GitHub 仓库数，硬上限 100")
+    parser.add_argument("--github-timeout", type=float, default=10.0, help="单次 GitHub API 请求超时秒数，硬上限 30")
+    parser.add_argument("--github-max-candidates", type=int, default=100, help="本次 GitHub 来源最多提交的唯一 Homepage，硬上限 500；0 关闭")
     parser.add_argument("--request-interval", type=float, default=2.0, help="候选站公开请求最小间隔")
     parser.add_argument("--max-api-pages", type=int, default=5, help="单个候选最多读取的公开商品页数")
     parser.add_argument("--max-new-candidates", type=int, default=500, help="本次最多新增候选数；0 不限制")
@@ -207,7 +211,7 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
         reverify_stale_hours=args.reverify_stale_hours,
     )
     sources = {value.strip().casefold() for value in args.sources.split(",") if value.strip()}
-    unsupported = sources - {"seed", "bing"}
+    unsupported = sources - {"seed", "bing", "github"}
     if unsupported:
         raise ValueError(f"unsupported Dujiao discovery sources: {', '.join(sorted(unsupported))}")
     filter_keywords = merge_unique([*DEFAULT_AI_KEYWORDS, *args.keywords])
@@ -217,6 +221,14 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
         discovery.from_seeds(args.seed, args.seed_file, filter_keywords)
     if "bing" in sources and not discovery.reached_limit():
         discovery.from_bing(args.keywords, pages=args.bing_pages, count=args.bing_count, delay=args.bing_delay)
+    if "github" in sources and not discovery.reached_limit():
+        discovery.from_github(
+            args.keywords,
+            pages=args.github_pages,
+            count=args.github_count,
+            max_candidates=args.github_max_candidates,
+            timeout=args.github_timeout,
+        )
     pending = db.list_dujiao_candidates(
         review_status="pending_review",
         verification_status="pending_review",
