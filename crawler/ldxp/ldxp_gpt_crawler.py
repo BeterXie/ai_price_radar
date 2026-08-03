@@ -88,6 +88,7 @@ def add_dujiao_discovery_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--github-count", type=int, default=50, help="每页 GitHub 仓库数，硬上限 100")
     parser.add_argument("--github-timeout", type=float, default=10.0, help="单次 GitHub API 请求超时秒数，硬上限 30")
     parser.add_argument("--github-max-candidates", type=int, default=100, help="本次 GitHub 来源最多提交的唯一 Homepage，硬上限 500；0 关闭")
+    parser.add_argument("--github-token", default=os.getenv("GITHUB_TOKEN", ""), help="可选的 GitHub 搜索 Token；留空时不发送 Authorization，且只用于 api.github.com")
     parser.add_argument("--request-interval", type=float, default=2.0, help="候选站公开请求最小间隔")
     parser.add_argument("--max-api-pages", type=int, default=5, help="单个候选最多读取的公开商品页数")
     parser.add_argument("--max-new-candidates", type=int, default=500, help="本次最多新增候选数；0 不限制")
@@ -228,6 +229,7 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
             count=args.github_count,
             max_candidates=args.github_max_candidates,
             timeout=args.github_timeout,
+            github_token=args.github_token,
         )
     pending = db.list_dujiao_candidates(
         review_status="pending_review",

@@ -43,6 +43,11 @@ HOME_FINGERPRINTS = (
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 GITHUB_API_ORIGIN = "https://api.github.com"
 GITHUB_REPOSITORY_QUERY = '"Dujiao-Next" in:name,description,readme is:public fork:true'
+GITHUB_REPOSITORY_QUERIES = (
+    GITHUB_REPOSITORY_QUERY,
+    '"dujiao next" in:readme is:public',
+    '"独角数卡" in:name,description,readme is:public',
+)
 GITHUB_MAX_PAGES = 10
 GITHUB_MAX_CANDIDATES = 500
 GITHUB_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -572,6 +577,7 @@ class DujiaoDiscovery:
         count: int,
         max_candidates: int,
         timeout: float,
+        github_token: str = "",
     ) -> int:
         page_limit = min(max(1, pages), GITHUB_MAX_PAGES)
         per_page = min(max(1, count), 100)
@@ -584,76 +590,92 @@ class DujiaoDiscovery:
         fetched_repositories = 0
         submitted_origins: set[str] = set()
         filter_keywords = merge_unique([*DEFAULT_AI_KEYWORDS, *keywords])
-        for page in range(1, page_limit + 1):
-            if self.reached_limit():
+        pages_remaining = page_limit
+        for query in GITHUB_REPOSITORY_QUERIES:
+            if pages_remaining <= 0 or self.reached_limit():
                 break
-            params = {
-                "q": GITHUB_REPOSITORY_QUERY,
-                "sort": "updated",
-                "order": "desc",
-                "per_page": per_page,
-                "page": page,
-            }
-            url = GITHUB_API_ORIGIN + "/search/repositories?" + urllib.parse.urlencode(params)
-            try:
-                response = self.verifier.session.get(
-                    url,
-                    headers={
-                        "Accept": "application/vnd.github+json",
-                        "X-GitHub-Api-Version": "2022-11-28",
-                    },
-                    timeout=request_timeout,
-                    allow_redirects=False,
-                    stream=True,
-                )
-                body = read_limited_response(
-                    response,
-                    GITHUB_MAX_RESPONSE_BYTES,
-                    description="GitHub API",
-                )
-            except (requests.RequestException, OSError, ValueError) as exc:
-                self.logger.warning("Dujiao GitHub API 请求失败：%s", exc)
-                break
-            if response.status_code in {403, 429}:
-                self.logger.warning(
-                    "Dujiao GitHub API 限流（HTTP %s，remaining=%s）",
-                    response.status_code,
-                    response.headers.get("X-RateLimit-Remaining", "unknown"),
-                )
-                break
-            if response.status_code != 200:
-                self.logger.warning("Dujiao GitHub API HTTP %s", response.status_code)
-                break
-            try:
-                document = json.loads(body.decode("utf-8"))
-                items = document.get("items")
-                total_count = int(document.get("total_count"))
-            except (AttributeError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
-                self.logger.warning("Dujiao GitHub API 响应无效：%s", exc)
-                break
-            if not isinstance(items, list) or total_count < 0:
-                self.logger.warning("Dujiao GitHub API 响应缺少有效仓库列表")
-                break
-
-            fetched_repositories += len(items)
-            for item in items:
-                if not isinstance(item, dict) or item.get("private") is True:
-                    continue
-                homepage = normalize_github_homepage(item.get("homepage"))
-                origin = normalize_candidate_origin(homepage or "")
-                if not homepage or not origin:
-                    continue
-                if origin not in submitted_origins:
-                    if len(submitted_origins) >= candidate_limit:
-                        return found
-                    submitted_origins.add(origin)
-                repository = str(item.get("full_name") or "").strip()[:100]
-                source = f"github:{repository}" if repository else "github:repository-homepage"
-                found += int(self.add_url(homepage, source, filter_keywords))
+            stopped = False
+            for page in range(1, min(pages_remaining, page_limit) + 1):
                 if self.reached_limit():
+                    break
+                params = {
+                    "q": query,
+                    "sort": "updated",
+                    "order": "desc",
+                    "per_page": per_page,
+                    "page": page,
+                }
+                url = GITHUB_API_ORIGIN + "/search/repositories?" + urllib.parse.urlencode(params)
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                if github_token:
+                    headers["Authorization"] = f"Bearer {github_token}"
+                try:
+                    response = self.verifier.session.get(
+                        url,
+                        headers=headers,
+                        timeout=request_timeout,
+                        allow_redirects=False,
+                        stream=True,
+                    )
+                    body = read_limited_response(
+                        response,
+                        GITHUB_MAX_RESPONSE_BYTES,
+                        description="GitHub API",
+                    )
+                except (requests.RequestException, OSError, ValueError) as exc:
+                    self.logger.warning("Dujiao GitHub API 请求失败（%s）", type(exc).__name__)
+                    stopped = True
+                    break
+                pages_remaining -= 1
+                if response.status_code in {403, 429}:
+                    self.logger.warning(
+                        "Dujiao GitHub API 限流（HTTP %s，remaining=%s）",
+                        response.status_code,
+                        response.headers.get("X-RateLimit-Remaining", "unknown"),
+                    )
+                    stopped = True
+                    break
+                if response.status_code != 200:
+                    self.logger.warning("Dujiao GitHub API HTTP %s", response.status_code)
+                    stopped = True
+                    break
+                try:
+                    document = json.loads(body.decode("utf-8"))
+                    items = document.get("items")
+                    total_count = int(document.get("total_count"))
+                except (AttributeError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+                    self.logger.warning("Dujiao GitHub API 响应无效（%s）", type(exc).__name__)
+                    stopped = True
+                    break
+                if not isinstance(items, list) or total_count < 0:
+                    self.logger.warning("Dujiao GitHub API 响应缺少有效仓库列表")
+                    stopped = True
+                    break
+
+                fetched_repositories += len(items)
+                for item in items:
+                    if not isinstance(item, dict) or item.get("private") is True:
+                        continue
+                    homepage = normalize_github_homepage(item.get("homepage"))
+                    origin = normalize_candidate_origin(homepage or "")
+                    if not homepage or not origin:
+                        continue
+                    if origin not in submitted_origins:
+                        if len(submitted_origins) >= candidate_limit:
+                            return found
+                        submitted_origins.add(origin)
+                    repository = str(item.get("full_name") or "").strip()[:100]
+                    source = f"github:{repository}" if repository else "github:repository-homepage"
+                    found += int(self.add_url(homepage, source, filter_keywords))
+                    if self.reached_limit():
+                        return found
+                if len(submitted_origins) >= candidate_limit:
                     return found
-            if len(submitted_origins) >= candidate_limit:
-                break
-            if not items or fetched_repositories >= min(total_count, 1000):
+                if not items or fetched_repositories >= min(total_count, 1000):
+                    break
+            if stopped:
                 break
         return found
