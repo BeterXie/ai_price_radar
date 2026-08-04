@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "crawler" / "ldxp"))
@@ -10,6 +12,7 @@ sys.path.insert(0, str(ROOT / "crawler" / "ldxp"))
 from ldxp_crawler.db import StateDB  # noqa: E402
 from ldxp_crawler.models import ProductMatch, ShopScanResult  # noqa: E402
 from scripts.purge_ldxp_raw_v11 import _sqlite_counts, _sqlite_purge  # noqa: E402
+from scripts.purge_ldxp_raw_v11 import main as purge_main  # noqa: E402
 
 
 def _seed_db(path: Path) -> None:
@@ -55,3 +58,63 @@ def test_purge_dry_run_counts_then_apply_backs_up_and_is_idempotent(tmp_path):
 
     second = _sqlite_purge(path, dry_run=False, backup=True)
     assert second["matches_raw_json"] == 0
+
+
+def test_purge_apply_aborts_before_destructive_steps_without_pg_backup(tmp_path, monkeypatch):
+    crawler_dir = tmp_path / "data" / "crawler"
+    crawler_dir.mkdir(parents=True)
+    db_path = crawler_dir / "ldxp_crawler.db"
+    _seed_db(db_path)
+    state_file = crawler_dir / "browser_state.json"
+    state_file.write_text("{}", encoding="utf-8")
+    profile = crawler_dir / "browser_profile"
+    profile.mkdir()
+    (profile / "Default").mkdir()
+    (profile / "Default" / "Preferences").write_text("{}", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "purge_ldxp_raw_v11.py",
+            "--apply",
+            "--crawler-db", str(db_path),
+            "--crawler-dir", str(crawler_dir),
+            "--database-url", "postgresql+psycopg://user:pass@127.0.0.1:5432/db",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        purge_main()
+    assert exc.value.code == 2
+    assert _sqlite_counts(db_path)["matches_raw_json"] == 1  # unchanged
+    assert state_file.exists()
+    assert (profile / "Default" / "Preferences").exists()
+
+
+def test_purge_apply_aborts_when_postgres_connection_fails(tmp_path, monkeypatch):
+    crawler_dir = tmp_path / "data" / "crawler"
+    crawler_dir.mkdir(parents=True)
+    db_path = crawler_dir / "ldxp_crawler.db"
+    _seed_db(db_path)
+    state_file = crawler_dir / "browser_state.json"
+    state_file.write_text("{}", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "purge_ldxp_raw_v11.py",
+            "--apply",
+            "--skip-postgres-backup-check",
+            "--crawler-db", str(db_path),
+            "--crawler-dir", str(crawler_dir),
+            "--database-url", "postgresql+psycopg://user:pass@127.0.0.1:1/db",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        purge_main()
+    assert exc.value.code == 2
+    assert _sqlite_counts(db_path)["matches_raw_json"] == 1  # unchanged
+    assert state_file.exists()

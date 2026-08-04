@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import shutil
@@ -125,15 +126,24 @@ def main() -> int:
         parser.error("--apply requires --database-url or DATABASE_URL")
 
     summary: dict[str, Any] = {"dry_run": args.dry_run}
-    summary["sqlite"] = _sqlite_purge(args.crawler_db, dry_run=args.dry_run, backup=args.apply)
     legacy = _legacy_artifacts(args.crawler_dir)
     summary["legacy_artifacts"] = [str(path) for path in legacy]
-    if args.apply:
-        for path in legacy:
-            _remove_tree(path)
 
-    if args.database_url:
-        if args.apply and not args.skip_postgres_backup_check:
+    # ---- preflight: no destructive operation may happen before every check passes ----
+    sqlite_backup: Path | None = None
+    postgres_connection = None
+    if args.apply:
+        if not args.crawler_db.is_file():
+            parser.error(f"crawler database not found: {args.crawler_db}")
+        sqlite_backup = _sqlite_backup(args.crawler_db)
+        backup_conn = sqlite3.connect(sqlite_backup)
+        try:
+            check = backup_conn.execute("PRAGMA quick_check").fetchone()[0]
+        finally:
+            backup_conn.close()
+        if check != "ok":
+            parser.error(f"SQLite backup quick_check failed: {check}")
+        if args.database_url and not args.skip_postgres_backup_check:
             backups_dir = Path("backups")
             recent = [
                 path
@@ -142,8 +152,32 @@ def main() -> int:
             ] if backups_dir.exists() else []
             if not recent:
                 parser.error("--apply with PostgreSQL requires a backup created within the last hour (run scripts/backup_postgres.sh); pass --skip-postgres-backup-check only for tests")
+            try:
+                with gzip.open(recent[0], "rb") as handle:
+                    handle.read(1)
+            except (OSError, EOFError) as exc:
+                parser.error(f"PostgreSQL backup is not readable: {exc}")
+        if args.database_url:
+            try:
+                postgres_connection = psycopg.connect(connection_url(args.database_url))
+                _postgres_counts(postgres_connection)
+            except Exception as exc:
+                if postgres_connection is not None:
+                    postgres_connection.close()
+                parser.error(f"PostgreSQL connection check failed: {exc}")
+
+    # ---- apply phase: every preflight passed ----
+    summary["sqlite"] = _sqlite_purge(args.crawler_db, dry_run=args.dry_run, backup=False)
+    summary["sqlite_backup"] = str(sqlite_backup) if sqlite_backup else ""
+    if args.database_url and args.apply and postgres_connection is not None:
+        summary["postgres"] = _postgres_purge(postgres_connection, dry_run=False)
+        postgres_connection.close()
+    elif args.database_url:
         with psycopg.connect(connection_url(args.database_url)) as connection:
-            summary["postgres"] = _postgres_purge(connection, dry_run=args.dry_run)
+            summary["postgres"] = _postgres_purge(connection, dry_run=True)
+    if args.apply:
+        for path in legacy:
+            _remove_tree(path)
 
     print(json.dumps(summary, ensure_ascii=False))
     return 0
