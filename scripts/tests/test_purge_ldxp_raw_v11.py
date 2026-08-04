@@ -354,6 +354,45 @@ def test_artifact_failure_after_db_commit_does_not_restore_databases(tmp_path, m
     assert conn.rolled_back is False
 
 
+def test_artifact_directory_that_remains_reports_partial_after_database_commit(tmp_path, monkeypatch, capsys):
+    import json as json_module
+
+    import scripts.purge_ldxp_raw_v11 as purge_module
+
+    crawler_dir = tmp_path / "data" / "crawler"
+    crawler_dir.mkdir(parents=True)
+    db_path = crawler_dir / "ldxp_crawler.db"
+    _seed_db(db_path)
+    profile = crawler_dir / "browser_profile"
+    profile.mkdir()
+    (profile / "Default").mkdir()
+    conn = _fake_pg_connection(monkeypatch)
+
+    monkeypatch.setattr(purge_module.shutil, "rmtree", lambda _path, **_kwargs: None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "purge_ldxp_raw_v11.py",
+            "--apply",
+            "--skip-postgres-backup-check",
+            "--crawler-db", str(db_path),
+            "--crawler-dir", str(crawler_dir),
+            "--database-url", "postgresql+psycopg://user:pass@db/db",
+        ],
+    )
+
+    assert purge_main() == 3
+    summary = json_module.loads(capsys.readouterr().out)
+    assert summary["database_cleanup"] == "success"
+    assert summary["artifact_cleanup"] == "partial"
+    assert profile.exists()
+    assert _sqlite_counts(db_path) == {"matches_raw_json": 0, "snapshot_raw_json": 0}
+    assert conn.committed is True
+    assert conn.rolled_back is False
+
+
 def test_pg_commit_failure_restores_sqlite_and_preserves_artifacts(tmp_path, monkeypatch):
     crawler_dir = tmp_path / "data" / "crawler"
     crawler_dir.mkdir(parents=True)
@@ -414,7 +453,41 @@ def test_second_dry_run_reports_zero_nonempty_raw(tmp_path, monkeypatch):
     assert purge_main() == 0
     summary = captured["summary"]
     assert summary["sqlite"] == {"matches_raw_json": 0, "snapshot_raw_json": 0}
+    assert summary["postgres_checked"] is True
     assert summary["postgres"] == {"postgres_ldxp_nonempty_raw_json": 0}
+
+
+def test_dry_run_without_database_url_does_not_report_postgres_zero(tmp_path, monkeypatch, capsys):
+    import json as json_module
+
+    import scripts.purge_ldxp_raw_v11 as purge_module
+
+    crawler_dir = tmp_path / "data" / "crawler"
+    crawler_dir.mkdir(parents=True)
+    db_path = crawler_dir / "ldxp_crawler.db"
+    _seed_db(db_path)
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(
+        purge_module.psycopg,
+        "connect",
+        lambda _url: pytest.fail("PostgreSQL must not be queried without a database URL"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "purge_ldxp_raw_v11.py",
+            "--dry-run",
+            "--crawler-db", str(db_path),
+            "--crawler-dir", str(crawler_dir),
+        ],
+    )
+
+    assert purge_main() == 0
+    summary = json_module.loads(capsys.readouterr().out)
+    assert summary["postgres_checked"] is False
+    assert summary["postgres"] is None
 
 
 def test_full_gzip_validation_detects_truncated_tail(tmp_path, monkeypatch):

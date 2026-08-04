@@ -109,10 +109,13 @@ def _legacy_artifacts(crawler_dir: Path) -> list[Path]:
 
 
 def _remove_tree(path: Path) -> None:
-    if path.is_file():
+    if path.is_file() or path.is_symlink():
         path.unlink()
     elif path.is_dir():
-        shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(path)
+
+    if path.exists():
+        raise RuntimeError(f"artifact still exists after removal: {path}")
 
 
 def _apply_database_cleanup(
@@ -260,8 +263,10 @@ def main() -> int:
         if args.database_url:
             with psycopg.connect(connection_url(args.database_url)) as connection:
                 summary["postgres"] = _postgres_counts(connection)
+            summary["postgres_checked"] = True
         else:
-            summary["postgres"] = {"postgres_ldxp_nonempty_raw_json": 0}
+            summary["postgres"] = None
+            summary["postgres_checked"] = False
 
     # ---- Phase C: artifact cleanup (non-recoverable, never rolls back databases) ----
     artifact_summary: dict[str, Any] = {
