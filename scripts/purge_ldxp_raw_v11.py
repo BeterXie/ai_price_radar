@@ -76,7 +76,7 @@ def _postgres_counts(connection: psycopg.Connection) -> dict[str, int]:
             JOIN shops s ON s.id = rp.shop_id
             WHERE s.platform = 'ldxp'
               AND rp.raw_json IS NOT NULL
-              AND rp.raw_json <> '{}'::jsonb
+              AND rp.raw_json::jsonb <> '{}'::jsonb
             """
         )
         return {"postgres_ldxp_nonempty_raw_json": int(cursor.fetchone()[0])}
@@ -90,9 +90,12 @@ def _postgres_purge(connection: psycopg.Connection, *, dry_run: bool, commit: bo
         cursor.execute(
             """
             UPDATE raw_products rp
-            SET raw_json = '{}'::jsonb
+            SET raw_json = '{}'
             FROM shops s
-            WHERE s.id = rp.shop_id AND s.platform = 'ldxp' AND rp.raw_json IS NOT NULL
+            WHERE s.id = rp.shop_id
+              AND s.platform = 'ldxp'
+              AND rp.raw_json IS NOT NULL
+              AND rp.raw_json::jsonb <> '{}'::jsonb
             """
         )
     if commit:

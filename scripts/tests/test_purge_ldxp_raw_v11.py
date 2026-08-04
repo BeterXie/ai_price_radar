@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
 import sys
+import uuid
 from pathlib import Path
 
+import psycopg
 import pytest
+from psycopg import sql
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -11,7 +15,8 @@ sys.path.insert(0, str(ROOT / "crawler" / "ldxp"))
 
 from ldxp_crawler.db import StateDB  # noqa: E402
 from ldxp_crawler.models import ProductMatch, ShopScanResult  # noqa: E402
-from scripts.purge_ldxp_raw_v11 import _sqlite_counts, _sqlite_purge  # noqa: E402
+from scripts.migrate_source_intake_v8 import connection_url  # noqa: E402
+from scripts.purge_ldxp_raw_v11 import _postgres_counts, _postgres_purge, _sqlite_counts, _sqlite_purge  # noqa: E402
 from scripts.purge_ldxp_raw_v11 import main as purge_main  # noqa: E402
 
 
@@ -210,7 +215,64 @@ def test_postgres_empty_json_is_not_counted_as_raw():
 
     result = purge_module._postgres_counts(FakeConn())  # type: ignore[arg-type]
     assert result == {"postgres_ldxp_nonempty_raw_json": 0}
-    assert "raw_json <> '{}'::jsonb" in captured["sql"]
+    assert "raw_json::jsonb <> '{}'::jsonb" in captured["sql"]
+
+
+def _assert_postgres_purge_supports_column_type(column_type: str) -> None:
+    schema = f"purge_ldxp_raw_{column_type}_{uuid.uuid4().hex}"
+    with psycopg.connect(connection_url(os.environ["TEST_POSTGRES_URL"])) as connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+                cursor.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+                cursor.execute(
+                    sql.SQL(
+                        """
+                        CREATE TABLE shops (
+                            id BIGINT PRIMARY KEY,
+                            platform TEXT NOT NULL
+                        );
+                        CREATE TABLE raw_products (
+                            id BIGSERIAL PRIMARY KEY,
+                            shop_id BIGINT NOT NULL REFERENCES shops(id),
+                            raw_json {}
+                        );
+                        """
+                    ).format(sql.Identifier(column_type))
+                )
+                cursor.execute("INSERT INTO shops (id, platform) VALUES (1, 'ldxp')")
+                cursor.execute(
+                    """
+                    INSERT INTO raw_products (shop_id, raw_json)
+                    VALUES
+                        (1, '{"secret": "legacy"}'),
+                        (1, '{}')
+                    """
+                )
+
+            expected_before = {"postgres_ldxp_nonempty_raw_json": 1}
+            assert _postgres_counts(connection) == expected_before
+            assert _postgres_purge(connection, dry_run=False) == expected_before
+            assert _postgres_counts(connection) == {"postgres_ldxp_nonempty_raw_json": 0}
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT raw_json::jsonb FROM raw_products ORDER BY id")
+                assert cursor.fetchall() == [({},), ({},)]
+        finally:
+            connection.rollback()
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                cursor.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
+            connection.commit()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="TEST_POSTGRES_URL is not configured")
+def test_postgres_purge_supports_json_column():
+    _assert_postgres_purge_supports_column_type("json")
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="TEST_POSTGRES_URL is not configured")
+def test_postgres_purge_supports_jsonb_column():
+    _assert_postgres_purge_supports_column_type("jsonb")
 
 
 def _fake_pg_connection(monkeypatch, *, commit_raises=False):

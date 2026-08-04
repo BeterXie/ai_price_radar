@@ -149,4 +149,8 @@ jobs:
           cache-dependency-path: apps/api/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: pip install -r apps/api/requirements.txt
-      - run: python -m pytest -q scripts/tests/test_migrate_ldxp_policy_v11.py
+      - run: >-
+          python -m pytest -q
+          scripts/tests/test_migrate_ldxp_policy_v11.py
+          scripts/tests/test_purge_ldxp_raw_v11.py::test_postgres_purge_supports_json_column
+          scripts/tests/test_purge_ldxp_raw_v11.py::test_postgres_purge_supports_jsonb_column
