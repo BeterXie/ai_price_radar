@@ -23,6 +23,7 @@ from ..services.source_discovery import (
     report_candidate_result,
     upsert_candidate,
 )
+from ..services.source_policy import policy_check
 from ..services.source_intake import utcnow
 
 
@@ -35,6 +36,12 @@ router = APIRouter(
 runs_router = APIRouter(
     prefix="/api/v1/internal/source-discovery",
     tags=["internal-source-discovery"],
+    dependencies=[Depends(require_discovery_worker)],
+)
+
+policy_router = APIRouter(
+    prefix="/api/v1/internal/source-policy",
+    tags=["internal-source-policy"],
     dependencies=[Depends(require_discovery_worker)],
 )
 
@@ -221,3 +228,11 @@ def finish_discovery_run(
     run.note = payload.note
     db.commit()
     return {"run_id": run.id, "status": run.status}
+
+
+@policy_router.get("/check")
+def check_source_policy(source_url: str, db: Session = Depends(get_db)) -> dict[str, object]:
+    try:
+        return policy_check(db, source_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

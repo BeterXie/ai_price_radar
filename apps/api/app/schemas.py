@@ -494,6 +494,37 @@ class SourceCandidateAction(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class SourcePolicyRequestCreate(BaseModel):
+    source_url: str = Field(min_length=1, max_length=2000)
+    request_type: Literal["opt_out", "correction", "ownership"] = "opt_out"
+    requester_email: str = Field(min_length=3, max_length=200)
+    reason: str = Field(default="", max_length=2000)
+
+
+class SourcePolicyRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source_url: str
+    request_type: str
+    requester_email: str
+    reason: str
+    status: str
+    temporary_hold_at: datetime | None
+    decided_at: datetime | None
+    decision_note: str
+    created_at: datetime
+
+
+class SourcePolicyDecision(BaseModel):
+    decision: Literal["verified", "applied", "rejected"]
+    note: str = Field(default="", max_length=1000)
+
+
+class EmergencyStopBody(BaseModel):
+    reason: str = Field(default="", max_length=1000)
+
+
 class NotificationOutboxOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

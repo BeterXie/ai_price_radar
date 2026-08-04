@@ -303,6 +303,39 @@ class SourceCandidate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class SourcePolicyRequest(Base):
+    __tablename__ = "source_policy_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "request_type IN ('opt_out', 'correction', 'ownership')",
+            name="ck_source_policy_requests_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'verified', 'applied', 'rejected')",
+            name="ck_source_policy_requests_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_url: Mapped[str] = mapped_column(Text)
+    request_type: Mapped[str] = mapped_column(String(20), default="opt_out", index=True)
+    requester_email: Mapped[str] = mapped_column(String(200))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    temporary_hold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SourcePolicyControl(Base):
+    __tablename__ = "source_policy_control"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class NotificationOutbox(Base):
     __tablename__ = "notification_outbox"
     __table_args__ = (
