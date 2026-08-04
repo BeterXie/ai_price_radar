@@ -47,6 +47,7 @@ services:
       INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
       DISCOVERY_API_URL: ${DISCOVERY_API_URL:-http://api:8000}
       DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
+      LDXP_POLICY_API_URL: ${LDXP_POLICY_API_URL:-http://api:8000}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       DISCOVERY_SOURCES: ${DISCOVERY_SOURCES:-seed,bing,github,commoncrawl}
       DISCOVERY_DUJIAO_SOURCES: ${DISCOVERY_DUJIAO_SOURCES:-seed,bing,github}
