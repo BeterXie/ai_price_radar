@@ -303,6 +303,59 @@ class SourceCandidate(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class SourcePolicyRequest(Base):
+    __tablename__ = "source_policy_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "request_type IN ('opt_out', 'correction', 'ownership')",
+            name="ck_source_policy_requests_type",
+        ),
+        CheckConstraint(
+            "status IN ('pending_unverified', 'pending', 'verified', 'applied', 'rejected')",
+            name="ck_source_policy_requests_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_url: Mapped[str] = mapped_column(Text)
+    request_type: Mapped[str] = mapped_column(String(20), default="opt_out", index=True)
+    requester_email: Mapped[str] = mapped_column(String(200))
+    requester_ip: Mapped[str] = mapped_column(String(64), default="")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    temporary_hold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    unverified_hold_granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SourcePolicyControl(Base):
+    __tablename__ = "source_policy_control"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SourcePolicyEffect(Base):
+    __tablename__ = "source_policy_effects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    policy_request_id: Mapped[int] = mapped_column(
+        ForeignKey("source_policy_requests.id", ondelete="CASCADE"), index=True
+    )
+    intake_id: Mapped[int] = mapped_column(
+        ForeignKey("source_intakes.id", ondelete="CASCADE"), index=True
+    )
+    previous_status: Mapped[str] = mapped_column(String(30))
+    previous_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reverse_result: Mapped[str] = mapped_column(String(30), default="")
+
+
 class NotificationOutbox(Base):
     __tablename__ = "notification_outbox"
     __table_args__ = (

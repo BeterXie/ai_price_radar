@@ -6,11 +6,13 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from ldxp_crawler.browser_scanner import BrowserScanError, BrowserShopScanner, CaptureState, has_target_brand
+from ldxp_crawler.browser_scanner import BrowserShopScanner, has_target_brand
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.exporter import export_results
+from ldxp_crawler.header_policy import is_blocked_header
 from ldxp_crawler.models import ProductMatch, ShopScanResult
-from ldxp_crawler.utils import CHALLENGE_RE, GlobalRateLimiter, extract_shop_urls
+from ldxp_crawler.public_dom_scanner import build_product_match, parse_public_price, parse_public_stock
+from ldxp_crawler.utils import CHALLENGE_RE, extract_shop_urls
 
 
 def create_v1_database(path: Path) -> None:
@@ -43,8 +45,6 @@ def create_v1_database(path: Path) -> None:
 def main() -> None:
     assert extract_shop_urls("pay.ldxp.cn/shop/ABC123") == ["https://pay.ldxp.cn/shop/ABC123"]
     assert CHALLENGE_RE.search("<html><script>var arg1='ABC123';</script></html>")
-    assert BrowserShopScanner._extract_items({"data": {"list": [{"id": 1}]}}) == [{"id": 1}]
-    assert BrowserShopScanner._extract_total({"data": {"total": 12}}) == 12
     assert has_target_brand("SuperGrok 代充值")
     assert has_target_brand("X（Twitter） Premium会员直充卡密")
     assert not has_target_brand("Twitter 普通账号")
@@ -55,43 +55,32 @@ def main() -> None:
     assert not has_target_brand("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free")
     assert not has_target_brand("谷歌邮箱成品老号，带2FA", "Gemini")
     assert has_target_brand("高级会员直充一个月", "Claude")
-    scanner = object.__new__(BrowserShopScanner)
-    matches = scanner._build_matches(
-        [
-            {"id": "1", "name": "Google Gmail 老号", "description": "支持 ChatGPT"},
-            {"id": "2", "name": "StyleMe Chrome插件 API额度", "category_name": "浏览器插件"},
-            {"id": "3", "name": "ChatGPT Plus 直充一个月"},
-            {"id": "4", "name": "SuperGrok 代充值"},
-            {"id": "5", "name": "X Premium+ 12个月官方直充"},
-        ],
-        ["gpt", "chatgpt", "openai", "grok", "supergrok", "x premium"],
-        "https://pay.ldxp.cn/shop/TEST01",
-        False,
+    assert is_blocked_header("Authorization")
+    assert is_blocked_header("visitorid")
+    assert is_blocked_header("x-api-key")
+    assert not is_blocked_header("Accept-Language")
+    assert parse_public_price("¥88.00") == 88.0
+    assert parse_public_stock("现货 有货") == "in_stock"
+    match = build_product_match(
+        product_key="P1",
+        name="ChatGPT Plus 直充一个月",
+        price=88.0,
+        stock="in_stock",
+        product_url="https://pay.ldxp.cn/shop/TEST01/item/P1",
+        shop_closed=False,
+        keywords=["gpt", "chatgpt"],
     )
-    assert [item.product_name for item in matches] == ["ChatGPT Plus 直充一个月", "SuperGrok 代充值", "X Premium+ 12个月官方直充"]
-    replay_headers = BrowserShopScanner._safe_replay_headers(
-        {"User-Agent": "bad", "visitorid": "stable", "X-App": "ok", "Cookie": "secret"}
-    )
-    assert replay_headers == {"visitorid": "stable", "X-App": "ok"}
-
-    scanner.rate_limiter = GlobalRateLimiter(0)
-    challenge_page = type(
-        "ChallengePage",
-        (),
-        {
-            "url": "https://pay.ldxp.cn/shop/TEST01",
-            "evaluate": lambda self, script, payload: {
-                "status": 200,
-                "text": "<html><script>var arg1='ABC123';</script></html>",
-            },
-        },
-    )()
-    try:
-        scanner._fetch_api(challenge_page, CaptureState(), "/shopApi/Shop/info", {"token": "TEST01"})
-    except BrowserScanError as exc:
-        assert exc.status == "rate_limited"
-    else:
-        raise AssertionError("JavaScript challenge was not classified as rate_limited")
+    assert match is not None and match.product_name == "ChatGPT Plus 直充一个月"
+    assert match.content_hash
+    assert build_product_match(
+        product_key="P2",
+        name="ChatGPT Plus 微信: wxid_abcdefghijkl",
+        price=88.0,
+        stock="in_stock",
+        product_url="https://pay.ldxp.cn/shop/TEST01/item/P2",
+        shop_closed=False,
+        keywords=["chatgpt"],
+    ) is None
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -115,7 +104,7 @@ def main() -> None:
                     listed_price=19.9,
                     product_status="有货",
                     product_url="javascript:alert(1)",
-                    raw={"name": "test"},
+                    content_hash="sha256-test",
                 )
             ],
         )
@@ -148,6 +137,10 @@ def main() -> None:
             matches=1,
             circuit_broken=False,
         )
+        raw_json = db.conn.execute("SELECT raw_json FROM matches WHERE token='TEST01'").fetchone()[0]
+        assert '"name": "test"' not in raw_json
+        assert '"content_hash"' in raw_json
+        assert db.conn.execute("SELECT COUNT(*) FROM candidates WHERE policy_status='active'").fetchone()[0] >= 1
         paths = export_results(db, root / "output", "selftest")
         db.close()
 

@@ -1,9 +1,9 @@
 [Unit]
-Description=Run AI Price Radar full candidate scan hourly
+Description=Run AI Price Radar full candidate scan twice daily
 
 [Timer]
-OnCalendar=*-*-* *:05:00
-RandomizedDelaySec=2m
+OnCalendar=*-*-* 03,15:20:00
+RandomizedDelaySec=20m
 Persistent=true
 Unit=ai-price-radar-refresh.service
 

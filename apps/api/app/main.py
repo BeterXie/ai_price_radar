@@ -7,11 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
 from .database import Base, engine
-from .routers import admin, discovery, internal, public
+from .routers import admin, discovery, internal, public, source_policy
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.0"
+VERSION = "3.7.1"
 
 
 @asynccontextmanager
@@ -40,6 +40,8 @@ app.include_router(internal.router)
 app.include_router(internal.detector_router)
 app.include_router(discovery.router)
 app.include_router(discovery.runs_router)
+app.include_router(discovery.policy_router)
+app.include_router(source_policy.router)
 discovery.register_discovery_payload_guard(app)
 
 

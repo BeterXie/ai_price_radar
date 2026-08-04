@@ -71,6 +71,18 @@ The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-
 
 The Source Detector worker claims candidates with `FOR UPDATE SKIP LOCKED` leases, probes the platform with `PinnedHTTPSClient` budgets, reads a bounded public product sample, classifies product names with the catalog classifier, and reports exact `detected_source_url` / `detected_source_key` values. WooCommerce auto-approval requires a valid Store API contract, purchasable products, valid prices/currencies and at least one classified AI product. Schema.org candidates default to `pending_review`; `DISCOVERY_SCHEMA_AUTO_APPROVE` must be explicitly enabled before any strict auto-approval can occur. Qualified candidates are promoted idempotently into `source_intakes` (`origin='discovery'`) and enter the existing atomic publisher; no second publication path exists.
 
+## LDXP public collection policy (v3.7.1)
+
+链动小铺采集默认关闭（`LDXP_COLLECTION_ENABLED=false`）。开启后仅允许匿名公开 DOM 采集：
+
+- 浏览器使用无状态临时上下文，不保存 Cookie / LocalStorage / storage state，不使用持久 Profile；
+- 不捕获或重放 `/shopApi/` 内部接口，不复用 Authorization / visitorid / x- / app- / device- 请求头（`header_policy.py` 强制拦截）；
+- 403 → 暂停 7 天，429 → 暂停 24 小时，验证码/WAF → 暂停 30 天，登录要求 → 永久停止自动扫描；
+- 扫描频率由 `next_scan_at` 自适应（变化后 1 小时，连续无变化自动降至 2/6/12 小时），最低 1 小时；
+- 每家店每天扫描次数、全局请求预算、域名块名单与紧急停止由 Policy Gate 强制；
+- 数据库只保存价格比较必需字段与脱敏审计摘要（`content_hash` / `field_presence`），不再保存完整上游 raw；
+- 商家可通过 `/source-opt-out` 提交退出：立即进入 `legal_hold`（最长 7 天），管理员 `applied` 后对应 Intake 被禁用并从后续目录发布移除，且 Discovery 不会重新启用。
+
 ## Public source intake
 
 `POST /api/v1/shop-requests` is deliberately syntax-only: it normalizes an HTTPS URL and creates a `submitted` record without opening the URL. The separate detector validates a resolved public IP and connects directly to that IP while retaining the submitted hostname for TLS SNI and certificate checks. It permits only port 443, does not follow redirects, and enforces response-size and processing-time limits.
