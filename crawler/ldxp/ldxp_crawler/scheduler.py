@@ -89,10 +89,28 @@ class DueShopScheduler:
                 if not self.db.claim_due_candidate(candidate["token"]):
                     deferred += 1
                     continue
-                remaining = None
-                if self.gate.daily_global_budget:
-                    remaining = max(0, self.gate.daily_global_budget - used)
-                result = scanner.scan_shop(candidate, keywords, request_budget=remaining)
+                today = utc_now()[:10]
+                shop_used = (
+                    int(candidate.get("daily_request_count") or 0)
+                    if str(candidate.get("daily_request_date") or "") == today
+                    else 0
+                )
+                global_remaining = (
+                    max(0, self.gate.daily_global_budget - used)
+                    if self.gate.daily_global_budget
+                    else None
+                )
+                shop_remaining = (
+                    max(0, self.gate.max_requests_per_shop_day - shop_used)
+                    if self.gate.max_requests_per_shop_day
+                    else None
+                )
+                remaining_budget = min(
+                    [value for value in (global_remaining, shop_remaining) if value is not None],
+                    default=None,
+                )
+                self.db.record_daily_scan(candidate["token"])
+                result = scanner.scan_shop(candidate, keywords, request_budget=remaining_budget)
                 used += max(1, result.request_count)
                 self.db.record_daily_request(candidate["token"], count=max(1, result.request_count))
                 self.db.save_scan_result(result, run_id)

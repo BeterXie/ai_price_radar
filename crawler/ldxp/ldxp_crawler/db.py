@@ -166,6 +166,8 @@ class StateDB:
             "last_http_status": "INTEGER",
             "daily_request_count": "INTEGER NOT NULL DEFAULT 0",
             "daily_request_date": "TEXT",
+            "daily_scan_count": "INTEGER NOT NULL DEFAULT 0",
+            "daily_scan_date": "TEXT",
         }
         for name, ddl in migrations.items():
             self._ensure_column("candidates", name, ddl)
@@ -617,6 +619,20 @@ class StateDB:
             WHERE token = ?
             """,
             (day, max(1, count), max(1, count), day, token),
+        )
+        self.conn.commit()
+
+    def record_daily_scan(self, token: str, *, now: str | None = None) -> None:
+        now = now or utc_now()
+        day = now[:10]
+        self.conn.execute(
+            """
+            UPDATE candidates
+            SET daily_scan_count = CASE WHEN daily_scan_date = ? THEN daily_scan_count + 1 ELSE 1 END,
+                daily_scan_date = ?
+            WHERE token = ?
+            """,
+            (day, day, token),
         )
         self.conn.commit()
 

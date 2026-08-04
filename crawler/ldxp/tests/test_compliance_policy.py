@@ -21,6 +21,7 @@ from ldxp_crawler.public_dom_scanner import (
 from ldxp_crawler.scheduler import DueShopScheduler
 from ldxp_crawler.sensitive_data import redact_text, sensitive_hits
 from ldxp_crawler.utils import utc_now
+from ldxp_crawler.public_dom_scanner import PublicDomScanner
 
 
 def test_header_policy_blocks_sensitive_headers():
@@ -140,7 +141,7 @@ def test_policy_gate_order_and_sticky_statuses():
     decision = gate.decide(_active_candidate(next_scan_at="2999-01-01T00:00:00+00:00"))
     assert not decision.allowed and "not due" in decision.reason
 
-    decision = gate.decide(_active_candidate(daily_request_date=utc_now()[:10], daily_request_count=12))
+    decision = gate.decide(_active_candidate(daily_scan_date=utc_now()[:10], daily_scan_count=12))
     assert not decision.allowed and "daily budget" in decision.reason
 
     decision = gate.decide(_active_candidate(policy_reason="robots-denied"))
@@ -400,6 +401,110 @@ def test_global_budget_remaining_is_passed_to_scanner(tmp_path: Path):
         summary = scheduler.run_once([])
         assert summary["scanned"] == 1
         assert budgets == [3]  # global budget 4 minus 1 already used
+    finally:
+        db.close()
+
+
+def test_scanner_timeout_preserves_real_request_count():
+    class FakeRoute:
+        def __init__(self, resource_type="document"):
+            self.request = type("Req", (), {"resource_type": resource_type})()
+
+        def abort(self):
+            return None
+
+        def continue_(self):
+            return None
+
+    class FakePage:
+        def __init__(self, context):
+            self.context = context
+
+        def set_default_timeout(self, _ms):
+            return None
+
+        def set_default_navigation_timeout(self, _ms):
+            return None
+
+        def goto(self, _url, **_kwargs):
+            for _index in range(5):
+                self.context.handler(FakeRoute())
+            raise PlaywrightTimeoutError("nav timeout")
+
+        def close(self):
+            return None
+
+    class FakeContext:
+        def __init__(self):
+            self.handler = None
+            self.pages = []
+
+        def route(self, _pattern, handler):
+            self.handler = handler
+
+        def new_page(self):
+            page = FakePage(self)
+            self.pages.append(page)
+            return page
+
+        def close(self):
+            return None
+
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+    scanner = PublicDomScanner(
+        request_interval=0,
+        request_jitter_seconds=0,
+        logger=logging.getLogger("test-timeout"),
+    )
+    context = FakeContext()
+    scanner._anonymous_context = lambda: context  # type: ignore[method-assign]
+    result = scanner.scan_shop({"token": "TIMEOUT", "url": "https://pay.ldxp.cn/shop/TIMEOUT"}, [])
+    assert result.status == "network_error"
+    assert result.request_count == 5
+
+
+def test_per_shop_daily_request_budget_limits_scanner(tmp_path: Path):
+    db = StateDB(tmp_path / "shop-budget.db")
+    try:
+        db.upsert_candidate("SHOPB", "https://pay.ldxp.cn/shop/SHOPB", "seed", 100)
+        db.conn.execute(
+            "UPDATE candidates SET daily_request_count=11, daily_request_date=? WHERE token='SHOPB'",
+            (utc_now()[:10],),
+        )
+        db.conn.commit()
+        budgets: list = []
+
+        class AwareScanner:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
+                budgets.append(request_budget)
+                return ShopScanResult(token=candidate["token"], status="no_match", request_count=1)
+
+        gate = CollectionPolicyGate(
+            enabled=True,
+            mode="public_dom",
+            max_scans_per_shop_day=12,
+            max_requests_per_shop_day=12,
+            environ={},
+        )
+        scheduler = DueShopScheduler(
+            db,
+            gate,
+            scanner_factory=AwareScanner,
+            logger=logging.getLogger("test-shop-budget"),
+            batch_limit=10,
+        )
+        scheduler.run_once([])
+        assert budgets == [1]
+        row = db.conn.execute("SELECT * FROM candidates WHERE token='SHOPB'").fetchone()
+        assert row["daily_request_count"] == 12
+        assert row["daily_scan_count"] == 1
     finally:
         db.close()
 

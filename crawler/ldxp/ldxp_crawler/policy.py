@@ -44,6 +44,7 @@ class CollectionPolicyGate:
         mode: str | None = None,
         domain_blocklist: tuple[str, ...] = (),
         max_scans_per_shop_day: int | None = None,
+        max_requests_per_shop_day: int | None = None,
         daily_global_budget: int | None = None,
         source_checker: SourceCheckResult | None = None,
         respect_robots: bool | None = None,
@@ -59,6 +60,7 @@ class CollectionPolicyGate:
         )
         self.domain_blocklist = raw_blocklist
         self.max_scans_per_shop_day = max_scans_per_shop_day if max_scans_per_shop_day is not None else self._env_int(env, "LDXP_MAX_SCANS_PER_SHOP_DAY", 12)
+        self.max_requests_per_shop_day = max_requests_per_shop_day if max_requests_per_shop_day is not None else self._env_int(env, "LDXP_MAX_REQUESTS_PER_SHOP_DAY", 24)
         self.daily_global_budget = daily_global_budget if daily_global_budget is not None else self._env_int(env, "LDXP_DAILY_GLOBAL_REQUEST_BUDGET", 2000)
         self.source_checker = source_checker
         self.respect_robots = (
@@ -103,10 +105,14 @@ class CollectionPolicyGate:
         if next_scan_at and next_scan_at > now:
             return CollectionDecision(False, self.mode, "shop is not due yet", next_allowed_at=next_scan_at)
 
-        if str(candidate.get("daily_request_date") or "") == now[:10]:
-            daily_count = int(candidate.get("daily_request_count") or 0)
-            if daily_count >= self.max_scans_per_shop_day:
+        if str(candidate.get("daily_scan_date") or "") == now[:10]:
+            scan_count = int(candidate.get("daily_scan_count") or 0)
+            if scan_count >= self.max_scans_per_shop_day:
                 return CollectionDecision(False, self.mode, "per-shop daily budget reached")
+        if str(candidate.get("daily_request_date") or "") == now[:10]:
+            request_count = int(candidate.get("daily_request_count") or 0)
+            if request_count >= self.max_requests_per_shop_day:
+                return CollectionDecision(False, self.mode, "per-shop daily request budget reached")
 
         if self.mode != "public_dom":
             return CollectionDecision(False, self.mode, "collection mode is not allowed")
