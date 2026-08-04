@@ -168,6 +168,7 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
     seen_ids: set[int] = set()
     expected_total: int | None = None
     expected_pages: int | None = None
+    fully_validated = False
     page = 1
     while True:
         response = client.get(
@@ -219,11 +220,17 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
                     permalink,
                     str(item.get("slug") or ""),
                 )
-        if page >= total_pages or len(items) < WOO_PAGE_SIZE:
+        if page >= total_pages:
+            fully_validated = True
+            break
+        if len(items) < WOO_PAGE_SIZE:
             break
         page += 1
         if page > MAX_WOO_PAGES:
             break
+    fingerprints = ["woocommerce-store-api"]
+    if not fully_validated:
+        fingerprints.append("woocommerce-partial-scan")
     return QualificationResult(
         status="detected",
         detected_platform="woocommerce",
@@ -232,8 +239,8 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
         total_product_count=expected_total or len(samples),
         ai_product_count=ai_count,
         sample_products=samples,
-        fingerprints=["woocommerce-store-api"],
-        confidence_score=88,
+        fingerprints=fingerprints,
+        confidence_score=88 if fully_validated else 49,
     )
 
 

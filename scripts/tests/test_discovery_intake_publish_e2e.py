@@ -60,6 +60,7 @@ def _upsert_claim_report(
     ai_product_count: int = 1,
     total_product_count: int = 2,
     confidence: int = 90,
+    fingerprints: list[str] | None = None,
 ):
     response = client.post(
         "/api/v1/internal/source-candidates/upsert",
@@ -95,7 +96,7 @@ def _upsert_claim_report(
                 "url": f"{source_url.rstrip('/')}/products/chatgpt-plus",
                 "product_slug": "chatgpt-plus",
             }],
-            "fingerprints": ["e2e-fingerprint"],
+            "fingerprints": fingerprints if fingerprints is not None else ["e2e-fingerprint"],
             "confidence_score": confidence,
             "failure_reason": "",
         },
@@ -333,5 +334,69 @@ def test_woocommerce_no_public_offers_stays_no_products_and_meta_unchanged(tmp_p
             assert intake.product_count == 0
         meta = client.get("/api/v1/meta").json()
         assert all(item["id"] != "woocommerce" for item in meta["source_platforms"])
+    finally:
+        _cleanup()
+
+
+def test_woocommerce_partial_scan_requires_review_before_publish(tmp_path, monkeypatch):
+    engine, database_url, client = _setup(tmp_path, monkeypatch)
+    try:
+        _candidate_id, reported = _upsert_claim_report(
+            client,
+            url="https://woo-partial.example.com/products/chatgpt",
+            hint="unknown",
+            platform="woocommerce",
+            source_key="https://woo-partial.example.com",
+            source_url="https://woo-partial.example.com",
+            total_product_count=200,
+            confidence=49,
+            fingerprints=["woocommerce-store-api", "woocommerce-partial-scan"],
+        )
+        assert reported["status"] == "promoted"
+        intake_id = reported["promoted_intake_id"]
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id))
+            assert intake.status == "pending_review"
+            assert intake.approved_at is None
+
+        approved = client.post(
+            f"/api/v1/admin/source-intakes/{intake_id}/approve",
+            headers=ADMIN_HEADERS,
+        )
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "approved"
+
+        def loader(source):
+            assert str(source).rstrip("/") == "https://woo-partial.example.com"
+            yield {
+                "token": "woocommerce-partial",
+                "shop_name": "Woo Partial",
+                "shop_url": "https://woo-partial.example.com",
+                "source_platform": "woocommerce",
+                "source_kind": "public_api",
+                "product_key": "woocommerce:1",
+                "product_name": "ChatGPT Plus 1 month",
+                "product_url": "https://woo-partial.example.com/product/chatgpt-plus",
+                "listed_price": "100.00",
+                "currency": "CNY",
+                "stock_count": 1,
+                "product_status": "in_stock",
+                "is_purchasable": True,
+            }
+
+        monkeypatch.setitem(CONNECTORS, "woocommerce-store", loader)
+        pipeline_db = session_for(database_url)
+        try:
+            sources = approved_intake_sources(pipeline_db)
+            assert len(sources) == 1
+            publish_sources(pipeline_db, sources)
+        finally:
+            pipeline_db.close()
+
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id))
+            assert intake.status == "published"
+        meta = client.get("/api/v1/meta").json()
+        assert any(item["id"] == "woocommerce" for item in meta["source_platforms"])
     finally:
         _cleanup()

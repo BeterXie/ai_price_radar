@@ -5,7 +5,7 @@ import json
 import pytest
 from price_radar_http import PinnedResponse
 
-from qualify import qualify_candidate
+from qualify import WOO_PAGE_SIZE, qualify_candidate
 
 
 class FakeClient:
@@ -43,6 +43,18 @@ def _woo_page_route(products, *, total=None, totalpages=None):
         products,
         headers={"X-WP-Total": str(total), "X-WP-TotalPages": str(totalpages)},
     )
+
+
+def _woo_product(item_id, name, slug):
+    return {
+        "id": item_id,
+        "name": name,
+        "slug": slug,
+        "permalink": f"https://woo-pages.example.com/product/{slug}",
+        "is_purchasable": True,
+        "is_in_stock": True,
+        "prices": {"price": "100", "currency_code": "CNY", "currency_minor_unit": 2},
+    }
 
 
 def _html_route(body: bytes):
@@ -90,6 +102,8 @@ def test_woocommerce_purchasable_ai_product_is_detected():
     assert result.ai_product_count == 1
     assert result.sample_products[0]["name"] == "ChatGPT Plus 1 month"
     assert result.sample_products[0]["url"] == f"{origin}/product/chatgpt-plus"
+    assert result.confidence_score == 88
+    assert result.fingerprints == ["woocommerce-store-api"]
 
 
 def test_woocommerce_non_purchasable_products_do_not_qualify():
@@ -244,6 +258,34 @@ def test_woocommerce_duplicate_product_ids_are_rejected():
     })
     result = qualify_candidate(origin, "woocommerce", client=client)
     assert result.status == "validation_failed"
+
+
+def test_woocommerce_partial_scan_is_not_high_confidence():
+    origin = "https://woo-pages.example.com"
+    routes = {
+        **_probe_routes(origin),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(
+            [_woo_product(1, "ChatGPT Plus 1 month", "chatgpt-plus")]
+        ),
+    }
+    pages = [
+        [_woo_product(index, "ChatGPT Plus 1 month" if index == 1 else f"Product {index}", f"product-{index}")
+         for index in range(page * WOO_PAGE_SIZE + 1, (page + 1) * WOO_PAGE_SIZE + 1)]
+        for page in range(3)
+    ]
+    for page_number, products in enumerate(pages, start=1):
+        routes[f"{origin}/wp-json/wc/store/v1/products?page={page_number}&per_page=50"] = _woo_page_route(
+            products,
+            total=200,
+            totalpages=4,
+        )
+    client = FakeClient(routes)
+    result = qualify_candidate(origin, "woocommerce", client=client)
+    assert result.status == "detected"
+    assert result.ai_product_count == 1
+    assert result.confidence_score == 49
+    assert "woocommerce-partial-scan" in result.fingerprints
+    assert "page=4" not in " ".join(client.calls)
 
 
 def test_dujiao_product_api_qualifies_ai_product():
