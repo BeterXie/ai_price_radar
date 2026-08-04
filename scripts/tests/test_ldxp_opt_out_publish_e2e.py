@@ -89,3 +89,38 @@ def test_ldxp_opt_out_excludes_shop_from_sqlite_publication(tmp_path):
         assert len(offers) == 1
     finally:
         pipeline_db.close()
+
+
+def test_cross_domain_lookalike_opt_out_does_not_exclude_ldxp_shop(tmp_path):
+    crawler_db = tmp_path / "crawler.db"
+    _seed_crawler_db(crawler_db)
+
+    api_db_path = tmp_path / "api.db"
+    database_url = f"sqlite:///{api_db_path.as_posix()}"
+    engine = create_engine(database_url)
+    ApiBase.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(SourcePolicyRequest(
+            source_url="https://attacker.example/shop/TEST01",
+            request_type="opt_out",
+            requester_email="attacker@example.com",
+            status="applied",
+            decided_at=__import__("app.services.source_intake", fromlist=["utcnow"]).utcnow(),
+            decision_note="look-alike",
+        ))
+        db.commit()
+
+    pipeline_db = session_for(database_url)
+    try:
+        result = publish_sources(
+            pipeline_db,
+            [SourceSpec("ldxp", str(crawler_db))],
+            source_label="ldxp-lookalike-e2e",
+        )
+        assert result.offer_count == 2
+        from common import Shop
+
+        shops = list(pipeline_db.scalars(select(Shop).order_by(Shop.token)))
+        assert [shop.token for shop in shops] == ["TEST01", "TEST02"]
+    finally:
+        pipeline_db.close()

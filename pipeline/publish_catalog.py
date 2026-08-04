@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import urllib.parse
 from dataclasses import asdict, dataclass
@@ -166,8 +167,16 @@ def ldxp_opt_out_tokens(db: Session) -> frozenset[str]:
     tokens: set[str] = set()
     for row in rows:
         url = str(row["source_url"] or "")
-        parts = [urllib.parse.unquote(part) for part in urllib.parse.urlsplit(url).path.rstrip("/").split("/") if part]
-        if len(parts) == 2 and parts[0].casefold() == "shop":
+        parsed = urllib.parse.urlsplit(url)
+        host = (parsed.hostname or "").casefold().rstrip(".")
+        if host not in {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}:
+            continue
+        parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]
+        if (
+            len(parts) == 2
+            and parts[0].casefold() == "shop"
+            and re.fullmatch(r"[A-Za-z0-9._~-]{1,128}", parts[1])
+        ):
             tokens.add(parts[1].casefold())
     return frozenset(tokens)
 
