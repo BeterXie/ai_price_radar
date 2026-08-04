@@ -81,3 +81,71 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  crawler:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crawler/ldxp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: crawler/ldxp/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            apps/api/requirements.txt
+            crawler/ldxp/requirements.txt
+            pipeline/requirements-test.txt
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r apps/api/requirements.txt
+      - run: pip install -r crawler/ldxp/requirements.txt
+      - run: pip install -r pipeline/requirements-test.txt
+      - run: pip install ./shared_http
+      - run: python -m pytest -q scripts/tests
+
+  scripts-postgres:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: price_radar
+          POSTGRES_PASSWORD: price_radar
+          POSTGRES_DB: price_radar_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U price_radar -d price_radar_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_POSTGRES_URL: >-
+        postgresql+psycopg://price_radar:price_radar@127.0.0.1:5432/price_radar_test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r apps/api/requirements.txt
+      - run: python -m pytest -q scripts/tests/test_migrate_ldxp_policy_v11.py
