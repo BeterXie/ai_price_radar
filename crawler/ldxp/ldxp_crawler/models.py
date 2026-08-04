@@ -29,6 +29,7 @@ class ShopScanResult:
     shop_url: str = ""
     api_host: str = ""
     scanned_item_count: int = 0
+    request_count: int = 0
     matches: list[ProductMatch] = field(default_factory=list)
     error: str = ""
     challenge_seen: bool = False
