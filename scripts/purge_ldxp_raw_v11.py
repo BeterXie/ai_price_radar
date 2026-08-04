@@ -80,7 +80,7 @@ def _postgres_counts(connection: psycopg.Connection) -> dict[str, int]:
         return {"postgres_ldxp_raw_json": int(cursor.fetchone()[0])}
 
 
-def _postgres_purge(connection: psycopg.Connection, *, dry_run: bool) -> dict[str, int]:
+def _postgres_purge(connection: psycopg.Connection, *, dry_run: bool, commit: bool = True) -> dict[str, int]:
     before = _postgres_counts(connection)
     if dry_run:
         return before
@@ -93,7 +93,8 @@ def _postgres_purge(connection: psycopg.Connection, *, dry_run: bool) -> dict[st
             WHERE s.id = rp.shop_id AND s.platform = 'ldxp' AND rp.raw_json IS NOT NULL
             """
         )
-    connection.commit()
+    if commit:
+        connection.commit()
     return before
 
 
@@ -154,7 +155,8 @@ def main() -> int:
                 parser.error("--apply with PostgreSQL requires a backup created within the last hour (run scripts/backup_postgres.sh); pass --skip-postgres-backup-check only for tests")
             try:
                 with gzip.open(recent[0], "rb") as handle:
-                    handle.read(1)
+                    while handle.read(65536):
+                        pass
             except (OSError, EOFError) as exc:
                 parser.error(f"PostgreSQL backup is not readable: {exc}")
         if args.database_url:
@@ -167,17 +169,29 @@ def main() -> int:
                 parser.error(f"PostgreSQL connection check failed: {exc}")
 
     # ---- apply phase: every preflight passed ----
-    summary["sqlite"] = _sqlite_purge(args.crawler_db, dry_run=args.dry_run, backup=False)
     summary["sqlite_backup"] = str(sqlite_backup) if sqlite_backup else ""
-    if args.database_url and args.apply and postgres_connection is not None:
-        summary["postgres"] = _postgres_purge(postgres_connection, dry_run=False)
+    try:
+        summary["sqlite"] = _sqlite_purge(args.crawler_db, dry_run=args.dry_run, backup=False)
+        if args.database_url and args.apply and postgres_connection is not None:
+            _postgres_purge(postgres_connection, dry_run=False, commit=False)
+            postgres_connection.commit()
+        elif args.database_url:
+            with psycopg.connect(connection_url(args.database_url)) as connection:
+                summary["postgres"] = _postgres_purge(connection, dry_run=True)
+        if args.apply:
+            for path in legacy:
+                _remove_tree(path)
+    except Exception as exc:
+        # Restore SQLite from the preflight backup and roll back PostgreSQL so a
+        # mid-flight failure never leaves a half-cleaned state.
+        if sqlite_backup is not None and sqlite_backup.is_file():
+            shutil.copyfile(sqlite_backup, args.crawler_db)
+        if postgres_connection is not None:
+            postgres_connection.rollback()
+            postgres_connection.close()
+        parser.error(f"purge failed and was rolled back: {exc}")
+    if postgres_connection is not None:
         postgres_connection.close()
-    elif args.database_url:
-        with psycopg.connect(connection_url(args.database_url)) as connection:
-            summary["postgres"] = _postgres_purge(connection, dry_run=True)
-    if args.apply:
-        for path in legacy:
-            _remove_tree(path)
 
     print(json.dumps(summary, ensure_ascii=False))
     return 0

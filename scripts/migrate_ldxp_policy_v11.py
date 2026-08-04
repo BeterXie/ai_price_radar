@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS source_policy_effects (
     reverse_result VARCHAR(30) NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_source_policy_effects_request ON source_policy_effects(policy_request_id);
+ALTER TABLE source_policy_effects ADD COLUMN IF NOT EXISTS previous_finished_at TIMESTAMPTZ;
+ALTER TABLE source_policy_effects ADD COLUMN IF NOT EXISTS reverse_result VARCHAR(30) NOT NULL DEFAULT '';
 
 DO $$
 BEGIN

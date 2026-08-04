@@ -118,3 +118,70 @@ def test_purge_apply_aborts_when_postgres_connection_fails(tmp_path, monkeypatch
     assert exc.value.code == 2
     assert _sqlite_counts(db_path)["matches_raw_json"] == 1  # unchanged
     assert state_file.exists()
+
+
+def test_purge_apply_rolls_back_sqlite_when_postgres_fails_midway(tmp_path, monkeypatch):
+    import scripts.purge_ldxp_raw_v11 as purge_module
+
+    crawler_dir = tmp_path / "data" / "crawler"
+    crawler_dir.mkdir(parents=True)
+    db_path = crawler_dir / "ldxp_crawler.db"
+    _seed_db(db_path)
+    state_file = crawler_dir / "browser_state.json"
+    state_file.write_text("{}", encoding="utf-8")
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def execute(self, *_args, **_kwargs):
+            return None
+
+        def fetchone(self):
+            return (0,)
+
+    class FakeConn:
+        def __init__(self):
+            self.rolled_back = False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            self.rolled_back = True
+
+        def close(self):
+            return None
+
+    def broken_purge(*_args, **_kwargs):
+        raise RuntimeError("postgres update failed")
+
+    fake_conn = FakeConn()
+    monkeypatch.setattr(purge_module.psycopg, "connect", lambda _url: fake_conn)
+    monkeypatch.setattr(purge_module, "_postgres_counts", lambda _conn: {"postgres_ldxp_raw_json": 0})
+    monkeypatch.setattr(purge_module, "_postgres_purge", broken_purge)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "purge_ldxp_raw_v11.py",
+            "--apply",
+            "--skip-postgres-backup-check",
+            "--crawler-db", str(db_path),
+            "--crawler-dir", str(crawler_dir),
+            "--database-url", "postgresql+psycopg://user:pass@db/db",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc:
+        purge_main()
+    assert exc.value.code == 2
+    assert _sqlite_counts(db_path)["matches_raw_json"] == 1  # restored from backup
+    assert state_file.exists()
+    assert fake_conn.rolled_back is True
