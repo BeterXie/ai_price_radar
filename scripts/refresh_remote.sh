@@ -4,6 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+set -a
+if [[ -f .env ]]; then
+  # shellcheck disable=SC1091
+  source .env
+fi
+set +a
+
 MODE="${1:-scan}"
 DATA_DIR="$ROOT/data/crawler"
 CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
@@ -105,7 +112,7 @@ case "$MODE" in
       --storage-state /data/browser_state.json \
       --output-dir /data/output \
       --limit 100 \
-      --request-interval 2.0 \
+    --request-interval "${LDXP_REQUEST_INTERVAL_SECONDS:-5}" \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     run_dujiao_discovery
