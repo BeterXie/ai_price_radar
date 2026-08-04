@@ -155,11 +155,17 @@ class ApiOriginPolicyChecker:
 
 
 class RobotsTxtPolicy:
-    """Respect robots.txt Disallow rules for the scanned shop path."""
+    """Respect robots.txt Disallow rules for the scanned shop path.
+
+    The robots.txt body is fetched once per origin and cached; every shop path
+    is then evaluated against the same cached body, so two shops under one
+    origin cannot leak each other's allow/deny decision.
+    """
 
     def __init__(self, fetcher: Callable[[str], tuple[int, str]] | None = None, *, timeout: float = 5.0):
         self.fetcher = fetcher or self._fetch
         self.timeout = timeout
+        self._cache: dict[str, tuple[int, str]] = {}
 
     @staticmethod
     def _fetch(url: str) -> tuple[int, str]:
@@ -172,9 +178,14 @@ class RobotsTxtPolicy:
         except (OSError, urllib.error.URLError):
             return 0, ""
 
+    def cached(self, source_url: str) -> bool:
+        return candidate_origin(source_url) in self._cache
+
     def allows(self, source_url: str) -> tuple[bool, str]:
         origin = candidate_origin(source_url)
-        status, text = self.fetcher(f"{origin}/robots.txt")
+        if origin not in self._cache:
+            self._cache[origin] = self.fetcher(f"{origin}/robots.txt")
+        status, text = self._cache[origin]
         if status != 200 or not text:
             return True, ""
         path = urllib.parse.urlsplit(source_url).path or "/"
