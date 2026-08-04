@@ -74,10 +74,12 @@ def _postgres_counts(connection: psycopg.Connection) -> dict[str, int]:
             """
             SELECT count(*) FROM raw_products rp
             JOIN shops s ON s.id = rp.shop_id
-            WHERE s.platform = 'ldxp' AND rp.raw_json IS NOT NULL
+            WHERE s.platform = 'ldxp'
+              AND rp.raw_json IS NOT NULL
+              AND rp.raw_json <> '{}'::jsonb
             """
         )
-        return {"postgres_ldxp_raw_json": int(cursor.fetchone()[0])}
+        return {"postgres_ldxp_nonempty_raw_json": int(cursor.fetchone()[0])}
 
 
 def _postgres_purge(connection: psycopg.Connection, *, dry_run: bool, commit: bool = True) -> dict[str, int]:
@@ -113,6 +115,79 @@ def _remove_tree(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
+def _apply_database_cleanup(
+    *,
+    crawler_db: Path,
+    sqlite_backup: Path,
+    postgres_connection: psycopg.Connection,
+) -> dict[str, Any]:
+    """Run the database cleanup as one recoverable unit.
+
+    PostgreSQL updates first (uncommitted), verified to zero, then SQLite is
+    purged and verified, and only then PostgreSQL commits. Any failure rolls
+    back PostgreSQL and restores SQLite from the preflight backup.
+    """
+    try:
+        postgres_before = _postgres_purge(
+            postgres_connection,
+            dry_run=False,
+            commit=False,
+        )
+        postgres_after = _postgres_counts(postgres_connection)
+        if postgres_after["postgres_ldxp_nonempty_raw_json"] != 0:
+            raise RuntimeError("PostgreSQL raw cleanup verification failed")
+
+        sqlite_before = _sqlite_purge(crawler_db, dry_run=False, backup=False)
+        sqlite_after = _sqlite_counts(crawler_db)
+        if any(sqlite_after.values()):
+            raise RuntimeError("SQLite raw cleanup verification failed")
+
+        postgres_connection.commit()
+        return {
+            "postgres": postgres_before,
+            "postgres_after": postgres_after,
+            "sqlite": sqlite_before,
+            "sqlite_after": sqlite_after,
+            "database_cleanup": "success",
+        }
+    except Exception:
+        try:
+            postgres_connection.rollback()
+        except Exception:
+            pass
+        if sqlite_backup.is_file():
+            shutil.copyfile(sqlite_backup, crawler_db)
+            restored = sqlite3.connect(crawler_db)
+            try:
+                check = restored.execute("PRAGMA quick_check").fetchone()[0]
+            finally:
+                restored.close()
+            if check != "ok":
+                raise RuntimeError("SQLite restore quick_check failed") from None
+        raise
+
+
+def _cleanup_legacy_artifacts(paths: list[Path]) -> dict[str, Any]:
+    removed: list[str] = []
+    failed: list[dict[str, str]] = []
+    for path in paths:
+        try:
+            _remove_tree(path)
+            removed.append(str(path))
+        except Exception as exc:
+            failed.append({"path": str(path), "error": str(exc)})
+    return {
+        "removed": removed,
+        "failed": failed,
+    }
+
+
+def _verify_gzip(path: Path) -> None:
+    with gzip.open(path, "rb") as handle:
+        while handle.read(65536):
+            pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Purge historical LDXP raw payloads and legacy browser artifacts")
     parser.add_argument("--crawler-db", type=Path, default=Path("data/crawler/ldxp_crawler.db"))
@@ -130,7 +205,7 @@ def main() -> int:
     legacy = _legacy_artifacts(args.crawler_dir)
     summary["legacy_artifacts"] = [str(path) for path in legacy]
 
-    # ---- preflight: no destructive operation may happen before every check passes ----
+    # ---- Phase A: preflight; nothing is modified before every check passes ----
     sqlite_backup: Path | None = None
     postgres_connection = None
     if args.apply:
@@ -154,9 +229,7 @@ def main() -> int:
             if not recent:
                 parser.error("--apply with PostgreSQL requires a backup created within the last hour (run scripts/backup_postgres.sh); pass --skip-postgres-backup-check only for tests")
             try:
-                with gzip.open(recent[0], "rb") as handle:
-                    while handle.read(65536):
-                        pass
+                _verify_gzip(recent[0])
             except (OSError, EOFError) as exc:
                 parser.error(f"PostgreSQL backup is not readable: {exc}")
         if args.database_url:
@@ -168,32 +241,44 @@ def main() -> int:
                     postgres_connection.close()
                 parser.error(f"PostgreSQL connection check failed: {exc}")
 
-    # ---- apply phase: every preflight passed ----
     summary["sqlite_backup"] = str(sqlite_backup) if sqlite_backup else ""
-    try:
-        summary["sqlite"] = _sqlite_purge(args.crawler_db, dry_run=args.dry_run, backup=False)
-        if args.database_url and args.apply and postgres_connection is not None:
-            _postgres_purge(postgres_connection, dry_run=False, commit=False)
-            postgres_connection.commit()
-        elif args.database_url:
+
+    # ---- Phase B: database cleanup (recoverable) ----
+    if args.apply:
+        try:
+            database_summary = _apply_database_cleanup(
+                crawler_db=args.crawler_db,
+                sqlite_backup=sqlite_backup,
+                postgres_connection=postgres_connection,
+            )
+        except Exception as exc:
+            print(json.dumps({"error": str(exc), "rolled_back": True}, ensure_ascii=False))
+            return 2
+        summary.update(database_summary)
+    else:
+        summary["sqlite"] = _sqlite_counts(args.crawler_db)
+        if args.database_url:
             with psycopg.connect(connection_url(args.database_url)) as connection:
-                summary["postgres"] = _postgres_purge(connection, dry_run=True)
-        if args.apply:
-            for path in legacy:
-                _remove_tree(path)
-    except Exception as exc:
-        # Restore SQLite from the preflight backup and roll back PostgreSQL so a
-        # mid-flight failure never leaves a half-cleaned state.
-        if sqlite_backup is not None and sqlite_backup.is_file():
-            shutil.copyfile(sqlite_backup, args.crawler_db)
-        if postgres_connection is not None:
-            postgres_connection.rollback()
-            postgres_connection.close()
-        parser.error(f"purge failed and was rolled back: {exc}")
-    if postgres_connection is not None:
-        postgres_connection.close()
+                summary["postgres"] = _postgres_counts(connection)
+        else:
+            summary["postgres"] = {"postgres_ldxp_nonempty_raw_json": 0}
+
+    # ---- Phase C: artifact cleanup (non-recoverable, never rolls back databases) ----
+    artifact_summary: dict[str, Any] = {
+        "removed": [],
+        "failed": [],
+    }
+    if args.apply:
+        artifact_summary = _cleanup_legacy_artifacts(legacy)
+        summary["artifact_cleanup"] = "success" if not artifact_summary["failed"] else "partial"
+        summary["artifacts_removed"] = artifact_summary["removed"]
+        summary["artifact_failures"] = artifact_summary["failed"]
+    else:
+        summary["artifact_cleanup"] = "dry-run"
 
     print(json.dumps(summary, ensure_ascii=False))
+    if args.apply and artifact_summary["failed"]:
+        return 3
     return 0
 
 
