@@ -511,6 +511,59 @@ def test_expired_unverified_hold_allows_resubmission(tmp_path, monkeypatch):
         assert second.status_code == 201
 
 
+def test_unverified_hold_cannot_be_renewed_anonymously(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from app.services.source_intake import utcnow
+
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/RENEW",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        assert first["hold_expires_at"] is not None
+        with Session(engine) as db:
+            request = db.get(SourcePolicyRequest, first["id"])
+            request.hold_expires_at = utcnow() - timedelta(hours=1)
+            db.commit()
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/RENEW",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "renew attempt",
+            },
+        )
+        assert second.status_code == 201
+        assert second.json()["hold_expires_at"] is None  # no anonymous renewal freeze
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/RENEW"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "active"
+        verified = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{second.json()['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "verified", "note": "owner confirmed"},
+        )
+        assert verified.status_code == 200
+        assert verified.json()["hold_expires_at"] is not None
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/RENEW"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "legal_hold"
+
+
 def test_reverse_does_not_overwrite_later_admin_decision(tmp_path, monkeypatch):
     for test_client in _client(tmp_path, monkeypatch):
         engine = test_client.app.state.test_policy_engine

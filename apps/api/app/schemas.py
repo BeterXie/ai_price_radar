@@ -511,6 +511,7 @@ class SourcePolicyRequestOut(BaseModel):
     reason: str
     status: str
     temporary_hold_at: datetime | None
+    hold_expires_at: datetime | None
     decided_at: datetime | None
     decision_note: str
     created_at: datetime

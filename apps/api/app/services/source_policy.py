@@ -110,6 +110,21 @@ def create_policy_request(
         ip_recent = sum(1 for row in existing if _aware(row.created_at, now) >= since and row.requester_ip == requester_ip)
         if ip_recent >= 10:
             raise ValueError("too many requests from this address; try again later")
+    prior_unverified = False
+    if request_type == "opt_out":
+        prior_unverified = any(
+            row.request_type == "opt_out"
+            and row.status == "pending_unverified"
+            and source_identity(row.source_url) == identity
+            for row in existing
+        )
+    hold_expires = (
+        None
+        if prior_unverified
+        else now + timedelta(hours=UNVERIFIED_HOLD_HOURS)
+        if request_type == "opt_out"
+        else None
+    )
     request = SourcePolicyRequest(
         source_url=normalized,
         request_type=request_type,
@@ -118,11 +133,7 @@ def create_policy_request(
         reason=reason.strip()[:2000],
         status="pending_unverified" if request_type == "opt_out" else "pending",
         temporary_hold_at=now if request_type == "opt_out" else None,
-        hold_expires_at=(
-            now + timedelta(hours=UNVERIFIED_HOLD_HOURS)
-            if request_type == "opt_out"
-            else None
-        ),
+        hold_expires_at=hold_expires,
     )
     db.add(request)
     db.commit()
