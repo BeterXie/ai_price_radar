@@ -34,7 +34,6 @@ class DueShopScheduler:
         self.batch_limit = max(1, batch_limit)
         self.result_callback = result_callback
         self.robots_policy = robots_policy
-        self._robots_cache: dict[str, tuple[bool, str]] = {}
 
     def run_once(self, keywords: Sequence[str]) -> dict[str, int]:
         due = self.db.list_due_candidates(limit=self.batch_limit)
@@ -71,19 +70,18 @@ class DueShopScheduler:
                     continue
                 allowed += 1
                 if self.robots_policy is not None and self.gate.respect_robots:
-                    used += 1  # robots.txt is part of the daily request budget
-                    if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
-                        deferred += 1
-                        self.logger.warning("global daily request budget reached; deferring remaining shops")
-                        break
                     origin = self.db.conn.execute(
                         "SELECT url FROM candidates WHERE token=?", (candidate["token"],)
                     ).fetchone()
                     source_url = str(origin["url"] if origin else candidate.get("url") or "")
-                    cache_key = self._origin_key(source_url)
-                    if cache_key not in self._robots_cache:
-                        self._robots_cache[cache_key] = self.robots_policy.allows(source_url)
-                    robots_allowed, robots_reason = self._robots_cache[cache_key]
+                    if not self.robots_policy.cached(source_url):
+                        used += 1  # robots.txt fetch counts against the daily budget
+                        self.db.record_daily_request(candidate["token"], count=1)
+                        if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
+                            deferred += 1
+                            self.logger.warning("global daily request budget reached; deferring remaining shops")
+                            break
+                    robots_allowed, robots_reason = self.robots_policy.allows(source_url)
                     if not robots_allowed:
                         self.db.set_policy_status(candidate["token"], "active", reason=robots_reason)
                         deferred += 1
@@ -91,7 +89,10 @@ class DueShopScheduler:
                 if not self.db.claim_due_candidate(candidate["token"]):
                     deferred += 1
                     continue
-                result = scanner.scan_shop(candidate, keywords)
+                remaining = None
+                if self.gate.daily_global_budget:
+                    remaining = max(0, self.gate.daily_global_budget - used)
+                result = scanner.scan_shop(candidate, keywords, request_budget=remaining)
                 used += max(1, result.request_count)
                 self.db.record_daily_request(candidate["token"], count=max(1, result.request_count))
                 self.db.save_scan_result(result, run_id)
@@ -127,9 +128,3 @@ class DueShopScheduler:
             "scanned": scanned,
             "matches": match_count,
         }
-
-    @staticmethod
-    def _origin_key(url: str) -> str:
-        from .policy import candidate_origin
-
-        return candidate_origin(url)

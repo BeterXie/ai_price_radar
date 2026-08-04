@@ -179,9 +179,18 @@ class PublicDomScanner:
             accept_downloads=False,
         )
 
-    def scan_shop(self, candidate: Any, keywords: Sequence[str]) -> ShopScanResult:
+    def scan_shop(
+        self,
+        candidate: Any,
+        keywords: Sequence[str],
+        *,
+        request_budget: int | None = None,
+    ) -> ShopScanResult:
         token = candidate["token"]
         shop_url = clean_text(candidate.get("url") or "")
+        effective_budget = self.max_requests_per_shop
+        if request_budget is not None:
+            effective_budget = min(effective_budget, request_budget)
         self.rate_limiter.wait()
         if self.request_jitter_seconds:
             time.sleep(random.uniform(0, self.request_jitter_seconds))
@@ -191,7 +200,7 @@ class PublicDomScanner:
 
         def on_route(route: Any) -> None:
             request_count["n"] += 1
-            if request_count["n"] > self.max_requests_per_shop:
+            if request_count["n"] > effective_budget:
                 budget_state["exceeded"] = True
                 return route.abort()
             resource_type = getattr(route.request, "resource_type", "") or ""
@@ -225,6 +234,15 @@ class PublicDomScanner:
                 return ShopScanResult(token, "rate_limited", shop_url=shop_url, http_status=429, request_count=request_count["n"], engine="public_dom")
             if self.page_wait_ms:
                 page.wait_for_timeout(self.page_wait_ms)
+            if budget_state["exceeded"]:
+                return ShopScanResult(
+                    token,
+                    "budget_deferred",
+                    shop_url=shop_url,
+                    error="per-shop request budget reached",
+                    request_count=request_count["n"],
+                    engine="public_dom",
+                )
 
             body_text = self._body_text(page)
             if nav_status == 403 or is_challenge_text(body_text):

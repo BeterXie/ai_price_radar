@@ -186,6 +186,24 @@ def test_robots_txt_policy_respects_disallow():
     assert allowed
 
 
+def test_robots_cache_evaluates_each_shop_path_in_both_orders():
+    from ldxp_crawler.policy import RobotsTxtPolicy
+
+    def fetcher(url: str) -> tuple[int, str]:
+        return 200, "User-agent: *\nDisallow: /shop/TEST01\n"
+
+    # TEST02 first, then TEST01.
+    policy = RobotsTxtPolicy(fetcher=fetcher)
+    assert policy.allows("https://pay.ldxp.cn/shop/TEST02")[0] is True
+    assert policy.allows("https://pay.ldxp.cn/shop/TEST01")[0] is False
+    assert policy.cached("https://pay.ldxp.cn/shop/TEST02") is True
+
+    # TEST01 first, then TEST02: results must be identical.
+    policy_reverse = RobotsTxtPolicy(fetcher=fetcher)
+    assert policy_reverse.allows("https://pay.ldxp.cn/shop/TEST01")[0] is False
+    assert policy_reverse.allows("https://pay.ldxp.cn/shop/TEST02")[0] is True
+
+
 def test_unchanged_hash_slows_interval_and_change_resets(tmp_path: Path):
     db = StateDB(tmp_path / "hash.db")
     try:
@@ -259,7 +277,7 @@ def test_backoff_wakes_up_after_blocked_until_expires(tmp_path: Path):
             def __exit__(self, *args):
                 return None
 
-            def scan_shop(self, candidate, keywords):
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
                 scans.append(candidate["token"])
                 return ShopScanResult(
                     token=candidate["token"],
@@ -301,7 +319,7 @@ def test_global_request_budget_uses_real_request_counts(tmp_path: Path):
             def __exit__(self, *args):
                 return None
 
-            def scan_shop(self, candidate, keywords):
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
                 return ShopScanResult(
                     token=candidate["token"],
                     status="no_match",
@@ -344,6 +362,48 @@ def test_global_request_budget_uses_real_request_counts(tmp_path: Path):
         db.close()
 
 
+def test_global_budget_remaining_is_passed_to_scanner(tmp_path: Path):
+    db = StateDB(tmp_path / "remaining.db")
+    try:
+        db.upsert_candidate("REMAIN", "https://pay.ldxp.cn/shop/REMAIN", "seed", 100)
+        db.conn.execute(
+            "UPDATE candidates SET daily_request_count=1, daily_request_date=? WHERE token='REMAIN'",
+            (utc_now()[:10],),
+        )
+        db.conn.commit()
+        budgets: list = []
+
+        class AwareScanner:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
+                budgets.append(request_budget)
+                return ShopScanResult(token=candidate["token"], status="no_match", request_count=1)
+
+        gate = CollectionPolicyGate(
+            enabled=True,
+            mode="public_dom",
+            daily_global_budget=4,
+            environ={},
+        )
+        scheduler = DueShopScheduler(
+            db,
+            gate,
+            scanner_factory=AwareScanner,
+            logger=logging.getLogger("test-remaining"),
+            batch_limit=10,
+        )
+        summary = scheduler.run_once([])
+        assert summary["scanned"] == 1
+        assert budgets == [3]  # global budget 4 minus 1 already used
+    finally:
+        db.close()
+
+
 def test_due_scheduler_claims_once_and_respects_daily_budget(tmp_path: Path):
     db = StateDB(tmp_path / "scheduler.db")
     try:
@@ -359,7 +419,7 @@ def test_due_scheduler_claims_once_and_respects_daily_budget(tmp_path: Path):
             def __exit__(self, *args):
                 return None
 
-            def scan_shop(self, candidate, keywords):
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
                 return ShopScanResult(
                     token=candidate["token"],
                     status="success",
@@ -415,7 +475,7 @@ def test_scheduler_sets_long_backoff_for_blocked_and_challenge(tmp_path: Path):
             def __exit__(self, *args):
                 return None
 
-            def scan_shop(self, candidate, keywords):
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
                 return ShopScanResult(token=candidate["token"], status="blocked", http_status=403)
 
         gate = CollectionPolicyGate(enabled=True, mode="public_dom", environ={})
