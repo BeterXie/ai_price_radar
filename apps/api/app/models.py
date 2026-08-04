@@ -325,6 +325,7 @@ class SourcePolicyRequest(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     temporary_hold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    unverified_hold_granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

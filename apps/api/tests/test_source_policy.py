@@ -564,6 +564,209 @@ def test_unverified_hold_cannot_be_renewed_anonymously(tmp_path, monkeypatch):
         assert check["source_status"] == "legal_hold"
 
 
+def _expire_request(engine, request_id, hours):
+    from datetime import timedelta
+
+    from app.services.source_intake import utcnow
+
+    with Session(engine) as db:
+        request = db.get(SourcePolicyRequest, request_id)
+        request.hold_expires_at = utcnow() - timedelta(hours=hours)
+        db.commit()
+
+
+def test_unverified_hold_not_regranted_after_verified_expiry(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/VHIST",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        assert first["temporary_hold_at"] is not None
+        test_client.post(
+            f"/api/v1/admin/source-policy/requests/{first['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "verified", "note": "confirmed"},
+        )
+        _expire_request(engine, first["id"], hours=24 * 8)
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/VHIST",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "again",
+            },
+        )
+        assert second.status_code == 201
+        assert second.json()["temporary_hold_at"] is None
+        assert second.json()["hold_expires_at"] is None
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/VHIST"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "active"
+
+
+def test_unverified_hold_not_regranted_after_rejection(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/RJCT",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        test_client.post(
+            f"/api/v1/admin/source-policy/requests/{first['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "rejected", "note": "not verified"},
+        )
+        _expire_request(engine, first["id"], hours=1)
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/RJCT",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "again",
+            },
+        )
+        assert second.status_code == 201
+        assert second.json()["temporary_hold_at"] is None
+
+
+def test_unverified_hold_not_regranted_after_applied_and_reverse(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/RVRS",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        test_client.post(
+            f"/api/v1/admin/source-policy/requests/{first['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "verified"},
+        )
+        test_client.post(
+            f"/api/v1/admin/source-policy/requests/{first['id']}/reverse",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "owner confirmed"},
+        )
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/RVRS",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "again",
+            },
+        )
+        assert second.status_code == 201
+        assert second.json()["temporary_hold_at"] is None
+
+
+def test_unverified_hold_history_is_scoped_by_source_identity(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/SCOPE-A",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        )
+        assert first.status_code == 201
+        assert first.json()["temporary_hold_at"] is not None
+        # Different official host identity still gets its own first grant.
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/SCOPE-B",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        )
+        assert second.status_code == 201
+        assert second.json()["temporary_hold_at"] is not None
+        # A look-alike domain is a different identity.
+        third = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://attacker.example/shop/SCOPE-A",
+                "request_type": "opt_out",
+                "requester_email": "other@example.com",
+                "reason": "look-alike",
+            },
+        )
+        assert third.status_code == 201
+        assert third.json()["temporary_hold_at"] is not None
+
+
+def test_admin_verified_still_grants_full_seven_days_after_anonymous_hold_used(tmp_path, monkeypatch):
+    from datetime import timedelta, timezone
+
+    from app.services.source_intake import utcnow
+
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/SEVEN",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        _expire_request(engine, first["id"], hours=25)
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/SEVEN",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "again",
+            },
+        ).json()
+        assert second["temporary_hold_at"] is None
+        verified = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{second['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "verified", "note": "confirmed"},
+        )
+        assert verified.status_code == 200
+        assert verified.json()["hold_expires_at"] is not None
+        with Session(engine) as db:
+            request = db.get(SourcePolicyRequest, second["id"])
+            expires = request.hold_expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            assert expires > utcnow() + timedelta(days=6)
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/SEVEN"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "legal_hold"
+
+
 def test_reverse_does_not_overwrite_later_admin_decision(tmp_path, monkeypatch):
     for test_client in _client(tmp_path, monkeypatch):
         engine = test_client.app.state.test_policy_engine

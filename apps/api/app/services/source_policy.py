@@ -110,19 +110,16 @@ def create_policy_request(
         ip_recent = sum(1 for row in existing if _aware(row.created_at, now) >= since and row.requester_ip == requester_ip)
         if ip_recent >= 10:
             raise ValueError("too many requests from this address; try again later")
-    prior_unverified = False
-    if request_type == "opt_out":
-        prior_unverified = any(
-            row.request_type == "opt_out"
-            and row.status == "pending_unverified"
-            and source_identity(row.source_url) == identity
-            for row in existing
-        )
+    anonymous_hold_was_ever_granted = any(
+        row.request_type == "opt_out"
+        and row.unverified_hold_granted_at is not None
+        and source_identity(row.source_url) == identity
+        for row in existing
+    )
+    grant_anonymous_hold = request_type == "opt_out" and not anonymous_hold_was_ever_granted
     hold_expires = (
-        None
-        if prior_unverified
-        else now + timedelta(hours=UNVERIFIED_HOLD_HOURS)
-        if request_type == "opt_out"
+        now + timedelta(hours=UNVERIFIED_HOLD_HOURS)
+        if grant_anonymous_hold
         else None
     )
     request = SourcePolicyRequest(
@@ -132,8 +129,9 @@ def create_policy_request(
         requester_ip=requester_ip[:64],
         reason=reason.strip()[:2000],
         status="pending_unverified" if request_type == "opt_out" else "pending",
-        temporary_hold_at=now if request_type == "opt_out" else None,
+        temporary_hold_at=now if grant_anonymous_hold else None,
         hold_expires_at=hold_expires,
+        unverified_hold_granted_at=now if grant_anonymous_hold else None,
     )
     db.add(request)
     db.commit()

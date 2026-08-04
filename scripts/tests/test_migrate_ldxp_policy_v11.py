@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import datetime, timezone
 
 import psycopg
 import pytest
@@ -108,6 +109,54 @@ def test_source_policy_v11_upgrades_legacy_effects_table():
                     """
                 )
                 assert cursor.fetchone() is not None
+        finally:
+            connection.rollback()
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
+                cursor.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
+            connection.commit()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="TEST_POSTGRES_URL is not configured")
+def test_v11_migration_backfills_unverified_hold_granted_at():
+    schema = f"source_policy_v11_backfill_{uuid.uuid4().hex}"
+    with psycopg.connect(connection_url(os.environ["TEST_POSTGRES_URL"])) as connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+                cursor.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+                cursor.execute(
+                    """
+                    CREATE TABLE source_policy_requests (
+                        id BIGSERIAL PRIMARY KEY,
+                        source_url TEXT NOT NULL,
+                        request_type VARCHAR(20) NOT NULL,
+                        requester_email VARCHAR(200) NOT NULL,
+                        reason TEXT NOT NULL DEFAULT '',
+                        status VARCHAR(20) NOT NULL,
+                        temporary_hold_at TIMESTAMPTZ,
+                        decided_at TIMESTAMPTZ,
+                        decision_note TEXT NOT NULL DEFAULT '',
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    INSERT INTO source_policy_requests(source_url, request_type, requester_email, status, temporary_hold_at)
+                    VALUES ('https://pay.ldxp.cn/shop/TEST01', 'opt_out', 'owner@example.com', 'pending_unverified', '2026-08-01T10:00:00+00:00'),
+                           ('https://pay.ldxp.cn/shop/TEST02', 'opt_out', 'owner@example.com', 'pending_unverified', NULL);
+                    """
+                )
+                migrate(connection)
+                migrate(connection)
+                cursor.execute(
+                    """
+                    SELECT source_url, unverified_hold_granted_at
+                    FROM source_policy_requests
+                    ORDER BY source_url
+                    """
+                )
+                rows = cursor.fetchall()
+                assert rows[0][0] == "https://pay.ldxp.cn/shop/TEST01"
+                assert rows[0][1] == datetime(2026, 8, 1, 10, 0, tzinfo=timezone.utc)
+                assert rows[1] == ("https://pay.ldxp.cn/shop/TEST02", None)
         finally:
             connection.rollback()
             with connection.cursor() as cursor:

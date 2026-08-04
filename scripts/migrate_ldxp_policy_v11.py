@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS source_policy_requests (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     temporary_hold_at TIMESTAMPTZ,
     hold_expires_at TIMESTAMPTZ,
+    unverified_hold_granted_at TIMESTAMPTZ,
     decided_at TIMESTAMPTZ,
     decision_note TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -34,6 +35,12 @@ ALTER TABLE source_policy_requests ADD CONSTRAINT ck_source_policy_requests_stat
 );
 ALTER TABLE source_policy_requests ADD COLUMN IF NOT EXISTS requester_ip VARCHAR(64) NOT NULL DEFAULT '';
 ALTER TABLE source_policy_requests ADD COLUMN IF NOT EXISTS hold_expires_at TIMESTAMPTZ;
+ALTER TABLE source_policy_requests ADD COLUMN IF NOT EXISTS unverified_hold_granted_at TIMESTAMPTZ;
+UPDATE source_policy_requests
+SET unverified_hold_granted_at = temporary_hold_at
+WHERE request_type = 'opt_out'
+  AND temporary_hold_at IS NOT NULL
+  AND unverified_hold_granted_at IS NULL;
 CREATE INDEX IF NOT EXISTS ix_source_policy_requests_status ON source_policy_requests(status);
 
 CREATE TABLE IF NOT EXISTS source_policy_control (
