@@ -216,9 +216,23 @@ class PublicDomScanner:
             try:
                 nav_response = page.goto(shop_url, wait_until="domcontentloaded")
             except PlaywrightTimeoutError as exc:
-                return ShopScanResult(token, "network_error", shop_url=shop_url, error=f"页面打开超时：{exc}", engine="public_dom")
+                return ShopScanResult(
+                    token,
+                    "network_error",
+                    shop_url=shop_url,
+                    error=f"页面打开超时：{exc}",
+                    request_count=request_count["n"],
+                    engine="public_dom",
+                )
             except Exception as exc:
-                return ShopScanResult(token, "network_error", shop_url=shop_url, error=f"页面打开失败：{exc}", engine="public_dom")
+                return ShopScanResult(
+                    token,
+                    "network_error",
+                    shop_url=shop_url,
+                    error=f"页面打开失败：{exc}",
+                    request_count=request_count["n"],
+                    engine="public_dom",
+                )
             if budget_state["exceeded"]:
                 return ShopScanResult(
                     token,
