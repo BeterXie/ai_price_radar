@@ -550,7 +550,7 @@ class StateDB:
         rows = self.conn.execute(
             """
             SELECT * FROM candidates
-            WHERE policy_status = 'active'
+            WHERE policy_status IN ('active', 'paused', 'blocked', 'challenge')
               AND next_scan_at IS NOT NULL AND next_scan_at <= ?
               AND (blocked_until IS NULL OR blocked_until <= ?)
             ORDER BY next_scan_at, token
@@ -622,17 +622,18 @@ class StateDB:
     def save_scan_result(self, result: ShopScanResult, run_id: Optional[int]) -> None:
         now = utc_now()
         row = self.conn.execute(
-            "SELECT unchanged_streak, scan_interval_minutes FROM candidates WHERE token=?",
+            "SELECT unchanged_streak, scan_interval_minutes, last_content_hash FROM candidates WHERE token=?",
             (result.token,),
         ).fetchone()
         base_streak = int(row["unchanged_streak"]) if row else 0
+        previous_hash = str(row["last_content_hash"] or "") if row else ""
         (
             next_scan_at,
             interval_minutes,
             unchanged_streak,
             last_changed_at,
             content_hash,
-        ) = self._schedule_after(result, base_streak=base_streak)
+        ) = self._schedule_after(result, base_streak=base_streak, previous_hash=previous_hash)
         with self.conn:
             if result.is_successful_scan:
                 # Replace current state only after a successful scan. Historical snapshots remain.
@@ -775,6 +776,7 @@ class StateDB:
         result: ShopScanResult,
         *,
         base_streak: int,
+        previous_hash: str,
     ) -> tuple[str, int, int, Optional[str], str]:
         from datetime import datetime, timedelta, timezone
 
@@ -784,10 +786,14 @@ class StateDB:
         last_changed_at: Optional[str] = None
         content_hash = ""
         if result.status in {"success", "partial_success"} and result.matches:
-            interval = 60
-            unchanged_streak = 0
-            last_changed_at = now.replace(microsecond=0).isoformat()
-            content_hash = "|".join(product.content_hash for product in result.matches)
+            content_hash = "|".join(sorted({product.content_hash for product in result.matches}))
+            if content_hash and content_hash == previous_hash:
+                unchanged_streak = base_streak + 1
+                interval = 120 if unchanged_streak <= 3 else 360 if unchanged_streak <= 10 else 720
+            else:
+                unchanged_streak = 0
+                interval = 60
+                last_changed_at = now.replace(microsecond=0).isoformat()
         elif result.status in {"success", "partial_success", "no_match"}:
             unchanged_streak = base_streak + 1
             interval = 120 if unchanged_streak <= 3 else 360 if unchanged_streak <= 10 else 720
