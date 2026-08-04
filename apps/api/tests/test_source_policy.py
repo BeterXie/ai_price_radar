@@ -172,3 +172,149 @@ def test_admin_policy_requests_listing(tmp_path, monkeypatch):
         assert rows.status_code == 200
         assert len(rows.json()) == 1
         assert rows.json()[0]["request_type"] == "correction"
+
+
+def test_correction_and_ownership_do_not_freeze_source(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/TEST01",
+                "request_type": "correction",
+                "requester_email": "owner@example.com",
+                "reason": "price outdated",
+            },
+        )
+        assert created.status_code == 201
+        assert created.json()["temporary_hold_at"] is None
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/TEST01"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "active"
+        assert check["allowed"] is True
+
+
+def test_applied_correction_does_not_disable_intake(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        with Session(engine) as db:
+            db.add(SourceIntake(
+                source_type="ldxp",
+                source_key="https://pay.ldxp.cn/shop/TEST01",
+                source_url="https://pay.ldxp.cn/shop/TEST01",
+                contact_email="applicant@example.com",
+                status="queued",
+                origin="manual",
+            ))
+            db.commit()
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/TEST01",
+                "request_type": "correction",
+                "requester_email": "owner@example.com",
+                "reason": "price outdated",
+            },
+        ).json()
+        decided = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "fixed"},
+        )
+        assert decided.status_code == 200
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/TEST01"))
+            assert intake.status == "queued"
+
+
+def test_applied_opt_out_is_sticky_and_reverse_restores(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        with Session(engine) as db:
+            db.add(SourceIntake(
+                source_type="ldxp",
+                source_key="https://pay.ldxp.cn/shop/STICKY",
+                source_url="https://pay.ldxp.cn/shop/STICKY",
+                contact_email="applicant@example.com",
+                status="approved",
+                origin="manual",
+            ))
+            db.commit()
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/STICKY",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        applied = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "verified"},
+        )
+        assert applied.status_code == 200
+
+        # A later rejected request must not override the applied opt-out.
+        late = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/STICKY",
+                "request_type": "opt_out",
+                "requester_email": "other@example.com",
+                "reason": "cancel my request",
+            },
+        )
+        assert late.status_code == 422  # duplicate active opt-out rejected
+        assert "already exists" in late.json()["detail"]
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/STICKY"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "opted_out"
+
+        reversed_request = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/reverse",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "owner confirmed"},
+        )
+        assert reversed_request.status_code == 200
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/STICKY"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "active"
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/STICKY"))
+            assert intake.status == "approved"
+
+
+def test_policy_request_validation_and_rate_limits(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        bad_email = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/TEST01",
+                "request_type": "opt_out",
+                "requester_email": "not-an-email",
+                "reason": "",
+            },
+        )
+        assert bad_email.status_code == 422
+        payload = {
+            "source_url": "https://pay.ldxp.cn/shop/LIMIT",
+            "request_type": "correction",
+            "requester_email": "owner@example.com",
+            "reason": "issue",
+        }
+        for _index in range(3):
+            response = test_client.post("/api/v1/source-policy/requests", json=payload)
+            assert response.status_code == 201
+        too_many = test_client.post("/api/v1/source-policy/requests", json=payload)
+        assert too_many.status_code == 422
+        assert "too many" in too_many.json()["detail"]

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS source_policy_requests (
     source_url TEXT NOT NULL,
     request_type VARCHAR(20) NOT NULL DEFAULT 'opt_out',
     requester_email VARCHAR(200) NOT NULL,
+    requester_ip VARCHAR(64) NOT NULL DEFAULT '',
     reason TEXT NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     temporary_hold_at TIMESTAMPTZ,
@@ -30,6 +31,7 @@ ALTER TABLE source_policy_requests DROP CONSTRAINT IF EXISTS ck_source_policy_re
 ALTER TABLE source_policy_requests ADD CONSTRAINT ck_source_policy_requests_status CHECK (
     status IN ('pending', 'verified', 'applied', 'rejected')
 );
+ALTER TABLE source_policy_requests ADD COLUMN IF NOT EXISTS requester_ip VARCHAR(64) NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS ix_source_policy_requests_status ON source_policy_requests(status);
 
 CREATE TABLE IF NOT EXISTS source_policy_control (

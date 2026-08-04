@@ -320,6 +320,7 @@ class SourcePolicyRequest(Base):
     source_url: Mapped[str] = mapped_column(Text)
     request_type: Mapped[str] = mapped_column(String(20), default="opt_out", index=True)
     requester_email: Mapped[str] = mapped_column(String(200))
+    requester_ip: Mapped[str] = mapped_column(String(64), default="")
     reason: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     temporary_hold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

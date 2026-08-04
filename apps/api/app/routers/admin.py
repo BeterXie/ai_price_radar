@@ -43,7 +43,12 @@ from ..services.source_discovery import (
     recover_unpromoted_candidates,
 )
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
-from ..services.source_policy import decide_policy_request, emergency_stop, resume_collection
+from ..services.source_policy import (
+    decide_policy_request,
+    emergency_stop,
+    resume_collection,
+    reverse_applied_opt_out,
+)
 from ..services.source_platform import workflow_status
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -488,6 +493,20 @@ def decide_source_policy_request(
             decision=payload.decision,
             note=payload.note,
         )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/source-policy/requests/{request_id}/reverse", response_model=SourcePolicyRequestOut)
+def reverse_source_policy_request(
+    request_id: int,
+    payload: SourcePolicyDecision,
+    db: Session = Depends(get_db),
+) -> SourcePolicyRequest:
+    try:
+        return reverse_applied_opt_out(db, request_id, note=payload.note)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
