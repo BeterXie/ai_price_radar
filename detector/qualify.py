@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import Any, Iterable
 
+from currencies import normalize_currency
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from probe import probe_source
@@ -30,6 +31,9 @@ MAX_SCHEMA_PAGES = 3
 MAX_JSONLD_SCRIPTS = 50
 MAX_JSONLD_NODES = 500
 MONEY_PATTERN = re.compile(r"[0-9]+")
+WOO_PAGE_SIZE = 50
+WOO_MAX_PRODUCTS = 2_000
+WOO_MAX_PAGES = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,26 +164,48 @@ def _dujiao_qualify(origin: str, client: PinnedHTTPSClient) -> QualificationResu
 
 def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> QualificationResult:
     samples: list[dict[str, str]] = []
-    total = 0
     ai_count = 0
-    for page in range(1, MAX_WOO_PAGES + 1):
+    seen_ids: set[int] = set()
+    expected_total: int | None = None
+    expected_pages: int | None = None
+    page = 1
+    while True:
         response = client.get(
-            f"{origin}/wp-json/wc/store/v1/products?page={page}&per_page=50",
+            f"{origin}/wp-json/wc/store/v1/products?page={page}&per_page={WOO_PAGE_SIZE}",
             accept="application/json",
         )
         items = _json(response)
         if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
             raise ValueError("WooCommerce Store API product response must be an array of objects")
-        if not total:
-            try:
-                total = int(response.headers.get("x-wp-total") or 0)
-            except (TypeError, ValueError):
-                total = 0
+        headers = {str(key).casefold(): str(value) for key, value in response.headers.items()}
+        total = _header_integer(headers, "x-wp-total")
+        total_pages = _header_integer(headers, "x-wp-totalpages")
+        calculated_pages = (total + WOO_PAGE_SIZE - 1) // WOO_PAGE_SIZE
+        if total_pages != calculated_pages or total_pages > WOO_MAX_PAGES:
+            raise ValueError("WooCommerce Store API pagination is invalid or exceeds the page limit")
+        if total > WOO_MAX_PRODUCTS:
+            raise ValueError("WooCommerce source exceeds the 2000 product limit")
+        if expected_total is None:
+            expected_total = total
+            expected_pages = total_pages
+        elif total != expected_total or total_pages != expected_pages:
+            raise ValueError("WooCommerce Store API pagination changed during collection")
+        expected_count = max(0, min(WOO_PAGE_SIZE, total - (page - 1) * WOO_PAGE_SIZE))
+        if len(items) != expected_count:
+            raise ValueError("WooCommerce Store API returned incomplete pagination")
+        for item in items:
+            item_id = item.get("id")
+            if isinstance(item_id, bool) or not isinstance(item_id, int) or item_id <= 0:
+                raise ValueError("WooCommerce Store API product id is invalid")
+            if item_id in seen_ids:
+                raise ValueError("WooCommerce Store API returned a duplicate product id")
+            seen_ids.add(item_id)
+            _validate_woo_prices(item.get("prices"))
         for item in items:
             if item.get("is_purchasable") is not True:
                 continue
             prices = item.get("prices")
-            if not _valid_woo_price(prices):
+            if not isinstance(prices, dict) or prices.get("price") is None:
                 continue
             name = str(item.get("name") or "").strip()
             permalink = _same_origin_url(item.get("permalink"), origin, client)
@@ -193,14 +219,17 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
                     permalink,
                     str(item.get("slug") or ""),
                 )
-        if len(items) < 50:
+        if page >= total_pages or len(items) < WOO_PAGE_SIZE:
+            break
+        page += 1
+        if page > MAX_WOO_PAGES:
             break
     return QualificationResult(
         status="detected",
         detected_platform="woocommerce",
         detected_source_key=origin,
         detected_source_url=origin,
-        total_product_count=total or len(samples),
+        total_product_count=expected_total or len(samples),
         ai_product_count=ai_count,
         sample_products=samples,
         fingerprints=["woocommerce-store-api"],
@@ -269,22 +298,42 @@ def _jsonld_product_nodes(body: bytes) -> list[dict[str, Any]]:
     return nodes
 
 
-def _valid_woo_price(prices: Any) -> bool:
+def _minor_amount_text(value: Any, field: str) -> str | None:
+    """Mirror pipeline.connectors.woocommerce_store._minor_amount validation rules."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"WooCommerce {field} must use integer minor units")
+    text = str(value)
+    if text != text.strip() or MONEY_PATTERN.fullmatch(text) is None:
+        raise ValueError(f"WooCommerce {field} must use integer minor units")
+    return text
+
+
+def _validate_woo_prices(prices: Any) -> None:
+    """Strictly mirror the WooCommerce Connector price contract; raises on invalid data."""
     if not isinstance(prices, dict):
-        return False
-    currency = str(prices.get("currency_code") or "").strip()
-    if not currency:
-        return False
+        raise ValueError("WooCommerce Store API product prices are invalid")
     minor_unit = prices.get("currency_minor_unit")
     if isinstance(minor_unit, bool) or not isinstance(minor_unit, int) or not 0 <= minor_unit <= 12:
-        return False
-    raw = prices.get("price")
-    if isinstance(raw, bool) or raw in (None, ""):
-        return False
-    text = str(raw).strip()
-    if MONEY_PATTERN.fullmatch(text) is None:
-        return False
-    return True
+        raise ValueError("WooCommerce currency_minor_unit is invalid")
+    normalize_currency(prices.get("currency_code"))
+    _minor_amount_text(prices.get("price"), "current price")
+    _minor_amount_text(prices.get("regular_price"), "regular price")
+    _minor_amount_text(prices.get("sale_price"), "sale price")
+    price_range = prices.get("price_range")
+    if price_range is not None:
+        if not isinstance(price_range, dict):
+            raise ValueError("WooCommerce product price range is invalid")
+        _minor_amount_text(price_range.get("min_amount"), "minimum price")
+        _minor_amount_text(price_range.get("max_amount"), "maximum price")
+
+
+def _header_integer(headers: dict[str, str], field: str) -> int:
+    value = headers.get(field)
+    if value is None or not str(value).strip().isdigit():
+        raise ValueError(f"WooCommerce Store API response missing or invalid {field} header")
+    return int(str(value).strip())
 
 
 def _valid_amount(value: Any) -> Decimal | None:
@@ -309,13 +358,17 @@ def _price_of_product(product: dict[str, Any]) -> tuple[str | None, str | None]:
             continue
         amount = offer.get("lowPrice") or offer.get("price")
         currency = offer.get("priceCurrency") or product.get("priceCurrency")
-        if not isinstance(currency, str) or not currency.strip():
+        if currency in (None, ""):
+            continue
+        try:
+            normalized_currency = normalize_currency(currency, default="")
+        except ValueError:
             continue
         parsed_amount = _valid_amount(amount)
         if parsed_amount is None:
             continue
         prices.append(parsed_amount)
-        currencies.add(str(currency).strip())
+        currencies.add(normalized_currency)
     if not prices or len(currencies) != 1:
         return None, None
     return format(min(prices), "f"), currencies.pop()

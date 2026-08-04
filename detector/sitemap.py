@@ -86,7 +86,8 @@ def product_page_urls(
             if page is None or page in seen_pages:
                 continue
             seen_pages.add(page)
-            if len(seen_pages) > max_pages:
-                raise ValueError("product page count limit exceeded")
             page_urls.append(page)
+            if len(page_urls) >= max_pages:
+                # max_pages 是抽样预算：达到后停止收集，不拒绝合法来源。
+                return page_urls
     return page_urls

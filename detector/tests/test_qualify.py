@@ -24,13 +24,25 @@ class FakeClient:
         return handler(url, accept)
 
 
-def _json_route(payload, *, status=200, content_type="application/json"):
+def _json_route(payload, *, status=200, content_type="application/json", headers=None):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    response_headers = {"content-type": content_type}
+    if headers:
+        response_headers.update({str(key).casefold(): str(value) for key, value in headers.items()})
 
     def handler(_url, _accept):
-        return PinnedResponse(status, {"content-type": content_type}, body)
+        return PinnedResponse(status, response_headers, body)
 
     return handler
+
+
+def _woo_page_route(products, *, total=None, totalpages=None):
+    total = total if total is not None else len(products)
+    totalpages = totalpages if totalpages is not None else max(1, (total + 49) // 50)
+    return _json_route(
+        products,
+        headers={"X-WP-Total": str(total), "X-WP-TotalPages": str(totalpages)},
+    )
 
 
 def _html_route(body: bytes):
@@ -69,10 +81,7 @@ def test_woocommerce_purchasable_ai_product_is_detected():
         f"{origin}/api/v1/public/config": _json_route({"status_code": 1}),
         f"{origin}/api/v1/public/products?page=1&page_size=1": _json_route({"status_code": 1}),
         f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
-        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _json_route(
-            products,
-            content_type="application/json; charset=utf-8",
-        ),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _woo_page_route(products),
     })
     result = qualify_candidate(f"{origin}/products/chatgpt-plus", "unknown", client=client)
     assert result.status == "detected"
@@ -98,7 +107,7 @@ def test_woocommerce_non_purchasable_products_do_not_qualify():
         f"{origin}/api/v1/public/config": _json_route({"status_code": 1}),
         f"{origin}/api/v1/public/products?page=1&page_size=1": _json_route({"status_code": 1}),
         f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
-        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _json_route(products),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _woo_page_route(products),
     })
     result = qualify_candidate(origin, "woocommerce", client=client)
     assert result.status == "detected"
@@ -111,7 +120,6 @@ def test_woocommerce_non_purchasable_products_do_not_qualify():
     {"price": "NaN", "currency_code": "CNY", "currency_minor_unit": 2},
     {"price": "Infinity", "currency_code": "CNY", "currency_minor_unit": 2},
     {"price": "-1", "currency_code": "CNY", "currency_minor_unit": 2},
-    {"price": "100", "currency_code": "", "currency_minor_unit": 2},
     {"price": "100", "currency_code": "CNY", "currency_minor_unit": -1},
     {"price": "100", "currency_code": "CNY", "currency_minor_unit": "2"},
     {"price": True, "currency_code": "CNY", "currency_minor_unit": 2},
@@ -130,12 +138,112 @@ def test_woocommerce_invalid_prices_are_not_qualified(bad_prices):
     client = FakeClient({
         **_probe_routes(origin),
         f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
-        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _json_route(products),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _woo_page_route(products),
+    })
+    result = qualify_candidate(origin, "woocommerce", client=client)
+    assert result.status == "validation_failed"
+
+
+@pytest.mark.parametrize("bad_prices", [
+    {"price": "100", "currency_code": "FOO", "currency_minor_unit": 2},
+    {"price": "100", "regular_price": "abc", "currency_code": "CNY", "currency_minor_unit": 2},
+    {"price": "100", "sale_price": "abc", "currency_code": "CNY", "currency_minor_unit": 2},
+    {"price": "100", "price_range": {"min_amount": "abc", "max_amount": "200"}, "currency_code": "CNY", "currency_minor_unit": 2},
+])
+def test_woocommerce_connector_price_contract_is_enforced(bad_prices):
+    origin = "https://woo-contract.example.com"
+    products = [{
+        "id": 4,
+        "name": "ChatGPT Plus 1 month",
+        "slug": "chatgpt-plus",
+        "permalink": f"{origin}/product/chatgpt-plus",
+        "is_purchasable": True,
+        "is_in_stock": True,
+        "prices": bad_prices,
+    }]
+    client = FakeClient({
+        **_probe_routes(origin),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _woo_page_route(products),
+    })
+    result = qualify_candidate(origin, "woocommerce", client=client)
+    assert result.status == "validation_failed"
+
+
+def test_woocommerce_empty_currency_defaults_to_cny_like_connector():
+    origin = "https://woo-default-currency.example.com"
+    products = [{
+        "id": 7,
+        "name": "ChatGPT Plus 1 month",
+        "slug": "chatgpt-plus",
+        "permalink": f"{origin}/product/chatgpt-plus",
+        "is_purchasable": True,
+        "is_in_stock": True,
+        "prices": {"price": "100", "currency_code": "", "currency_minor_unit": 2},
+    }]
+    client = FakeClient({
+        **_probe_routes(origin),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _woo_page_route(products),
     })
     result = qualify_candidate(origin, "woocommerce", client=client)
     assert result.status == "detected"
-    assert result.ai_product_count == 0
-    assert result.sample_products == []
+    assert result.ai_product_count == 1
+
+
+@pytest.mark.parametrize("handler", [
+    lambda products: _json_route(products),
+    lambda products: _json_route(products, headers={"X-WP-Total": "2", "X-WP-TotalPages": "1"}),
+])
+def test_woocommerce_pagination_headers_are_required_and_consistent(handler):
+    origin = "https://woo-pagination.example.com"
+    products = [{
+        "id": 5,
+        "name": "ChatGPT Plus 1 month",
+        "slug": "chatgpt-plus",
+        "permalink": f"{origin}/product/chatgpt-plus",
+        "is_purchasable": True,
+        "is_in_stock": True,
+        "prices": {"price": "100", "currency_code": "CNY", "currency_minor_unit": 2},
+    }]
+    client = FakeClient({
+        **_probe_routes(origin),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": handler(products),
+    })
+    result = qualify_candidate(origin, "woocommerce", client=client)
+    assert result.status == "validation_failed"
+
+
+def test_woocommerce_duplicate_product_ids_are_rejected():
+    origin = "https://woo-duplicate.example.com"
+    products = [
+        {
+            "id": 6,
+            "name": "ChatGPT Plus 1 month",
+            "slug": "chatgpt-plus",
+            "permalink": f"{origin}/product/chatgpt-plus",
+            "is_purchasable": True,
+            "is_in_stock": True,
+            "prices": {"price": "100", "currency_code": "CNY", "currency_minor_unit": 2},
+        },
+        {
+            "id": 6,
+            "name": "Claude Pro 1 month",
+            "slug": "claude-pro",
+            "permalink": f"{origin}/product/claude-pro",
+            "is_purchasable": True,
+            "is_in_stock": True,
+            "prices": {"price": "200", "currency_code": "CNY", "currency_minor_unit": 2},
+        },
+    ]
+    client = FakeClient({
+        **_probe_routes(origin),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=1": _json_route(products),
+        f"{origin}/wp-json/wc/store/v1/products?page=1&per_page=50": _woo_page_route(products),
+    })
+    result = qualify_candidate(origin, "woocommerce", client=client)
+    assert result.status == "validation_failed"
 
 
 def test_dujiao_product_api_qualifies_ai_product():
@@ -410,6 +518,118 @@ def test_schema_org_dtd_entity_sitemap_fails_validation():
     result = qualify_candidate(entry, "schema_org", client=client)
     assert result.status == "validation_failed"
     assert "DTD" in result.failure_reason
+
+
+def test_schema_org_invalid_iso_currency_is_not_qualified():
+    origin = "https://structured-currency.example.com"
+    page = f"{origin}/products/chatgpt"
+    body = f"""<html><head>
+      <script type="application/ld+json">{{
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "ChatGPT Plus 月卡",
+        "url": "{page}",
+        "offers": {{"@type": "Offer", "price": "100", "priceCurrency": "FOO"}}
+      }}</script>
+    </head></html>""".encode("utf-8")
+    client = FakeClient({
+        **_probe_routes(origin),
+        page: _html_route(body),
+    })
+    result = qualify_candidate(page, "schema_org", client=client)
+    assert result.status == "detected"
+    assert result.ai_product_count == 0
+
+
+def test_schema_org_sitemap_sampling_truncates_instead_of_rejecting():
+    origin = "https://sampling-schema.example.com"
+    entry = f"{origin}/sitemap.xml"
+    page_urls = [f"{origin}/products/product-{index}" for index in range(100)]
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(f"<url><loc>{page}</loc></url>" for page in page_urls)
+        + "</urlset>"
+    ).encode("utf-8")
+    ai_page = page_urls[0]
+    ai_body = f"""<html><head>
+      <script type="application/ld+json">{{
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Claude Pro 月卡",
+        "url": "{ai_page}",
+        "offers": {{"@type": "Offer", "price": "99", "priceCurrency": "CNY"}}
+      }}</script>
+    </head></html>""".encode("utf-8")
+    routes = {
+        **_probe_routes(origin),
+        entry: _xml_route(sitemap),
+        ai_page: _html_route(ai_body),
+    }
+    client = FakeClient(routes)
+    result = qualify_candidate(entry, "schema_org", client=client)
+    assert result.status == "detected"
+    assert result.ai_product_count == 1
+    assert result.detected_source_url == entry
+    sampled_pages = [url for url in client.calls if "/products/product-" in url]
+    assert len(set(sampled_pages)) == 1  # 找到 AI 商品后立即停止，其余页面不会被请求
+    assert page_urls[8] not in client.calls
+
+
+def test_schema_org_root_with_large_sitemap_keeps_root_and_qualifies():
+    origin = "https://root-sampling.example.com"
+    page_urls = [f"{origin}/products/product-{index}" for index in range(100)]
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(f"<url><loc>{page}</loc></url>" for page in page_urls)
+        + "</urlset>"
+    ).encode("utf-8")
+    ai_page = page_urls[0]
+    ai_body = f"""<html><head>
+      <script type="application/ld+json">{{
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Gemini Advanced 月卡",
+        "url": "{ai_page}",
+        "offers": {{"@type": "Offer", "price": "120", "priceCurrency": "CNY"}}
+      }}</script>
+    </head></html>""".encode("utf-8")
+    client = FakeClient({
+        **_probe_routes(origin),
+        f"{origin}/": _html_route(b"<html><head></head><body>root</body></html>"),
+        f"{origin}/sitemap.xml": _xml_route(sitemap),
+        ai_page: _html_route(ai_body),
+    })
+    result = qualify_candidate(origin, "schema_org", client=client)
+    assert result.status == "detected"
+    assert result.ai_product_count == 1
+    assert result.detected_source_url.rstrip("/") == origin
+    assert result.detected_source_key.rstrip("/") == origin
+
+
+def test_schema_org_sampling_stops_at_budget_without_rejecting():
+    origin = "https://sampling-budget.example.com"
+    entry = f"{origin}/sitemap.xml"
+    page_urls = [f"{origin}/products/product-{index}" for index in range(100)]
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(f"<url><loc>{page}</loc></url>" for page in page_urls)
+        + "</urlset>"
+    ).encode("utf-8")
+    routes = {
+        **_probe_routes(origin),
+        entry: _xml_route(sitemap),
+    }
+    # 只提供前 8 个页面：第 9 个页面若被请求会触发 unexpected URL（与真实网络错误等价）。
+    for page in page_urls[:8]:
+        routes[page] = _html_route(b"<html><body>ordinary page</body></html>")
+    client = FakeClient(routes)
+    result = qualify_candidate(entry, "schema_org", client=client)
+    assert result.status == "detected"
+    assert result.ai_product_count == 0
+    assert page_urls[8] not in client.calls
 
 
 def test_private_or_invalid_source_is_validation_failed():
