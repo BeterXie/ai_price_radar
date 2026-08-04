@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS source_policy_requests (
     reason TEXT NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     temporary_hold_at TIMESTAMPTZ,
+    hold_expires_at TIMESTAMPTZ,
     decided_at TIMESTAMPTZ,
     decision_note TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -32,6 +33,7 @@ ALTER TABLE source_policy_requests ADD CONSTRAINT ck_source_policy_requests_stat
     status IN ('pending_unverified', 'pending', 'verified', 'applied', 'rejected')
 );
 ALTER TABLE source_policy_requests ADD COLUMN IF NOT EXISTS requester_ip VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE source_policy_requests ADD COLUMN IF NOT EXISTS hold_expires_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS ix_source_policy_requests_status ON source_policy_requests(status);
 
 CREATE TABLE IF NOT EXISTS source_policy_control (
@@ -45,8 +47,10 @@ CREATE TABLE IF NOT EXISTS source_policy_effects (
     policy_request_id BIGINT NOT NULL REFERENCES source_policy_requests(id) ON DELETE CASCADE,
     intake_id BIGINT NOT NULL,
     previous_status VARCHAR(30) NOT NULL,
+    previous_finished_at TIMESTAMPTZ,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    reversed_at TIMESTAMPTZ
+    reversed_at TIMESTAMPTZ,
+    reverse_result VARCHAR(30) NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_source_policy_effects_request ON source_policy_effects(policy_request_id);
 

@@ -324,6 +324,7 @@ class SourcePolicyRequest(Base):
     reason: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     temporary_hold_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -348,8 +349,10 @@ class SourcePolicyEffect(Base):
         ForeignKey("source_intakes.id", ondelete="CASCADE"), index=True
     )
     previous_status: Mapped[str] = mapped_column(String(30))
+    previous_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reverse_result: Mapped[str] = mapped_column(String(30), default="")
 
 
 class NotificationOutbox(Base):

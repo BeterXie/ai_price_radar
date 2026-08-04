@@ -376,7 +376,7 @@ def test_unverified_hold_expires_after_24_hours(tmp_path, monkeypatch):
 
         with Session(engine) as db:
             request = db.get(SourcePolicyRequest, created["id"])
-            request.temporary_hold_at = utcnow() - timedelta(hours=25)
+            request.hold_expires_at = utcnow() - timedelta(hours=1)
             db.commit()
         check = test_client.get(
             "/api/v1/internal/source-policy/check",
@@ -441,3 +441,114 @@ def test_reverse_restores_only_effects_of_that_opt_out(tmp_path, monkeypatch):
             b = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/REV-B"))
             assert a.status == "approved"  # restored to previous status
             assert b.status == "disabled"  # manual disabled preserved
+
+
+def test_verified_resets_hold_clock_to_seven_days(tmp_path, monkeypatch):
+    from datetime import timedelta, timezone
+
+    from app.services.source_intake import utcnow
+
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/CLOCK",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        with Session(engine) as db:
+            request = db.get(SourcePolicyRequest, created["id"])
+            request.temporary_hold_at = utcnow() - timedelta(hours=23)
+            request.hold_expires_at = utcnow() - timedelta(hours=23) + timedelta(hours=24)
+            db.commit()
+        decided = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "verified", "note": "email confirmed"},
+        )
+        assert decided.status_code == 200
+        with Session(engine) as db:
+            request = db.get(SourcePolicyRequest, created["id"])
+            assert request.status == "verified"
+            expires = request.hold_expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            assert expires > utcnow() + timedelta(days=6)
+
+
+def test_expired_unverified_hold_allows_resubmission(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from app.services.source_intake import utcnow
+
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        first = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/AGAIN",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        with Session(engine) as db:
+            request = db.get(SourcePolicyRequest, first["id"])
+            request.hold_expires_at = utcnow() - timedelta(hours=1)
+            db.commit()
+        second = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/AGAIN",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "real owner opt out",
+            },
+        )
+        assert second.status_code == 201
+
+
+def test_reverse_does_not_overwrite_later_admin_decision(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        with Session(engine) as db:
+            db.add(SourceIntake(
+                source_type="ldxp",
+                source_key="https://pay.ldxp.cn/shop/LATER",
+                source_url="https://pay.ldxp.cn/shop/LATER",
+                contact_email="owner@example.com",
+                status="approved",
+                origin="manual",
+            ))
+            db.commit()
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/LATER",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "verified"},
+        )
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/LATER"))
+            intake.status = "rejected"
+            intake.decision_note = "管理员发现安全问题后拒绝"
+            db.commit()
+        reversed_request = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/reverse",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "owner confirmed"},
+        )
+        assert reversed_request.status_code == 200
+        with Session(engine) as db:
+            intake = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/LATER"))
+            assert intake.status == "rejected"
