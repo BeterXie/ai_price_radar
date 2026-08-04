@@ -5,6 +5,9 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+from datetime import timedelta
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +18,7 @@ sys.path.insert(0, str(ROOT / "crawler" / "ldxp"))
 from app.core.config import get_settings  # noqa: E402
 from app.database import Base as ApiBase  # noqa: E402
 from app.models import SourcePolicyRequest  # noqa: E402
+from app.services.source_intake import utcnow  # noqa: E402
 from common import session_for  # noqa: E402
 from ldxp_crawler.db import StateDB  # noqa: E402
 from ldxp_crawler.models import ProductMatch, ShopScanResult  # noqa: E402
@@ -122,5 +126,46 @@ def test_cross_domain_lookalike_opt_out_does_not_exclude_ldxp_shop(tmp_path):
 
         shops = list(pipeline_db.scalars(select(Shop).order_by(Shop.token)))
         assert [shop.token for shop in shops] == ["TEST01", "TEST02"]
+    finally:
+        pipeline_db.close()
+
+
+@pytest.mark.parametrize(("status", "hold_delta", "expected_offers"), [
+    ("pending_unverified", timedelta(hours=1), 1),
+    ("pending_unverified", timedelta(hours=-1), 2),
+    ("verified", timedelta(days=1), 1),
+    ("verified", timedelta(days=-1), 2),
+])
+def test_ldxp_publication_honors_temporary_hold_expiry(tmp_path, status, hold_delta, expected_offers):
+    crawler_db = tmp_path / "crawler.db"
+    _seed_crawler_db(crawler_db)
+
+    api_db_path = tmp_path / "api.db"
+    database_url = f"sqlite:///{api_db_path.as_posix()}"
+    engine = create_engine(database_url)
+    ApiBase.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(SourcePolicyRequest(
+            source_url="https://pay.ldxp.cn/shop/TEST01",
+            request_type="opt_out",
+            requester_email="owner@example.com",
+            status=status,
+            temporary_hold_at=utcnow(),
+            hold_expires_at=utcnow() + hold_delta,
+        ))
+        db.commit()
+
+    pipeline_db = session_for(database_url)
+    try:
+        result = publish_sources(
+            pipeline_db,
+            [SourceSpec("ldxp", str(crawler_db))],
+            source_label="ldxp-hold-expiry-e2e",
+        )
+        assert result.offer_count == expected_offers
+        from common import Shop
+
+        shops = list(pipeline_db.scalars(select(Shop).order_by(Shop.token)))
+        assert len(shops) == expected_offers
     finally:
         pipeline_db.close()

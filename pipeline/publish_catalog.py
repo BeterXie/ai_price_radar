@@ -160,10 +160,18 @@ def ldxp_opt_out_tokens(db: Session) -> frozenset[str]:
     """Return LDXP shop tokens that must be excluded from SQLite publication."""
     if not inspect(db.get_bind()).has_table("source_policy_requests"):
         return frozenset()
-    rows = db.execute(text(
-        "SELECT source_url FROM source_policy_requests "
-        "WHERE request_type='opt_out' AND status IN ('pending', 'verified', 'applied')"
-    )).mappings()
+    # Mirrors apps/api/app/services/source_policy.is_active_hold:
+    # applied is permanent; unverified/verified holds only count while unexpired.
+    rows = db.execute(
+        text(
+            "SELECT source_url FROM source_policy_requests "
+            "WHERE request_type='opt_out' AND ("
+            "  status='applied' OR "
+            "  (status IN ('pending_unverified', 'pending', 'verified') AND hold_expires_at > :now)"
+            ")"
+        ),
+        {"now": utcnow()},
+    ).mappings()
     tokens: set[str] = set()
     for row in rows:
         url = str(row["source_url"] or "")
