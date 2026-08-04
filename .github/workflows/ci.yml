@@ -96,6 +96,7 @@ jobs:
           cache-dependency-path: crawler/ldxp/requirements.txt
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements.txt pytest
+      - run: pip install ../../shared_http
       - run: python -m pytest -q
 
   scripts:
