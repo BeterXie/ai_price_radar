@@ -74,6 +74,9 @@ def test_public_dom_parsing_and_minimal_match():
     ) is None
     assert is_challenge_text("人机验证，请完成安全验证")
     assert is_login_required_text("请登录后查看")
+    assert parse_public_price("GPT-4 30天套餐 ¥88.00") == 88.0
+    assert parse_public_price("GPT-4 30天套餐") is None
+    assert parse_public_price("GPT-4 30天套餐", price_element_text="¥99.00") == 99.0
     assert content_hash("a", "b") == content_hash("a", "b")
     assert content_hash("a", "b") != content_hash("a", "c")
 
@@ -150,9 +153,103 @@ def test_policy_gate_fails_closed_on_origin_checker_error():
     def broken(_origin: str) -> CollectionDecision:
         raise RuntimeError("api down")
 
-    gate = CollectionPolicyGate(enabled=True, mode="public_dom", origin_checker=broken, environ={})
+    gate = CollectionPolicyGate(enabled=True, mode="public_dom", source_checker=broken, environ={})
     decision = gate.decide(_active_candidate())
     assert not decision.allowed and "unavailable" in decision.reason
+
+
+def test_policy_gate_passes_full_shop_url_to_source_checker():
+    received: list[str] = []
+
+    def checker(source_url: str) -> CollectionDecision:
+        received.append(source_url)
+        return CollectionDecision(True, "public_dom", "allowed")
+
+    gate = CollectionPolicyGate(enabled=True, mode="public_dom", source_checker=checker, environ={})
+    decision = gate.decide(_active_candidate("TEST01", url="https://pay.ldxp.cn/shop/TEST01"))
+    assert decision.allowed
+    assert received == ["https://pay.ldxp.cn/shop/TEST01"]
+
+
+def test_robots_txt_policy_respects_disallow():
+    from ldxp_crawler.policy import RobotsTxtPolicy
+
+    def fetcher(url: str) -> tuple[int, str]:
+        return 200, "User-agent: *\nDisallow: /shop/TEST01\n"
+
+    policy = RobotsTxtPolicy(fetcher=fetcher)
+    allowed, reason = policy.allows("https://pay.ldxp.cn/shop/TEST01")
+    assert not allowed
+    assert reason.startswith("robots-denied")
+    allowed, _reason = policy.allows("https://pay.ldxp.cn/shop/TEST02")
+    assert allowed
+
+
+def test_unchanged_hash_slows_interval_and_change_resets(tmp_path: Path):
+    db = StateDB(tmp_path / "hash.db")
+    try:
+        db.upsert_candidate("HASH", "https://pay.ldxp.cn/shop/HASH", "seed", 100)
+        match = ProductMatch(
+            product_key="P1",
+            product_name="ChatGPT Plus",
+            matched_keywords=["chatgpt"],
+            listed_price=99.0,
+            product_status="有货",
+            product_url="https://pay.ldxp.cn/shop/HASH/item/P1",
+            content_hash="same-hash",
+        )
+        run_id = db.start_run("scan", ["chatgpt"], "public_dom", {})
+        db.save_scan_result(
+            ShopScanResult(token="HASH", status="success", scanned_item_count=1, matches=[match]),
+            run_id,
+        )
+        row = db.conn.execute("SELECT * FROM candidates WHERE token='HASH'").fetchone()
+        assert row["scan_interval_minutes"] == 60
+
+        db.save_scan_result(
+            ShopScanResult(token="HASH", status="success", scanned_item_count=1, matches=[match]),
+            run_id,
+        )
+        row = db.conn.execute("SELECT * FROM candidates WHERE token='HASH'").fetchone()
+        assert row["scan_interval_minutes"] == 120
+        assert row["unchanged_streak"] == 1
+
+        changed = ProductMatch(
+            product_key="P1",
+            product_name="ChatGPT Plus",
+            matched_keywords=["chatgpt"],
+            listed_price=88.0,
+            product_status="有货",
+            product_url="https://pay.ldxp.cn/shop/HASH/item/P1",
+            content_hash="different-hash",
+        )
+        db.save_scan_result(
+            ShopScanResult(token="HASH", status="success", scanned_item_count=1, matches=[changed]),
+            run_id,
+        )
+        row = db.conn.execute("SELECT * FROM candidates WHERE token='HASH'").fetchone()
+        assert row["scan_interval_minutes"] == 60
+        assert row["unchanged_streak"] == 0
+    finally:
+        db.close()
+
+
+def test_backoff_wakes_up_after_blocked_until_expires(tmp_path: Path):
+    db = StateDB(tmp_path / "wake.db")
+    try:
+        db.upsert_candidate("WAKE", "https://pay.ldxp.cn/shop/WAKE", "seed", 100)
+        db.conn.execute(
+            "UPDATE candidates SET policy_status='blocked', blocked_until=?, next_scan_at=?, scan_interval_minutes=10080 WHERE token='WAKE'",
+            ("2000-01-01T00:00:00+00:00", "2000-01-01T00:00:00+00:00"),
+        )
+        db.conn.commit()
+        due = db.list_due_candidates(limit=10)
+        assert [row["token"] for row in due] == ["WAKE"]
+        gate = CollectionPolicyGate(enabled=True, mode="public_dom", environ={})
+        decision = gate.decide(due[0])
+        assert decision.allowed
+    finally:
+        db.close()
 
 
 def test_due_scheduler_claims_once_and_respects_daily_budget(tmp_path: Path):
