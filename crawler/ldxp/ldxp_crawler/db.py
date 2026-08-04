@@ -5,8 +5,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from .models import ShopScanResult
+from .models import ProductMatch, ShopScanResult
 from .utils import json_loads_or, merge_unique, utc_now
+
+
+POLICY_STATUSES = frozenset({
+    "active", "paused", "blocked", "challenge", "opted_out", "legal_hold", "unsupported",
+})
 
 
 class StateDB:
@@ -149,6 +154,18 @@ class StateDB:
             "consecutive_failures": "INTEGER NOT NULL DEFAULT 0",
             "intake_id": "INTEGER",
             "intake_attempt_count": "INTEGER",
+            "next_scan_at": "TEXT",
+            "scan_interval_minutes": "INTEGER NOT NULL DEFAULT 720",
+            "unchanged_streak": "INTEGER NOT NULL DEFAULT 0",
+            "last_changed_at": "TEXT",
+            "last_content_hash": "TEXT NOT NULL DEFAULT ''",
+            "blocked_until": "TEXT",
+            "policy_status": "TEXT NOT NULL DEFAULT 'active'",
+            "policy_reason": "TEXT NOT NULL DEFAULT ''",
+            "opt_out_at": "TEXT",
+            "last_http_status": "INTEGER",
+            "daily_request_count": "INTEGER NOT NULL DEFAULT 0",
+            "daily_request_date": "TEXT",
         }
         for name, ddl in migrations.items():
             self._ensure_column("candidates", name, ddl)
@@ -167,6 +184,9 @@ class StateDB:
             """
         )
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_candidates_priority ON candidates(source_score DESC, last_attempt_at)")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_candidates_due ON candidates(policy_status, next_scan_at)"
+        )
         self.conn.commit()
 
     def start_run(self, command: str, keywords: Sequence[str], engine: str, config: dict[str, Any]) -> int:
@@ -233,10 +253,11 @@ class StateDB:
             self.conn.execute(
                 """
                 INSERT INTO candidates(
-                    token, url, sources, source_score, discovered_at, updated_at, status
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                    token, url, sources, source_score, discovered_at, updated_at, status,
+                    next_scan_at, scan_interval_minutes
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, 720)
                 """,
-                (token, url, json.dumps([source], ensure_ascii=False), source_score, now, now),
+                (token, url, json.dumps([source], ensure_ascii=False), source_score, now, now, now),
             )
             inserted = True
         self.conn.commit()
@@ -457,8 +478,9 @@ class StateDB:
                 """
                 INSERT INTO candidates(
                     token, url, sources, source_score, discovered_at, updated_at, status,
-                    shop_name, shop_url, intake_id, intake_attempt_count
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                    shop_name, shop_url, intake_id, intake_attempt_count,
+                    next_scan_at, scan_interval_minutes
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, 720)
                 """,
                 (
                     token,
@@ -471,6 +493,7 @@ class StateDB:
                     url,
                     intake_id,
                     attempt_count,
+                    now,
                 ),
             )
             inserted = True
@@ -522,17 +545,113 @@ class StateDB:
             params.append(limit)
         return list(self.conn.execute(sql, params).fetchall())
 
+    def list_due_candidates(self, *, limit: int = 20, now: str | None = None) -> list[sqlite3.Row]:
+        now = now or utc_now()
+        rows = self.conn.execute(
+            """
+            SELECT * FROM candidates
+            WHERE policy_status = 'active'
+              AND next_scan_at IS NOT NULL AND next_scan_at <= ?
+              AND (blocked_until IS NULL OR blocked_until <= ?)
+            ORDER BY next_scan_at, token
+            LIMIT ?
+            """,
+            (now, now, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def claim_due_candidate(self, token: str, *, now: str | None = None) -> bool:
+        """Atomically reserve a due shop so concurrent schedulers do not duplicate scans."""
+        now = now or utc_now()
+        cursor = self.conn.execute(
+            """
+            UPDATE candidates
+            SET next_scan_at = ?
+            WHERE token = ?
+              AND policy_status = 'active'
+              AND next_scan_at IS NOT NULL AND next_scan_at <= ?
+              AND (blocked_until IS NULL OR blocked_until <= ?)
+            """,
+            (
+                (self._add_minutes(now, 10)),
+                token,
+                now,
+                now,
+            ),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _add_minutes(value: str, minutes: int) -> str:
+        from datetime import datetime, timedelta, timezone
+
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return (parsed + timedelta(minutes=minutes)).replace(microsecond=0).isoformat()
+
+    def set_policy_status(self, token: str, status: str, reason: str = "") -> bool:
+        if status not in POLICY_STATUSES:
+            raise ValueError(f"invalid policy status: {status}")
+        cursor = self.conn.execute(
+            "UPDATE candidates SET policy_status=?, policy_reason=?, opt_out_at=? WHERE token=?",
+            (status, reason[:1000], utc_now() if status == "opted_out" else None, token),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def record_daily_request(self, token: str, *, now: str | None = None) -> None:
+        now = now or utc_now()
+        day = now[:10]
+        self.conn.execute(
+            """
+            UPDATE candidates
+            SET daily_request_count = CASE WHEN daily_request_date = ? THEN daily_request_count + 1 ELSE 1 END,
+                daily_request_date = ?
+            WHERE token = ?
+            """,
+            (day, day, token),
+        )
+        self.conn.commit()
+
     def mark_unattempted_pending(self, tokens: Sequence[str]) -> None:
         # Kept for explicitness; candidates remain pending unless save_scan_result is called.
         return
 
     def save_scan_result(self, result: ShopScanResult, run_id: Optional[int]) -> None:
         now = utc_now()
+        row = self.conn.execute(
+            "SELECT unchanged_streak, scan_interval_minutes FROM candidates WHERE token=?",
+            (result.token,),
+        ).fetchone()
+        base_streak = int(row["unchanged_streak"]) if row else 0
+        (
+            next_scan_at,
+            interval_minutes,
+            unchanged_streak,
+            last_changed_at,
+            content_hash,
+        ) = self._schedule_after(result, base_streak=base_streak)
         with self.conn:
             if result.is_successful_scan:
                 # Replace current state only after a successful scan. Historical snapshots remain.
                 self.conn.execute("DELETE FROM matches WHERE token=?", (result.token,))
                 for product in result.matches:
+                    audit_summary = json.dumps(
+                        {
+                            "source": "public_dom",
+                            "selector_version": "ldxp-dom-v1",
+                            "field_presence": [
+                                field
+                                for field in ("product_name", "listed_price", "stock_count", "product_status", "product_url")
+                                if getattr(product, field, None) not in (None, "", 0)
+                            ],
+                            "content_hash": product.content_hash,
+                            "redacted_field_count": product.redacted_field_count,
+                        },
+                        ensure_ascii=False,
+                    )
                     payload = (
                         result.token,
                         result.shop_name,
@@ -549,7 +668,7 @@ class StateDB:
                         product.product_url,
                         product.auto_delivery,
                         product.goods_type,
-                        json.dumps(product.raw, ensure_ascii=False),
+                        audit_summary,
                         now,
                     )
                     self.conn.execute(
@@ -583,7 +702,7 @@ class StateDB:
                             product.product_status,
                             product.category_name,
                             product.product_url,
-                            json.dumps(product.raw, ensure_ascii=False),
+                            audit_summary,
                             now,
                         ),
                     )
@@ -593,7 +712,10 @@ class StateDB:
                     SET status=?, shop_name=?, shop_url=?, api_host=?,
                         scanned_item_count=?, hit_count=?, scanned_at=?, last_attempt_at=?,
                         last_success_at=?, next_retry_at=NULL, consecutive_failures=0,
-                        last_error=NULL, updated_at=?
+                        last_error=NULL, updated_at=?, last_http_status=?,
+                        next_scan_at=?, scan_interval_minutes=?, unchanged_streak=?,
+                        last_changed_at=?, last_content_hash=?,
+                        blocked_until=NULL, policy_status='active', policy_reason=''
                     WHERE token=?
                     """,
                     (
@@ -607,18 +729,29 @@ class StateDB:
                         now,
                         now,
                         now,
+                        result.http_status,
+                        next_scan_at,
+                        interval_minutes,
+                        unchanged_streak,
+                        last_changed_at,
+                        content_hash,
                         result.token,
                     ),
                 )
             else:
                 # Preserve previously successful current matches on transient failures.
                 retry_at = self._retry_at(result.status)
+                blocked_until = self._blocked_until(result.status)
+                policy_status = self._policy_status_after(result.status)
                 self.conn.execute(
                     """
                     UPDATE candidates
                     SET status=?, last_attempt_at=?, scanned_at=?, next_retry_at=?,
                         consecutive_failures=consecutive_failures+1,
-                        last_error=?, updated_at=?
+                        last_error=?, updated_at=?, last_http_status=?,
+                        blocked_until=COALESCE(?, blocked_until),
+                        policy_status=COALESCE(?, policy_status),
+                        next_scan_at=?, scan_interval_minutes=?
                     WHERE token=?
                     """,
                     (
@@ -628,9 +761,50 @@ class StateDB:
                         retry_at,
                         result.error[-3000:] if result.error else None,
                         now,
+                        result.http_status,
+                        blocked_until,
+                        policy_status,
+                        next_scan_at,
+                        interval_minutes,
                         result.token,
                     ),
                 )
+
+    @staticmethod
+    def _schedule_after(
+        result: ShopScanResult,
+        *,
+        base_streak: int,
+    ) -> tuple[str, int, int, Optional[str], str]:
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        unchanged_streak = base_streak
+        interval = 720
+        last_changed_at: Optional[str] = None
+        content_hash = ""
+        if result.status in {"success", "partial_success"} and result.matches:
+            interval = 60
+            unchanged_streak = 0
+            last_changed_at = now.replace(microsecond=0).isoformat()
+            content_hash = "|".join(product.content_hash for product in result.matches)
+        elif result.status in {"success", "partial_success", "no_match"}:
+            unchanged_streak = base_streak + 1
+            interval = 120 if unchanged_streak <= 3 else 360 if unchanged_streak <= 10 else 720
+        elif result.status == "empty_shop":
+            interval = 720
+        elif result.status == "closed":
+            interval = 1440
+        elif result.status == "rate_limited":
+            interval = 1440
+        elif result.status == "blocked":
+            interval = 10080
+        elif result.status == "challenge_required":
+            interval = 43200
+        elif result.status in {"unsupported", "policy_blocked"}:
+            interval = 43200
+        next_scan_at = (now + timedelta(minutes=interval)).replace(microsecond=0).isoformat()
+        return next_scan_at, interval, unchanged_streak, last_changed_at, content_hash
 
     @staticmethod
     def _retry_at(status: str) -> Optional[str]:
@@ -647,6 +821,32 @@ class StateDB:
         if delay is None:
             return None
         return (datetime.now(timezone.utc) + delay).replace(microsecond=0).isoformat()
+
+    @staticmethod
+    def _blocked_until(status: str) -> Optional[str]:
+        from datetime import datetime, timedelta, timezone
+
+        delays = {
+            "rate_limited": timedelta(hours=24),
+            "blocked": timedelta(days=7),
+            "challenge_required": timedelta(days=30),
+        }
+        delay = delays.get(status)
+        if delay is None:
+            return None
+        return (datetime.now(timezone.utc) + delay).replace(microsecond=0).isoformat()
+
+    @staticmethod
+    def _policy_status_after(status: str) -> Optional[str]:
+        if status == "unsupported":
+            return "unsupported"
+        if status == "challenge_required":
+            return "challenge"
+        if status == "blocked":
+            return "blocked"
+        if status == "rate_limited":
+            return "paused"
+        return None
 
     def rows_for_export(self) -> tuple[list[sqlite3.Row], list[sqlite3.Row], list[sqlite3.Row]]:
         candidates = list(
