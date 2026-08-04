@@ -189,6 +189,16 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_source_platforms_v9.py
 
+# v10 统一来源发现表：创建 source_discovery_runs 与 source_candidates；
+# 必须先在生产 API 切换前在临时 PostgreSQL 16 演练两次，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_source_discovery_v10.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
@@ -215,6 +225,9 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] source-detector 不含 DATABASE_URL/Redis/Docker socket，且未加入默认数据库网络
 [ ] OpenAPI 包含本版本新增字段
 [ ] 新收录申请按 submitted → detecting → pending_review 流转；批准的 Dujiao/Merchant/WooCommerce/Schema.org 来源只有 public_offer_count > 0 才为 published
+[ ] `DISCOVERY_WORKER_KEY` 已配置且与 Admin/Intake/Detector Key 不同；crawler 的 `discover-sources` 与 source-detector 候选领取均已接线
+[ ] 首次发现运行产生 source_discovery_runs 记录；合格候选经 claim/qualify/result 进入 source_intakes（origin=discovery）
+[ ] Schema.org 候选默认停留在 pending_review，未被自动批准（除非显式开启 DISCOVERY_SCHEMA_AUTO_APPROVE）
 [ ] 已 published 且仍启用的 Dujiao/Merchant/WooCommerce/Schema.org 来源在连续两次完整刷新中都存在；disabled 来源在下一快照移除
 [ ] 首页、报价目录和一个商品详情页可正常访问
 [ ] 真实商品的可信最低价与 related_lowest_price 口径正确
@@ -254,3 +267,5 @@ docker image tag ai-price-radar-crawler:rollback-STAMP ai-price-radar-crawler:la
 ```
 
 若发布同时修改了定时脚本、crawler 或 pipeline，再恢复 `backups/source_pre_deploy_STAMP.tar.gz` 中的源码。数据库仅在明确存在不兼容迁移且获得单独批准时恢复。
+
+v3.7 回滚补充：应用回滚不删除 v10 表（`source_discovery_runs` / `source_candidates`），旧版本代码不读取新表，不应受影响；不回滚 PostgreSQL。发现系统异常时可单独暂停 `ai-price-radar-discover.timer` 或停止新 Discovery Worker，当前公开快照不会因发现系统失败而变化。

@@ -23,3 +23,11 @@ def require_detector_worker(x_detector_worker_key: str = Header(default="")) -> 
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="detector worker is not configured")
     if x_detector_worker_key != expected:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid detector worker key")
+
+
+def require_discovery_worker(x_discovery_worker_key: str = Header(default="")) -> None:
+    expected = get_settings().discovery_worker_key
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="discovery worker is not configured")
+    if x_discovery_worker_key != expected:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid discovery worker key")

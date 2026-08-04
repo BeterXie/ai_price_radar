@@ -21,6 +21,17 @@ from ldxp_crawler.dujiao_discovery import (
 )
 from ldxp_crawler.exporter import export_results
 from ldxp_crawler.intake_bridge import IntakeBridge, IntakeBridgeError
+from ldxp_crawler.source_discovery import (
+    DiscoveryBridge,
+    DiscoveryBridgeError,
+    DiscoveryBudget,
+    DiscoveryRunner,
+)
+from ldxp_crawler.source_discovery.bing import BingAdapter
+from ldxp_crawler.source_discovery.commoncrawl import CommonCrawlAdapter
+from ldxp_crawler.source_discovery.github import GitHubAdapter
+from ldxp_crawler.source_discovery.keywords import all_keywords
+from ldxp_crawler.source_discovery.seed import SeedAdapter
 from ldxp_crawler.utils import extract_shop_token, merge_unique
 
 DEFAULT_KEYWORDS = ["gpt", "chatgpt"]
@@ -88,11 +99,35 @@ def add_dujiao_discovery_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--github-count", type=int, default=50, help="每页 GitHub 仓库数，硬上限 100")
     parser.add_argument("--github-timeout", type=float, default=10.0, help="单次 GitHub API 请求超时秒数，硬上限 30")
     parser.add_argument("--github-max-candidates", type=int, default=100, help="本次 GitHub 来源最多提交的唯一 Homepage，硬上限 500；0 关闭")
+    parser.add_argument("--github-token", default=os.getenv("GITHUB_TOKEN", ""), help="可选的 GitHub 搜索 Token；留空时不发送 Authorization，且只用于 api.github.com")
     parser.add_argument("--request-interval", type=float, default=2.0, help="候选站公开请求最小间隔")
     parser.add_argument("--max-api-pages", type=int, default=5, help="单个候选最多读取的公开商品页数")
     parser.add_argument("--max-new-candidates", type=int, default=500, help="本次最多新增候选数；0 不限制")
     parser.add_argument("--max-processed-candidates", type=int, default=2000, help="本次最多验证候选数；0 不限制")
     parser.add_argument("--reverify-stale-hours", type=float, default=24.0, help="复验超过该小时数未验证的候选")
+    parser.add_argument("--discovery-api-url", default=os.getenv("DISCOVERY_API_URL", ""), help="统一候选池 API 地址")
+    parser.add_argument("--discovery-worker-key", default=os.getenv("DISCOVERY_WORKER_KEY", ""), help="统一候选池 Worker Key")
+
+
+def add_source_discovery_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--sources", default="seed,bing,github,commoncrawl", help="逗号分隔：seed,bing,github,commoncrawl")
+    parser.add_argument("--seed", action="append", default=[], help="种子候选 URL，可重复")
+    parser.add_argument("--seed-file", type=Path, default=Path("config/discovery/general_seeds.txt"))
+    parser.add_argument("--api-url", default=os.getenv("DISCOVERY_API_URL", ""), help="统一候选池 API 地址")
+    parser.add_argument("--worker-key", default=os.getenv("DISCOVERY_WORKER_KEY", ""), help="统一候选池 Worker Key")
+    parser.add_argument("--trigger", choices=("scheduled", "manual", "deploy"), default="scheduled")
+    parser.add_argument("--max-raw-urls", type=int, default=2000)
+    parser.add_argument("--max-unique-candidates", type=int, default=1000)
+    parser.add_argument("--request-interval", type=float, default=2.0)
+    parser.add_argument("--bing-pages", type=int, default=5)
+    parser.add_argument("--bing-count", type=int, default=30)
+    parser.add_argument("--bing-delay", type=float, default=2.0)
+    parser.add_argument("--github-pages", type=int, default=3, help="GitHub 页数，硬上限 10")
+    parser.add_argument("--github-count", type=int, default=100, help="每页仓库数，硬上限 100")
+    parser.add_argument("--github-max-candidates", type=int, default=300, help="GitHub Homepage 唯一候选上限，硬上限 500；0 关闭")
+    parser.add_argument("--github-token", default=os.getenv("GITHUB_TOKEN", ""), help="可选的 GitHub Token，只发送给 api.github.com")
+    parser.add_argument("--cc-indexes", type=int, default=2)
+    parser.add_argument("--cc-max-urls", type=int, default=500)
 
 
 def add_scan_args(parser: argparse.ArgumentParser) -> None:
@@ -134,6 +169,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_args(dujiao)
     add_dujiao_discovery_args(dujiao)
     dujiao.set_defaults(user_agent="AI-Price-Radar-Discovery/1.0", timeout=10.0)
+
+    sources = sub.add_parser("discover-sources", help="统一公开来源发现：提交候选到统一候选池")
+    add_common_args(sources)
+    add_source_discovery_args(sources)
+    sources.set_defaults(user_agent="AI-Price-Radar-Discovery/1.0", timeout=10.0)
 
     dujiao_review = sub.add_parser("review-dujiao", help="记录 Dujiao-Next 候选人工审核决定")
     dujiao_review.add_argument("--db", default="ldxp_crawler.db")
@@ -228,7 +268,30 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
             count=args.github_count,
             max_candidates=args.github_max_candidates,
             timeout=args.github_timeout,
+            github_token=args.github_token,
         )
+    bridge = DiscoveryBridge(args.discovery_api_url, args.discovery_worker_key, timeout=args.timeout)
+    bridged = 0
+    bridge_failures = 0
+    if bridge.enabled:
+        for row in db.list_dujiao_candidates():
+            try:
+                sources = json.loads(row["sources"])
+                matched_products = json.loads(row["matched_products"])
+                matched_query = ""
+                if isinstance(matched_products, list) and matched_products:
+                    matched_query = str(matched_products[0].get("name", "") or "")[:300]
+                bridge.upsert(
+                    discovered_url=str(row["origin"]),
+                    platform_hint="dujiao_next",
+                    discovered_by=str(sources[0]) if isinstance(sources, list) and sources else "dujiao-discovery",
+                    matched_query=matched_query,
+                )
+                bridged += 1
+            except (DiscoveryBridgeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                logger.warning("Dujiao 候选桥接失败（保持 SQLite 结果）：%s", type(exc).__name__)
+                bridge_failures += 1
+        logger.info("Dujiao 候选桥接到统一候选池：%s 个，失败 %s 个。", bridged, bridge_failures)
     pending = db.list_dujiao_candidates(
         review_status="pending_review",
         verification_status="pending_review",
@@ -256,6 +319,58 @@ def run_dujiao_discovery(args: argparse.Namespace, db: StateDB, logger: logging.
             "site_name": row["site_name"],
             "re_review_reason": row["re_review_reason"],
         }, ensure_ascii=False))
+
+
+def run_source_discovery(args: argparse.Namespace, logger: logging.Logger) -> None:
+    session = build_session(args.user_agent, retries=0)
+    budget = DiscoveryBudget(
+        max_raw_urls=max(1, args.max_raw_urls),
+        max_unique_candidates=max(1, args.max_unique_candidates),
+        request_interval_seconds=max(0.0, args.request_interval),
+        max_bing_pages=max(1, args.bing_pages),
+        max_bing_count=min(max(10, args.bing_count), 50),
+        max_github_pages=max(1, args.github_pages),
+        max_github_count=min(max(1, args.github_count), 100),
+        max_github_candidates=max(0, args.github_max_candidates),
+        max_cc_indexes=max(1, args.cc_indexes),
+        max_cc_urls=max(1, args.cc_max_urls),
+        github_token=args.github_token,
+    )
+    bridge = DiscoveryBridge(args.api_url, args.worker_key, timeout=args.timeout)
+    selected = {value.strip().casefold() for value in args.sources.split(",") if value.strip()}
+    unsupported = selected - {"seed", "bing", "github", "commoncrawl"}
+    if unsupported:
+        raise ValueError(f"unsupported source discovery adapters: {', '.join(sorted(unsupported))}")
+    keywords = merge_unique([*all_keywords(), *args.keywords])
+    adapters = []
+    if "seed" in selected:
+        adapters.append(SeedAdapter(args.seed, args.seed_file))
+    if "bing" in selected:
+        adapters.append(BingAdapter(session, timeout=args.timeout))
+    if "github" in selected:
+        adapters.append(GitHubAdapter(session, timeout=args.timeout))
+    if "commoncrawl" in selected:
+        adapters.append(CommonCrawlAdapter(session, timeout=args.timeout))
+    if not adapters:
+        raise ValueError("no source discovery adapters selected")
+    runner = DiscoveryRunner(
+        adapters,
+        bridge,
+        logger=logger,
+        budget=budget,
+        trigger=args.trigger,
+        keywords=keywords,
+    )
+    stats = runner.run()
+    logger.info("统一来源发现完成：原始 %s，归一化 %s，重复 %s，新增 %s。", stats.discovered_raw_count, stats.normalized_count, stats.duplicate_count, stats.new_candidate_count)
+    print(json.dumps({
+        "discovered_raw": stats.discovered_raw_count,
+        "normalized": stats.normalized_count,
+        "duplicates": stats.duplicate_count,
+        "new_candidates": stats.new_candidate_count,
+        "by_adapter": stats.adapter_stats,
+        "failures": stats.failure_stats,
+    }, ensure_ascii=False))
 
 
 def run_dujiao_review(args: argparse.Namespace, db: StateDB) -> None:
@@ -482,6 +597,10 @@ def main() -> int:
 
         if args.command == "discover-dujiao":
             run_dujiao_discovery(args, db, logger)
+            return 0
+
+        if args.command == "discover-sources":
+            run_source_discovery(args, logger)
             return 0
 
         if args.command == "review-dujiao":

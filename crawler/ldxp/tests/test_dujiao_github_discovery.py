@@ -14,6 +14,7 @@ from ldxp_crawler.dujiao_discovery import (
     GITHUB_MAX_PAGES,
     GITHUB_MAX_RESPONSE_BYTES,
     GITHUB_REPOSITORY_QUERY,
+    GITHUB_REPOSITORY_QUERIES,
     DujiaoDiscovery,
     DujiaoVerificationResult,
     normalize_candidate_origin,
@@ -303,3 +304,107 @@ def test_github_api_response_body_is_bounded_and_closed(tmp_path: Path):
         assert verifier.calls == []
     finally:
         db.close()
+
+
+def test_github_token_is_sent_only_to_github_api_and_never_logged(tmp_path: Path, caplog):
+    response = FakeGitHubResponse(document=github_document([
+        {"full_name": "owner/repo", "homepage": "https://shop.valid.test"},
+    ], total_count=1))
+    session = FakeGitHubSession(lambda _url, _kwargs: response)
+    db = StateDB(tmp_path / "token.db")
+    try:
+        discovery, verifier = make_discovery(db, session)
+        with caplog.at_level(logging.WARNING, logger="test-dujiao-github"):
+            assert discovery.from_github(
+                ("chatgpt",),
+                pages=1,
+                count=10,
+                max_candidates=10,
+                timeout=3,
+                github_token="ghp_secret-token",
+            ) == 1
+        assert len(session.calls) == 1
+        url, kwargs = session.calls[0]
+        assert url.startswith(GITHUB_API_ORIGIN)
+        assert kwargs["headers"]["Authorization"] == "Bearer ghp_secret-token"
+        assert verifier.calls
+        assert "ghp_secret-token" not in caplog.text
+    finally:
+        db.close()
+
+
+def test_github_without_token_omits_authorization_header(tmp_path: Path):
+    response = FakeGitHubResponse(document=github_document([
+        {"full_name": "owner/repo", "homepage": "https://shop.valid.test"},
+    ], total_count=1))
+    session = FakeGitHubSession(lambda _url, _kwargs: response)
+    db = StateDB(tmp_path / "anonymous.db")
+    try:
+        discovery, _verifier = make_discovery(db, session)
+        discovery.from_github((), pages=1, count=10, max_candidates=10, timeout=3)
+        _url, kwargs = session.calls[0]
+        assert "Authorization" not in kwargs["headers"]
+    finally:
+        db.close()
+
+
+def test_github_queries_share_one_hard_total_page_budget(tmp_path: Path):
+    queries_seen: list[str] = []
+
+    def handler(url: str, _kwargs: dict):
+        queries_seen.append(parse_qs(urlsplit(url).query)["q"][0])
+        page = int(parse_qs(urlsplit(url).query)["page"][0])
+        return FakeGitHubResponse(document=github_document([
+            {"full_name": f"owner/repo-{page}", "homepage": f"https://page-{page}.valid.test"},
+        ], total_count=1000))
+
+    db = StateDB(tmp_path / "query-budget.db")
+    try:
+        session = FakeGitHubSession(handler)
+        discovery, _verifier = make_discovery(db, session)
+        discovery.from_github(
+            (),
+            pages=GITHUB_MAX_PAGES + 20,
+            count=1,
+            max_candidates=100,
+            timeout=5,
+        )
+        assert len(session.calls) == GITHUB_MAX_PAGES
+        assert queries_seen[0] == GITHUB_REPOSITORY_QUERY
+        assert set(queries_seen) <= set(GITHUB_REPOSITORY_QUERIES)
+    finally:
+        db.close()
+
+
+def test_github_token_error_path_does_not_leak_token_into_logs(tmp_path: Path, caplog):
+    def handler(_url: str, _kwargs: dict):
+        return FakeGitHubResponse(403, document={"message": "rate limited"}, headers={"X-RateLimit-Remaining": "0"})
+
+    db = StateDB(tmp_path / "token-error.db")
+    try:
+        session = FakeGitHubSession(handler)
+        discovery, _verifier = make_discovery(db, session)
+        with caplog.at_level(logging.WARNING, logger="test-dujiao-github"):
+            assert discovery.from_github(
+                (),
+                pages=2,
+                count=10,
+                max_candidates=10,
+                timeout=3,
+                github_token="ghp_secret-token",
+            ) == 0
+        assert len(session.calls) == 1
+        assert "ghp_secret-token" not in caplog.text
+    finally:
+        db.close()
+
+
+def test_cli_github_token_defaults_to_environment_and_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_env-token")
+    args = build_parser().parse_args(["discover-dujiao"])
+    assert args.github_token == "ghp_env-token"
+    explicit = build_parser().parse_args([
+        "discover-dujiao",
+        "--github-token", "ghp_explicit-token",
+    ])
+    assert explicit.github_token == "ghp_explicit-token"

@@ -1,0 +1,13 @@
+*
+!crawler/
+!crawler/ldxp/
+!crawler/ldxp/Dockerfile.remote
+!crawler/ldxp/ldxp_gpt_crawler.py
+!crawler/ldxp/self_test.py
+!crawler/ldxp/requirements.txt
+!crawler/ldxp/ldxp_crawler/
+!crawler/ldxp/ldxp_crawler/**
+!shared_http/
+!shared_http/pyproject.toml
+!shared_http/price_radar_http/
+!shared_http/price_radar_http/**

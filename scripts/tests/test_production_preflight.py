@@ -7,6 +7,7 @@ def _valid_env() -> dict[str, str]:
         "ADMIN_API_KEY": "b" * 40,
         "INTAKE_WORKER_KEY": "c" * 40,
         "DETECTOR_WORKER_KEY": "e" * 40,
+        "DISCOVERY_WORKER_KEY": "f" * 40,
         "SHOP_INTAKE_ADMIN_EMAILS": "ops@example.com",
         "RESEND_API_KEY": "re_" + "d" * 32,
         "RESEND_FROM": "notice@example.com",
@@ -37,6 +38,23 @@ def test_production_preflight_requires_a_distinct_detector_key():
     env["DETECTOR_WORKER_KEY"] = env["INTAKE_WORKER_KEY"]
     errors = validate_production_env(env)
     assert any("DETECTOR_WORKER_KEY" in error for error in errors)
+
+
+def test_production_preflight_requires_a_distinct_discovery_key():
+    env = _valid_env()
+    env["DISCOVERY_WORKER_KEY"] = env["DETECTOR_WORKER_KEY"]
+    errors = validate_production_env(env)
+    assert any("DISCOVERY_WORKER_KEY" in error for error in errors)
+
+
+def test_production_preflight_rejects_discovery_key_placeholder_and_missing_value():
+    env = _valid_env()
+    env["DISCOVERY_WORKER_KEY"] = "replace-with-a-separate-discovery-worker-key"
+    errors = validate_production_env(env)
+    assert any("DISCOVERY_WORKER_KEY" in error for error in errors)
+    del env["DISCOVERY_WORKER_KEY"]
+    errors = validate_production_env(env)
+    assert any("DISCOVERY_WORKER_KEY" in error for error in errors)
 
 
 def test_production_preflight_rejects_detector_key_placeholder():

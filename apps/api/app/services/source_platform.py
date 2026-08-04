@@ -81,7 +81,8 @@ class SourceDetection:
     shop_token: str
 
 
-def _normalized_https_url(value: object) -> str:
+def normalize_public_https_url(value: object) -> str:
+    """Normalize a URL without DNS resolution or outbound network access."""
     parsed = urllib.parse.urlsplit(str(value))
     host = (parsed.hostname or "").casefold().rstrip(".")
     if parsed.scheme.casefold() != "https" or not host or parsed.username or parsed.password:
@@ -101,6 +102,9 @@ def _normalized_https_url(value: object) -> str:
     rendered_host = f"[{host}]" if ":" in host else host
     netloc = f"{rendered_host}:{port}" if port and port != 443 else rendered_host
     return urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
+
+
+_normalized_https_url = normalize_public_https_url
 
 
 def _ldxp_detection(url: str) -> SourceDetection | None:

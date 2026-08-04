@@ -1,0 +1,16 @@
+# Crawler 日常开发/冒烟配置：把源码只读挂载进已构建镜像，避免每次改 Python 后重建 Playwright 镜像。
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.pricememo.yml \
+#     -f docker-compose.crawler-dev.yml run --no-build --rm crawler --version
+#   docker compose -f docker-compose.yml -f docker-compose.pricememo.yml \
+#     -f docker-compose.crawler-dev.yml run --no-build --rm crawler discover-sources --sources seed
+# 仅在 requirements、Dockerfile、系统依赖变化或最终门禁时才执行完整 build：
+#   docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile crawler build crawler
+services:
+  crawler:
+    volumes:
+      - ./crawler/ldxp:/app:ro
+      - ./shared_http:/shared_http:ro
+    environment:
+      # 优先使用挂载的源码，而不是镜像内已安装的 shared_http 副本。
+      PYTHONPATH: /shared_http

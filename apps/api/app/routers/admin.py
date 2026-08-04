@@ -3,22 +3,41 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models import NotificationOutbox, Offer, Product, Report, ScanRun, Shop, SourceIntake
+from ..models import (
+    NotificationOutbox,
+    Offer,
+    Product,
+    Report,
+    ScanRun,
+    Shop,
+    SourceCandidate,
+    SourceDiscoveryRun,
+    SourceIntake,
+)
 from ..schemas import (
     AdminOfferUpdate,
     AdminReportUpdate,
     AdminStats,
     NotificationOutboxOut,
     ReportOut,
+    SourceCandidateAction,
+    SourceCandidateOut,
+    SourceDiscoveryRunOut,
     SourceIntakeOut,
     SourceIntakeReject,
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
+from ..services.source_discovery import (
+    admin_promote_candidate,
+    admin_reject_candidate,
+    admin_retry_candidate,
+    recover_unpromoted_candidates,
+)
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
 from ..services.source_platform import workflow_status
 
@@ -332,6 +351,148 @@ def retry_notification(outbox_id: int, db: Session = Depends(get_db)) -> Notific
         row.sent_at = None
         db.commit()
     return row
+
+
+@router.get("/source-discovery/runs", response_model=list[SourceDiscoveryRunOut])
+def discovery_runs(
+    status: str | None = None,
+    trigger: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[SourceDiscoveryRun]:
+    stmt = select(SourceDiscoveryRun).order_by(SourceDiscoveryRun.id.desc()).limit(limit).offset(offset)
+    if status:
+        stmt = stmt.where(SourceDiscoveryRun.status == status)
+    if trigger:
+        stmt = stmt.where(SourceDiscoveryRun.trigger == trigger)
+    return list(db.scalars(stmt))
+
+
+@router.get("/source-discovery/runs/{run_id}", response_model=SourceDiscoveryRunOut)
+def discovery_run_detail(run_id: int, db: Session = Depends(get_db)) -> SourceDiscoveryRun:
+    run = db.get(SourceDiscoveryRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="discovery run not found")
+    return run
+
+
+@router.get("/source-candidates", response_model=list[SourceCandidateOut])
+def source_candidates(
+    status: str | None = None,
+    detected_platform: str | None = None,
+    discovered_by: str | None = None,
+    ai_hit: bool | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    failure_reason: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[SourceCandidate]:
+    conditions = []
+    if status:
+        conditions.append(SourceCandidate.status == status)
+    if detected_platform:
+        conditions.append(SourceCandidate.detected_platform == detected_platform)
+    if discovered_by:
+        conditions.append(SourceCandidate.discovery_sources.contains([discovered_by]))
+    if ai_hit is not None:
+        conditions.append(
+            SourceCandidate.ai_product_count > 0 if ai_hit else SourceCandidate.ai_product_count == 0
+        )
+    if created_after:
+        conditions.append(SourceCandidate.created_at >= created_after)
+    if created_before:
+        conditions.append(SourceCandidate.created_at <= created_before)
+    if failure_reason:
+        conditions.append(SourceCandidate.failure_reason.ilike(f"%{failure_reason}%"))
+    stmt = (
+        select(SourceCandidate)
+        .where(and_(*conditions))
+        .order_by(SourceCandidate.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(db.scalars(stmt))
+
+
+@router.get("/source-candidates/{candidate_id}", response_model=SourceCandidateOut)
+def source_candidate_detail(candidate_id: int, db: Session = Depends(get_db)) -> SourceCandidate:
+    candidate = db.get(SourceCandidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="source candidate not found")
+    return candidate
+
+
+def _locked_candidate(db: Session, candidate_id: int) -> SourceCandidate:
+    candidate = db.scalar(
+        select(SourceCandidate).where(SourceCandidate.id == candidate_id).with_for_update()
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="source candidate not found")
+    return candidate
+
+
+def _candidate_action(candidate_id: int, payload: SourceCandidateAction, action: str, db: Session) -> SourceCandidate:
+    candidate = _locked_candidate(db, candidate_id)
+    try:
+        if action == "retry":
+            return admin_retry_candidate(db, candidate, reason=payload.reason)
+        if action == "reject":
+            return admin_reject_candidate(db, candidate, reason=payload.reason)
+        if action == "disable":
+            return admin_reject_candidate(db, candidate, reason=payload.reason, disable=True)
+        if action == "promote":
+            return admin_promote_candidate(db, candidate, reason=payload.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    raise HTTPException(status_code=400, detail="unknown candidate action")
+
+
+@router.post("/source-candidates/recover")
+def recover_source_candidate_promotions(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    recovered = recover_unpromoted_candidates(db, limit=limit)
+    return {"recovered": recovered}
+
+
+@router.post("/source-candidates/{candidate_id}/retry", response_model=SourceCandidateOut)
+def retry_source_candidate(
+    candidate_id: int,
+    payload: SourceCandidateAction,
+    db: Session = Depends(get_db),
+) -> SourceCandidate:
+    return _candidate_action(candidate_id, payload, "retry", db)
+
+
+@router.post("/source-candidates/{candidate_id}/reject", response_model=SourceCandidateOut)
+def reject_source_candidate(
+    candidate_id: int,
+    payload: SourceCandidateAction,
+    db: Session = Depends(get_db),
+) -> SourceCandidate:
+    return _candidate_action(candidate_id, payload, "reject", db)
+
+
+@router.post("/source-candidates/{candidate_id}/disable", response_model=SourceCandidateOut)
+def disable_source_candidate(
+    candidate_id: int,
+    payload: SourceCandidateAction,
+    db: Session = Depends(get_db),
+) -> SourceCandidate:
+    return _candidate_action(candidate_id, payload, "disable", db)
+
+
+@router.post("/source-candidates/{candidate_id}/promote", response_model=SourceCandidateOut)
+def promote_source_candidate(
+    candidate_id: int,
+    payload: SourceCandidateAction,
+    db: Session = Depends(get_db),
+) -> SourceCandidate:
+    return _candidate_action(candidate_id, payload, "promote", db)
 
 
 @router.patch("/reports/{report_id}")
