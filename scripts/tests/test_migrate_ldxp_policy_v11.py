@@ -12,9 +12,10 @@ from scripts.migrate_source_intake_v8 import connection_url
 
 
 def test_source_policy_v11_ddl_is_idempotent_and_constrained():
-    assert DDL.count("CREATE TABLE IF NOT EXISTS") == 2
+    assert DDL.count("CREATE TABLE IF NOT EXISTS") == 3
     assert "ck_source_policy_requests_type" in DDL
     assert "ck_source_policy_requests_status" in DDL
+    assert "source_policy_effects" in DDL
 
 
 @pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="TEST_POSTGRES_URL is not configured")

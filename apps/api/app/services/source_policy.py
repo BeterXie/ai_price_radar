@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import urllib.parse
 from datetime import timedelta
+import hashlib
 import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import SourceIntake, SourcePolicyControl, SourcePolicyRequest
+from ..models import SourceIntake, SourcePolicyControl, SourcePolicyEffect, SourcePolicyRequest
 from .source_discovery import candidate_origin
 from .source_intake import utcnow
 from .source_platform import normalize_public_https_url
 
 
 EMERGENCY_STOP_KEY = "emergency_stop"
+LDXP_HOSTS = frozenset({"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"})
+LDXP_TOKEN_RE = re.compile(r"^[A-Za-z0-9._~-]{1,128}$")
+ACTIVE_OPT_OUT_STATUSES = {"pending_unverified", "pending", "verified", "applied"}
+UNVERIFIED_HOLD_HOURS = 24
+VERIFIED_HOLD_DAYS = 7
 
 
 def _request_origin(source_url: str) -> str:
@@ -26,12 +32,21 @@ def _aware(value: object, now: object) -> object:
     return value.replace(tzinfo=now.tzinfo)
 
 
-def _ldxp_shop_token(url: str) -> str:
-    parsed = urllib.parse.urlsplit(url)
-    parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]
-    if len(parts) == 2 and parts[0].casefold() == "shop":
-        return parts[1].casefold()
-    return ""
+def source_identity(url: str) -> tuple[str, str]:
+    """Return a canonical source identity.
+
+    Only the official LDXP hosts match by shop token; every other website is
+    matched by its exact normalized URL so an attacker cannot freeze or disable
+    a shop by submitting a look-alike path on a different domain.
+    """
+    normalized = normalize_public_https_url(url)
+    parsed = urllib.parse.urlsplit(normalized)
+    host = (parsed.hostname or "").casefold().rstrip(".")
+    if host in LDXP_HOSTS:
+        parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]
+        if len(parts) == 2 and parts[0].casefold() == "shop" and LDXP_TOKEN_RE.fullmatch(parts[1]):
+            return ("ldxp", parts[1].casefold())
+    return ("url", normalized)
 
 
 def create_policy_request(
@@ -48,7 +63,8 @@ def create_policy_request(
         raise ValueError("requester_email must be a valid email address")
     now = utcnow()
     since = now - timedelta(hours=1)
-    token = _ldxp_shop_token(normalized)
+    identity = source_identity(normalized)
+    requester_ip = hashlib.sha256(requester_ip.encode("utf-8")).hexdigest() if requester_ip else ""
     existing = list(db.scalars(select(SourcePolicyRequest)))
     if request_type == "opt_out":
         for row in existing:
@@ -56,15 +72,13 @@ def create_policy_request(
                 row_normalized = normalize_public_https_url(row.source_url)
             except ValueError:
                 continue
-            if row.status in {"pending", "verified", "applied"}:
-                if token and _ldxp_shop_token(row_normalized) == token:
-                    raise ValueError("an active opt-out already exists for this source")
-                if not token and row_normalized == normalized:
+            if row.status in ACTIVE_OPT_OUT_STATUSES:
+                if source_identity(row.source_url) == identity:
                     raise ValueError("an active opt-out already exists for this source")
     source_recent = sum(
         1
         for row in existing
-        if _aware(row.created_at, now) >= since and _matches_source(row.source_url, normalized, token)
+        if _aware(row.created_at, now) >= since and _matches_source(row.source_url, normalized)
     )
     if source_recent >= 3:
         raise ValueError("too many requests for this source; try again later")
@@ -85,7 +99,7 @@ def create_policy_request(
         requester_email=requester_email.strip()[:200],
         requester_ip=requester_ip[:64],
         reason=reason.strip()[:2000],
-        status="pending",
+        status="pending_unverified" if request_type == "opt_out" else "pending",
         temporary_hold_at=now if request_type == "opt_out" else None,
     )
     db.add(request)
@@ -93,20 +107,15 @@ def create_policy_request(
     return request
 
 
-def _matches_source(request_source_url: str, normalized: str, token: str) -> bool:
+def _matches_source(request_source_url: str, normalized: str) -> bool:
     try:
-        request_normalized = normalize_public_https_url(request_source_url)
+        return source_identity(request_source_url) == source_identity(normalized)
     except ValueError:
         return False
-    request_token = _ldxp_shop_token(request_normalized)
-    if token and request_token:
-        return request_token == token
-    return request_normalized == normalized
 
 
-def _disable_matching_intakes(db: Session, source_url: str) -> int:
-    request_token = _ldxp_shop_token(normalize_public_https_url(source_url))
-    request_normalized = normalize_public_https_url(source_url)
+def _disable_matching_intakes(db: Session, source_url: str, *, policy_request_id: int) -> int:
+    request_identity = source_identity(source_url)
     now = utcnow()
     disabled = 0
     intakes = list(
@@ -118,15 +127,20 @@ def _disable_matching_intakes(db: Session, source_url: str) -> int:
     )
     for intake in intakes:
         try:
-            intake_normalized = normalize_public_https_url(intake.source_url)
+            intake_identity = source_identity(intake.source_url)
         except ValueError:
             continue
-        intake_token = _ldxp_shop_token(intake_normalized)
-        if request_token:
-            if intake_token != request_token:
+        if request_identity[0] == "ldxp":
+            if intake.source_type != "ldxp" or intake_identity != request_identity:
                 continue
-        elif intake_normalized != request_normalized:
+        elif intake_identity != request_identity:
             continue
+        db.add(SourcePolicyEffect(
+            policy_request_id=policy_request_id,
+            intake_id=intake.id,
+            previous_status=intake.status,
+            applied_at=now,
+        ))
         intake.status = "disabled"
         intake.decision_note = f"商家退出收录（policy request）\n{intake.decision_note}".strip()
         intake.finished_at = now
@@ -156,7 +170,7 @@ def decide_policy_request(
     request.decided_at = utcnow()
     request.decision_note = note.strip()[:1000]
     if decision == "applied" and request.request_type == "opt_out":
-        _disable_matching_intakes(db, request.source_url)
+        _disable_matching_intakes(db, request.source_url, policy_request_id=request.id)
     db.commit()
     return request
 
@@ -170,30 +184,25 @@ def reverse_applied_opt_out(db: Session, request_id: int, *, note: str) -> Sourc
     request.status = "rejected"
     request.decided_at = utcnow()
     request.decision_note = f"管理员解除永久退出：{note.strip()[:900]}"
-    _restore_matching_intakes(db, request.source_url)
+    _restore_policy_effects(db, request.id)
     db.commit()
     return request
 
 
-def _restore_matching_intakes(db: Session, source_url: str) -> int:
-    request_token = _ldxp_shop_token(normalize_public_https_url(source_url))
-    request_normalized = normalize_public_https_url(source_url)
+def _restore_policy_effects(db: Session, policy_request_id: int) -> int:
     restored = 0
-    for intake in db.scalars(
-        select(SourceIntake).where(SourceIntake.status == "disabled")
+    for effect in db.scalars(
+        select(SourcePolicyEffect).where(
+            SourcePolicyEffect.policy_request_id == policy_request_id,
+            SourcePolicyEffect.reversed_at.is_(None),
+        )
     ):
-        try:
-            intake_normalized = normalize_public_https_url(intake.source_url)
-        except ValueError:
+        intake = db.get(SourceIntake, effect.intake_id)
+        if intake is None:
             continue
-        intake_token = _ldxp_shop_token(intake_normalized)
-        if request_token:
-            if intake_token != request_token:
-                continue
-        elif intake_normalized != request_normalized:
-            continue
-        intake.status = "approved"
-        intake.decision_note = f"管理员解除退出，恢复收录\n{intake.decision_note}".strip()
+        intake.status = effect.previous_status
+        intake.decision_note = f"管理员解除退出，恢复收录（原状态 {effect.previous_status}）\n{intake.decision_note}".strip()
+        effect.reversed_at = utcnow()
         restored += 1
     return restored
 
@@ -228,27 +237,39 @@ def policy_check(db: Session, source_url: str) -> dict[str, object]:
         normalized = normalize_public_https_url(source_url)
     except ValueError:
         return {"emergency_stopped": emergency, "source_status": "invalid", "allowed": False}
-    token = _ldxp_shop_token(normalized)
+    now = utcnow()
     applied_opt_out = None
     active_opt_out = None
     for candidate in db.scalars(select(SourcePolicyRequest).order_by(SourcePolicyRequest.id.desc())):
         if candidate.request_type != "opt_out":
             continue
-        if not _matches_source(candidate.source_url, normalized, token):
+        if not _matches_source(candidate.source_url, normalized):
             continue
         if candidate.status == "applied":
             applied_opt_out = candidate
             break
-        if candidate.status in {"pending", "verified"} and active_opt_out is None:
+        if candidate.status in ACTIVE_OPT_OUT_STATUSES - {"applied"} and active_opt_out is None:
             active_opt_out = candidate
     source_status = "active"
     if applied_opt_out is not None:
         source_status = "opted_out"
     elif active_opt_out is not None:
-        source_status = "legal_hold"
+        expires = _hold_expires(active_opt_out)
+        if expires is not None and _aware(expires, now) > now:
+            source_status = "legal_hold"
     allowed = not emergency and source_status == "active"
     return {
         "emergency_stopped": emergency,
         "source_status": source_status,
         "allowed": allowed,
     }
+
+
+def _hold_expires(request: SourcePolicyRequest):
+    if request.temporary_hold_at is None:
+        return None
+    if request.status == "pending_unverified":
+        return request.temporary_hold_at + timedelta(hours=UNVERIFIED_HOLD_HOURS)
+    if request.status == "verified":
+        return request.temporary_hold_at + timedelta(days=VERIFIED_HOLD_DAYS)
+    return None

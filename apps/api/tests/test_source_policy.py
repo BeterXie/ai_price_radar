@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.database import Base as ApiBase, get_db
 from app.main import app
 from app.models import SourceIntake, SourcePolicyRequest
+from app.services.source_policy import source_identity
 
 
 def _client(tmp_path: Path, monkeypatch):
@@ -46,7 +47,7 @@ def test_opt_out_request_creates_immediate_legal_hold(tmp_path, monkeypatch):
         )
         assert created.status_code == 201
         body = created.json()
-        assert body["status"] == "pending"
+        assert body["status"] == "pending_unverified"
         assert body["temporary_hold_at"] is not None
 
         check = test_client.get(
@@ -318,3 +319,125 @@ def test_policy_request_validation_and_rate_limits(tmp_path, monkeypatch):
         too_many = test_client.post("/api/v1/source-policy/requests", json=payload)
         assert too_many.status_code == 422
         assert "too many" in too_many.json()["detail"]
+
+
+def test_source_identity_requires_official_ldxp_host_for_token_matching():
+    assert source_identity("https://pay.ldxp.cn/shop/TEST01") == ("ldxp", "test01")
+    assert source_identity("https://www.ldxp.cn/shop/TEST01") == ("ldxp", "test01")
+    assert source_identity("https://ldxp.cn/shop/TEST01") == ("ldxp", "test01")
+    assert source_identity("https://attacker.example/shop/TEST01") == ("url", "https://attacker.example/shop/TEST01")
+    assert source_identity("https://pay.ldxp.cn/shop/bad token") == ("url", "https://pay.ldxp.cn/shop/bad token")
+
+
+def test_cross_domain_opt_out_cannot_freeze_ldxp_shop(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://attacker.example/shop/TEST01",
+                "request_type": "opt_out",
+                "requester_email": "attacker@example.com",
+                "reason": "look-alike",
+            },
+        )
+        assert created.status_code == 201
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/TEST01"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "active"
+        assert check["allowed"] is True
+
+
+def test_unverified_hold_expires_after_24_hours(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from app.services.source_intake import utcnow
+
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/EXPIRE",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        assert created["status"] == "pending_unverified"
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/EXPIRE"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "legal_hold"
+
+        with Session(engine) as db:
+            request = db.get(SourcePolicyRequest, created["id"])
+            request.temporary_hold_at = utcnow() - timedelta(hours=25)
+            db.commit()
+        check = test_client.get(
+            "/api/v1/internal/source-policy/check",
+            params={"source_url": "https://pay.ldxp.cn/shop/EXPIRE"},
+            headers={"X-Discovery-Worker-Key": "discovery-policy"},
+        ).json()
+        assert check["source_status"] == "active"
+        assert check["allowed"] is True
+
+
+def test_reverse_restores_only_effects_of_that_opt_out(tmp_path, monkeypatch):
+    for test_client in _client(tmp_path, monkeypatch):
+        engine = test_client.app.state.test_policy_engine
+        with Session(engine) as db:
+            db.add(SourceIntake(
+                source_type="ldxp",
+                source_key="https://pay.ldxp.cn/shop/REV-A",
+                source_url="https://pay.ldxp.cn/shop/REV-A",
+                contact_email="a@example.com",
+                status="approved",
+                origin="manual",
+            ))
+            db.add(SourceIntake(
+                source_type="ldxp",
+                source_key="https://pay.ldxp.cn/shop/REV-B",
+                source_url="https://pay.ldxp.cn/shop/REV-B",
+                contact_email="b@example.com",
+                status="disabled",
+                decision_note="手动安全禁用",
+                origin="manual",
+            ))
+            db.commit()
+        created = test_client.post(
+            "/api/v1/source-policy/requests",
+            json={
+                "source_url": "https://pay.ldxp.cn/shop/REV-A",
+                "request_type": "opt_out",
+                "requester_email": "owner@example.com",
+                "reason": "opt out",
+            },
+        ).json()
+        applied = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/decide",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "verified"},
+        )
+        assert applied.status_code == 200
+        with Session(engine) as db:
+            a = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/REV-A"))
+            b = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/REV-B"))
+            assert a.status == "disabled"
+            assert b.status == "disabled"  # manual disabled remains untouched
+
+        reversed_request = test_client.post(
+            f"/api/v1/admin/source-policy/requests/{created['id']}/reverse",
+            headers={"X-Admin-Key": "admin-policy"},
+            json={"decision": "applied", "note": "owner confirmed"},
+        )
+        assert reversed_request.status_code == 200
+        with Session(engine) as db:
+            a = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/REV-A"))
+            b = db.scalar(select(SourceIntake).where(SourceIntake.source_key == "https://pay.ldxp.cn/shop/REV-B"))
+            assert a.status == "approved"  # restored to previous status
+            assert b.status == "disabled"  # manual disabled preserved

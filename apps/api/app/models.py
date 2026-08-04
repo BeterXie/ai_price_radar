@@ -311,7 +311,7 @@ class SourcePolicyRequest(Base):
             name="ck_source_policy_requests_type",
         ),
         CheckConstraint(
-            "status IN ('pending', 'verified', 'applied', 'rejected')",
+            "status IN ('pending_unverified', 'pending', 'verified', 'applied', 'rejected')",
             name="ck_source_policy_requests_status",
         ),
     )
@@ -335,6 +335,21 @@ class SourcePolicyControl(Base):
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SourcePolicyEffect(Base):
+    __tablename__ = "source_policy_effects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    policy_request_id: Mapped[int] = mapped_column(
+        ForeignKey("source_policy_requests.id", ondelete="CASCADE"), index=True
+    )
+    intake_id: Mapped[int] = mapped_column(
+        ForeignKey("source_intakes.id", ondelete="CASCADE"), index=True
+    )
+    previous_status: Mapped[str] = mapped_column(String(30))
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class NotificationOutbox(Base):
