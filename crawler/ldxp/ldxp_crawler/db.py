@@ -610,6 +610,9 @@ class StateDB:
 
     def record_daily_request(self, token: str, *, count: int = 1, now: str | None = None) -> None:
         now = now or utc_now()
+        count = max(0, int(count))
+        if count == 0:
+            return
         day = now[:10]
         self.conn.execute(
             """
@@ -618,7 +621,7 @@ class StateDB:
                 daily_request_date = ?
             WHERE token = ?
             """,
-            (day, max(1, count), max(1, count), day, token),
+            (day, count, count, day, token),
         )
         self.conn.commit()
 

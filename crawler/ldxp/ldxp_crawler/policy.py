@@ -187,11 +187,26 @@ class RobotsTxtPolicy:
     def cached(self, source_url: str) -> bool:
         return candidate_origin(source_url) in self._cache
 
-    def allows(self, source_url: str) -> tuple[bool, str]:
+    def evaluate(self, source_url: str) -> tuple[bool, str, int]:
+        """Return (allowed, reason, network_request_count).
+
+        A cache hit costs zero requests; a cache miss costs exactly one robots
+        request. Every shop path is evaluated against the cached origin body.
+        """
         origin = candidate_origin(source_url)
+        fetched = 0
         if origin not in self._cache:
             self._cache[origin] = self.fetcher(f"{origin}/robots.txt")
+            fetched = 1
         status, text = self._cache[origin]
+        allowed, reason = self._evaluate_path(source_url, status, text)
+        return allowed, reason, fetched
+
+    def allows(self, source_url: str) -> tuple[bool, str]:
+        allowed, reason, _request_count = self.evaluate(source_url)
+        return allowed, reason
+
+    def _evaluate_path(self, source_url: str, status: int, text: str) -> tuple[bool, str]:
         if status != 200 or not text:
             return True, ""
         path = urllib.parse.urlsplit(source_url).path or "/"

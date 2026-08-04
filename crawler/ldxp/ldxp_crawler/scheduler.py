@@ -36,6 +36,11 @@ class DueShopScheduler:
         self.robots_policy = robots_policy
 
     def run_once(self, keywords: Sequence[str]) -> dict[str, int]:
+        def _remaining(limit: int, used: int) -> Optional[int]:
+            if limit <= 0:
+                return None
+            return max(0, limit - used)
+
         due = self.db.list_due_candidates(limit=self.batch_limit)
         if not due:
             return {"attempted": 0, "allowed": 0, "deferred": 0, "scanned": 0, "matches": 0}
@@ -69,50 +74,53 @@ class DueShopScheduler:
                     )
                     continue
                 allowed += 1
-                if self.robots_policy is not None and self.gate.respect_robots:
-                    origin = self.db.conn.execute(
-                        "SELECT url FROM candidates WHERE token=?", (candidate["token"],)
-                    ).fetchone()
-                    source_url = str(origin["url"] if origin else candidate.get("url") or "")
-                    if not self.robots_policy.cached(source_url):
-                        used += 1  # robots.txt fetch counts against the daily budget
-                        self.db.record_daily_request(candidate["token"], count=1)
-                        if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
-                            deferred += 1
-                            self.logger.warning("global daily request budget reached; deferring remaining shops")
-                            break
-                    robots_allowed, robots_reason = self.robots_policy.allows(source_url)
-                    if not robots_allowed:
-                        self.db.set_policy_status(candidate["token"], "active", reason=robots_reason)
-                        deferred += 1
-                        continue
-                if not self.db.claim_due_candidate(candidate["token"]):
-                    deferred += 1
-                    continue
                 today = utc_now()[:10]
                 shop_used = (
                     int(candidate.get("daily_request_count") or 0)
                     if str(candidate.get("daily_request_date") or "") == today
                     else 0
                 )
-                global_remaining = (
-                    max(0, self.gate.daily_global_budget - used)
-                    if self.gate.daily_global_budget
-                    else None
-                )
-                shop_remaining = (
-                    max(0, self.gate.max_requests_per_shop_day - shop_used)
-                    if self.gate.max_requests_per_shop_day
-                    else None
-                )
+                global_remaining = _remaining(self.gate.daily_global_budget, used)
+                shop_remaining = _remaining(self.gate.max_requests_per_shop_day, shop_used)
                 remaining_budget = min(
                     [value for value in (global_remaining, shop_remaining) if value is not None],
                     default=None,
                 )
+                if remaining_budget == 0:
+                    deferred += 1
+                    continue
+                if self.robots_policy is not None and self.gate.respect_robots:
+                    origin = self.db.conn.execute(
+                        "SELECT url FROM candidates WHERE token=?", (candidate["token"],)
+                    ).fetchone()
+                    source_url = str(origin["url"] if origin else candidate.get("url") or "")
+                    robots_allowed, robots_reason, robots_requests = self.robots_policy.evaluate(source_url)
+                    if robots_requests > 0:
+                        used += robots_requests
+                        shop_used += robots_requests
+                        self.db.record_daily_request(candidate["token"], count=robots_requests)
+                    if not robots_allowed:
+                        self.db.set_policy_status(candidate["token"], "active", reason=robots_reason)
+                        deferred += 1
+                        continue
+                    global_remaining = _remaining(self.gate.daily_global_budget, used)
+                    shop_remaining = _remaining(self.gate.max_requests_per_shop_day, shop_used)
+                    remaining_budget = min(
+                        [value for value in (global_remaining, shop_remaining) if value is not None],
+                        default=None,
+                    )
+                if remaining_budget == 0:
+                    deferred += 1
+                    continue
+                if not self.db.claim_due_candidate(candidate["token"]):
+                    deferred += 1
+                    continue
                 self.db.record_daily_scan(candidate["token"])
                 result = scanner.scan_shop(candidate, keywords, request_budget=remaining_budget)
-                used += max(1, result.request_count)
-                self.db.record_daily_request(candidate["token"], count=max(1, result.request_count))
+                actual_requests = max(0, int(result.request_count or 0))
+                used += actual_requests
+                if actual_requests > 0:
+                    self.db.record_daily_request(candidate["token"], count=actual_requests)
                 self.db.save_scan_result(result, run_id)
                 if self.result_callback is not None:
                     self.result_callback(result, candidate)

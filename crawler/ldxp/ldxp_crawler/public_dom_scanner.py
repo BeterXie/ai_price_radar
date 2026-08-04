@@ -188,6 +188,15 @@ class PublicDomScanner:
     ) -> ShopScanResult:
         token = candidate["token"]
         shop_url = clean_text(candidate.get("url") or "")
+        if request_budget is not None and request_budget <= 0:
+            return ShopScanResult(
+                token=token,
+                status="budget_deferred",
+                shop_url=shop_url,
+                error="no request budget remaining",
+                request_count=0,
+                engine="public_dom",
+            )
         effective_budget = self.max_requests_per_shop
         if request_budget is not None:
             effective_budget = min(effective_budget, request_budget)
@@ -199,18 +208,21 @@ class PublicDomScanner:
         budget_state = {"exceeded": False}
 
         def on_route(route: Any) -> None:
-            request_count["n"] += 1
-            if request_count["n"] > effective_budget:
-                budget_state["exceeded"] = True
-                return route.abort()
             resource_type = getattr(route.request, "resource_type", "") or ""
             if resource_type in {"image", "media", "font", "other"}:
-                return route.abort()
-            return route.continue_()
+                route.abort()
+                return
+            if request_count["n"] >= effective_budget:
+                budget_state["exceeded"] = True
+                route.abort()
+                return
+            request_count["n"] += 1
+            route.continue_()
 
         context.route("**/*", on_route)
-        page = context.new_page()
+        page = None
         try:
+            page = context.new_page()
             page.set_default_timeout(self.timeout_ms)
             page.set_default_navigation_timeout(self.timeout_ms)
             try:
@@ -340,9 +352,25 @@ class PublicDomScanner:
                 request_count=request_count["n"],
                 engine="public_dom",
             )
+        except Exception as exc:
+            return ShopScanResult(
+                token=token,
+                status="network_error",
+                shop_url=shop_url,
+                error=f"页面扫描失败：{exc}",
+                request_count=request_count["n"],
+                engine="public_dom",
+            )
         finally:
-            page.close()
-            context.close()
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            try:
+                context.close()
+            except Exception:
+                pass
 
     @staticmethod
     def _body_text(page: Any) -> str:

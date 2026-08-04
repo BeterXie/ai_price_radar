@@ -509,6 +509,260 @@ def test_per_shop_daily_request_budget_limits_scanner(tmp_path: Path):
         db.close()
 
 
+def _make_fake_context(route_handler, page_factory=None, *, close_raises=False):
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+    class FakePage:
+        def __init__(self, context):
+            self.context = context
+
+        def set_default_timeout(self, _ms):
+            return None
+
+        def set_default_navigation_timeout(self, _ms):
+            return None
+
+        def goto(self, _url, **_kwargs):
+            page_factory(self.context)
+            raise PlaywrightTimeoutError("nav timeout")
+
+        def close(self):
+            if close_raises:
+                raise RuntimeError("cleanup failed")
+            return None
+
+    class FakeContext:
+        def __init__(self):
+            self.handler = route_handler
+            self.new_page_calls = 0
+            self.pages = []
+
+        def route(self, _pattern, handler):
+            self.handler = handler
+
+        def new_page(self):
+            self.new_page_calls += 1
+            page = FakePage(self)
+            self.pages.append(page)
+            return page
+
+        def close(self):
+            if close_raises:
+                raise RuntimeError("context cleanup failed")
+            return None
+
+    return FakeContext()
+
+
+def test_route_aborted_over_budget_request_is_not_counted():
+    scanner = PublicDomScanner(request_interval=0, request_jitter_seconds=0, logger=logging.getLogger("test-abort"))
+
+    def page_factory(context):
+        from ldxp_crawler.public_dom_scanner import is_challenge_text
+
+        class Route:
+            def __init__(self, resource_type="document"):
+                self.request = type("Req", (), {"resource_type": resource_type})()
+
+            def abort(self):
+                self.aborted = True
+
+            def continue_(self):
+                self.continued = True
+
+        context.handler(Route())
+        context.handler(Route())
+
+    context = _make_fake_context(None, page_factory=page_factory)
+    scanner._anonymous_context = lambda: context  # type: ignore[method-assign]
+    result = scanner.scan_shop(
+        {"token": "ABORT", "url": "https://pay.ldxp.cn/shop/ABORT"},
+        [],
+        request_budget=1,
+    )
+    assert result.status == "network_error"
+    assert result.request_count == 1  # only the first document request was continued
+
+
+def test_blocked_resource_is_not_counted():
+    scanner = PublicDomScanner(request_interval=0, request_jitter_seconds=0, logger=logging.getLogger("test-blocked"))
+
+    def page_factory(context):
+        class Route:
+            def __init__(self, resource_type):
+                self.request = type("Req", (), {"resource_type": resource_type})()
+                self.aborted = False
+                self.continued = False
+
+            def abort(self):
+                self.aborted = True
+
+            def continue_(self):
+                self.continued = True
+
+        context.handler(Route("image"))
+        context.handler(Route("font"))
+        context.handler(Route("document"))
+
+    context = _make_fake_context(None, page_factory=page_factory)
+    scanner._anonymous_context = lambda: context  # type: ignore[method-assign]
+    result = scanner.scan_shop(
+        {"token": "BLOCKED", "url": "https://pay.ldxp.cn/shop/BLOCKED"},
+        [],
+        request_budget=10,
+    )
+    assert result.status == "network_error"
+    assert result.request_count == 1  # image/font aborted without counting
+
+
+def test_zero_request_budget_never_creates_browser_context():
+    scanner = PublicDomScanner(request_interval=0, request_jitter_seconds=0, logger=logging.getLogger("test-zero"))
+    calls = []
+
+    def never_called():
+        calls.append(1)
+        raise AssertionError("context must not be created")
+
+    scanner._anonymous_context = never_called  # type: ignore[method-assign]
+    result = scanner.scan_shop(
+        {"token": "ZERO", "url": "https://pay.ldxp.cn/shop/ZERO"},
+        [],
+        request_budget=0,
+    )
+    assert result.status == "budget_deferred"
+    assert result.request_count == 0
+    assert calls == []
+
+
+def test_scan_exception_after_route_registration_preserves_request_count():
+    scanner = PublicDomScanner(request_interval=0, request_jitter_seconds=0, logger=logging.getLogger("test-scan-exc"))
+
+    def page_factory(context):
+        class Route:
+            def __init__(self):
+                self.request = type("Req", (), {"resource_type": "document"})()
+
+            def abort(self):
+                return None
+
+            def continue_(self):
+                return None
+
+        for _index in range(3):
+            context.handler(Route())
+        raise RuntimeError("dom parse exploded")
+
+    context = _make_fake_context(None, page_factory=page_factory)
+    scanner._anonymous_context = lambda: context  # type: ignore[method-assign]
+    result = scanner.scan_shop(
+        {"token": "EXC", "url": "https://pay.ldxp.cn/shop/EXC"},
+        [],
+        request_budget=10,
+    )
+    assert result.status == "network_error"
+    assert result.request_count == 3
+
+
+def test_cleanup_exception_does_not_replace_scan_result():
+    scanner = PublicDomScanner(request_interval=0, request_jitter_seconds=0, logger=logging.getLogger("test-cleanup"))
+
+    def page_factory(context):
+        class Route:
+            def __init__(self):
+                self.request = type("Req", (), {"resource_type": "document"})()
+
+            def abort(self):
+                return None
+
+            def continue_(self):
+                return None
+
+        context.handler(Route())
+        raise PlaywrightTimeoutError("nav timeout")
+
+    context = _make_fake_context(None, page_factory=page_factory, close_raises=True)
+    scanner._anonymous_context = lambda: context  # type: ignore[method-assign]
+    result = scanner.scan_shop(
+        {"token": "CLEANUP", "url": "https://pay.ldxp.cn/shop/CLEANUP"},
+        [],
+        request_budget=10,
+    )
+    assert result.status == "network_error"
+    assert result.request_count == 1
+
+
+def test_robots_consumes_last_shop_request_budget_without_scanning(tmp_path: Path):
+    from ldxp_crawler.policy import RobotsTxtPolicy
+
+    db = StateDB(tmp_path / "robots-last.db")
+    try:
+        db.upsert_candidate("ROBOTS", "https://pay.ldxp.cn/shop/ROBOTS", "seed", 100)
+        db.conn.execute(
+            "UPDATE candidates SET daily_request_count=11, daily_request_date=? WHERE token='ROBOTS'",
+            (utc_now()[:10],),
+        )
+        db.conn.commit()
+        scans = []
+
+        class NeverScanner:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def scan_shop(self, candidate, keywords, *, request_budget=None):
+                scans.append(candidate["token"])
+                return ShopScanResult(token=candidate["token"], status="no_match", request_count=1)
+
+        robots = RobotsTxtPolicy(fetcher=lambda _url: (200, "User-agent: *\nDisallow:\n"))
+        gate = CollectionPolicyGate(
+            enabled=True,
+            mode="public_dom",
+            max_requests_per_shop_day=12,
+            environ={},
+        )
+        scheduler = DueShopScheduler(
+            db,
+            gate,
+            scanner_factory=NeverScanner,
+            logger=logging.getLogger("test-robots-last"),
+            batch_limit=10,
+            robots_policy=robots,
+        )
+        summary = scheduler.run_once([])
+        assert summary["scanned"] == 0
+        assert scans == []
+        row = db.conn.execute("SELECT * FROM candidates WHERE token='ROBOTS'").fetchone()
+        assert row["daily_request_count"] == 12
+        assert row["daily_scan_count"] == 0
+    finally:
+        db.close()
+
+
+def test_robots_cache_hit_does_not_consume_request_budget(tmp_path: Path):
+    from ldxp_crawler.policy import RobotsTxtPolicy
+
+    db = StateDB(tmp_path / "robots-hit.db")
+    try:
+        db.upsert_candidate("ROBOTSA", "https://pay.ldxp.cn/shop/ROBOTSA", "seed", 100)
+        db.upsert_candidate("ROBOTSB", "https://pay.ldxp.cn/shop/ROBOTSB", "seed", 90)
+        fetches = []
+
+        def fetcher(url):
+            fetches.append(url)
+            return 200, "User-agent: *\nDisallow:\n"
+
+        robots = RobotsTxtPolicy(fetcher=fetcher)
+        allowed, _reason, count = robots.evaluate("https://pay.ldxp.cn/shop/ROBOTSA")
+        assert allowed and count == 1
+        allowed, _reason, count = robots.evaluate("https://pay.ldxp.cn/shop/ROBOTSB")
+        assert allowed and count == 0
+        assert len(fetches) == 1
+    finally:
+        db.close()
+
+
 def test_due_scheduler_claims_once_and_respects_daily_budget(tmp_path: Path):
     db = StateDB(tmp_path / "scheduler.db")
     try:
@@ -558,7 +812,8 @@ def test_due_scheduler_claims_once_and_respects_daily_budget(tmp_path: Path):
         rows = {row["token"]: row for row in db.conn.execute("SELECT * FROM candidates").fetchall()}
         assert rows["TEST01"]["policy_status"] == "active"
         assert rows["TEST01"]["scan_interval_minutes"] == 60
-        assert rows["TEST01"]["daily_request_count"] == 1
+        assert rows["TEST01"]["daily_request_count"] == 0  # no real HTTP requests were made
+        assert rows["TEST01"]["daily_scan_count"] == 1
 
         # Daily budget exhausted on second run.
         summary = scheduler.run_once(["chatgpt"])
