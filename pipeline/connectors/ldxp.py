@@ -33,6 +33,9 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         )
         for row in rows:
             record = dict(row)
+            # v3.7.1 data minimization: never forward the upstream raw payload.
+            record.pop("raw_json", None)
+            record.pop("raw", None)
             record["source_platform"] = "ldxp"
             yield validate_record(record)
     finally:
