@@ -20,7 +20,7 @@ from .utils import CLOSED_RE, GlobalRateLimiter, clean_text, safe_float, safe_ht
 SYMBOL_PRICE_RE = re.compile(r"[¥￥]\s*(\d+(?:\.\d{1,2})?)")
 BARE_PRICE_RE = re.compile(r"(\d+(?:\.\d{1,2})?)")
 LOGIN_REQUIRED_RE = re.compile(
-    r"登录|login|sign\s*in|请先登录|手机号登录|验证登录",
+    r"请先登录|请登录后查看|登录后可见|需要登录才能查看|login\s*to\s*(?:view|see)|please\s*log\s*in",
     re.IGNORECASE,
 )
 CHALLENGE_RE = re.compile(
@@ -70,7 +70,7 @@ def is_challenge_text(text: str) -> bool:
     return bool(CHALLENGE_RE.search(clean_text(text)))
 
 
-def is_login_required_text(text: str) -> bool:
+def is_login_wall(text: str) -> bool:
     return bool(LOGIN_REQUIRED_RE.search(clean_text(text)))
 
 
@@ -186,13 +186,21 @@ class PublicDomScanner:
         if self.request_jitter_seconds:
             time.sleep(random.uniform(0, self.request_jitter_seconds))
         context = self._anonymous_context()
-        page = context.new_page()
         request_count = {"n": 0}
+        budget_state = {"exceeded": False}
 
-        def on_request(_request: Any) -> None:
+        def on_route(route: Any) -> None:
             request_count["n"] += 1
+            if request_count["n"] > self.max_requests_per_shop:
+                budget_state["exceeded"] = True
+                return route.abort()
+            resource_type = getattr(route.request, "resource_type", "") or ""
+            if resource_type in {"image", "media", "font", "other"}:
+                return route.abort()
+            return route.continue_()
 
-        page.on("request", on_request)
+        context.route("**/*", on_route)
+        page = context.new_page()
         try:
             page.set_default_timeout(self.timeout_ms)
             page.set_default_navigation_timeout(self.timeout_ms)
@@ -202,18 +210,23 @@ class PublicDomScanner:
                 return ShopScanResult(token, "network_error", shop_url=shop_url, error=f"页面打开超时：{exc}", engine="public_dom")
             except Exception as exc:
                 return ShopScanResult(token, "network_error", shop_url=shop_url, error=f"页面打开失败：{exc}", engine="public_dom")
-            if request_count["n"] > self.max_requests_per_shop:
-                return ShopScanResult(token, "budget_deferred", shop_url=shop_url, error="per-shop request budget reached", engine="public_dom")
+            if budget_state["exceeded"]:
+                return ShopScanResult(
+                    token,
+                    "budget_deferred",
+                    shop_url=shop_url,
+                    error="per-shop request budget reached",
+                    request_count=request_count["n"],
+                    engine="public_dom",
+                )
 
             nav_status = nav_response.status if nav_response else None
             if nav_status == 429:
-                return ShopScanResult(token, "rate_limited", shop_url=shop_url, http_status=429, engine="public_dom")
+                return ShopScanResult(token, "rate_limited", shop_url=shop_url, http_status=429, request_count=request_count["n"], engine="public_dom")
             if self.page_wait_ms:
                 page.wait_for_timeout(self.page_wait_ms)
 
             body_text = self._body_text(page)
-            if is_login_required_text(body_text):
-                return ShopScanResult(token, "unsupported", shop_url=shop_url, error="登录要求，永久停止自动扫描", engine="public_dom")
             if nav_status == 403 or is_challenge_text(body_text):
                 status = "challenge_required" if is_challenge_text(body_text) else "blocked"
                 return ShopScanResult(
@@ -222,6 +235,7 @@ class PublicDomScanner:
                     shop_url=shop_url,
                     error="检测到验证/阻断页面，不自动重试",
                     http_status=nav_status or 403,
+                    request_count=request_count["n"],
                     engine="public_dom",
                 )
             if nav_status and nav_status >= 400:
@@ -231,6 +245,7 @@ class PublicDomScanner:
                     shop_url=shop_url,
                     error=f"页面返回 HTTP {nav_status}",
                     http_status=nav_status,
+                    request_count=request_count["n"],
                     engine="public_dom",
                 )
 
@@ -238,11 +253,21 @@ class PublicDomScanner:
             shop_closed = bool(CLOSED_RE.search(body_text))
             products = [row for row in rows if isinstance(row, dict)]
             if not products:
+                if is_login_wall(body_text):
+                    return ShopScanResult(
+                        token,
+                        "unsupported",
+                        shop_url=shop_url,
+                        error="无公开商品卡片且页面为登录墙，永久停止自动扫描",
+                        request_count=request_count["n"],
+                        engine="public_dom",
+                    )
                 return ShopScanResult(
                     token,
                     "unsupported",
                     shop_url=shop_url,
                     error="页面无公开商品卡片，不探测内部接口",
+                    request_count=request_count["n"],
                     engine="public_dom",
                 )
 
@@ -280,6 +305,7 @@ class PublicDomScanner:
                 scanned_item_count=len(products),
                 matches=matches,
                 http_status=nav_status,
+                request_count=request_count["n"],
                 engine="public_dom",
             )
         finally:
