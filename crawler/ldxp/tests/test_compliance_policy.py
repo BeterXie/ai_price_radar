@@ -14,7 +14,7 @@ from ldxp_crawler.public_dom_scanner import (
     build_product_match,
     content_hash,
     is_challenge_text,
-    is_login_required_text,
+    is_login_wall,
     parse_public_price,
     parse_public_stock,
 )
@@ -73,7 +73,8 @@ def test_public_dom_parsing_and_minimal_match():
         keywords=["chatgpt"],
     ) is None
     assert is_challenge_text("人机验证，请完成安全验证")
-    assert is_login_required_text("请登录后查看")
+    assert is_login_wall("请登录后查看商品详情")
+    assert not is_login_wall("首页有登录导航按钮")
     assert parse_public_price("GPT-4 30天套餐 ¥88.00") == 88.0
     assert parse_public_price("GPT-4 30天套餐") is None
     assert parse_public_price("GPT-4 30天套餐", price_element_text="¥99.00") == 99.0
@@ -248,6 +249,97 @@ def test_backoff_wakes_up_after_blocked_until_expires(tmp_path: Path):
         gate = CollectionPolicyGate(enabled=True, mode="public_dom", environ={})
         decision = gate.decide(due[0])
         assert decision.allowed
+
+        scans = []
+
+        class FakeScanner:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def scan_shop(self, candidate, keywords):
+                scans.append(candidate["token"])
+                return ShopScanResult(
+                    token=candidate["token"],
+                    status="no_match",
+                    request_count=1,
+                )
+
+        scheduler = DueShopScheduler(
+            db,
+            gate,
+            scanner_factory=FakeScanner,
+            logger=logging.getLogger("test-wake"),
+            batch_limit=10,
+        )
+        summary = scheduler.run_once([])
+        assert summary["scanned"] == 1
+        assert scans == ["WAKE"]
+        row = db.conn.execute("SELECT * FROM candidates WHERE token='WAKE'").fetchone()
+        assert row["policy_status"] == "active"
+        assert row["blocked_until"] is None
+    finally:
+        db.close()
+
+
+def test_global_request_budget_uses_real_request_counts(tmp_path: Path):
+    db = StateDB(tmp_path / "budget.db")
+    try:
+        db.upsert_candidate("BUDGET", "https://pay.ldxp.cn/shop/BUDGET", "seed", 100)
+        db.conn.execute(
+            "UPDATE candidates SET daily_request_count=1, daily_request_date=? WHERE token='BUDGET'",
+            (utc_now()[:10],),
+        )
+        db.conn.commit()
+
+        class HeavyScanner:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def scan_shop(self, candidate, keywords):
+                return ShopScanResult(
+                    token=candidate["token"],
+                    status="no_match",
+                    request_count=5,
+                )
+
+        gate = CollectionPolicyGate(
+            enabled=True,
+            mode="public_dom",
+            daily_global_budget=1,
+            environ={},
+        )
+        scheduler = DueShopScheduler(
+            db,
+            gate,
+            scanner_factory=HeavyScanner,
+            logger=logging.getLogger("test-budget"),
+            batch_limit=10,
+        )
+        summary = scheduler.run_once([])
+        assert summary["scanned"] == 0
+        assert summary["attempted"] == 0
+
+        budget_limited = CollectionPolicyGate(
+            enabled=True,
+            mode="public_dom",
+            daily_global_budget=4,
+            environ={},
+        )
+        scheduler = DueShopScheduler(
+            db,
+            budget_limited,
+            scanner_factory=HeavyScanner,
+            logger=logging.getLogger("test-budget-2"),
+            batch_limit=10,
+        )
+        summary = scheduler.run_once([])
+        assert summary["scanned"] == 1  # first shop starts within budget, then stops
     finally:
         db.close()
 

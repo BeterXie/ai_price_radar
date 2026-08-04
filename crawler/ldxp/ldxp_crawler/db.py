@@ -561,14 +561,19 @@ class StateDB:
         return [dict(row) for row in rows]
 
     def claim_due_candidate(self, token: str, *, now: str | None = None) -> bool:
-        """Atomically reserve a due shop so concurrent schedulers do not duplicate scans."""
+        """Atomically reserve and wake a due shop.
+
+        Paused/blocked/challenge shops whose backoff window has expired are
+        restored to ``active`` as part of the claim, so the scanner can actually
+        run after 403/429/challenge backoff.
+        """
         now = now or utc_now()
         cursor = self.conn.execute(
             """
             UPDATE candidates
-            SET next_scan_at = ?
+            SET next_scan_at = ?, policy_status = 'active', blocked_until = NULL
             WHERE token = ?
-              AND policy_status = 'active'
+              AND policy_status IN ('active', 'paused', 'blocked', 'challenge')
               AND next_scan_at IS NOT NULL AND next_scan_at <= ?
               AND (blocked_until IS NULL OR blocked_until <= ?)
             """,
@@ -601,17 +606,17 @@ class StateDB:
         self.conn.commit()
         return cursor.rowcount > 0
 
-    def record_daily_request(self, token: str, *, now: str | None = None) -> None:
+    def record_daily_request(self, token: str, *, count: int = 1, now: str | None = None) -> None:
         now = now or utc_now()
         day = now[:10]
         self.conn.execute(
             """
             UPDATE candidates
-            SET daily_request_count = CASE WHEN daily_request_date = ? THEN daily_request_count + 1 ELSE 1 END,
+            SET daily_request_count = CASE WHEN daily_request_date = ? THEN daily_request_count + ? ELSE ? END,
                 daily_request_date = ?
             WHERE token = ?
             """,
-            (day, day, token),
+            (day, max(1, count), max(1, count), day, token),
         )
         self.conn.commit()
 

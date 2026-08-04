@@ -55,6 +55,10 @@ class DueShopScheduler:
         attempted = allowed = deferred = scanned = match_count = 0
         with scanner:
             for candidate in due:
+                if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
+                    deferred += 1
+                    self.logger.warning("global daily request budget reached; deferring remaining shops")
+                    break
                 attempted += 1
                 decision = self.gate.decide(candidate)
                 if not decision.allowed:
@@ -67,6 +71,11 @@ class DueShopScheduler:
                     continue
                 allowed += 1
                 if self.robots_policy is not None and self.gate.respect_robots:
+                    used += 1  # robots.txt is part of the daily request budget
+                    if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
+                        deferred += 1
+                        self.logger.warning("global daily request budget reached; deferring remaining shops")
+                        break
                     origin = self.db.conn.execute(
                         "SELECT url FROM candidates WHERE token=?", (candidate["token"],)
                     ).fetchone()
@@ -82,8 +91,9 @@ class DueShopScheduler:
                 if not self.db.claim_due_candidate(candidate["token"]):
                     deferred += 1
                     continue
-                self.db.record_daily_request(candidate["token"])
                 result = scanner.scan_shop(candidate, keywords)
+                used += max(1, result.request_count)
+                self.db.record_daily_request(candidate["token"], count=max(1, result.request_count))
                 self.db.save_scan_result(result, run_id)
                 if self.result_callback is not None:
                     self.result_callback(result, candidate)
@@ -96,6 +106,10 @@ class DueShopScheduler:
                     result.scanned_item_count,
                     len(result.matches),
                 )
+                if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
+                    deferred += max(0, len(due) - attempted)
+                    self.logger.warning("global daily request budget reached; deferring remaining shops")
+                    break
         self.db.finish_run(
             run_id,
             attempted=attempted,
