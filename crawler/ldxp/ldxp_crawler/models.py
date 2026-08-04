@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 
 @dataclass(slots=True)
@@ -17,7 +17,8 @@ class ProductMatch:
     product_url: str = ""
     auto_delivery: str = "未知"
     goods_type: str = ""
-    raw: dict[str, Any] = field(default_factory=dict)
+    content_hash: str = ""
+    redacted_field_count: int = 0
 
 
 @dataclass(slots=True)
