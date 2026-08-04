@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import random
 import re
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -15,7 +17,8 @@ from .sensitive_data import redact_text, sensitive_hits
 from .utils import CLOSED_RE, GlobalRateLimiter, clean_text, safe_float, safe_http_url
 
 
-PRICE_RE = re.compile(r"(?:[¥￥]\s*)?(\d+(?:\.\d{1,2})?)")
+SYMBOL_PRICE_RE = re.compile(r"[¥￥]\s*(\d+(?:\.\d{1,2})?)")
+BARE_PRICE_RE = re.compile(r"(\d+(?:\.\d{1,2})?)")
 LOGIN_REQUIRED_RE = re.compile(
     r"登录|login|sign\s*in|请先登录|手机号登录|验证登录",
     re.IGNORECASE,
@@ -31,10 +34,25 @@ UNAVAILABLE_RE = re.compile(r"下架|已下架|不可用|unavailable", re.IGNORE
 SELECTOR_VERSION = "ldxp-dom-v1"
 
 
-def parse_public_price(text: str) -> Optional[float]:
-    """Extract the first public price from rendered card text."""
-    match = PRICE_RE.search(clean_text(text))
-    return safe_float(match.group(1)) if match else None
+def parse_public_price(text: str, price_element_text: str = "") -> Optional[float]:
+    """Extract the public price from a card.
+
+    A price with an explicit currency symbol wins; otherwise the dedicated price
+    element is used. Arbitrary card text is never scanned for bare numbers, so
+    version numbers such as ``GPT-4`` or day counts are not misread as prices.
+    """
+    symbol_match = SYMBOL_PRICE_RE.search(clean_text(text))
+    if symbol_match:
+        return safe_float(symbol_match.group(1))
+    if price_element_text:
+        element = clean_text(price_element_text)
+        symbol_match = SYMBOL_PRICE_RE.search(element)
+        if symbol_match:
+            return safe_float(symbol_match.group(1))
+        bare_match = BARE_PRICE_RE.search(element)
+        if bare_match:
+            return safe_float(bare_match.group(1))
+    return None
 
 
 def parse_public_stock(text: str) -> str:
@@ -125,12 +143,16 @@ class PublicDomScanner:
         timeout: float = 35.0,
         page_wait: float = 2.0,
         request_interval: float = 5.0,
+        request_jitter_seconds: float = 2.0,
+        max_requests_per_shop: int = 8,
         logger: logging.Logger,
     ):
         self.executable_path = executable_path
         self.timeout_ms = int(max(5, timeout) * 1000)
         self.page_wait_ms = int(max(0, page_wait) * 1000)
         self.rate_limiter = GlobalRateLimiter(request_interval)
+        self.request_jitter_seconds = max(0.0, request_jitter_seconds)
+        self.max_requests_per_shop = max(1, max_requests_per_shop)
         self.logger = logger
         self._pw: Any = None
         self._browser: Any = None
@@ -161,8 +183,16 @@ class PublicDomScanner:
         token = candidate["token"]
         shop_url = clean_text(candidate.get("url") or "")
         self.rate_limiter.wait()
+        if self.request_jitter_seconds:
+            time.sleep(random.uniform(0, self.request_jitter_seconds))
         context = self._anonymous_context()
         page = context.new_page()
+        request_count = {"n": 0}
+
+        def on_request(_request: Any) -> None:
+            request_count["n"] += 1
+
+        page.on("request", on_request)
         try:
             page.set_default_timeout(self.timeout_ms)
             page.set_default_navigation_timeout(self.timeout_ms)
@@ -172,6 +202,8 @@ class PublicDomScanner:
                 return ShopScanResult(token, "network_error", shop_url=shop_url, error=f"页面打开超时：{exc}", engine="public_dom")
             except Exception as exc:
                 return ShopScanResult(token, "network_error", shop_url=shop_url, error=f"页面打开失败：{exc}", engine="public_dom")
+            if request_count["n"] > self.max_requests_per_shop:
+                return ShopScanResult(token, "budget_deferred", shop_url=shop_url, error="per-shop request budget reached", engine="public_dom")
 
             nav_status = nav_response.status if nav_response else None
             if nav_status == 429:
@@ -219,7 +251,7 @@ class PublicDomScanner:
                 name = clean_text(row.get("name") or "")
                 raw_url = clean_text(row.get("link") or "")
                 product_url = _safe_product_url(raw_url, shop_url)
-                price = parse_public_price(row.get("text") or name)
+                price = parse_public_price(row.get("text") or name, row.get("price_text") or "")
                 stock = parse_public_stock(row.get("text") or "")
                 product_key = clean_text(row.get("product_key") or product_url or name)[:300]
                 match = build_product_match(
@@ -270,9 +302,11 @@ class PublicDomScanner:
                   const box = a.closest('article,li,[class*="goods"],[class*="product"],[class*="item"],div') || a;
                   const text = (box.innerText || a.innerText || a.textContent || '').trim();
                   const lines = text.split(/\n+/).map(x => x.trim()).filter(Boolean);
+                  const priceNode = box.querySelector('[class*="price"],[class*="amount"],.price,.amount');
+                  const priceText = priceNode ? (priceNode.innerText || '').trim() : '';
                   const name = (a.getAttribute('title') || lines.find(x => !/^[¥￥]?\s*\d+(?:\.\d{1,2})?$/.test(x)) || '').trim();
                   const href = a.getAttribute('href') || '';
-                  return {name, link: new URL(href, location.href).href, text, product_key: (href.match(/\/item\/([^/?]+)/) || [])[1] || ''};
+                  return {name, link: new URL(href, location.href).href, text, price_text: priceText, product_key: (href.match(/\/item\/([^/?]+)/) || [])[1] || ''};
                 }).filter(x => x.name && x.link)
                 """
             )

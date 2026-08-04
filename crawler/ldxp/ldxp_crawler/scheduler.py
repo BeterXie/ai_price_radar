@@ -4,7 +4,8 @@ import logging
 from typing import Any, Callable, Optional, Sequence
 
 from .db import StateDB
-from .policy import CollectionDecision, CollectionPolicyGate
+from .policy import CollectionDecision, CollectionPolicyGate, RobotsTxtPolicy
+from .utils import utc_now
 
 
 class DueShopScheduler:
@@ -24,6 +25,7 @@ class DueShopScheduler:
         *,
         batch_limit: int = 20,
         result_callback: Callable[[Any, dict[str, Any]], None] | None = None,
+        robots_policy: RobotsTxtPolicy | None = None,
     ):
         self.db = db
         self.gate = gate
@@ -31,10 +33,22 @@ class DueShopScheduler:
         self.logger = logger
         self.batch_limit = max(1, batch_limit)
         self.result_callback = result_callback
+        self.robots_policy = robots_policy
+        self._robots_cache: dict[str, tuple[bool, str]] = {}
 
     def run_once(self, keywords: Sequence[str]) -> dict[str, int]:
         due = self.db.list_due_candidates(limit=self.batch_limit)
         if not due:
+            return {"attempted": 0, "allowed": 0, "deferred": 0, "scanned": 0, "matches": 0}
+        today = utc_now()[:10]
+        used = int(
+            self.db.conn.execute(
+                "SELECT COALESCE(SUM(daily_request_count), 0) FROM candidates WHERE daily_request_date=?",
+                (today,),
+            ).fetchone()[0]
+        )
+        if self.gate.daily_global_budget and used >= self.gate.daily_global_budget:
+            self.logger.warning("global daily request budget reached (%s); this run is deferred", used)
             return {"attempted": 0, "allowed": 0, "deferred": 0, "scanned": 0, "matches": 0}
         scanner = self.scanner_factory()
         run_id = self.db.start_run("scan", list(keywords), "public_dom", {"scheduler": "due-shop"})
@@ -52,6 +66,19 @@ class DueShopScheduler:
                     )
                     continue
                 allowed += 1
+                if self.robots_policy is not None and self.gate.respect_robots:
+                    origin = self.db.conn.execute(
+                        "SELECT url FROM candidates WHERE token=?", (candidate["token"],)
+                    ).fetchone()
+                    source_url = str(origin["url"] if origin else candidate.get("url") or "")
+                    cache_key = self._origin_key(source_url)
+                    if cache_key not in self._robots_cache:
+                        self._robots_cache[cache_key] = self.robots_policy.allows(source_url)
+                    robots_allowed, robots_reason = self._robots_cache[cache_key]
+                    if not robots_allowed:
+                        self.db.set_policy_status(candidate["token"], "active", reason=robots_reason)
+                        deferred += 1
+                        continue
                 if not self.db.claim_due_candidate(candidate["token"]):
                     deferred += 1
                     continue
@@ -86,3 +113,9 @@ class DueShopScheduler:
             "scanned": scanned,
             "matches": match_count,
         }
+
+    @staticmethod
+    def _origin_key(url: str) -> str:
+        from .policy import candidate_origin
+
+        return candidate_origin(url)
