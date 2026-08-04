@@ -131,7 +131,7 @@ case "$MODE" in
       --browser-profile /data/browser_profile \
       --storage-state /data/browser_state.json \
       --limit 25 \
-      --request-interval 2.0 \
+      --request-interval "${LDXP_REQUEST_INTERVAL_SECONDS:-5}" \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     ;;
@@ -148,7 +148,7 @@ case "$MODE" in
       --browser-profile /data/browser_profile \
       --storage-state /data/browser_state.json \
       --limit 100 \
-      --request-interval 2.0 \
+      --request-interval "${LDXP_REQUEST_INTERVAL_SECONDS:-5}" \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     ;;

@@ -58,6 +58,9 @@ def _sqlite_purge(path: Path, *, dry_run: bool, backup: bool = False) -> dict[st
         conn.execute("UPDATE matches SET raw_json = NULL")
         conn.execute("UPDATE product_snapshots SET raw_json = NULL")
         conn.commit()
+        quick_check = conn.execute("PRAGMA quick_check").fetchone()[0]
+        if quick_check != "ok":
+            raise RuntimeError(f"SQLite quick_check failed after purge: {quick_check}")
         before["backup"] = str(backup_path) if backup_path else ""
         return before
     finally:
@@ -111,7 +114,7 @@ def _remove_tree(path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Purge historical LDXP raw payloads and legacy browser artifacts")
     parser.add_argument("--crawler-db", type=Path, default=Path("data/crawler/ldxp_crawler.db"))
-    parser.add_argument("--crawler-dir", type=Path, default=Path("crawler/ldxp"))
+    parser.add_argument("--crawler-dir", type=Path, default=Path("data/crawler"))
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL", ""))
     parser.add_argument("--skip-postgres-backup-check", action="store_true", help="skip the required recent PostgreSQL backup check")
     group = parser.add_mutually_exclusive_group(required=True)

@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+set -a
+if [[ -f "$ROOT/.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+fi
+set +a
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "run as root" >&2
   exit 2
