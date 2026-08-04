@@ -8,7 +8,7 @@ import urllib.error
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from .utils import utc_now
+from .utils import normalize_shop_url, utc_now
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +19,7 @@ class CollectionDecision:
     next_allowed_at: Optional[str] = None
 
 
-OriginCheckResult = Callable[[str], CollectionDecision]
+SourceCheckResult = Callable[[str], CollectionDecision]
 
 
 def candidate_origin(url: str) -> str:
@@ -45,7 +45,8 @@ class CollectionPolicyGate:
         domain_blocklist: tuple[str, ...] = (),
         max_scans_per_shop_day: int | None = None,
         daily_global_budget: int | None = None,
-        origin_checker: OriginCheckResult | None = None,
+        source_checker: SourceCheckResult | None = None,
+        respect_robots: bool | None = None,
         environ: dict[str, str] | None = None,
     ):
         env = environ if environ is not None else os.environ
@@ -59,7 +60,12 @@ class CollectionPolicyGate:
         self.domain_blocklist = raw_blocklist
         self.max_scans_per_shop_day = max_scans_per_shop_day if max_scans_per_shop_day is not None else self._env_int(env, "LDXP_MAX_SCANS_PER_SHOP_DAY", 12)
         self.daily_global_budget = daily_global_budget if daily_global_budget is not None else self._env_int(env, "LDXP_DAILY_GLOBAL_REQUEST_BUDGET", 2000)
-        self.origin_checker = origin_checker
+        self.source_checker = source_checker
+        self.respect_robots = (
+            respect_robots
+            if respect_robots is not None
+            else env.get("LDXP_RESPECT_ROBOTS", "true").strip().casefold() in {"1", "true", "yes"}
+        )
 
     @staticmethod
     def _env_int(env: dict[str, str], key: str, default: int) -> int:
@@ -72,7 +78,8 @@ class CollectionPolicyGate:
         if not self.enabled:
             return CollectionDecision(False, "off", "LDXP collection disabled by policy")
 
-        origin = candidate_origin(candidate.get("url") or "")
+        source_url = normalize_shop_url(candidate.get("url") or "") or candidate_origin(candidate.get("url") or "")
+        origin = candidate_origin(source_url)
         host = urllib.parse.urlsplit(origin).hostname or ""
         if any(host == blocked or host.endswith("." + blocked) for blocked in self.domain_blocklist):
             return CollectionDecision(False, self.mode, "domain is blocklisted")
@@ -84,7 +91,7 @@ class CollectionPolicyGate:
             return CollectionDecision(False, self.mode, "source requires login or is unsupported")
 
         reason = str(candidate.get("policy_reason") or "")
-        if reason.startswith("robots-denied"):
+        if self.respect_robots and reason.startswith("robots-denied"):
             return CollectionDecision(False, self.mode, "robots or platform policy signal denies collection")
 
         now = utc_now()
@@ -104,12 +111,13 @@ class CollectionPolicyGate:
         if self.mode != "public_dom":
             return CollectionDecision(False, self.mode, "collection mode is not allowed")
 
-        if self.origin_checker is not None:
+        if self.source_checker is not None:
             try:
-                decision = self.origin_checker(origin)
+                # Pass the full normalized shop URL so shop-level opt-outs are matched.
+                decision = self.source_checker(source_url)
             except Exception:
                 # Fail closed: without confirmation we do not scan.
-                return CollectionDecision(False, self.mode, "origin policy check unavailable")
+                return CollectionDecision(False, self.mode, "source policy check unavailable")
             if not decision.allowed:
                 return decision
 
@@ -144,3 +152,37 @@ class ApiOriginPolicyChecker:
         if payload.get("allowed") is not True:
             return CollectionDecision(False, "public_dom", "origin policy check denied")
         return CollectionDecision(True, "public_dom", "allowed")
+
+
+class RobotsTxtPolicy:
+    """Respect robots.txt Disallow rules for the scanned shop path."""
+
+    def __init__(self, fetcher: Callable[[str], tuple[int, str]] | None = None, *, timeout: float = 5.0):
+        self.fetcher = fetcher or self._fetch
+        self.timeout = timeout
+
+    @staticmethod
+    def _fetch(url: str) -> tuple[int, str]:
+        request = urllib.request.Request(url, headers={"User-Agent": "AI-Price-Radar/3.7.1 (public index; opt-out via /source-opt-out)"})
+        try:
+            with urllib.request.urlopen(request, timeout=5.0) as response:
+                return response.status, response.read(65536).decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            return exc.code, ""
+        except (OSError, urllib.error.URLError):
+            return 0, ""
+
+    def allows(self, source_url: str) -> tuple[bool, str]:
+        origin = candidate_origin(source_url)
+        status, text = self.fetcher(f"{origin}/robots.txt")
+        if status != 200 or not text:
+            return True, ""
+        path = urllib.parse.urlsplit(source_url).path or "/"
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line.lower().startswith("disallow:"):
+                continue
+            rule = line.split(":", 1)[1].strip()
+            if rule and path.startswith(rule):
+                return False, f"robots-denied: {rule}"
+        return True, ""

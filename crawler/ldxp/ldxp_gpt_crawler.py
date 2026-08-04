@@ -21,7 +21,7 @@ from ldxp_crawler.dujiao_discovery import (
 )
 from ldxp_crawler.exporter import export_results
 from ldxp_crawler.intake_bridge import IntakeBridge, IntakeBridgeError
-from ldxp_crawler.policy import ApiOriginPolicyChecker, CollectionPolicyGate
+from ldxp_crawler.policy import ApiOriginPolicyChecker, CollectionPolicyGate, RobotsTxtPolicy
 from ldxp_crawler.public_dom_scanner import PublicDomScanner
 from ldxp_crawler.scheduler import DueShopScheduler
 from ldxp_crawler.source_discovery import (
@@ -441,13 +441,20 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
                 logger.info("已领取 %s 家人工申请并置于优先扫描队列", len(claims))
         except (IntakeBridgeError, KeyError, TypeError, ValueError) as exc:
             logger.error("收录申请领取失败：%s", str(exc))
+    enabled_flag = os.getenv("LDXP_COLLECTION_ENABLED", "false").strip().casefold() in {"1", "true", "yes"}
     policy_checker = None
     if os.getenv("LDXP_POLICY_API_URL") and os.getenv("DISCOVERY_WORKER_KEY"):
         policy_checker = ApiOriginPolicyChecker(
             os.getenv("LDXP_POLICY_API_URL", ""),
             os.getenv("DISCOVERY_WORKER_KEY", ""),
         )
-    gate = CollectionPolicyGate(origin_checker=policy_checker)
+    if enabled_flag and policy_checker is None:
+        # Fail closed: opt-out and emergency stop cannot be enforced without the policy API.
+        logger.error(
+            "LDXP_COLLECTION_ENABLED=true 但未配置 LDXP_POLICY_API_URL / DISCOVERY_WORKER_KEY，拒绝所有扫描"
+        )
+    gate = CollectionPolicyGate(enabled=bool(policy_checker) and enabled_flag, source_checker=policy_checker)
+    robots_policy = RobotsTxtPolicy() if gate.respect_robots else None
 
     def report_intake_result(result, candidate) -> None:
         intake_id = candidate.get("intake_id")
@@ -474,11 +481,14 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
             timeout=args.timeout,
             page_wait=args.page_wait,
             request_interval=args.request_interval,
+            request_jitter_seconds=max(0.0, float(os.getenv("LDXP_REQUEST_JITTER_SECONDS", "2"))),
+            max_requests_per_shop=max(1, int(os.getenv("LDXP_MAX_REQUESTS_PER_SHOP_RUN", "8"))),
             logger=logger,
         ),
         logger=logger,
         batch_limit=limit or 20,
         result_callback=report_intake_result,
+        robots_policy=robots_policy,
     )
     summary = scheduler.run_once(keywords)
     logger.info(
