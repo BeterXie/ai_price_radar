@@ -29,6 +29,13 @@ run_browser_crawler() {
     -a python ldxp_gpt_crawler.py "$@"
 }
 
+require_ldxp_collection() {
+  if [[ "${LDXP_COLLECTION_ENABLED:-false}" != "true" ]]; then
+    echo "LDXP collection disabled by policy (LDXP_COLLECTION_ENABLED=${LDXP_COLLECTION_ENABLED:-false})"
+    exit 0
+  fi
+}
+
 run_dujiao_discovery() {
   run_crawler discover-dujiao \
     --db /data/ldxp_crawler.db \
@@ -86,6 +93,7 @@ case "$MODE" in
     exit 0
     ;;
   full)
+    require_ldxp_collection
     run_browser_crawler all \
       --db /data/ldxp_crawler.db \
       --rescan \
@@ -103,6 +111,7 @@ case "$MODE" in
     run_dujiao_discovery
     ;;
   inventory)
+    require_ldxp_collection
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; inventory scan skipped"
       exit 0
@@ -120,6 +129,7 @@ case "$MODE" in
       --circuit-breaker 3
     ;;
   scan)
+    require_ldxp_collection
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; run '$0 full' once first" >&2
       exit 2
