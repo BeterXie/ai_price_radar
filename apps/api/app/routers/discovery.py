@@ -217,15 +217,7 @@ def finish_discovery_run(
     run.duplicate_count = payload.duplicate_count
     run.new_candidate_count = payload.new_candidate_count
     run.reverified_count = payload.reverified_count
-    run.detected_count = payload.detected_count
-    run.ai_matched_count = payload.ai_matched_count
-    run.auto_approved_count = payload.auto_approved_count
-    run.pending_review_count = payload.pending_review_count
-    run.validation_failed_count = payload.validation_failed_count
-    run.promoted_intake_count = payload.promoted_intake_count
     run.adapter_stats = payload.adapter_stats
-    run.platform_stats = payload.platform_stats
-    run.failure_stats = payload.failure_stats
     run.note = payload.note
     db.commit()
     return {"run_id": run.id, "status": run.status}

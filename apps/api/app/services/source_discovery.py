@@ -377,7 +377,11 @@ def _update_run_stats(
     """
     if not first_verification or candidate.discovery_run_id is None:
         return
-    run = db.get(SourceDiscoveryRun, candidate.discovery_run_id)
+    run = db.scalar(
+        select(SourceDiscoveryRun)
+        .where(SourceDiscoveryRun.id == candidate.discovery_run_id)
+        .with_for_update()
+    )
     if run is None:
         return
     if validation_failed:

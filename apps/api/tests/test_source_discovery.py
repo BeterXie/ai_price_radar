@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -634,3 +634,180 @@ def test_concurrent_upsert_on_postgres_merges_into_one_candidate():
         assert len(candidates) == 1
         assert candidates[0].candidate_key == "https://concurrent.example.com"
         assert len(candidates[0].discovery_sources) == 4
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="TEST_POSTGRES_URL is not configured")
+def test_finish_does_not_overwrite_detector_counts_on_postgres():
+    from sqlalchemy import create_engine as pg_create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.routers.discovery import finish_discovery_run
+    from app.schemas import DiscoveryRunFinish
+    from app.services.source_discovery import claim_candidates, report_candidate_result, upsert_candidate
+
+    database_url = os.environ["TEST_POSTGRES_URL"]
+    engine = pg_create_engine(database_url)
+    ApiBase.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with session_factory() as db:
+        db.execute(text("DELETE FROM source_candidates"))
+        db.execute(text("DELETE FROM source_intakes"))
+        db.commit()
+    settings = get_settings()
+    previous_woo = settings.discovery_woocommerce_auto_approve
+    settings.discovery_woocommerce_auto_approve = True
+    try:
+        with session_factory() as db:
+            run = __import__("app.models", fromlist=["SourceDiscoveryRun"]).SourceDiscoveryRun(
+                trigger="manual",
+                adapters=["bing"],
+                status="running",
+            )
+            db.add(run)
+            db.flush()
+            run_id = run.id
+            result = upsert_candidate(
+                db,
+                discovered_url="https://finish-order.example.com/products/chatgpt",
+                platform_hint="woocommerce",
+                discovered_by="bing",
+                run_id=run_id,
+            )
+            db.commit()
+            candidate_id = result["candidate_id"]
+        with session_factory() as db:
+            claimed = claim_candidates(db, limit=1, lease_seconds=300)
+            assert claimed and claimed[0].id == candidate_id
+            attempt_count = claimed[0].attempt_count
+        with session_factory() as db:
+            report_candidate_result(
+                db,
+                candidate_id=candidate_id,
+                attempt_count=attempt_count,
+                status="detected",
+                detected_platform="woocommerce",
+                detected_source_key="https://finish-order.example.com",
+                detected_source_url="https://finish-order.example.com",
+                total_product_count=1,
+                ai_product_count=1,
+                sample_products=[{"name": "ChatGPT Plus", "url": "https://finish-order.example.com/p/1"}],
+                fingerprints=["woocommerce-store-api"],
+                confidence_score=90,
+                failure_reason="",
+            )
+        with session_factory() as db:
+            finish_discovery_run(
+                run_id,
+                DiscoveryRunFinish(
+                    status="succeeded",
+                    discovered_raw_count=100,
+                    normalized_count=90,
+                    duplicate_count=10,
+                    new_candidate_count=1,
+                    detected_count=0,
+                    ai_matched_count=0,
+                    auto_approved_count=0,
+                    pending_review_count=0,
+                    validation_failed_count=0,
+                    promoted_intake_count=0,
+                    adapter_stats={"bing": 1},
+                    platform_stats={},
+                    failure_stats={},
+                    note="runner finished",
+                ),
+                db,
+            )
+        with session_factory() as db:
+            run = db.get(__import__("app.models", fromlist=["SourceDiscoveryRun"]).SourceDiscoveryRun, run_id)
+            assert run.detected_count == 1
+            assert run.ai_matched_count == 1
+            assert run.auto_approved_count == 1
+            assert run.promoted_intake_count == 1
+            assert run.platform_stats == {"woocommerce": 1}
+            assert run.discovered_raw_count == 100
+            assert run.adapter_stats == {"bing": 1}
+    finally:
+        settings.discovery_woocommerce_auto_approve = previous_woo
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="TEST_POSTGRES_URL is not configured")
+def test_concurrent_candidate_reports_do_not_lose_run_counts_on_postgres():
+    import threading
+
+    from sqlalchemy import create_engine as pg_create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.services.source_discovery import claim_candidates, report_candidate_result, upsert_candidate
+
+    database_url = os.environ["TEST_POSTGRES_URL"]
+    engine = pg_create_engine(database_url)
+    ApiBase.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with session_factory() as db:
+        db.execute(text("DELETE FROM source_candidates"))
+        db.execute(text("DELETE FROM source_intakes"))
+        db.commit()
+    settings = get_settings()
+    previous_woo = settings.discovery_woocommerce_auto_approve
+    settings.discovery_woocommerce_auto_approve = True
+    errors: list[BaseException] = []
+    try:
+        with session_factory() as db:
+            run = __import__("app.models", fromlist=["SourceDiscoveryRun"]).SourceDiscoveryRun(
+                trigger="manual",
+                adapters=["bing"],
+                status="running",
+            )
+            db.add(run)
+            db.flush()
+            run_id = run.id
+            ids = []
+            for index in range(2):
+                result = upsert_candidate(
+                    db,
+                    discovered_url=f"https://concurrent-report-{index}.example.com/products/chatgpt",
+                    platform_hint="woocommerce",
+                    discovered_by="bing",
+                    run_id=run_id,
+                )
+                ids.append(result["candidate_id"])
+            db.commit()
+        with session_factory() as db:
+            claimed = claim_candidates(db, limit=2, lease_seconds=300)
+            attempts = {row.id: row.attempt_count for row in claimed}
+
+        def worker(candidate_id: int) -> None:
+            try:
+                with session_factory() as db:
+                    report_candidate_result(
+                        db,
+                        candidate_id=candidate_id,
+                        attempt_count=attempts[candidate_id],
+                        status="detected",
+                        detected_platform="woocommerce",
+                        detected_source_key=f"https://concurrent-report-{candidate_id}.example.com",
+                        detected_source_url=f"https://concurrent-report-{candidate_id}.example.com",
+                        total_product_count=1,
+                        ai_product_count=1,
+                        sample_products=[{"name": "ChatGPT Plus", "url": f"https://concurrent-report-{candidate_id}.example.com/p/1"}],
+                        fingerprints=["woocommerce-store-api"],
+                        confidence_score=90,
+                        failure_reason="",
+                    )
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(candidate_id,)) for candidate_id in ids]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=60)
+        assert not errors
+        with session_factory() as db:
+            run = db.get(__import__("app.models", fromlist=["SourceDiscoveryRun"]).SourceDiscoveryRun, run_id)
+            assert run.detected_count == 2
+            assert run.ai_matched_count == 2
+            assert run.promoted_intake_count == 2
+            assert run.platform_stats == {"woocommerce": 2}
+    finally:
+        settings.discovery_woocommerce_auto_approve = previous_woo
