@@ -2,22 +2,7 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
-## [3.7.1] - 2026-08-05
-
-### Security
-
-- Replaced persistent authenticated LDXP browser collection with anonymous public DOM scanning, strict request budgets, robots enforcement, and sensitive-field filtering.
-- Added source opt-out, correction, ownership, legal hold, and emergency-stop controls; production LDXP collection remains disabled by default.
-
-### Changed
-
-- Added adaptive due-shop scheduling and backoff while minimizing LDXP publication fields and retained raw payloads.
-
-### Fixed
-
-- Hardened the v11 migration and raw purge with rollback-safe database stages, accurate artifact/PostgreSQL reporting, and PostgreSQL JSON/JSONB compatibility.
-
-## [3.7.0] - 2026-08-04
+## [3.7.0] - unreleased
 
 ### Added
 

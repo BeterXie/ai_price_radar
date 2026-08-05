@@ -6,7 +6,6 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/ai-price-radar-v3
-EnvironmentFile=/opt/ai-price-radar-v3/.env
 ExecStart=/usr/bin/bash /opt/ai-price-radar-v3/scripts/refresh_remote.sh discover
 Nice=10
 IOSchedulingClass=idle

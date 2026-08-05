@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sqlite3
 import urllib.parse
 from dataclasses import asdict, dataclass
@@ -156,39 +155,6 @@ def approved_intake_sources(db: Session) -> list[SourceSpec]:
     ]
 
 
-def ldxp_opt_out_tokens(db: Session) -> frozenset[str]:
-    """Return LDXP shop tokens that must be excluded from SQLite publication."""
-    if not inspect(db.get_bind()).has_table("source_policy_requests"):
-        return frozenset()
-    # Mirrors apps/api/app/services/source_policy.is_active_hold:
-    # applied is permanent; unverified/verified holds only count while unexpired.
-    rows = db.execute(
-        text(
-            "SELECT source_url FROM source_policy_requests "
-            "WHERE request_type='opt_out' AND ("
-            "  status='applied' OR "
-            "  (status IN ('pending_unverified', 'pending', 'verified') AND hold_expires_at > :now)"
-            ")"
-        ),
-        {"now": utcnow()},
-    ).mappings()
-    tokens: set[str] = set()
-    for row in rows:
-        url = str(row["source_url"] or "")
-        parsed = urllib.parse.urlsplit(url)
-        host = (parsed.hostname or "").casefold().rstrip(".")
-        if host not in {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}:
-            continue
-        parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]
-        if (
-            len(parts) == 2
-            and parts[0].casefold() == "shop"
-            and re.fullmatch(r"[A-Za-z0-9._~-]{1,128}", parts[1])
-        ):
-            tokens.add(parts[1].casefold())
-    return frozenset(tokens)
-
-
 def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:
     merged: dict[tuple[str, str], SourceSpec] = {}
     for spec in sources:
@@ -240,19 +206,9 @@ def import_source_into_snapshot(
     source: str | Path,
     snapshot_id: int,
     products: dict[str, Any] | None = None,
-    excluded_ldxp_tokens: frozenset[str] = frozenset(),
 ) -> ImportResult:
     """Import one source without committing or publishing the target snapshot."""
     loader = get_connector(connector)
-    if connector == "ldxp" and excluded_ldxp_tokens:
-        raw_loader = loader
-
-        def loader(source: str | Path):
-            for record in raw_loader(source):
-                if str(record.get("token") or "").casefold() in excluded_ldxp_tokens:
-                    continue
-                yield record
-
     products = products or ensure_products(db)
     result = ImportResult(connector=connector, source=str(source))
     offer_ids: set[int] = set()
@@ -319,7 +275,6 @@ def publish_sources(
     """Publish all sources in one transaction; any failure restores the current catalog."""
     if not sources:
         raise ValueError("at least one catalog source is required")
-    excluded_ldxp_tokens = ldxp_opt_out_tokens(db)
     try:
         with import_lock(db):
             products = ensure_products(db)
@@ -335,7 +290,6 @@ def publish_sources(
                     source=spec.source,
                     snapshot_id=snapshot.id,
                     products=products,
-                    excluded_ldxp_tokens=excluded_ldxp_tokens,
                 )
                 imports.append(imported)
                 for intake_id in spec.intake_ids:

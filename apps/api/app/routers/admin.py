@@ -17,7 +17,6 @@ from ..models import (
     SourceCandidate,
     SourceDiscoveryRun,
     SourceIntake,
-    SourcePolicyRequest,
 )
 from ..schemas import (
     AdminOfferUpdate,
@@ -25,12 +24,9 @@ from ..schemas import (
     AdminStats,
     NotificationOutboxOut,
     ReportOut,
-    EmergencyStopBody,
     SourceCandidateAction,
     SourceCandidateOut,
     SourceDiscoveryRunOut,
-    SourcePolicyDecision,
-    SourcePolicyRequestOut,
     SourceIntakeOut,
     SourceIntakeReject,
 )
@@ -43,12 +39,6 @@ from ..services.source_discovery import (
     recover_unpromoted_candidates,
 )
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
-from ..services.source_policy import (
-    decide_policy_request,
-    emergency_stop,
-    resume_collection,
-    reverse_applied_opt_out,
-)
 from ..services.source_platform import workflow_status
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -467,68 +457,6 @@ def recover_source_candidate_promotions(
 ) -> dict[str, object]:
     recovered = recover_unpromoted_candidates(db, limit=limit)
     return {"recovered": recovered}
-
-
-@router.get("/source-policy/requests", response_model=list[SourcePolicyRequestOut])
-def source_policy_requests(
-    status: str | None = None,
-    db: Session = Depends(get_db),
-) -> list[SourcePolicyRequest]:
-    stmt = select(SourcePolicyRequest).order_by(SourcePolicyRequest.id.desc())
-    if status:
-        stmt = stmt.where(SourcePolicyRequest.status == status)
-    return list(db.scalars(stmt))
-
-
-@router.post("/source-policy/requests/{request_id}/decide", response_model=SourcePolicyRequestOut)
-def decide_source_policy_request(
-    request_id: int,
-    payload: SourcePolicyDecision,
-    db: Session = Depends(get_db),
-) -> SourcePolicyRequest:
-    try:
-        return decide_policy_request(
-            db,
-            request_id,
-            decision=payload.decision,
-            note=payload.note,
-        )
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@router.post("/source-policy/requests/{request_id}/reverse", response_model=SourcePolicyRequestOut)
-def reverse_source_policy_request(
-    request_id: int,
-    payload: SourcePolicyDecision,
-    db: Session = Depends(get_db),
-) -> SourcePolicyRequest:
-    try:
-        return reverse_applied_opt_out(db, request_id, note=payload.note)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@router.post("/source-policy/emergency-stop")
-def emergency_stop_collection(
-    payload: EmergencyStopBody,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    emergency_stop(db, reason=payload.reason)
-    return {"emergency_stopped": True}
-
-
-@router.post("/source-policy/resume")
-def resume_source_collection(
-    payload: EmergencyStopBody,
-    db: Session = Depends(get_db),
-) -> dict[str, object]:
-    resume_collection(db, note=payload.reason)
-    return {"emergency_stopped": False}
 
 
 @router.post("/source-candidates/{candidate_id}/retry", response_model=SourceCandidateOut)

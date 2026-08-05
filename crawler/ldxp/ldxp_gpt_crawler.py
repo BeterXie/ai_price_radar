@@ -21,9 +21,6 @@ from ldxp_crawler.dujiao_discovery import (
 )
 from ldxp_crawler.exporter import export_results
 from ldxp_crawler.intake_bridge import IntakeBridge, IntakeBridgeError
-from ldxp_crawler.policy import ApiOriginPolicyChecker, CollectionPolicyGate, RobotsTxtPolicy
-from ldxp_crawler.public_dom_scanner import PublicDomScanner
-from ldxp_crawler.scheduler import DueShopScheduler
 from ldxp_crawler.source_discovery import (
     DiscoveryBridge,
     DiscoveryBridgeError,
@@ -441,71 +438,139 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
                 logger.info("已领取 %s 家人工申请并置于优先扫描队列", len(claims))
         except (IntakeBridgeError, KeyError, TypeError, ValueError) as exc:
             logger.error("收录申请领取失败：%s", str(exc))
-    enabled_flag = os.getenv("LDXP_COLLECTION_ENABLED", "false").strip().casefold() in {"1", "true", "yes"}
-    policy_checker = None
-    if os.getenv("LDXP_POLICY_API_URL") and os.getenv("DISCOVERY_WORKER_KEY"):
-        policy_checker = ApiOriginPolicyChecker(
-            os.getenv("LDXP_POLICY_API_URL", ""),
-            os.getenv("DISCOVERY_WORKER_KEY", ""),
-        )
-    if enabled_flag and policy_checker is None:
-        # Fail closed: opt-out and emergency stop cannot be enforced without the policy API.
-        logger.error(
-            "LDXP_COLLECTION_ENABLED=true 但未配置 LDXP_POLICY_API_URL / DISCOVERY_WORKER_KEY，拒绝所有扫描"
-        )
-    gate = CollectionPolicyGate(enabled=bool(policy_checker) and enabled_flag, source_checker=policy_checker)
-    robots_policy = RobotsTxtPolicy() if gate.respect_robots else None
+    candidates = db.list_candidates(
+        rescan=args.rescan,
+        retry_blocked=args.retry_blocked,
+        retry_failed=not args.no_retry_failed,
+        matched_only=args.matched_only,
+        limit=limit,
+    )
+    config = {
+        "headless": args.headless,
+        "executable_path": str(args.executable_path) if args.executable_path else "",
+        "profile": str(args.browser_profile),
+        "storage_state": str(args.storage_state),
+        "max_pages": args.max_pages,
+        "page_size": args.page_size,
+        "fetch_mode": args.fetch_mode,
+        "request_interval": args.request_interval,
+        "matched_only": args.matched_only,
+        "circuit_breaker": args.circuit_breaker,
+    }
+    run_id = db.start_run(args.command, keywords, "browser", config)
+    attempted = successful = failed = blocked = match_count = 0
+    consecutive_blocks = 0
+    circuit_broken = False
+    note = ""
 
-    def report_intake_result(result, candidate) -> None:
-        intake_id = candidate.get("intake_id")
-        if not (intake_bridge.enabled and intake_id is not None):
-            return
-        intake_attempt = int(candidate.get("intake_attempt_count") or 0)
-        intake_status, product_count, failure_reason = intake_result_payload(result)
-        try:
-            intake_bridge.report_result(
-                intake_id=int(intake_id),
-                attempt_count=intake_attempt,
-                status=intake_status,
-                product_count=product_count,
-                failure_reason=failure_reason,
-            )
-        except IntakeBridgeError as exc:
-            logger.error("收录申请结果回报失败：%s", str(exc))
+    if not candidates:
+        note = "没有符合重试条件的候选店铺"
+        db.finish_run(
+            run_id,
+            attempted=0,
+            successful=0,
+            failed=0,
+            blocked=0,
+            matches=0,
+            circuit_broken=False,
+            note=note,
+        )
+        logger.info(note)
+        return {"attempted": 0, "successful": 0, "failed": 0, "blocked": 0, "matches": 0}
 
-    scheduler = DueShopScheduler(
-        db,
-        gate,
-        scanner_factory=lambda: PublicDomScanner(
+    logger.info(
+        "准备扫描 %s 家；关键词=%s；模式=%s。首次运行如出现验证，请在浏览器窗口正常完成。",
+        len(candidates), "、".join(keywords), "无头" if args.headless else "有头",
+    )
+
+    try:
+        with BrowserShopScanner(
+            profile_dir=args.browser_profile,
+            storage_state_path=args.storage_state,
             executable_path=args.executable_path,
+            headless=args.headless,
             timeout=args.timeout,
             page_wait=args.page_wait,
+            manual_challenge_seconds=args.manual_challenge_seconds,
+            max_pages=args.max_pages,
+            page_size=args.page_size,
+            fetch_mode=args.fetch_mode,
             request_interval=args.request_interval,
-            request_jitter_seconds=max(0.0, float(os.getenv("LDXP_REQUEST_JITTER_SECONDS", "2"))),
-            max_requests_per_shop=max(1, int(os.getenv("LDXP_MAX_REQUESTS_PER_SHOP_RUN", "8"))),
             logger=logger,
-        ),
-        logger=logger,
-        batch_limit=limit or 20,
-        result_callback=report_intake_result,
-        robots_policy=robots_policy,
-    )
-    summary = scheduler.run_once(keywords)
-    logger.info(
-        "公开 DOM 扫描完成：尝试 %s，允许 %s，延期 %s，扫描 %s，命中 %s。",
-        summary["attempted"],
-        summary["allowed"],
-        summary["deferred"],
-        summary["scanned"],
-        summary["matches"],
-    )
+        ) as scanner:
+            for index, candidate in enumerate(candidates, start=1):
+                result = scanner.scan_shop(candidate, keywords)
+                attempted += 1
+                db.save_scan_result(result, run_id)
+                intake_id = candidate["intake_id"]
+                if intake_bridge.enabled and intake_id is not None:
+                    intake_attempt = int(candidate["intake_attempt_count"] or 0)
+                    intake_status, product_count, failure_reason = intake_result_payload(result)
+                    try:
+                        intake_bridge.report_result(
+                            intake_id=int(intake_id),
+                            attempt_count=intake_attempt,
+                            status=intake_status,
+                            product_count=product_count,
+                            failure_reason=failure_reason,
+                        )
+                    except IntakeBridgeError as exc:
+                        logger.error("收录申请结果回报失败：%s", str(exc))
+                if result.is_successful_scan:
+                    successful += 1
+                    match_count += len(result.matches)
+                    consecutive_blocks = 0
+                    logger.info(
+                        "[%s/%s] %s | %s | 商品=%s 命中=%s%s",
+                        index, len(candidates), result.token, result.status,
+                        result.scanned_item_count, len(result.matches),
+                        f" | {result.error}" if result.error else "",
+                    )
+                else:
+                    failed += 1
+                    if result.status in BLOCK_STATUSES:
+                        blocked += 1
+                        consecutive_blocks += 1
+                    else:
+                        consecutive_blocks = 0
+                    logger.warning(
+                        "[%s/%s] %s | %s | %s",
+                        index, len(candidates), result.token, result.status, result.error,
+                    )
+
+                if args.circuit_breaker > 0 and consecutive_blocks >= args.circuit_breaker:
+                    circuit_broken = True
+                    note = (
+                        f"连续 {consecutive_blocks} 家出现站点级阻断/验证/限流，已熔断；"
+                        "剩余候选保持原状态，未继续请求。"
+                    )
+                    logger.error(note)
+                    break
+    except Exception as exc:
+        failed += 1
+        note = f"浏览器初始化或扫描器异常：{type(exc).__name__}: {exc}"
+        logger.error(note)
+        if "Executable doesn't exist" in str(exc) or "browserType.launch" in str(exc):
+            logger.error("请先执行：python -m playwright install chromium")
+    finally:
+        db.finish_run(
+            run_id,
+            attempted=attempted,
+            successful=successful,
+            failed=failed,
+            blocked=blocked,
+            matches=match_count,
+            circuit_broken=circuit_broken,
+            note=note,
+        )
+
     return {
-        "attempted": summary["attempted"],
-        "successful": summary["scanned"],
-        "failed": 0,
-        "blocked": 0,
-        "matches": summary["matches"],
-        "circuit_broken": False,
+        "attempted": attempted,
+        "successful": successful,
+        "failed": failed,
+        "blocked": blocked,
+        "matches": match_count,
+        "circuit_broken": circuit_broken,
     }
 
 
