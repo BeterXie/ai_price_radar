@@ -199,15 +199,6 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_source_discovery_v10.py
 
-# v11 来源政策表：商家退出/纠错请求与紧急停止控制；重复执行安全
-docker run --rm \
-  --network ai-price-radar_default \
-  --env-file .env \
-  -v "$PWD:/workspace:ro" \
-  -w /workspace \
-  ai-price-radar-api \
-  python scripts/migrate_ldxp_policy_v11.py
-
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
@@ -246,7 +237,6 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] 本次改动 crawler/ 时，新 Crawler 镜像已构建且旧镜像回滚标签存在
 [ ] `ai-price-radar-importer` 已从当前 Tag 构建，且完整发布由该镜像执行
 [ ] 本次改动 crawler/、pipeline/ 或数据库结构时，一次完整多来源发布结束，日志确认所有来源成功且 published=true
-[ ] v3.7.1 止血：`LDXP_COLLECTION_ENABLED=false`；`ai-price-radar-refresh.timer` 与 `ai-price-radar-inventory.timer` 已停用（仅保留 discover）
 ```
 
 恢复定时器：
@@ -279,5 +269,3 @@ docker image tag ai-price-radar-crawler:rollback-STAMP ai-price-radar-crawler:la
 若发布同时修改了定时脚本、crawler 或 pipeline，再恢复 `backups/source_pre_deploy_STAMP.tar.gz` 中的源码。数据库仅在明确存在不兼容迁移且获得单独批准时恢复。
 
 v3.7 回滚补充：应用回滚不删除 v10 表（`source_discovery_runs` / `source_candidates`），旧版本代码不读取新表，不应受影响；不回滚 PostgreSQL。发现系统异常时可单独暂停 `ai-price-radar-discover.timer` 或停止新 Discovery Worker，当前公开快照不会因发现系统失败而变化。
-
-v3.7.1 回滚：恢复旧代码后按阶段 0 止血命令暂停扫描 Timer，并保持 `LDXP_COLLECTION_ENABLED=false`。应用回滚不会恢复内部 API 重放、持久浏览器会话或已清理的敏感原始数据（按设计）。

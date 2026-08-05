@@ -1,9 +1,8 @@
 [Unit]
-Description=Wake the AI Price Radar due-shop scheduler hourly
+Description=Refresh AI Price Radar inventory every 10 minutes
 
 [Timer]
-OnCalendar=*-*-* *:30:00
-RandomizedDelaySec=15m
+OnCalendar=*-*-* *:00/10:00
 Persistent=true
 Unit=ai-price-radar-inventory.service
 

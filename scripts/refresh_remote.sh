@@ -4,13 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-set -a
-if [[ -f .env ]]; then
-  # shellcheck disable=SC1091
-  source .env
-fi
-set +a
-
 MODE="${1:-scan}"
 DATA_DIR="$ROOT/data/crawler"
 CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
@@ -34,13 +27,6 @@ run_crawler() {
 run_browser_crawler() {
   "${COMPOSE[@]}" run --rm --entrypoint xvfb-run crawler \
     -a python ldxp_gpt_crawler.py "$@"
-}
-
-require_ldxp_collection() {
-  if [[ "${LDXP_COLLECTION_ENABLED:-false}" != "true" ]]; then
-    echo "LDXP collection disabled by policy (LDXP_COLLECTION_ENABLED=${LDXP_COLLECTION_ENABLED:-false})"
-    exit 0
-  fi
 }
 
 run_dujiao_discovery() {
@@ -100,7 +86,6 @@ case "$MODE" in
     exit 0
     ;;
   full)
-    require_ldxp_collection
     run_browser_crawler all \
       --db /data/ldxp_crawler.db \
       --rescan \
@@ -112,13 +97,12 @@ case "$MODE" in
       --storage-state /data/browser_state.json \
       --output-dir /data/output \
       --limit 100 \
-    --request-interval "${LDXP_REQUEST_INTERVAL_SECONDS:-5}" \
+      --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     run_dujiao_discovery
     ;;
   inventory)
-    require_ldxp_collection
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; inventory scan skipped"
       exit 0
@@ -131,12 +115,11 @@ case "$MODE" in
       --browser-profile /data/browser_profile \
       --storage-state /data/browser_state.json \
       --limit 25 \
-      --request-interval "${LDXP_REQUEST_INTERVAL_SECONDS:-5}" \
+      --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     ;;
   scan)
-    require_ldxp_collection
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; run '$0 full' once first" >&2
       exit 2
@@ -148,7 +131,7 @@ case "$MODE" in
       --browser-profile /data/browser_profile \
       --storage-state /data/browser_state.json \
       --limit 100 \
-      --request-interval "${LDXP_REQUEST_INTERVAL_SECONDS:-5}" \
+      --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     ;;
