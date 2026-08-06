@@ -76,8 +76,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: crawler/ldxp/requirements.txt
+          cache-dependency-path: |
+            crawler/ldxp/requirements.txt
+            shared_http/pyproject.toml
       - run: python -m pip install --upgrade pip
+      - run: pip install ../../shared_http
       - run: pip install -r requirements.txt pytest
       - run: python self_test.py
       - run: python -m pytest -q
