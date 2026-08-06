@@ -2,6 +2,18 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.2] - 2026-08-06
+
+### Fixed
+
+- LDXP sources in `blocked` or `challenge_required` no longer remain permanently excluded after a transient source-level challenge.
+- Blocked sources receive bounded retry times and can be forced immediately with `--retry-blocked`; consecutive source-level failures still stop the scan through the existing circuit breaker.
+- Regression coverage now verifies that an all-blocked batch is recorded as failed rather than successful.
+
+### Changed
+
+- Crawler self-tests and pytest coverage now run in CI.
+
 ## [3.7.0] - unreleased
 
 ### Added

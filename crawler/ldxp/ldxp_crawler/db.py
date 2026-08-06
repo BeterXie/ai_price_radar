@@ -490,16 +490,30 @@ class StateDB:
         limit: Optional[int] = None,
     ) -> list[sqlite3.Row]:
         if rescan:
-            where = "1=1" if retry_blocked else "status NOT IN ('blocked', 'challenge_required')"
+            where = "1=1"
         else:
             allowed = ["pending"]
             if retry_failed:
-                allowed.extend(["network_error", "parse_error", "api_changed", "failed", "rate_limited"])
-            if retry_blocked:
+                allowed.extend([
+                    "network_error",
+                    "parse_error",
+                    "api_changed",
+                    "failed",
+                    "rate_limited",
+                    "blocked",
+                    "challenge_required",
+                ])
+            elif retry_blocked:
                 allowed.extend(["blocked", "challenge_required"])
             marks = ",".join("?" for _ in allowed)
             where = f"status IN ({marks})"
         params: list[Any] = [] if rescan else allowed
+        retry_clause = (
+            "(status IN ('blocked', 'challenge_required') "
+            "OR next_retry_at IS NULL OR next_retry_at <= ?)"
+            if retry_blocked
+            else "(next_retry_at IS NULL OR next_retry_at <= ?)"
+        )
         matched_clause = (
             "AND (candidates.intake_id IS NOT NULL OR EXISTS "
             "(SELECT 1 FROM matches WHERE matches.token = candidates.token))"
@@ -509,7 +523,7 @@ class StateDB:
         sql = f"""
             SELECT * FROM candidates
             WHERE {where}
-              AND (next_retry_at IS NULL OR next_retry_at <= ?)
+              AND {retry_clause}
               {matched_clause}
             ORDER BY source_score DESC,
                      CASE WHEN last_attempt_at IS NULL THEN 0 ELSE 1 END,
@@ -634,7 +648,8 @@ class StateDB:
 
     @staticmethod
     def _retry_at(status: str) -> Optional[str]:
-        # ISO UTC text remains lexically sortable. Keep blocked/challenge manual-only.
+        # ISO UTC text remains lexically sortable. Site-level blocks use a long
+        # backoff and are retried in bounded batches guarded by the scan circuit breaker.
         from datetime import datetime, timedelta, timezone
 
         delay = {
@@ -643,6 +658,8 @@ class StateDB:
             "parse_error": timedelta(hours=6),
             "api_changed": timedelta(hours=12),
             "failed": timedelta(minutes=30),
+            "blocked": timedelta(hours=6),
+            "challenge_required": timedelta(hours=24),
         }.get(status)
         if delay is None:
             return None

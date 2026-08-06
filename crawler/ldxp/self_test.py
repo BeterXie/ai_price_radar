@@ -137,6 +137,15 @@ def main() -> None:
             run_id,
         )
         assert db.list_candidates(rescan=True) == []
+        db.conn.execute(
+            "UPDATE candidates SET next_retry_at='2000-01-01T00:00:00+00:00' WHERE token='TEST01'"
+        )
+        db.conn.commit()
+        assert [row["token"] for row in db.list_candidates(rescan=True)] == ["TEST01"]
+        db.conn.execute(
+            "UPDATE candidates SET next_retry_at='2999-01-01T00:00:00+00:00' WHERE token='TEST01'"
+        )
+        db.conn.commit()
         assert [row["token"] for row in db.list_candidates(rescan=True, retry_blocked=True)] == ["TEST01"]
 
         db.finish_run(

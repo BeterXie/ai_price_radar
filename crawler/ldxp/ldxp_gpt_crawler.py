@@ -145,7 +145,11 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rescan", action="store_true", help="重新扫描成功过的店铺")
     parser.add_argument("--matched-only", action="store_true", help="只扫描已有命中商品的店铺")
     parser.add_argument("--no-retry-failed", action="store_true")
-    parser.add_argument("--retry-blocked", action="store_true", help="重新尝试 blocked/challenge_required")
+    parser.add_argument(
+        "--retry-blocked",
+        action="store_true",
+        help="立即重新尝试 blocked/challenge_required，忽略退避时间",
+    )
     parser.add_argument("--circuit-breaker", type=int, default=3, help="连续站点级阻断多少次后停止；0 关闭")
     parser.add_argument("--intake-api-url", default=os.getenv("INTAKE_API_URL", ""), help="收录状态机 API 地址")
     parser.add_argument("--intake-worker-key", default=os.getenv("INTAKE_WORKER_KEY", ""), help="收录 Worker Key")
