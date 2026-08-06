@@ -213,7 +213,7 @@ python ldxp_gpt_crawler.py scan --rescan
 
 ### 重新尝试阻断或需要验证的店铺
 
-建议先建立浏览器会话，然后：
+自动任务会在退避到期后重新尝试：`blocked` 默认等待 6 小时，`challenge_required` 默认等待 24 小时。需要立即恢复时，建议先建立浏览器会话，然后使用强制重试参数绕过退避：
 
 ```bash
 python ldxp_gpt_crawler.py scan --retry-blocked
@@ -295,8 +295,8 @@ python ldxp_gpt_crawler.py export
 | `rate_limited` | HTTP 429 | 延迟后重试 |
 | `parse_error` | 响应格式异常 | 延迟后重试 |
 | `api_changed` | 接口 404 或结构疑似变化 | 延迟后重试 |
-| `challenge_required` | 需要浏览器人工验证 | 需加 `--retry-blocked` |
-| `blocked` | HTTP 403 等阻断 | 需加 `--retry-blocked` |
+| `challenge_required` | 需要浏览器人工验证 | 24 小时后重试；可用 `--retry-blocked` 立即重试 |
+| `blocked` | HTTP 403 等阻断 | 6 小时后重试；可用 `--retry-blocked` 立即重试 |
 
 ---
 
