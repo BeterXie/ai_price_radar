@@ -11,7 +11,7 @@ export function GuideWalkthrough({ walkthrough }: { walkthrough: GuideWalkthroug
 
       <ol className="space-y-4">
         {walkthrough.steps.map((step, index) => (
-          <li key={step.title} className="overflow-hidden rounded-[16px] border border-black bg-[color:var(--panel)]">
+          <li key={step.title} className="overflow-hidden rounded-[16px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
             <div className="grid gap-4 p-5 sm:grid-cols-[44px_minmax(0,1fr)] sm:p-6">
               <span className="mono grid size-11 place-items-center rounded-[11px] bg-[color:var(--ink)] text-sm text-white" aria-hidden="true">
                 {String(index + 1).padStart(2, "0")}
@@ -39,7 +39,7 @@ export function GuideWalkthrough({ walkthrough }: { walkthrough: GuideWalkthroug
                         href={link.url}
                         target={link.url.startsWith("https://") ? "_blank" : undefined}
                         rel={link.url.startsWith("https://") ? "noreferrer" : undefined}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black px-3 text-sm font-semibold hover:bg-black hover:text-white"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-[color:var(--line-strong)] px-3 text-sm font-semibold hover:bg-black hover:text-white"
                       >
                         {link.label}
                         <ArrowSquareOut size={16} aria-hidden="true" />

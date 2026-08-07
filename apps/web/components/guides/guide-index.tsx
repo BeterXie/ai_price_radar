@@ -10,7 +10,7 @@ type GuideIndexProps = {
 
 export function GuideIndex({ id, title, description, children, empty = false }: GuideIndexProps) {
   return (
-    <section id={id} className="scroll-mt-24 border-t border-black py-10 sm:py-12">
+    <section id={id} className="scroll-mt-24 border-t border-[color:var(--line-strong)] py-10 sm:py-12">
       <div className="max-w-3xl">
         <h2 className="text-3xl font-semibold tracking-[-.045em]">{title}</h2>
         {description ? <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">{description}</p> : null}

@@ -30,7 +30,7 @@ export function GuideWorkflowCards({ entries }: { entries: readonly WorkflowCard
         <Link
           key={guide.slug}
           href={`/guides/workflows/${guide.slug}`}
-          className="tactile group flex min-h-64 flex-col justify-between rounded-[14px] border hairline bg-[color:var(--panel)] p-5 hover:border-black focus-visible:border-black"
+          className="tactile group flex min-h-64 flex-col justify-between rounded-[14px] border hairline bg-[color:var(--panel)] p-5 hover:border-[color:var(--brand)] focus-visible:border-[color:var(--line-strong)]"
         >
           <div className="space-y-4">
             <span className={`inline-flex min-h-7 items-center rounded-full px-3 text-xs font-semibold ${RELEVANCE_STYLES[reference.relevance]}`}>

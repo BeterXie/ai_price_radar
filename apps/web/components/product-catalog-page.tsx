@@ -171,7 +171,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
               showProduct
             />
           </section>
-          <section className="border-t border-black py-12"><div className="max-w-2xl"><ReportForm /></div></section>
+          <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm /></div></section>
           <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(catalog.snapshot_at)}</p>
         </>
       ) : null}

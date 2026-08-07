@@ -340,7 +340,7 @@ export function CockpitJsonConverter() {
           href="https://github.com/gtxx3600/GPTSession2CPAandSub2API"
           target="_blank"
           rel="noreferrer"
-          className="mt-2 inline-flex min-h-11 items-center gap-2 font-semibold text-black hover:underline"
+          className="mt-2 inline-flex min-h-11 items-center gap-2 font-semibold text-[color:var(--ink)] hover:underline"
         >
           gtxx3600/GPTSession2CPAandSub2API
           <ArrowSquareOut size={16} aria-hidden="true" />

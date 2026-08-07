@@ -75,7 +75,7 @@ export default async function GeneralGuidePage({ params }: PageProps) {
               返回教程中心
               <ArrowRight size={17} aria-hidden="true" />
             </Link>
-            <Link href="/products" className="inline-flex min-h-11 items-center rounded-[10px] border border-black px-5 text-sm font-medium">查看报价目录</Link>
+            <Link href="/products" className="inline-flex min-h-11 items-center rounded-[10px] border border-[color:var(--line-strong)] px-5 text-sm font-medium">查看报价目录</Link>
           </div>
         }
       >

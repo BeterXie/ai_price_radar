@@ -10,7 +10,7 @@ export function GuideToc({ items, mobile = false }: { items: GuideTocItem[]; mob
         <ol className="flex min-w-max gap-1 py-2">
           {items.map((item) => (
             <li key={item.id}>
-              <a href={`#${item.id}`} className="flex min-h-11 items-center rounded-[10px] px-3 text-sm text-black/60 hover:bg-black/5 hover:text-black">
+              <a href={`#${item.id}`} className="flex min-h-11 items-center rounded-[10px] px-3 text-sm text-black/60 hover:bg-black/5 hover:text-[color:var(--ink)]">
                 {item.label}
               </a>
             </li>

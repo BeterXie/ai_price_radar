@@ -51,7 +51,7 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap gap-4">
           <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-black" />近期有货最低价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest, currency)}</span>
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-black/45" />常见价格 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian, currency)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-[color:var(--line-strong)]" />常见价格 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian, currency)}</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 bg-[color:var(--accent)]" />有货观测</span>
         </div>
         <span className="text-black/40">最近 {recent.length} 天</span>

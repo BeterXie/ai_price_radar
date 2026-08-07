@@ -13,16 +13,16 @@ export function SearchBox({ defaultValue = "" }: { defaultValue?: string }) {
     router.push(query ? `/products?q=${encodeURIComponent(query)}` : "/products");
   }
   return (
-    <form onSubmit={submit} className="flex w-full items-center gap-3 rounded-[18px] border border-black/15 bg-white p-2 shadow-[0_18px_50px_rgba(20,22,16,.08)]">
-      <MagnifyingGlass size={22} className="ml-3 shrink-0 text-black/45" />
+    <form onSubmit={submit} role="search" className="search-shell flex w-full items-center gap-2 p-2 focus-within:border-[color:var(--focus)]">
+      <MagnifyingGlass size={22} className="ml-2 shrink-0 text-[color:var(--muted)]" aria-hidden="true" />
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder="搜索 Free、Plus、K12、Pro 5x、Pro 20x…"
         aria-label="搜索产品"
-        className="min-w-0 flex-1 bg-transparent px-1 py-3 outline-none placeholder:text-black/35"
+        className="min-h-11 min-w-0 flex-1 bg-transparent px-1 outline-none placeholder:text-[color:var(--muted)]/70"
       />
-      <button className="tactile flex shrink-0 items-center gap-2 rounded-[12px] bg-[color:var(--ink)] px-5 py-3 text-sm font-medium text-white">
+      <button className="button-primary tactile shrink-0">
         搜索 <ArrowRight size={16} weight="bold" />
       </button>
     </form>

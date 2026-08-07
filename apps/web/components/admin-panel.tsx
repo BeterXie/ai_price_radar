@@ -227,10 +227,10 @@ export function AdminPanel() {
 
   return (
     <div className="space-y-8">
-      <section className="grid gap-4 rounded-[18px] border hairline bg-[color:var(--panel)] p-5 md:grid-cols-[1fr_auto_auto] md:items-end">
+      <section className="surface-panel grid gap-4 p-5 md:grid-cols-[1fr_auto_auto] md:items-end">
         <label className="text-sm font-medium">
           管理密钥
-          <span className="mt-2 flex items-center gap-2 rounded-[10px] border hairline bg-white px-3">
+          <span className="mt-2 flex min-h-11 items-center gap-2 rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 focus-within:border-[color:var(--focus)]">
             <Key size={18} />
             <input
               value={key}
@@ -240,18 +240,18 @@ export function AdminPanel() {
             />
           </span>
         </label>
-        <button onClick={load} className="tactile rounded-[10px] bg-[color:var(--ink)] px-5 py-3 text-sm text-white">
+        <button onClick={load} className="button-primary tactile">
           加载后台
         </button>
-        <button onClick={reclassify} className="tactile flex items-center justify-center gap-2 rounded-[10px] border border-black px-5 py-3 text-sm">
+        <button onClick={reclassify} className="button-secondary tactile">
           <ArrowClockwise size={17} />重新分类
         </button>
       </section>
 
-      {error && <p className="rounded-[10px] bg-[#f2d8d2] p-4 text-[color:var(--danger)]">{error}</p>}
+      {error && <p role="alert" className="rounded-[10px] border border-[color:var(--danger)]/25 bg-[color:var(--danger-soft)] p-4 text-[color:var(--danger)]">{error}</p>}
 
       {stats && (
-        <section className="grid gap-px overflow-hidden rounded-[18px] border hairline bg-[color:var(--line)] sm:grid-cols-2 lg:grid-cols-6">
+        <section className="data-strip sm:grid-cols-2 lg:grid-cols-6">
           {[
             ["店铺", stats.shops],
             ["标准产品", stats.products],
@@ -260,24 +260,24 @@ export function AdminPanel() {
             ["待处理纠错", stats.open_corrections],
             ["待初审收录申请", stats.pending_source_intakes],
           ].map(([label, value]) => (
-            <div key={String(label)} className="bg-[color:var(--panel)] p-5">
-              <p className="mono text-xs text-black/40">{label}</p>
-              <p className="mt-3 text-3xl font-semibold">{value}</p>
+            <div key={String(label)} className="data-cell">
+              <p className="data-label">{label}</p>
+              <p className="data-value">{value}</p>
             </div>
           ))}
         </section>
       )}
 
       {intakes.length > 0 && (
-        <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
-          <div className="border-b hairline px-5 py-4 font-semibold">店铺收录申请</div>
+        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold">店铺收录申请</div>
           <div className="divide-y divide-[color:var(--line)]">
             {intakes.map((intake) => (
-              <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--accent)]" : ""}`}>
+              <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--brand-soft)]" : ""}`}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="mono text-xs text-black/40">#{intake.id} · {sourceTypeLabels[intake.source_type] || intake.source_type}</p>
-                    <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-xs">{intakeStatusLabels[intake.status] || intake.status}</span>
+                    <span className="status-pill status-info">{intakeStatusLabels[intake.status] || intake.status}</span>
                   </div>
                   <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
                   <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
@@ -285,12 +285,12 @@ export function AdminPanel() {
                   {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
                   {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">其他独立站仅支持管理员人工接入，不会进入自动验证或发布队列。</p>}
                   {["merchant_json", "woocommerce", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
-                  {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[#f2d8d2] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
+                  {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
                   {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
-                  {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>}
+                  {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="tactile rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} className="mr-1 inline" />{intake.source_type === "ldxp" ? "批准并验证" : "批准并进入完整发布"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} className="mr-1 inline" />驳回</button></>}
+                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile"><Check size={16} />{intake.source_type === "ldxp" ? "批准并验证" : "批准并进入完整发布"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile"><X size={16} />驳回</button></>}
                   {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
                   {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>
@@ -305,8 +305,8 @@ export function AdminPanel() {
       )}
 
       {reports.length > 0 && (
-        <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
-          <div className="border-b hairline px-5 py-4 font-semibold">纠错与风险反馈</div>
+        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold">纠错与风险反馈</div>
           <div className="divide-y divide-[color:var(--line)]">
             {reports.map((report) => (
               <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
@@ -315,8 +315,8 @@ export function AdminPanel() {
                   <p className="mt-2 whitespace-pre-line text-sm leading-6">{report.message}</p>
                   {report.contact && <p className="mt-2 text-xs text-black/45">联系方式：{report.contact}</p>}
                   <div className="mt-4 grid gap-3">
-                    <label className="text-xs font-medium text-black/55">公开处理摘要<textarea value={reportDrafts[report.id]?.public_summary || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { merchant_response: "" }), public_summary: event.target.value } }))} maxLength={500} rows={2} placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。" className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>
-                    <label className="text-xs font-medium text-black/55">商家公开回应 <span className="font-normal">选填</span><textarea value={reportDrafts[report.id]?.merchant_response || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { public_summary: "" }), merchant_response: event.target.value } }))} maxLength={1000} rows={2} className="mt-1.5 w-full rounded-[10px] border hairline bg-white px-3 py-2 text-sm text-black" /></label>
+                    <label className="text-xs font-medium text-black/55">公开处理摘要<textarea value={reportDrafts[report.id]?.public_summary || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { merchant_response: "" }), public_summary: event.target.value } }))} maxLength={500} rows={2} placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。" className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
+                    <label className="text-xs font-medium text-black/55">商家公开回应 <span className="font-normal">选填</span><textarea value={reportDrafts[report.id]?.merchant_response || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { public_summary: "" }), merchant_response: event.target.value } }))} maxLength={1000} rows={2} className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
                   </div>
                 </div>
                 <div className="flex gap-2 md:self-end">
@@ -330,8 +330,8 @@ export function AdminPanel() {
       )}
 
       {offers.length > 0 && (
-        <section className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
-          <div className="border-b hairline px-5 py-4 font-semibold">最近报价</div>
+        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold">最近报价</div>
           <div className="divide-y divide-[color:var(--line)]">
             {offers.map((offer) => (
               <div key={offer.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_210px_100px_190px] xl:items-center">
@@ -342,7 +342,7 @@ export function AdminPanel() {
                 <select
                   value={offer.product_slug || ""}
                   onChange={(event) => patchOffer(offer.id, { product_slug: event.target.value, approved: true })}
-                  className="rounded-[10px] border hairline bg-white px-3 py-2 text-sm"
+                  className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm"
                 >
                   <option value="" disabled>未分类</option>
                   {PRODUCT_OPTIONS.map((slug) => <option key={slug} value={slug}>{slug}</option>)}

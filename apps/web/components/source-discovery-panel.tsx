@@ -162,11 +162,11 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
         <div className="flex flex-wrap items-center justify-between gap-3 border-b hairline px-5 py-4">
           <div className="font-semibold">来源候选池</div>
           <div className="flex flex-wrap gap-2">
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-[10px] border hairline bg-white px-3 py-2 text-sm">
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
               <option value="">全部状态</option>
               {Object.entries(candidateStatusLabels()).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-            <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className="rounded-[10px] border hairline bg-white px-3 py-2 text-sm">
+            <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
               <option value="">全部平台</option>
               {Object.entries(PLATFORM_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>

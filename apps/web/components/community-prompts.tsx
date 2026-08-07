@@ -171,7 +171,7 @@ export function CommunityPrompts() {
       {prompt && (
         <aside
           aria-label={prompt === "github" ? "开源项目提示" : "支持作者提示"}
-          className="fixed inset-x-4 bottom-20 z-40 rounded-[18px] border border-black bg-[color:var(--panel)] p-5 shadow-[0_20px_50px_rgba(18,19,15,.18)] md:right-auto md:bottom-8 md:left-8 md:w-[420px]"
+          className="fixed inset-x-4 bottom-20 z-40 rounded-[18px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 shadow-[0_20px_50px_rgba(18,19,15,.18)] md:right-auto md:bottom-8 md:left-8 md:w-[420px]"
         >
           <div className="flex items-start gap-4">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-[color:var(--ink)] text-white">
@@ -219,7 +219,7 @@ export function CommunityPrompts() {
                 <button
                   type="button"
                   onClick={() => dismissPrompt(prompt, prompt === "github" ? 14 : 30)}
-                  className="tactile rounded-[10px] border border-black px-4 py-2.5 text-sm"
+                  className="tactile rounded-[10px] border border-[color:var(--line-strong)] px-4 py-2.5 text-sm"
                 >
                   稍后再说
                 </button>
@@ -243,7 +243,7 @@ export function CommunityPrompts() {
             aria-modal="true"
             aria-labelledby="support-dialog-title"
             aria-describedby="support-dialog-description"
-            className="max-h-[calc(100dvh-32px)] w-full max-w-[620px] overflow-y-auto rounded-[18px] border border-black bg-[color:var(--panel)] shadow-[0_28px_80px_rgba(18,19,15,.28)]"
+            className="max-h-[calc(100dvh-32px)] w-full max-w-[620px] overflow-y-auto rounded-[18px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] shadow-[0_28px_80px_rgba(18,19,15,.28)]"
           >
             <header className="flex items-start justify-between gap-4 border-b hairline p-5 sm:p-6">
               <div>
@@ -279,19 +279,19 @@ export function CommunityPrompts() {
                       className={`tactile rounded-[10px] border px-4 py-3 text-left text-sm font-medium ${
                         activeMethod.id === method.id
                           ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-white"
-                          : "hairline bg-white text-[color:var(--ink)]"
+                          : "hairline bg-[color:var(--panel)] text-[color:var(--ink)]"
                       }`}
                     >
                       {method.label}
                     </button>
                   ))}
                 </div>
-                <div className="mt-5 rounded-[10px] border hairline bg-white p-4 text-sm leading-6">
+                <div className="mt-5 rounded-[10px] border hairline bg-[color:var(--panel)] p-4 text-sm leading-6">
                   <p className="text-black/55">支付前请核对支付页面信息。本站不会记录你的支付信息。</p>
                 </div>
               </div>
 
-              <div className="flex flex-col items-center rounded-[10px] border hairline bg-white p-4 text-center">
+              <div className="flex flex-col items-center rounded-[10px] border hairline bg-[color:var(--panel)] p-4 text-center">
                 <img
                   src={activeMethod.qrUrl}
                   alt={`${activeMethod.label}支持作者二维码`}

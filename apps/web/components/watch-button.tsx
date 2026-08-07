@@ -68,7 +68,7 @@ export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" 
       type="button"
       onClick={toggle}
       aria-pressed={watched}
-      className={`tactile inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-medium ${watched ? "bg-[color:var(--accent)] text-[color:var(--accent-ink)]" : "border border-black"}`}
+      className={`tactile inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-medium ${watched ? "bg-[color:var(--accent)] text-[color:var(--accent-ink)]" : "border border-[color:var(--line-strong)]"}`}
     >
       {watched ? <BellRinging size={17} weight="fill" /> : <Bell size={17} />}
       {watched ? "已关注" : "关注价格与库存"}

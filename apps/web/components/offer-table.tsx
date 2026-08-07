@@ -35,7 +35,7 @@ function DecisionFacts({ offer }: { offer: Offer }) {
 
 function ShopOfferList({ offers }: { offers: Offer[] }) {
   return (
-    <div className="mt-5 overflow-hidden rounded-[12px] border hairline bg-white/70">
+    <div className="mt-5 overflow-hidden rounded-[10px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
       {offers.map((offer) => (
         <div key={offer.id} className="grid gap-2 border-b hairline px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_110px_90px_auto] sm:items-center">
           <div><Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link><p className="mt-1 text-[11px] text-black/40">{offer.source_platform_label} · {offer.source_kind_label}</p></div>
@@ -56,7 +56,7 @@ function ContextualGuideLink({ productSlug, deliveryType }: { productSlug?: stri
         <h4 className="text-sm font-semibold">第一次购买这类商品？</h4>
         <p className="mt-1 text-xs text-black/50">先了解交付、使用和账号安全注意事项。</p>
       </div>
-      <Link href={href} className="tactile inline-flex min-h-11 shrink-0 items-center justify-center rounded-[10px] border border-black px-4 py-2.5 text-sm font-medium">
+      <Link href={href} className="button-secondary tactile shrink-0">
         {getGuideLinkLabel(deliveryType)}
       </Link>
     </aside>
@@ -102,14 +102,14 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
 
   return (
-    <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className="group/offer bg-[color:var(--panel)] open:bg-white/70">
-      <summary className="grid cursor-pointer list-none gap-4 px-5 py-5 marker:hidden lg:grid-cols-[minmax(0,1fr)_150px_150px_32px] lg:items-center [&::-webkit-details-marker]:hidden">
+    <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className="group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]">
+      <summary className="grid min-h-[84px] cursor-pointer list-none gap-4 px-4 py-4 marker:hidden sm:px-5 lg:grid-cols-[minmax(0,1fr)_150px_150px_32px] lg:items-center [&::-webkit-details-marker]:hidden">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {productName && <span className="rounded-full border hairline px-2 py-1 text-[10px] font-medium">{productName}</span>}
-            <h3 className="text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
-            {offer.is_trusted_price ? <span className="rounded-full bg-[color:var(--accent)] px-2 py-1 text-[10px] font-medium text-[color:var(--accent-ink)]">近期可参考</span> : !offer.is_comparable ? <span className="rounded-full bg-[#f1e2bd] px-2 py-1 text-[10px] font-medium text-[#6d4f09]">类型不同，不直接比价</span> : <span className="rounded-full border hairline px-2 py-1 text-[10px] text-black/50">价格异常，建议确认</span>}
-            {group && group.shop_count > 1 && <span className="rounded-full border hairline px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
+            {productName && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[10px] font-medium">{productName}</span>}
+            <h3 className="[overflow-wrap:anywhere] text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
+            {offer.is_trusted_price ? <span className="status-pill status-success !py-1 !text-[10px]">近期可参考</span> : !offer.is_comparable ? <span className="status-pill status-warning !py-1 !text-[10px]">类型不同，不直接比价</span> : <span className="status-pill status-danger !py-1 !text-[10px]">价格异常，建议确认</span>}
+            {group && group.shop_count > 1 && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">
             <span className="flex items-center gap-1.5"><Storefront size={15} />{group ? `${group.shop_count} 家店铺 · ${group.offer_count} 条报价` : offer.shop_name}</span>
@@ -121,8 +121,8 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         </div>
 
         <div>
-          <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${shownStock > 0 ? "bg-[color:var(--accent)] text-[color:var(--accent-ink)]" : "bg-black/6 text-black/55"}`}>
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />{shownStock > 0 ? "有货" : stockLabel(offer.stock_status)}
+          <span className={`status-pill ${shownStock > 0 ? "status-success" : ""}`}>
+            {shownStock > 0 ? "有货" : stockLabel(offer.stock_status)}
           </span>
           <p className="mt-2 text-xs text-black/45">{group ? `${shownStock} 条有货报价` : offer.stock_count === null ? "库存数未知" : `库存 ${offer.stock_count}`}</p>
         </div>
@@ -135,15 +135,15 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         <CaretDown className="transition-transform duration-150 group-open/offer:rotate-180" size={20} aria-hidden="true" />
       </summary>
 
-      <div className="border-t hairline bg-black/[.025] px-5 py-6">
+      <div className="border-t border-[color:var(--line-strong)] bg-[color:var(--panel)] px-4 py-6 sm:px-5">
         {offer.low_price_warning && (
-          <div className="mb-5 flex items-start gap-2 rounded-[10px] bg-[#f4e6c5] px-4 py-3 text-sm text-[#674b0b]"><Warning className="mt-0.5 shrink-0" size={17} weight="fill" /><span><strong>价格明显偏低：</strong>{offer.low_price_warning}</span></div>
+          <div className="mb-5 flex items-start gap-2 rounded-[10px] border border-[color:var(--warning)]/25 bg-[color:var(--warning-soft)] px-4 py-3 text-sm text-[color:var(--warning)]"><Warning className="mt-0.5 shrink-0" size={17} weight="fill" /><span><strong>价格明显偏低：</strong>{offer.low_price_warning}</span></div>
         )}
         <DecisionFacts offer={offer} />
         {(offer.tags.length > 0 || offer.risk_flags.length > 0) && (
           <div className="mt-5 flex flex-wrap gap-2">
             {offer.tags.map((tag) => <span key={tag} className="rounded-full border hairline px-2 py-1 text-[11px]">{tag}</span>)}
-            {offer.risk_flags.map((flag) => <span key={flag} className="rounded-full bg-[#f2d8d2] px-2 py-1 text-[11px] text-[color:var(--danger)]">原文含：{flag}</span>)}
+            {offer.risk_flags.map((flag) => <span key={flag} className="rounded-full border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-2 py-1 text-[11px] text-[color:var(--danger)]">原文含：{flag}</span>)}
           </div>
         )}
 
@@ -165,8 +165,8 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
         {!group && (
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" className="tactile inline-flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm text-white">去原站查看 <ArrowSquareOut size={16} /></a>
-            <Link href={`/shops/${offer.shop_token}`} className="tactile inline-flex items-center gap-2 rounded-[10px] border border-black px-4 py-2.5 text-sm">查看店铺 <Storefront size={16} /></Link>
+            <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" className="button-primary tactile">去原站查看 <ArrowSquareOut size={16} /></a>
+            <Link href={`/shops/${offer.shop_token}`} className="button-secondary tactile">查看店铺 <Storefront size={16} /></Link>
           </div>
         )}
       </div>
@@ -182,8 +182,8 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
 function TableFrame({ children, footer }: { children: React.ReactNode; footer: React.ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
-      <div className="bg-black/[.025] px-5 py-3 text-xs text-black/50">
+    <div className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+      <div className="bg-[color:var(--subtle)] px-5 py-3 text-xs text-[color:var(--muted)]">
         <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看交付、售后和来源</div>
         <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>最低价</span><span>详情</span></div>
       </div>
@@ -240,7 +240,7 @@ export function OfferGroupTable({
     return () => observer.disconnect();
   }, [filterQuery, hasMore, loadMorePath, loadedGroups.length, productSlug, snapshotId]);
 
-  if (!groups.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前筛选条件下没有可展示的同款报价。</div>;
+  if (!groups.length) return <div className="empty-state">当前筛选条件下没有可展示的同款报价。请调整筛选条件后再试。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 款` : `已显示全部 ${totalCount} 款`}</div>}>
       {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? group.product_name : undefined} snapshotId={snapshotId} filterQuery={filterQuery} />)}
@@ -264,7 +264,7 @@ export function OfferTable({ offers, productSlug }: { offers: Offer[]; productSl
     return () => observer.disconnect();
   }, [hasMore, offers.length]);
 
-  if (!offers.length) return <div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-[color:var(--muted)]">当前没有可展示的报价。</div>;
+  if (!offers.length) return <div className="empty-state">当前没有可展示的报价。数据恢复后会继续显示在这里。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45">{hasMore ? `继续滚动加载，已显示 ${visibleOffers.length} / ${offers.length} 条` : `已显示全部 ${offers.length} 条报价`}</div>}>
       {visibleOffers.map((offer) => <OfferRow key={offer.id} offer={offer} productSlug={productSlug} />)}

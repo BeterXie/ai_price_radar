@@ -102,7 +102,7 @@ export default async function BrandGuidePage({ params }: PageProps) {
         <GuideSection id="delivery" title="常见第三方交付类型" intro="同一品牌下的商品可能采用不同交付方式，交付方式决定控制权、使用步骤和风险。">
           <div className="grid gap-3 sm:grid-cols-2">
             {deliveries.map((delivery) => (
-              <Link key={delivery.deliveryType} href={`/guides/delivery/${delivery.deliveryType}`} className="flex min-h-14 items-center justify-between rounded-[12px] border hairline bg-[color:var(--panel)] px-4 text-sm font-semibold hover:border-black">
+              <Link key={delivery.deliveryType} href={`/guides/delivery/${delivery.deliveryType}`} className="flex min-h-14 items-center justify-between rounded-[12px] border hairline bg-[color:var(--panel)] px-4 text-sm font-semibold hover:border-[color:var(--brand)]">
                 {delivery.shortLabel}
                 <ArrowRight size={17} aria-hidden="true" />
               </Link>

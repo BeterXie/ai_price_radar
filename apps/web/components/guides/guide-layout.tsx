@@ -27,9 +27,9 @@ export function GuideLayout({ breadcrumbs, title, description, lastReviewedAt, t
             <li key={`${item.label}-${index}`} className="flex items-center">
               {index > 0 ? <CaretRight size={14} className="mx-1 text-black/30" aria-hidden="true" /> : null}
               {item.href ? (
-                <Link href={item.href} className="flex min-h-11 items-center px-1 hover:text-black hover:underline">{item.label}</Link>
+                <Link href={item.href} className="flex min-h-11 items-center px-1 hover:text-[color:var(--ink)] hover:underline">{item.label}</Link>
               ) : (
-                <span aria-current="page" className="flex min-h-11 items-center px-1 text-black">{item.label}</span>
+                <span aria-current="page" className="flex min-h-11 items-center px-1 text-[color:var(--ink)]">{item.label}</span>
               )}
             </li>
           ))}

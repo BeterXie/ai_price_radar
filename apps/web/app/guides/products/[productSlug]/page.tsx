@@ -140,7 +140,7 @@ export default async function ProductGuidePage({ params }: PageProps) {
         <GuideSection id="delivery-types" title="第三方市场常见交付方式" intro="选择交付方式后，再确认账号控制权、可修改设置和售后条件。">
           <div className="grid gap-3 sm:grid-cols-2">
             {deliveryEntries.map((delivery) => (
-              <a key={delivery.deliveryType} href={`#delivery-${delivery.deliveryType}`} className="flex min-h-14 items-center justify-between rounded-[12px] border hairline bg-[color:var(--panel)] px-4 text-sm font-semibold hover:border-black">
+              <a key={delivery.deliveryType} href={`#delivery-${delivery.deliveryType}`} className="flex min-h-14 items-center justify-between rounded-[12px] border hairline bg-[color:var(--panel)] px-4 text-sm font-semibold hover:border-[color:var(--brand)]">
                 {delivery.shortLabel}
                 <span className="text-black/40" aria-hidden="true">#</span>
               </a>
@@ -153,7 +153,7 @@ export default async function ProductGuidePage({ params }: PageProps) {
         <GuideSection id="delivery-guides" title="购买后会收到什么与使用步骤" intro="只按商品原页面明确写出的交付方式操作。遇到额外索取敏感信息或要求绕过验证时应停止。">
           <div className="space-y-8">
             {deliveryEntries.map((delivery) => (
-              <section key={delivery.deliveryType} id={`delivery-${delivery.deliveryType}`} className="scroll-mt-24 rounded-[16px] border border-black bg-[color:var(--panel)] p-5 sm:p-6">
+              <section key={delivery.deliveryType} id={`delivery-${delivery.deliveryType}`} className="scroll-mt-24 rounded-[16px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4 border-b hairline pb-4">
                   <div>
                     <h3 className="text-xl font-semibold">{delivery.shortLabel}</h3>

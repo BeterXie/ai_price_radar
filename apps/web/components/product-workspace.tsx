@@ -87,67 +87,27 @@ export function ProductWorkspace({
   return (
     <>
       {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
-      <h1 className="sr-only">{product.display_name}价格对比</h1>
-      <section className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b hairline pb-4 text-sm text-black/50" aria-label={`${product.display_name} 报价概况`}>
+      <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
         <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条可参考报价</p>
         <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
         <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
         <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
       </section>
 
-      <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
-        <div className="grid gap-px overflow-hidden rounded-[16px] border hairline bg-[color:var(--line)] sm:grid-cols-3">
-          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">近期有货最低价</p><p className="mt-2 text-2xl font-semibold">{money(product.lowest_price, product.price_currency)}</p></div>
-          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">常见价格</p><p className="mt-2 text-2xl font-semibold">{money(product.median_price, product.price_currency)}</p></div>
-          <div className="bg-[color:var(--panel)] p-4"><p className="text-xs text-black/45">报价覆盖</p><p className="mt-2 text-2xl font-semibold">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-black/45">/ 100 · {product.data_quality_label}</span></p><p className="mt-1 text-xs text-black/40">{product.source_count} 个来源</p></div>
+      <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
+        <div className="data-strip sm:grid-cols-3">
+          <div className="data-cell"><p className="data-label">近期有货最低价</p><p className="data-value">{money(product.lowest_price, product.price_currency)}</p></div>
+          <div className="data-cell"><p className="data-label">常见价格</p><p className="data-value">{money(product.median_price, product.price_currency)}</p></div>
+          <div className="data-cell"><p className="data-label">报价覆盖</p><p className="data-value">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">/ 100 · {product.data_quality_label}</span></p><p className="mt-1 text-xs text-[color:var(--muted)]">{product.source_count} 个来源</p></div>
         </div>
         <WatchButton slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
       </section>
 
       {product.official_reference && (
-        <section className="mt-4 rounded-[16px] border border-black bg-white p-5">
+        <section className="surface-panel mt-4 border-l-4 !border-l-[color:var(--info)] p-5">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <div><p className="mono text-xs tracking-[.12em] text-black/45">官方价格 · 更新于 {product.official_reference.checked_at}</p><h2 className="mt-2 text-xl font-semibold">{product.official_reference.plan} · {product.official_reference.currency} {product.official_reference.price} / 月</h2><p className="mt-2 max-w-3xl text-xs leading-5 text-black/50">{product.official_reference.note}</p></div>
-            <a href={product.official_reference.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-black px-4 py-2.5 text-sm">查看官方来源 <ArrowSquareOut size={16} /></a>
-          </div>
-        </section>
-      )}
-
-      {productGuide && (
-        <section className="mt-6 rounded-[18px] border hairline bg-[color:var(--panel)] p-5 md:p-6" aria-labelledby="buying-and-usage-guide">
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
-            <div>
-              <p className="mono text-xs tracking-[.14em] text-black/45">产品教程</p>
-              <h2 id="buying-and-usage-guide" className="mt-2 text-2xl font-semibold tracking-[-.03em]">购买与使用</h2>
-              <h3 className="mt-4 text-lg font-semibold">{productGuide.title}</h3>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-black/60">{productGuide.description}</p>
-              <div className="mt-5 flex flex-wrap gap-2" aria-label="教程支持的交付类型">
-                {productGuide.supportedDeliveryTypes.map((deliveryType) => (
-                  <span key={deliveryType} className="rounded-full border hairline px-2.5 py-1 text-xs">
-                    {DELIVERY_TYPE_LABELS[deliveryType] || deliveryType}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="grid gap-5">
-              <div>
-                <h3 className="text-sm font-semibold">购买前提示</h3>
-                <ul className="mt-3 grid gap-2 text-sm leading-6 text-black/60">
-                  {productGuide.buyingChecklist.slice(0, 3).map((item) => <li key={item} className="border-l-2 border-[color:var(--accent)] pl-3">{item}</li>)}
-                </ul>
-              </div>
-              {guideFaq && (
-                <div>
-                  <h3 className="text-sm font-semibold">常见问题</h3>
-                  <p className="mt-2 text-sm font-medium">{guideFaq.question}</p>
-                  <p className="mt-1 text-sm leading-6 text-black/60">{guideFaq.answer}</p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="mt-6 flex flex-wrap gap-3 border-t hairline pt-5">
-            <Link href={`/guides/products/${productGuide.productSlug}`} className="tactile inline-flex min-h-11 items-center justify-center rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white">查看完整使用教程</Link>
-            <Link href="/guides" className="tactile inline-flex min-h-11 items-center justify-center rounded-[10px] border border-black px-4 py-2.5 text-sm font-medium">查看全部教程</Link>
+            <a href={product.official_reference.url} target="_blank" rel="noreferrer" className="button-secondary shrink-0">查看官方来源 <ArrowSquareOut size={16} /></a>
           </div>
         </section>
       )}
@@ -155,9 +115,9 @@ export function ProductWorkspace({
       <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
 
       <section className="pb-12">
-        <div className="mb-6">
+        <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
           <h2 className="text-3xl font-semibold tracking-[-.04em]">在售报价</h2>
-          <p className="mt-2 text-sm text-black/50">相同商品会合并展示。当前共有 {product.offer_group_count} 款，点开即可查看不同店铺、交付方式和商品原文。</p>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">相同商品会合并展示。当前共有 {product.offer_group_count} 款，点开即可查看不同店铺、交付方式和商品原文。</p>
         </div>
         <OfferGroupTable
           key={`${product.slug}:${product.snapshot_id || "current"}:${query.toString()}`}
@@ -169,7 +129,46 @@ export function ProductWorkspace({
         />
       </section>
 
-      <section className="border-t border-black py-12" aria-labelledby="product-comparison-guide">
+      {productGuide && (
+        <section className="surface-subtle mb-12 p-5 md:p-7" aria-labelledby="buying-and-usage-guide">
+          <div className="grid gap-7 lg:grid-cols-[1.05fr_.95fr]">
+            <div>
+              <p className="section-kicker">产品教程</p>
+              <h2 id="buying-and-usage-guide" className="mt-3 text-2xl font-semibold tracking-[-.035em]">购买与使用</h2>
+              <h3 className="mt-5 text-lg font-semibold">{productGuide.title}</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted)]">{productGuide.description}</p>
+              <div className="mt-5 flex flex-wrap gap-2" aria-label="教程支持的交付类型">
+                {productGuide.supportedDeliveryTypes.map((deliveryType) => (
+                  <span key={deliveryType} className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2.5 py-1 text-xs">
+                    {DELIVERY_TYPE_LABELS[deliveryType] || deliveryType}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-5">
+              <div>
+                <h3 className="text-sm font-semibold">购买前提示</h3>
+                <ul className="mt-3 grid gap-2 text-sm leading-6 text-[color:var(--muted)]">
+                  {productGuide.buyingChecklist.slice(0, 3).map((item) => <li key={item} className="border-l-2 border-[color:var(--brand)] pl-3">{item}</li>)}
+                </ul>
+              </div>
+              {guideFaq && (
+                <div>
+                  <h3 className="text-sm font-semibold">常见问题</h3>
+                  <p className="mt-2 text-sm font-medium">{guideFaq.question}</p>
+                  <p className="mt-1 text-sm leading-6 text-[color:var(--muted)]">{guideFaq.answer}</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="mt-6 flex flex-wrap gap-3 border-t border-[color:var(--line-strong)] pt-5">
+            <Link href={`/guides/products/${productGuide.productSlug}`} className="button-primary tactile">查看完整使用教程</Link>
+            <Link href="/guides" className="button-secondary tactile">查看全部教程</Link>
+          </div>
+        </section>
+      )}
+
+      <section className="border-t border-[color:var(--line-strong)] py-12" aria-labelledby="product-comparison-guide">
         <div className="max-w-5xl">
           <h2 id="product-comparison-guide" className="text-3xl font-semibold tracking-[-.04em]">购买前建议看这几项</h2>
           <ul className="mt-6 grid gap-4 text-sm leading-6 text-[color:var(--muted)] md:grid-cols-2">
@@ -189,7 +188,7 @@ export function ProductWorkspace({
         </div>
       </section>
 
-      <section className="grid gap-10 border-t border-black py-12 lg:grid-cols-[1.35fr_.65fr]">
+      <section className="grid gap-10 border-t border-[color:var(--line-strong)] py-12 lg:grid-cols-[1.35fr_.65fr]">
         <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-black/50">按天整理近期有货最低价、常见价格和有货数量，方便查看最近的变化。</p><PriceHistory points={product.trend} /></div>
         <aside><ReportForm /></aside>
       </section>
