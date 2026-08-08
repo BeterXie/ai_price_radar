@@ -40,7 +40,15 @@ body {
   text-rendering: optimizeLegibility;
 }
 a { color: inherit; text-decoration: none; }
-button, input, select, textarea { color: inherit; font: inherit; }
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    color: inherit;
+    font: inherit;
+  }
+}
 button, input, select, textarea, a, summary { outline-offset: 3px; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 ::selection { background: var(--accent); color: var(--accent-ink); }

@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.4] - 2026-08-08
+
+### Fixed
+
+- Restored text and icon color utilities on form controls so dark action buttons remain readable.
+
 ## [3.7.3] - 2026-08-08
 
 ### Changed
