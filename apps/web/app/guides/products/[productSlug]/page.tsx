@@ -64,8 +64,8 @@ export default async function ProductGuidePage({ params }: PageProps) {
   const path = `/guides/products/${guide.productSlug}`;
   const toc = [
     { id: "what-is", label: "这是什么" },
-    ...(guide.walkthrough ? [{ id: "walkthrough", label: "照着做" }] : []),
-    { id: "differences", label: "相邻套餐区别" },
+    ...(guide.walkthrough ? [{ id: "walkthrough", label: "操作步骤" }] : []),
+    { id: "differences", label: "套餐区别" },
     { id: "audience", label: "适合哪些用户" },
     { id: "delivery-types", label: "常见交付方式" },
     { id: "buying-checklist", label: "购买前确认" },
@@ -76,7 +76,7 @@ export default async function ProductGuidePage({ params }: PageProps) {
       : []),
     { id: "problems", label: "常见错误" },
     { id: "security", label: "安全和隐私" },
-    { id: "after-sales", label: "售后证据" },
+    { id: "after-sales", label: "售后材料" },
     { id: "faq", label: "常见问题" },
     { id: "sources", label: "官方来源" },
   ];
@@ -124,12 +124,12 @@ export default async function ProductGuidePage({ params }: PageProps) {
         <GuideSection id="what-is" title="这是什么"><GuideBlocks blocks={overviewBlocks} /></GuideSection>
 
         {guide.walkthrough ? (
-          <GuideSection id="walkthrough" title="照着做：从交付到确认生效">
+          <GuideSection id="walkthrough" title="从收到商品到确认可用">
             <GuideWalkthrough walkthrough={guide.walkthrough} />
           </GuideSection>
         ) : null}
 
-        <GuideSection id="differences" title="它与相邻套餐有什么区别" intro="名称相近的套餐可能在权益、用量、组织管理和计费方式上不同，最终以官方产品页和账户页为准。">
+      <GuideSection id="differences" title="与相近套餐的区别" intro="名称相近的套餐可能在权益、用量、组织管理和计费方式上不同，最终以官方产品页和账户页为准。">
           {comparisonBlocks.length ? <GuideBlocks blocks={comparisonBlocks} /> : (
             <GuideCallout title="不要只按标题判断">购买前核对官方套餐名称、权益范围、期限和使用入口，避免把网页订阅、团队席位与 API 额度混为一类。</GuideCallout>
           )}
@@ -188,7 +188,7 @@ export default async function ProductGuidePage({ params }: PageProps) {
         </GuideSection>
 
         <GuideSection id="security" title="安全和隐私提示">
-          <GuideCallout tone="danger" title="重要风险不会折叠">
+        <GuideCallout tone="danger" title="请先确认这些风险">
             <ul className="list-disc space-y-2 pl-5">{guide.riskNotes.map((note) => <li key={note}>{note}</li>)}</ul>
           </GuideCallout>
         </GuideSection>

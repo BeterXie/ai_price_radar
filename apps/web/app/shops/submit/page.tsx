@@ -26,7 +26,7 @@ export default function ShopSubmitPage() {
             {[
               { Icon: Eye, title: "核验公开页面", copy: "确认页面或 Feed 无需登录即可访问，并能稳定读取公开商品。" },
               { Icon: ShieldCheck, title: "检查商品范围", copy: "仅收录目标 AI 账号、订阅、充值、API 和相关服务商品。" },
-              { Icon: CheckCircle, title: "审核与发布分开", copy: "审核通过后进入同步队列；成功进入公开快照后才会标记为已发布。" },
+              { Icon: CheckCircle, title: "通过后加入目录", copy: "审核通过并成功读取商品后，符合收录范围的报价会显示在目录中。" },
             ].map(({ Icon, title, copy }) => (
               <div key={title} className="grid grid-cols-[28px_1fr] gap-4 border-b hairline py-5">
                 <Icon size={23} />

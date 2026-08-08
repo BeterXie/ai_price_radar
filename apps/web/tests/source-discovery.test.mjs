@@ -9,7 +9,7 @@ import {
 } from "../lib/source-discovery.ts";
 
 test("candidate status labels cover the full queue lifecycle", () => {
-  assert.equal(candidateStatusLabel("promoted"), "已促进");
+  assert.equal(candidateStatusLabel("promoted"), "已转入收录");
   assert.equal(candidateStatusLabel("needs_re_review"), "需复审");
   assert.equal(candidateStatusLabel("unknown-future"), "unknown-future");
   assert.equal(runStatusLabel("partial"), "部分失败");

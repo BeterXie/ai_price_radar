@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, CheckCircle, Clock, Database, Package, ShieldCheck, Sparkle } from "@phosphor-icons/react/ssr";
+import { ArrowRight, CheckCircle, Clock, Database, Package, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { SearchBox } from "@/components/search-box";
 import { ProductCard } from "@/components/product-card";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "AI 订阅比价｜查价格、库存和交付方式",
-  description: "汇总 ChatGPT、Claude、Gemini、Grok 等 AI 产品的公开报价，快速比较价格、库存、交付方式和更新时间。",
+  description: "汇总 ChatGPT、Claude、Gemini、Grok 等 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
   alternates: { canonical: "https://ai.pricememo.cn" },
   openGraph: {
     title: "AI 订阅比价｜查价格、库存和交付方式",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "AI 订阅比价｜查价格、库存和交付方式",
-    description: "快速比较主流 AI 产品的公开价格、库存、交付方式和更新时间。",
+    description: "查看主流 AI 产品的公开价格、库存、交付方式和更新时间。",
   },
 };
 
@@ -34,74 +34,72 @@ export default async function HomePage() {
   const products = data.items.slice(0, 6);
   return (
     <main id="main-content">
-      <section className="home-hero relative overflow-hidden border-b border-[color:var(--line)]">
-        <span className="hero-orb hero-orb-home-a" aria-hidden="true" />
-        <span className="hero-orb hero-orb-home-b" aria-hidden="true" />
-        <div className="shell relative z-[1] grid items-center gap-10 py-14 lg:grid-cols-[minmax(0,1.02fr)_minmax(370px,.78fr)] lg:py-20 xl:gap-16">
-          <div>
-            <p className="eyebrow"><Sparkle size={14} weight="fill" aria-hidden="true" />AI 订阅公开报价雷达</p>
-            <h1 className="display-title mt-6">先看清商品，<br /><span className="gradient-text">再决定价格。</span></h1>
-            <p className="lede mt-7">把不同店铺的 AI 订阅、账号和 API 报价放进同一个比较视图。价格只是结果，商品类型、库存、交付方式和更新时间才是购买判断的上下文。</p>
-            <div className="mt-9 max-w-2xl"><SearchBox /></div>
+      <section className="home-hero border-b border-[color:var(--line-strong)]">
+        <div className="shell grid items-center gap-8 py-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,.78fr)] lg:py-14 xl:gap-12">
+          <div className="min-w-0">
+            <p className="eyebrow">公开报价目录</p>
+            <h1 className="display-title mt-4">AI 订阅报价对比</h1>
+            <p className="lede mt-5">汇总公开店铺的订阅、账号和 API 额度报价，帮助你比较价格、库存、交付方式和更新时间。</p>
+            <div className="mt-7 max-w-2xl"><SearchBox /></div>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[color:var(--muted)]">
-              <span className="font-medium">快速查看</span>
+              <span className="font-medium">常用筛选</span>
               <Link href="/products?platform=OpenAI" className="quick-link">OpenAI</Link>
               <Link href="/products?platform=Claude" className="quick-link">Claude</Link>
               <Link href="/products?in_stock=true" className="quick-link">仅看有货</Link>
             </div>
           </div>
 
-          <aside className="live-board overflow-hidden" aria-label="近期报价样本">
-            <div className="flex items-start justify-between gap-4 border-b border-[color:var(--line)] p-5 sm:p-6">
-              <div><p className="section-kicker">Live catalog</p><h2 className="mt-2 text-xl font-semibold tracking-[-.03em]">现在值得先看的报价</h2></div>
-              <span className="status-pill status-success">实时快照</span>
+          <aside className="live-board min-w-0 overflow-hidden" aria-label="近期有货报价">
+            <div className="flex items-center justify-between gap-4 border-b border-[color:var(--line)] p-5">
+              <h2 className="text-lg font-semibold tracking-[-.025em]">最近更新</h2>
+              <span className={`status-pill ${data.snapshot_at ? "status-success" : "status-info"}`}>{data.snapshot_at ? `更新于 ${relativeTime(data.snapshot_at)}` : "暂无更新时间"}</span>
             </div>
             <div className="divide-y divide-[color:var(--line)]">
               {products.slice(0, 3).map((product) => (
-                <Link key={product.slug} href={`/products/${encodeURIComponent(product.slug)}`} className="group grid min-h-[96px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 transition-colors hover:bg-[color:var(--brand-soft)]/55 sm:px-6">
+                <Link key={product.slug} href={`/products/${encodeURIComponent(product.slug)}`} className="group grid min-h-[92px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 hover:bg-[color:var(--subtle)]">
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 text-xs text-[color:var(--muted)]"><PlatformIcon platform={product.brand} size={14} />{product.brand} · {relativeTime(product.last_updated_at)}</p>
-                    <h3 className="mt-2 truncate font-semibold tracking-[-.02em] group-hover:text-[color:var(--brand-strong)]">{product.display_name}</h3>
+                    <h3 className="mt-2 truncate font-semibold tracking-[-.02em] group-hover:underline">{product.display_name}</h3>
                     <p className="mt-1 flex items-center gap-1.5 text-xs text-[color:var(--muted)]"><Package size={14} />{product.in_stock_count} 条有货</p>
                   </div>
                   <div className="text-right">
                     <p className="mono text-lg font-semibold">{money(product.lowest_price, product.price_currency)}</p>
-                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">近期最低</p>
+                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">近期有货最低价</p>
                   </div>
                 </Link>
               ))}
             </div>
-            <Link href="/products" className="live-board-link">进入完整目录 <ArrowRight size={17} /></Link>
+            <Link href="/products" className="live-board-link">查看全部报价 <ArrowRight size={17} /></Link>
           </aside>
         </div>
 
-        <div className="shell relative z-[1] grid gap-3 pb-8 sm:grid-cols-3 lg:pb-10">
-          <div className="metric-card"><p className="data-label">标准商品</p><p className="data-value">{data.total}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">种</span></p><p className="metric-note">统一商品口径后再比较</p></div>
-          <div className="metric-card"><p className="data-label">当前报价</p><p className="data-value">{data.offer_count}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">条</span></p><p className="metric-note">来自公开可访问来源</p></div>
-          <div className="metric-card"><p className="data-label">有货报价</p><p className="data-value">{data.in_stock_count}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">条</span></p><p className="metric-note">{exactTime(data.snapshot_at)} 更新</p></div>
-        </div>
+        <dl className="shell home-stats" aria-label="报价概况">
+          <div><dt>商品分类</dt><dd>{data.total} 种</dd></div>
+          <div><dt>当前报价</dt><dd>{data.offer_count} 条</dd></div>
+          <div><dt>有货报价</dt><dd>{data.in_stock_count} 条</dd></div>
+          <div><dt>最近更新</dt><dd>{exactTime(data.snapshot_at)}</dd></div>
+        </dl>
       </section>
 
-      <section className="shell py-14 sm:py-20">
-        <SectionIntro eyebrow="价格排行" title="近期有货低价" description="优先展示近期更新、仍有库存的同类型报价。明显异常或长时间未更新的价格不会排在最前面。" action={<Link href="/products" className="button-secondary">查看全部报价 <ArrowRight size={17} /></Link>} />
+      <section className="shell py-12 sm:py-16">
+        <SectionIntro title="近期报价" description="优先显示有货、近期更新且没有明显偏离同类价格的商品。" action={<Link href="/products" className="button-secondary">查看全部报价 <ArrowRight size={17} /></Link>} />
         <div className="mt-2">{products.map((product, index) => <ProductCard key={product.slug} product={product} index={index} />)}</div>
       </section>
 
-      <section className="trust-band">
-        <div className="shell grid lg:grid-cols-[.62fr_1.38fr]">
-          <div className="border-b border-white/12 py-12 lg:border-b-0 lg:border-r lg:border-white/12 lg:pr-12 lg:py-16">
-            <p className="section-kicker !text-[color:var(--accent)]">为什么这份报价更容易判断</p>
-            <h2 className="mt-5 text-4xl font-semibold leading-[1.02] tracking-[-.055em] sm:text-5xl">把证据放前面，<br />把决定留给你。</h2>
-            <p className="mt-5 max-w-md text-sm leading-7 text-white/60">不把“最低价”包装成推荐。所有关键判断都尽量回到来源、时间和商品原文。</p>
-            <Link href="/methodology" className="mt-7 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[color:var(--accent)]">查看完整方法 <ArrowRight size={17} /></Link>
+      <section className="method-band border-y border-[color:var(--line-strong)]">
+        <div className="shell grid lg:grid-cols-[.58fr_1.42fr]">
+          <div className="border-b border-[color:var(--line)] py-10 lg:border-b-0 lg:border-r lg:pr-10 lg:py-12">
+            <h2 className="text-3xl font-semibold tracking-[-.04em]">报价包含哪些信息</h2>
+            <p className="mt-4 max-w-md text-sm leading-7 text-[color:var(--muted)]">每条报价保留来源、更新时间、商品类型和交付说明。最低价只用于同类商品比较。</p>
+            <Link href="/methodology" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[color:var(--brand-strong)]">查看数据方法 <ArrowRight size={17} /></Link>
           </div>
-          <div className="divide-y divide-white/10 lg:grid lg:grid-cols-2 lg:divide-x lg:divide-y-0 lg:divide-white/10">
+          <div className="divide-y divide-[color:var(--line)] lg:grid lg:grid-cols-2 lg:divide-x lg:divide-y-0">
             {[
-              { Icon: Database, title: "能找到来源", copy: "每条报价都会保留店铺、商品标题和原始购买链接。" },
-              { Icon: Clock, title: "显示更新时间", copy: "长时间没有更新的报价，会降低展示优先级。" },
-              { Icon: ShieldCheck, title: "风险提示有出处", copy: "只提示商品原文中明确写出的限制、质保和售后说明。" },
-              { Icon: CheckCircle, title: "发现错误可反馈", copy: "分类、价格或库存有问题，可以随时提交纠错。" },
-            ].map(({ Icon, title, copy }, index) => <div key={title} className="trust-cell p-7 lg:p-9"><div className="flex items-center justify-between"><span className="trust-icon"><Icon size={23} /></span><span className="mono text-xs text-white/30">0{index + 1}</span></div><h3 className="mt-8 text-xl font-semibold">{title}</h3><p className="mt-3 max-w-sm text-sm leading-6 text-white/60">{copy}</p></div>)}
+              { Icon: Database, title: "查看原始商品页", copy: "每条报价都会保留店铺、商品标题和原始购买链接。" },
+              { Icon: Clock, title: "标明数据时间", copy: "每条报价都会显示最近一次观测时间，长时间未更新的报价会降低展示优先级。" },
+              { Icon: ShieldCheck, title: "限制来自商品说明", copy: "限制、质保和售后提示只引用商品原文，不替商家补充或推断。" },
+              { Icon: CheckCircle, title: "有误可提交纠错", copy: "分类、价格或库存有问题，可以提交纠错。" },
+            ].map(({ Icon, title, copy }) => <div key={title} className="method-item p-7 lg:p-8"><Icon size={22} className="text-[color:var(--brand)]" /><h3 className="mt-5 text-lg font-semibold">{title}</h3><p className="mt-2 max-w-sm text-sm leading-6 text-[color:var(--muted)]">{copy}</p></div>)}
           </div>
         </div>
       </section>

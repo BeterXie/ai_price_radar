@@ -35,8 +35,8 @@ export default async function WorkflowGuidePage({ params }: PageProps) {
 
   const path = `/guides/workflows/${guide.slug}`;
   const toc = [
-    { id: "what-is", label: "这条路线解决什么" },
-    { id: "flow", label: "完整链路" },
+    { id: "what-is", label: "适用场景" },
+    { id: "flow", label: "配置流程" },
     { id: "audience", label: "适合哪些用户" },
     { id: "prerequisites", label: "开始前准备" },
     ...guide.variants.map((item) => ({
@@ -92,11 +92,11 @@ export default async function WorkflowGuidePage({ params }: PageProps) {
           </div>
         }
       >
-        <GuideSection id="what-is" title="这条路线解决什么">
+      <GuideSection id="what-is" title="适用场景">
           <GuideBlocks blocks={guide.overview} />
         </GuideSection>
 
-        <GuideSection id="flow" title="完整链路" intro="上游负责账号与 API，下游客户端负责把接口配置给 Codex。">
+      <GuideSection id="flow" title="配置流程" intro="上游负责账号与 API，下游客户端负责把接口配置给 Codex。">
           <ol aria-label="工作流步骤" className="grid gap-3">
             {guide.flow.map((node, index) => (
               <li key={node} className="flex flex-wrap items-center gap-3 rounded-[12px] border hairline bg-[color:var(--panel)] px-4 py-3 text-sm font-semibold">
@@ -140,7 +140,7 @@ export default async function WorkflowGuidePage({ params }: PageProps) {
         </GuideSection>
 
         <GuideSection id="security" title="安全与隐私">
-          <GuideCallout tone="danger" title="重要风险不会折叠">
+        <GuideCallout tone="danger" title="请先确认这些风险">
             <ul className="list-disc space-y-2 pl-5">
               {guide.riskNotes.map((note) => <li key={note}>{note}</li>)}
             </ul>

@@ -108,7 +108,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           <div className="flex flex-wrap items-center gap-2">
             {productName && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[10px] font-medium">{productName}</span>}
             <h3 className="[overflow-wrap:anywhere] text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
-            {offer.is_trusted_price ? <span className="status-pill status-success !py-1 !text-[10px]">近期可参考</span> : !offer.is_comparable ? <span className="status-pill status-warning !py-1 !text-[10px]">类型不同，不直接比价</span> : <span className="status-pill status-danger !py-1 !text-[10px]">价格异常，建议确认</span>}
+            {offer.is_trusted_price ? <span className="status-pill status-success !py-1 !text-[10px]">纳入近期价格统计</span> : !offer.is_comparable ? <span className="status-pill status-warning !py-1 !text-[10px]">类型不同，不直接比价</span> : <span className="status-pill status-danger !py-1 !text-[10px]">价格明显偏离同类报价</span>}
             {group && group.shop_count > 1 && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">
@@ -143,14 +143,14 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         {(offer.tags.length > 0 || offer.risk_flags.length > 0) && (
           <div className="mt-5 flex flex-wrap gap-2">
             {offer.tags.map((tag) => <span key={tag} className="rounded-full border hairline px-2 py-1 text-[11px]">{tag}</span>)}
-            {offer.risk_flags.map((flag) => <span key={flag} className="rounded-full border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-2 py-1 text-[11px] text-[color:var(--danger)]">原文含：{flag}</span>)}
+            {offer.risk_flags.map((flag) => <span key={flag} className="rounded-full border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-2 py-1 text-[11px] text-[color:var(--danger)]">商品说明提到：{flag}</span>)}
           </div>
         )}
 
         <section className="mt-6 border-t hairline pt-5">
           <h4 className="text-sm font-semibold">商品原文</h4>
           <p className="mt-3 max-w-[90ch] whitespace-pre-wrap text-sm leading-7 text-black/65">
-            {loading && description === null ? "正在加载…" : description === null ? "展开后加载商品原文。" : description || "商家没有提供可公开展示的商品描述。"}
+            {loading && description === null ? "正在加载…" : description === null ? "商品原文尚未加载。" : description || "当前来源未提供商品描述。"}
           </p>
         </section>
 
@@ -242,7 +242,7 @@ export function OfferGroupTable({
 
   if (!groups.length) return <div className="empty-state">当前筛选条件下没有可展示的同款报价。请调整筛选条件后再试。</div>;
   return (
-    <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 款` : `已显示全部 ${totalCount} 款`}</div>}>
+    <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 组报价` : `已显示全部 ${totalCount} 组报价`}</div>}>
       {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? group.product_name : undefined} snapshotId={snapshotId} filterQuery={filterQuery} />)}
     </TableFrame>
   );
@@ -264,7 +264,7 @@ export function OfferTable({ offers, productSlug }: { offers: Offer[]; productSl
     return () => observer.disconnect();
   }, [hasMore, offers.length]);
 
-  if (!offers.length) return <div className="empty-state">当前没有可展示的报价。数据恢复后会继续显示在这里。</div>;
+  if (!offers.length) return <div className="empty-state">当前没有报价。可稍后再查看，或浏览其他商品。</div>;
   return (
     <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45">{hasMore ? `继续滚动加载，已显示 ${visibleOffers.length} / ${offers.length} 条` : `已显示全部 ${offers.length} 条报价`}</div>}>
       {visibleOffers.map((offer) => <OfferRow key={offer.id} offer={offer} productSlug={productSlug} />)}

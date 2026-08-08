@@ -5,7 +5,7 @@ export const generalGuideEntries = [
   {
     slug: "buying-checklist",
     title: "AI 商品购买前检查清单",
-    description: "在付款前确认产品、交付方式、账号归属、期限、价格口径、质保和售后证据。",
+    description: "在付款前确认产品、交付方式、账号归属、期限、价格口径、质保和售后材料。",
     blocks: [
       { type: "paragraph", text: "先判断买到的究竟是订阅、账号、团队席位、兑换码、API 额度、验证辅助、共享池还是第三方中转；名称相近不代表控制权和风险相同。" },
       {
@@ -124,7 +124,7 @@ export const generalGuideEntries = [
   },
   {
     slug: "after-sales-evidence",
-    title: "售后证据准备指南",
+    title: "售后材料准备指南",
     description: "在不泄露密码、验证码、恢复码和完整密钥的前提下，准备能说明商品、账号状态、时间与错误的信息。",
     blocks: [
       {

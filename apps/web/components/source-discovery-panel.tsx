@@ -121,7 +121,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
           ["归一化候选", funnel.normalized],
           ["新增候选", funnel.new_candidates],
           ["AI 命中", funnel.ai_matched],
-          ["已促进 Intake", funnel.promoted],
+          ["已转入收录", funnel.promoted],
         ].map(([label, value]) => (
           <div key={String(label)} className="bg-[color:var(--panel)] p-4">
             <p className="mono text-xs text-black/40">{label}</p>
@@ -130,7 +130,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
         ))}
       </div>
       <p className="text-xs text-black/50">
-        漏斗口径：统计各运行“首次新增候选”的首次验证转化（检测 / AI 命中 / 自动批准 / 待审 / 失败 / 促进 Intake），不是全量历史累计。
+        漏斗口径：统计各运行“首次新增候选”的首次验证转化（检测 / AI 命中 / 自动批准 / 待审 / 失败 / 转入收录），不是全量历史累计。
       </p>
 
       <div className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
@@ -145,7 +145,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                   {run.adapters.join("、")} · <span className="rounded-full bg-[color:var(--accent)] px-2 py-0.5 text-xs">{runStatusLabel(run.status)}</span>
                 </p>
                 <p className="mt-1 text-xs text-black/50">
-                  原始 {run.discovered_raw_count} / 归一化 {run.normalized_count} / 重复 {run.duplicate_count} / 新增 {run.new_candidate_count} / 检测 {run.detected_count} / AI 命中 {run.ai_matched_count} / 自动批准 {run.auto_approved_count} / 待审 {run.pending_review_count} / 失败 {run.validation_failed_count} / 促进 {run.promoted_intake_count}
+                  原始 {run.discovered_raw_count} / 归一化 {run.normalized_count} / 重复 {run.duplicate_count} / 新增 {run.new_candidate_count} / 检测 {run.detected_count} / AI 命中 {run.ai_matched_count} / 自动批准 {run.auto_approved_count} / 待审 {run.pending_review_count} / 失败 {run.validation_failed_count} / 转入收录 {run.promoted_intake_count}
                 </p>
                 {run.finished_at && <p className="mt-1 mono text-[11px] text-black/40">开始 {run.started_at} · 结束 {run.finished_at}</p>}
               </div>
@@ -191,7 +191,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                     <button onClick={() => act(candidate.id, "retry")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={15} />重试</button>
                   )}
                   {["pending_review", "auto_approved", "detected"].includes(candidate.status) && (
-                    <button onClick={() => act(candidate.id, "promote")} className="tactile flex items-center gap-1 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={15} />促进</button>
+                    <button onClick={() => act(candidate.id, "promote")} className="tactile flex items-center gap-1 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={15} />转入收录</button>
                   )}
                   {!["rejected", "disabled", "detecting", "promoted"].includes(candidate.status) && (
                     <>
@@ -208,7 +208,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                   <p className="break-all">检测后来源：{candidate.detected_source_url || "未检测"}</p>
                   {candidate.failure_reason && <p className="rounded-[8px] bg-[#f2d8d2] px-3 py-2 text-[color:var(--danger)]">失败原因：{candidate.failure_reason}</p>}
                   {candidate.decision_note && <p className="whitespace-pre-line text-black/65">决策备注：{candidate.decision_note}</p>}
-                  {candidate.promoted_intake_id && <p>已进入 Source Intake #{candidate.promoted_intake_id}</p>}
+                  {candidate.promoted_intake_id && <p>已转入收录申请 #{candidate.promoted_intake_id}</p>}
                   {candidate.sample_products.length > 0 && (
                     <div>
                       <p className="mb-1 font-medium">商品样本</p>
@@ -234,7 +234,7 @@ function candidateStatusLabels() {
     validation_failed: "验证失败",
     pending_review: "待审核",
     auto_approved: "自动批准",
-    promoted: "已促进",
+    promoted: "已转入收录",
     rejected: "已拒绝",
     needs_re_review: "需复审",
     disabled: "已禁用",

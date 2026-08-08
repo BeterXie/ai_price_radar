@@ -10,7 +10,7 @@ export function GuideSources({ sources }: { sources: readonly OfficialSource[] }
             <span>
               <span className="font-semibold group-hover:underline">{source.title}</span>
               <span className="mt-1 block text-xs text-[color:var(--muted)]">
-                {source.kind === "project_official" ? "项目官方" : "平台官方"} · {source.publisher}，核验于 {source.lastCheckedAt}
+          {source.kind === "project_official" ? "项目官方" : "平台官方"} · {source.publisher}，查阅于 {source.lastCheckedAt}
               </span>
             </span>
             <ArrowSquareOut size={19} className="hidden sm:block" aria-hidden="true" />

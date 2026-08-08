@@ -147,27 +147,27 @@ export function CockpitJsonConverter() {
   }
 
   return (
-    <main id="main-content" className="shell py-10 sm:py-14">
-      <header className="max-w-[88ch] border-b border-black pb-8">
+    <main id="main-content" className="shell py-5 sm:py-8">
+      <header className="page-hero !pt-6">
         <Link href="/guides/products/codex-access" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold hover:underline">
           <ArrowLeft size={18} aria-hidden="true" />
           返回 Codex 教程
         </Link>
-        <p className="mono mt-5 text-xs tracking-[.15em] text-black/45">浏览器本地工具</p>
-        <h1 className="mt-3 text-4xl font-semibold leading-[1.02] tracking-[-.055em] sm:text-6xl">JSON 转 Cockpit</h1>
-        <p className="mt-5 max-w-[72ch] text-base leading-8 text-[color:var(--muted)]">
-          把常见 ChatGPT Session、CPA、Sub2、Codex auth.json 等账号 JSON 转成 Cockpit Tools 可导入的格式。支持粘贴和批量文件。
+        <p className="eyebrow mt-5"><span className="signal-dot" aria-hidden="true" />浏览器本地工具</p>
+        <h1 className="page-title mt-5">JSON 转 Cockpit</h1>
+        <p className="lede mt-5">
+          把常见 ChatGPT Session、CPA、Sub2、Codex auth.json 等账号 JSON 转成 Cockpit Tools 可导入的格式。支持粘贴 JSON 或批量选择文件。
         </p>
       </header>
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-3" aria-label="隐私说明">
+      <section className="data-strip mt-6 sm:grid-cols-3" aria-label="隐私说明">
         {[
           { title: "只在浏览器解析", copy: "转换逻辑在当前页面运行，不调用上传 API。" },
           { title: "不写入站内存储", copy: "不写数据库、Cookie、localStorage 或分析事件。" },
           { title: "关闭即可清除", copy: "转换内容只保留在当前页面内存中。" },
         ].map(({ title, copy }) => (
-          <div key={title} className="rounded-[14px] border hairline bg-[color:var(--panel)] p-4">
-            <ShieldCheck size={22} weight="fill" aria-hidden="true" />
+          <div key={title} className="data-cell">
+            <ShieldCheck size={22} weight="fill" className="text-[color:var(--brand)]" aria-hidden="true" />
             <h2 className="mt-3 font-semibold">{title}</h2>
             <p className="mt-2 text-sm leading-6 text-black/60">{copy}</p>
           </div>
@@ -175,7 +175,7 @@ export function CockpitJsonConverter() {
       </section>
 
       <div className="mt-8 grid items-start gap-5 xl:grid-cols-2">
-        <section className="rounded-[18px] border border-black bg-[color:var(--panel)] p-5 sm:p-6" aria-labelledby="converter-input-title">
+        <section className="rounded-[14px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 sm:p-6" aria-labelledby="converter-input-title">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="mono text-xs text-black/45">01 / 输入</p>
@@ -187,7 +187,7 @@ export function CockpitJsonConverter() {
             </button>
           </div>
 
-          <div className="mt-5 rounded-[12px] border border-[color:var(--danger)]/30 bg-red-50 p-4 text-sm leading-6 text-[color:var(--danger)]">
+          <div className="mt-5 rounded-[12px] border border-[color:var(--danger)]/30 bg-[color:var(--danger-soft)] p-4 text-sm leading-6 text-[color:var(--danger)]">
             <div className="flex gap-3">
               <Warning size={21} weight="fill" className="shrink-0" aria-hidden="true" />
               <p>JSON 可能包含 accessToken、sessionToken 或 refreshToken，等同登录凭证。不要把文件发给他人，也不要用于无权使用的账号。</p>
@@ -199,13 +199,14 @@ export function CockpitJsonConverter() {
             type="file"
             accept=".json,application/json"
             multiple
+            aria-label="选择要转换的 JSON 文件"
             className="sr-only"
             onChange={(event) => void convertFiles(event.target.files)}
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="tactile mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[color:var(--ink)] px-4 text-sm font-semibold text-white"
+            className="button-secondary tactile mt-5 min-h-12 w-full"
           >
             <UploadSimple size={19} aria-hidden="true" />
             选择 JSON 文件（支持多选）
@@ -237,19 +238,19 @@ export function CockpitJsonConverter() {
             spellCheck={false}
             autoComplete="off"
             placeholder={'{"user":{"email":"name@example.com"},"account":{"id":"..."},"accessToken":"..."}'}
-            className="mono mt-2 min-h-72 w-full resize-y rounded-[12px] border hairline bg-white p-4 text-xs leading-6"
+            className="field mono mt-2 min-h-72 resize-y p-4 text-xs leading-6"
           />
           <button
             type="button"
             onClick={convertPastedJson}
-            className="tactile mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[color:var(--accent)] px-4 text-sm font-semibold text-[color:var(--accent-ink)]"
+            className="button-primary tactile mt-4 min-h-12 w-full"
           >
             <FileJs size={19} aria-hidden="true" />
             转换为 Cockpit JSON
           </button>
         </section>
 
-        <section className="rounded-[18px] border border-black bg-[color:var(--panel)] p-5 sm:p-6" aria-labelledby="converter-output-title">
+        <section className="rounded-[14px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 sm:p-6" aria-labelledby="converter-output-title">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="mono text-xs text-black/45">02 / 输出</p>
@@ -259,7 +260,7 @@ export function CockpitJsonConverter() {
               type="button"
               onClick={downloadOutput}
               disabled={!outputText}
-              className="inline-flex min-h-11 items-center gap-2 rounded-[10px] border border-black px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              className="button-secondary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <DownloadSimple size={17} aria-hidden="true" />
               下载 JSON
@@ -269,7 +270,7 @@ export function CockpitJsonConverter() {
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded-[12px] border hairline p-4">
               <p className="mono text-2xl font-semibold">{result.accounts.length}</p>
-              <p className="mt-1 text-xs text-black/45">已校验账号</p>
+                <p className="mt-1 text-xs text-black/45">已转换账号</p>
             </div>
             <div className="rounded-[12px] border hairline p-4">
               <p className="mono text-2xl font-semibold">{result.issues.length}</p>
@@ -296,7 +297,7 @@ export function CockpitJsonConverter() {
           ) : null}
 
           {result.issues.length ? (
-            <div className="mt-4 rounded-[12px] border border-[color:var(--danger)]/30 bg-red-50 p-4 text-sm leading-6 text-[color:var(--danger)]">
+            <div className="mt-4 rounded-[12px] border border-[color:var(--danger)]/30 bg-[color:var(--danger-soft)] p-4 text-sm leading-6 text-[color:var(--danger)]">
               {result.issues.map((issue) => <p key={`${issue.sourceName}-${issue.path}-${issue.reason}`}>{issue.sourceName} {issue.path}：{issue.reason}</p>)}
             </div>
           ) : null}
@@ -310,11 +311,11 @@ export function CockpitJsonConverter() {
             readOnly
             spellCheck={false}
             placeholder="转换完成后会在这里显示 Cockpit JSON。"
-            className="mono mt-2 min-h-72 w-full resize-y rounded-[12px] border hairline bg-white p-4 text-xs leading-6"
+            className="field mono mt-2 min-h-72 resize-y p-4 text-xs leading-6"
           />
 
           {outputText ? (
-            <div className="mt-4 rounded-[12px] bg-[color:var(--accent)] p-4 text-sm leading-6 text-[color:var(--accent-ink)]">
+            <div className="mt-4 rounded-[12px] border border-[color:var(--success)]/25 bg-[color:var(--success-soft)] p-4 text-sm leading-6 text-[color:var(--success)]">
               <div className="flex gap-3">
                 <CheckCircle size={21} weight="fill" className="shrink-0" aria-hidden="true" />
                 <p>
@@ -334,7 +335,7 @@ export function CockpitJsonConverter() {
         </section>
       </div>
 
-      <footer className="mt-8 max-w-[88ch] border-t border-black pt-6 text-sm leading-6 text-black/55">
+      <footer className="mt-8 max-w-[88ch] border-t border-[color:var(--line-strong)] pt-6 text-sm leading-6 text-black/55">
         <p>格式兼容逻辑参考 MIT 许可的开源项目：</p>
         <a
           href="https://github.com/gtxx3600/GPTSession2CPAandSub2API"

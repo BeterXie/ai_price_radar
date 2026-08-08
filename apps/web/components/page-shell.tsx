@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 type PageHeroProps = {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: ReactNode;
   meta?: ReactNode;
@@ -12,17 +12,15 @@ type PageHeroProps = {
 
 export function PageHero({ eyebrow, title, description, meta, actions, aside, compact = false }: PageHeroProps) {
   return (
-    <header className={`page-hero relative overflow-hidden ${aside ? "grid items-end gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]" : ""}`}>
-      <span className="hero-orb hero-orb-a" aria-hidden="true" />
-      <span className="hero-orb hero-orb-b" aria-hidden="true" />
-      <div className={`relative z-[1] ${compact ? "max-w-4xl" : "max-w-5xl"}`}>
-        <p className="eyebrow"><span className="signal-dot" aria-hidden="true" />{eyebrow}</p>
-        <h1 className={`${compact ? "page-title" : "display-title"} mt-5`}>{title}</h1>
+    <header className={`page-hero ${aside ? "grid items-end gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]" : ""}`}>
+      <div className={compact ? "max-w-4xl" : "max-w-5xl"}>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+        <h1 className={`${compact ? "page-title" : "display-title"} ${eyebrow ? "mt-4" : ""}`}>{title}</h1>
         {description ? <div className="lede mt-6">{description}</div> : null}
         {meta ? <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[color:var(--muted)]">{meta}</div> : null}
         {actions ? <div className="mt-7 flex flex-wrap gap-3">{actions}</div> : null}
       </div>
-      {aside ? <aside className="relative z-[1]">{aside}</aside> : null}
+      {aside ? <aside>{aside}</aside> : null}
     </header>
   );
 }
@@ -47,7 +45,7 @@ export function InfoPage({
   meta,
   children,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: ReactNode;
   meta?: ReactNode;

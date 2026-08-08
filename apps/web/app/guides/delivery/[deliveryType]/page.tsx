@@ -92,7 +92,7 @@ export default async function DeliveryGuidePage({ params }: PageProps) {
         </GuideSection>
 
         <GuideSection id="risks" title="控制权、安全和隐私风险">
-          <GuideCallout tone="danger" title="重要风险不会折叠">
+        <GuideCallout tone="danger" title="请先确认这些风险">
             <ul className="list-disc space-y-2 pl-5">{guide.riskNotes.map((note) => <li key={note}>{note}</li>)}</ul>
           </GuideCallout>
         </GuideSection>

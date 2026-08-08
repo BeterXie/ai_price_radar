@@ -34,9 +34,9 @@ export function ShopRequestForm() {
 
   const complete = ["submitted", "pending", "known"].includes(state);
   const feedback: Record<Exclude<SubmitState, "idle" | "sending">, string> = {
-    submitted: `${detectionMessage ? `${detectionMessage} ` : ""}申请已提交。审核与首次读取通过后，符合范围的商品会进入报价目录。`,
+    submitted: `${detectionMessage ? `${detectionMessage} ` : ""}申请已收到。审核通过并成功读取商品后，符合收录范围的报价会显示在目录中。`,
     pending: `${detectionMessage ? `${detectionMessage} ` : ""}这个来源已经在审核队列中，无需重复提交。`,
-    known: `${detectionMessage ? `${detectionMessage} ` : ""}这个来源已经进入系统，无需重复申请。`,
+    known: `${detectionMessage ? `${detectionMessage} ` : ""}系统中已有这条来源记录，无需重复提交。`,
     limited: "提交过于频繁，请稍后再试。",
     invalid: "请输入可公开访问的 HTTPS 地址。不能使用本地、内部或带账号密码的 URL。",
     error: "提交失败，请稍后再试。",

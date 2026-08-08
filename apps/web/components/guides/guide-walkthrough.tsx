@@ -24,7 +24,7 @@ export function GuideWalkthrough({ walkthrough }: { walkthrough: GuideWalkthroug
                   <ul className="mt-4 space-y-2 text-sm leading-6 text-black/75">
                     {step.items.map((item) => (
                       <li key={item} className="flex gap-3">
-                        <span className="mono shrink-0 text-black/40" aria-hidden="true">—</span>
+                        <span className="mono shrink-0 text-black/40" aria-hidden="true">→</span>
                         <span>{item}</span>
                       </li>
                     ))}

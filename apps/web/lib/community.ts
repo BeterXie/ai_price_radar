@@ -20,17 +20,17 @@ const configuredSupportMethods: SupportMethod[] = [
   {
     id: "wechat",
     label: "微信支付",
-    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL),
+    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL || "https://ai.pricememo.cn/support/wechat.jpg"),
   },
   {
     id: "alipay",
     label: "支付宝",
-    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL),
+    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL || "https://ai.pricememo.cn/support/alipay.jpg"),
   },
 ];
 
 export const SUPPORT_METHODS = configuredSupportMethods.filter((method) => Boolean(method.qrUrl));
 
 export const SUPPORT_AVAILABLE =
-  process.env.NEXT_PUBLIC_SUPPORT_ENABLED === "true" &&
+  process.env.NEXT_PUBLIC_SUPPORT_ENABLED !== "false" &&
   SUPPORT_METHODS.length > 0;

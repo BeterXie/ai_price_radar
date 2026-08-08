@@ -76,7 +76,7 @@ export default async function BrandGuidePage({ params }: PageProps) {
       >
         <GuideSection id="overview" title="品牌简介"><GuideBlocks blocks={guide.overview} /></GuideSection>
 
-        <GuideSection id="products" title="当前收录产品" intro="每个产品教程按稳定分类维护，不根据商品标题临时生成。">
+      <GuideSection id="products" title="当前收录产品" intro="选择具体产品后，可查看对应的购买检查、交付方式和使用步骤。">
           <div className="grid gap-4 sm:grid-cols-2">
             {products.map((product) => (
               <GuideCard key={product.productSlug} href={`/guides/products/${product.productSlug}`} title={product.title} description={product.description} meta={product.productSlug} />

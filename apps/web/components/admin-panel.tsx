@@ -199,11 +199,11 @@ export function AdminPanel() {
     submitted: "等待安全检测",
     detecting: "安全检测中",
     pending_review: "待初审",
-    approved: "已获准，等待完整发布",
-    queued: "等待验证",
-    validating: "验证中",
-    validated: "已验证待发布",
-    onboarded: "已收录",
+    approved: "已批准，等待同步",
+    queued: "等待读取",
+    validating: "正在读取",
+    validated: "读取成功，等待发布",
+    onboarded: "已收录，等待发布",
     published: "已发布",
     needs_re_review: "需要重新审核",
     disabled: "已停用",
@@ -241,7 +241,7 @@ export function AdminPanel() {
           </span>
         </label>
         <button onClick={load} className="button-primary tactile">
-          加载后台
+          验证并加载
         </button>
         <button onClick={reclassify} className="button-secondary tactile">
           <ArrowClockwise size={17} />重新分类
@@ -290,7 +290,7 @@ export function AdminPanel() {
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile"><Check size={16} />{intake.source_type === "ldxp" ? "批准并验证" : "批准并进入完整发布"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile"><X size={16} />驳回</button></>}
+                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile"><Check size={16} />{intake.source_type === "ldxp" ? "批准并验证" : "批准并加入发布队列"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile"><X size={16} />驳回</button></>}
                   {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
                   {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>
@@ -352,11 +352,12 @@ export function AdminPanel() {
                   <span className="text-black/40">{offer.stock_status}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <span className={`status-pill ${offer.approved ? "status-success" : "status-info"}`}>{offer.approved ? "已公开" : "待审核"}</span>
                   <button
                     onClick={() => patchOffer(offer.id, { approved: !offer.approved })}
                     className={`tactile rounded-[10px] px-3 py-2 text-sm ${offer.approved ? "bg-[color:var(--accent)]" : "border hairline"}`}
                   >
-                    {offer.approved ? "已发布" : "待审核"}
+                    {offer.approved ? "撤回公开" : "批准公开"}
                   </button>
                   <button
                     onClick={() => patchOffer(offer.id, { active: !offer.active, hidden_reason: offer.active ? "管理员隐藏" : "" })}

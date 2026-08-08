@@ -1,8 +1,24 @@
 import type { Metadata } from "next";
+import { InfoPage } from "@/components/page-shell";
 import { getCorrections } from "@/lib/api";
-import type { PublicCorrectionPage } from "@/lib/types";
 import { exactTime } from "@/lib/format";
+import type { PublicCorrectionPage } from "@/lib/types";
+
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "公开纠错记录", description: "查看已解决并允许公开的报价纠错摘要与商家回应。", alternates: { canonical: "/corrections" } };
-const kinds:Record<string,string>={correction:"信息更正",unavailable:"无法购买",fraud_concern:"风险疑问",shop_request:"收录申请",other:"其他"};
-export default async function CorrectionsPage(){let data: PublicCorrectionPage | null = null;try{data=await getCorrections("limit=100")}catch{}return <main id="main-content" className="shell py-12"><header className="max-w-5xl border-b border-black pb-10"><p className="mono text-xs tracking-[.15em] text-black/45">Public correction log</p><h1 className="mt-4 text-5xl font-semibold tracking-[-.06em] sm:text-6xl">公开纠错记录</h1><p className="mt-6 max-w-4xl text-base leading-7 text-[color:var(--muted)]">只发布已经处理、适合公开的摘要。举报人联系方式、原始私密描述和内部审核记录不会出现在这里。</p></header><section className="py-10">{!data?.items.length?<div className="rounded-[18px] border hairline bg-[color:var(--panel)] p-10 text-center text-sm text-black/45">暂无公开纠错记录，或接口暂时不可用。</div>:<div className="divide-y divide-[color:var(--line)] border-y border-black">{data.items.map(item=><article key={item.id} className="grid gap-4 py-7 md:grid-cols-[180px_1fr]"><div><p className="mono text-xs text-black/40">#{item.id} · {kinds[item.kind]||item.kind}</p><p className="mt-2 text-xs text-black/40">处理于 {exactTime(item.resolved_at)}</p></div><div><h2 className="text-lg font-semibold">{item.public_summary}</h2>{item.merchant_response&&<div className="mt-4 rounded-[12px] border hairline bg-[color:var(--panel)] p-4"><p className="text-xs font-semibold text-black/45">商家公开回应</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/60">{item.merchant_response}</p></div>}</div></article>)}</div>}</section></main>}
+const kinds: Record<string, string> = { correction: "信息更正", unavailable: "无法购买", fraud_concern: "风险疑问", shop_request: "收录申请", other: "其他" };
+
+export default async function CorrectionsPage() {
+  let data: PublicCorrectionPage | null = null;
+  let loadFailed = false;
+  try { data = await getCorrections("limit=100"); } catch { loadFailed = true; }
+  return (
+    <InfoPage title="公开纠错记录" description="这里只显示已处理并允许公开的摘要，不显示联系方式、私密描述和内部审核记录。">
+      {loadFailed ? <div className="empty-state" role="alert">纠错记录暂时无法加载，请稍后刷新页面。</div> : !data?.items.length ? <div className="empty-state" role="status">暂无公开纠错记录。</div> : (
+        <div className="divide-y divide-[color:var(--line)] border-y border-[color:var(--line-strong)]">
+          {data.items.map((item) => <article key={item.id} className="grid gap-4 py-7 md:grid-cols-[180px_1fr]"><div><p className="mono text-xs text-[color:var(--brand)]">#{item.id} · {kinds[item.kind] || item.kind}</p><p className="mt-2 text-xs text-[color:var(--muted)]">处理于 {exactTime(item.resolved_at)}</p></div><div><h2 className="text-lg font-semibold">{item.public_summary}</h2>{item.merchant_response && <div className="surface-subtle mt-4 p-4"><p className="text-xs font-semibold text-[color:var(--muted)]">商家公开回应</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[color:var(--muted)]">{item.merchant_response}</p></div>}</div></article>)}
+        </div>
+      )}
+    </InfoPage>
+  );
+}

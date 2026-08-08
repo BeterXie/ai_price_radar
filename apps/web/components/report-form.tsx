@@ -11,24 +11,30 @@ export function ReportForm({ offerId }: { offerId?: number }) {
     event.preventDefault();
     if (message.trim().length < 10) return;
     setState("sending");
-    const response = await fetch(`${API}/api/v1/reports`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ offer_id: offerId, kind: "correction", message }),
-    });
-    setState(response.ok ? "sent" : response.status === 429 ? "limited" : "error");
-    if (response.ok) setMessage("");
+    try {
+      const response = await fetch(`${API}/api/v1/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offer_id: offerId, kind: "correction", message }),
+      });
+      setState(response.ok ? "sent" : response.status === 429 ? "limited" : "error");
+      if (response.ok) setMessage("");
+    } catch {
+      setState("error");
+    }
   }
+  const canSubmit = message.trim().length >= 10;
   return (
-    <form onSubmit={submit} className="rounded-[18px] border hairline bg-[color:var(--panel)] p-5">
+    <form onSubmit={submit} className="surface-panel p-5">
       <label className="text-sm font-medium" htmlFor="report-message">发现价格、库存或分类错误？</label>
-      <textarea id="report-message" value={message} onChange={(e) => setMessage(e.target.value)} className="mt-3 min-h-28 w-full rounded-[10px] border hairline bg-white p-3 text-sm outline-none focus:border-black" placeholder="请说明哪一项需要修正，并提供可核验信息。" />
+      <textarea id="report-message" value={message} onChange={(e) => { setMessage(e.target.value); if (state !== "sending") setState("idle"); }} className="field mt-3 min-h-28 resize-y text-sm" placeholder="请说明哪一项需要修正，并提供可核验信息。" />
       <div className="mt-3 flex items-center justify-between gap-4">
-        <span className="text-xs text-black/45">不会公开你的输入内容</span>
-        <button disabled={state === "sending"} className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2 text-sm text-white disabled:opacity-50">{state === "sending" ? "提交中" : state === "sent" ? "已提交" : "提交纠错"}</button>
+        <span className="text-xs text-[color:var(--muted)]">至少填写 10 个字。提交内容不会原文公开</span>
+        <button disabled={state === "sending" || !canSubmit} className="button-primary tactile disabled:cursor-not-allowed disabled:border-[color:var(--disabled)] disabled:bg-[color:var(--disabled)]">{state === "sending" ? "提交中" : "提交纠错"}</button>
       </div>
-      {state === "error" && <p className="mt-2 text-sm text-[color:var(--danger)]">提交失败，请稍后再试。</p>}
-      {state === "limited" && <p className="mt-2 text-sm text-[color:var(--danger)]">提交过于频繁，请稍后再试。</p>}
+      {state === "sent" && <p role="status" className="mt-3 rounded-[9px] bg-[color:var(--success-soft)] px-3 py-2 text-sm text-[color:var(--success)]">已收到纠错。提交内容仅用于审核，不会原文公开。</p>}
+      {state === "error" && <p role="alert" className="mt-3 rounded-[9px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm text-[color:var(--danger)]">提交失败，输入已保留，请稍后重试。</p>}
+      {state === "limited" && <p role="alert" className="mt-3 rounded-[9px] bg-[color:var(--warning-soft)] px-3 py-2 text-sm text-[color:var(--warning)]">提交过于频繁，输入已保留，请稍后重试。</p>}
     </form>
   );
 }

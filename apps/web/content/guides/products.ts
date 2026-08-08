@@ -62,7 +62,7 @@ const productSeeds = [
     brand: "openai",
     title: "ChatGPT Plus 购买与使用指南",
     description: "区分自有账号代充、成品号、半成品号、兑换码、共享池和体验号，并确认 Plus 是否生效。",
-    summary: "ChatGPT Plus 是个人 ChatGPT 付费套餐；第三方报价的价格差异通常来自账号归属、交付形式、期限与质保，而非同一种标准商品。",
+    summary: "ChatGPT Plus 是个人 ChatGPT 付费套餐；第三方报价的价格差异通常来自账号归属、交付形式、期限与质保，并不一定对应同一种商品。",
     difference: "Plus 与 Free、Go、Pro、团队席位及 API 分别管理；API 用量不包含在 Plus 中。",
     audience: ["希望提升个人 ChatGPT 使用体验的用户", "需要判断代充与账号交付区别的用户"],
     supportedDeliveryTypes: ["subscription_recharge", "finished_account", "semi_finished_account", "card_code", "shared_pool", "trial_account"],

@@ -88,7 +88,7 @@ export function ProductWorkspace({
     <>
       {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
       <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
-        <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条可参考报价</p>
+        <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条纳入统计</p>
         <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
         <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
         <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
@@ -98,7 +98,7 @@ export function ProductWorkspace({
         <div className="data-strip sm:grid-cols-3">
           <div className="data-cell"><p className="data-label">近期有货最低价</p><p className="data-value">{money(product.lowest_price, product.price_currency)}</p></div>
           <div className="data-cell"><p className="data-label">常见价格</p><p className="data-value">{money(product.median_price, product.price_currency)}</p></div>
-          <div className="data-cell"><p className="data-label">报价覆盖</p><p className="data-value">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">/ 100 · {product.data_quality_label}</span></p><p className="mt-1 text-xs text-[color:var(--muted)]">{product.source_count} 个来源</p></div>
+          <div className="data-cell"><p className="data-label">信息覆盖</p><p className="data-value">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">/ 100，{product.data_quality_label}</span></p><p className="mt-1 text-xs text-[color:var(--muted)]">{product.source_count} 个来源</p></div>
         </div>
         <WatchButton slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
       </section>
@@ -116,8 +116,8 @@ export function ProductWorkspace({
 
       <section className="pb-12">
         <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
-          <h2 className="text-3xl font-semibold tracking-[-.04em]">在售报价</h2>
-          <p className="mt-2 text-sm text-[color:var(--muted)]">相同商品会合并展示。当前共有 {product.offer_group_count} 款，点开即可查看不同店铺、交付方式和商品原文。</p>
+          <h2 className="text-3xl font-semibold tracking-[-.04em]">报价</h2>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">相同商品会合并显示。共 {product.offer_group_count} 组报价，展开后可查看店铺、交付方式和商品原文。</p>
         </div>
         <OfferGroupTable
           key={`${product.slug}:${product.snapshot_id || "current"}:${query.toString()}`}
@@ -170,7 +170,7 @@ export function ProductWorkspace({
 
       <section className="border-t border-[color:var(--line-strong)] py-12" aria-labelledby="product-comparison-guide">
         <div className="max-w-5xl">
-          <h2 id="product-comparison-guide" className="text-3xl font-semibold tracking-[-.04em]">购买前建议看这几项</h2>
+          <h2 id="product-comparison-guide" className="text-3xl font-semibold tracking-[-.04em]">购买前检查</h2>
           <ul className="mt-6 grid gap-4 text-sm leading-6 text-[color:var(--muted)] md:grid-cols-2">
             {seo.comparisonPoints.map((point) => (
               <li key={point} className="border-l-2 border-[color:var(--accent)] pl-4">{point}</li>
@@ -189,7 +189,7 @@ export function ProductWorkspace({
       </section>
 
       <section className="grid gap-10 border-t border-[color:var(--line-strong)] py-12 lg:grid-cols-[1.35fr_.65fr]">
-        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-black/50">按天整理近期有货最低价、常见价格和有货数量，方便查看最近的变化。</p><PriceHistory points={product.trend} /></div>
+        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-black/50">按天显示近期有货最低价、常见价格和有货数量。</p><PriceHistory points={product.trend} /></div>
         <aside><ReportForm /></aside>
       </section>
       <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(product.snapshot_at)}</p>

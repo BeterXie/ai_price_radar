@@ -31,7 +31,7 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
     .map(Number)
     .filter(Number.isFinite);
   if (recent.length < 2 || priceValues.length < 2) {
-    return <div className="grid h-56 place-items-center rounded-[18px] border hairline text-sm text-black/45">聚合趋势数据积累中</div>;
+    return <div className="grid h-56 place-items-center rounded-[18px] border hairline text-sm text-black/45">历史数据不足，暂时无法显示趋势</div>;
   }
 
   const min = Math.min(...priceValues);

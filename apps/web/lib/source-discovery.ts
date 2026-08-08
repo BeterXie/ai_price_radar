@@ -7,7 +7,7 @@ export const CANDIDATE_STATUS_LABELS: Record<string, string> = {
   validation_failed: "验证失败",
   pending_review: "待审核",
   auto_approved: "自动批准",
-  promoted: "已促进",
+  promoted: "已转入收录",
   rejected: "已拒绝",
   needs_re_review: "需复审",
   disabled: "已禁用",

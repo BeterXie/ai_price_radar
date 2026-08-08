@@ -77,7 +77,7 @@ export function WatchlistClient() {
       <div className="empty-state">
         <BellRinging className="mx-auto" size={34} />
         <h2 className="mt-4 text-2xl font-semibold">关注清单还是空的</h2>
-        <p className="mt-3 text-sm leading-6 text-black/50">进入任意商品页，点击“关注价格与库存”。关注数据只保存在当前浏览器。</p>
+        <p className="mt-3 text-sm leading-6 text-black/50">进入任意商品页，点击“加入关注清单”。关注数据只保存在当前浏览器。</p>
         <Link href="/products" className="button-primary mt-6">浏览报价目录</Link>
       </div>
     );
@@ -102,9 +102,9 @@ export function WatchlistClient() {
                     <Link href={`/products/${encodeURIComponent(item.slug)}`} className="font-semibold hover:underline">{product?.display_name || item.name}</Link>
                     {reached && <span className="status-pill status-success !py-1 !text-[10px]"><CheckCircle size={12} weight="fill" />达到条件</span>}
                   </div>
-                  <p className="mt-2 text-xs text-black/45">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条可参考 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "当前无法取得数据"}</p>
+                  <p className="mt-2 text-xs text-black/45">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条纳入统计 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "报价暂时无法加载"}</p>
                 </div>
-                <div className="font-semibold">{product ? money(product.lowest_price, product.price_currency) : "—"}</div>
+                <div className="font-semibold">{product ? money(product.lowest_price, product.price_currency) : "暂无"}</div>
                 <label className="text-xs text-black/45">
                   <span className="sr-only">{item.name} 提醒目标价</span>
                   <span className="flex items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>{product?.price_currency || item.currency || "CNY"}</span><input value={item.threshold} onChange={(event) => updateThreshold(item.slug, event.target.value)} inputMode="decimal" placeholder="不限" className="w-full bg-transparent py-2.5 pl-1 outline-none" /></span>
@@ -117,7 +117,7 @@ export function WatchlistClient() {
       </section>
 
       <section className="surface-subtle p-6">
-        <div className="flex items-start gap-3"><Rss className="mt-1 shrink-0" size={24} /><div><h2 className="text-xl font-semibold">订阅价格与补货 Atom Feed</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-black/55">把下方链接添加到支持 Atom/RSS 的阅读器。价格、库存或更新时间变化时，阅读器会出现新条目；服务端不保存邮箱、账号或关注清单。</p></div></div>
+        <div className="flex items-start gap-3"><Rss className="mt-1 shrink-0" size={24} /><div><h2 className="text-xl font-semibold">订阅价格与补货更新</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-black/55">把下方链接添加到支持 Atom/RSS 的阅读器。价格、库存或更新时间变化时，阅读器会出现新条目；本站不会发送消息或邮件，服务端也不保存邮箱、账号或关注清单。</p></div></div>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <input readOnly value={feedUrl} aria-label="Atom Feed 地址" className="field min-w-0 flex-1 text-xs" />
           <button type="button" onClick={copyFeed} className="button-primary tactile"><Copy size={17} />{copied ? "已复制" : "复制订阅地址"}</button>
