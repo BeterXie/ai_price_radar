@@ -2,6 +2,20 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.3] - 2026-08-08
+
+### Changed
+
+- Redesigned the Web pages around a unified product, catalog, offer, guide, and source-review UI system.
+- Reworked public copy to distinguish current observations from live data, separate empty and unavailable states, and remove internal workflow wording from user-facing surfaces.
+- Clarified watchlist/Atom subscription behavior, correction privacy, offer grouping, information coverage, and source intake outcomes.
+- Restored the public author-support entry and kept the existing community prompt wording unchanged.
+
+### Fixed
+
+- Restored support QR configuration defaults for local and production Web builds.
+- Updated admin actions and source-discovery labels so buttons describe the action instead of repeating the current state.
+
 ## [3.7.2] - 2026-08-06
 
 ### Fixed
