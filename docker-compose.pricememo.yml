@@ -39,6 +39,7 @@ services:
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     init: true
+    mem_limit: 1g
     shm_size: 1gb
     environment:
       HOME: /home/crawler
