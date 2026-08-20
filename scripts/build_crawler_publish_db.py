@@ -22,7 +22,7 @@ def build_publish_db(source: Path, target: Path) -> Dict[str, int]:
     try:
         source_uri = f"{source.as_uri()}?mode=ro"
         db.execute("ATTACH DATABASE ? AS source", (source_uri,))
-        db.execute("BEGIN IMMEDIATE")
+        db.execute("BEGIN")
         for table in PUBLISH_TABLES:
             row = db.execute(
                 "SELECT sql FROM source.sqlite_master WHERE type='table' AND name=?",
