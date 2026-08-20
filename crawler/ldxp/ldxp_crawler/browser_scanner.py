@@ -454,21 +454,26 @@ class BrowserShopScanner:
         try:
             result = page.evaluate(
                 """
-                async ({url, payload, headers}) => {
+                async ({url, payload, headers, timeoutMs}) => {
+                  const controller = new AbortController();
+                  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
                   try {
                     const response = await fetch(url, {
                       method: 'POST',
                       credentials: 'include',
                       headers: {'content-type': 'application/json', 'accept': 'application/json, text/plain, */*', ...headers},
-                      body: JSON.stringify(payload)
+                      body: JSON.stringify(payload),
+                      signal: controller.signal
                     });
                     return {status: response.status, text: await response.text()};
                   } catch (error) {
                     return {status: 0, error: String(error), text: ''};
+                  } finally {
+                    clearTimeout(timeoutId);
                   }
                 }
                 """,
-                {"url": url, "payload": merged_payload, "headers": headers},
+                {"url": url, "payload": merged_payload, "headers": headers, "timeoutMs": self.timeout_ms},
             )
         except Exception as exc:
             raise BrowserScanError(f"浏览器 API 调用失败：{endpoint}: {exc}", "network_error") from exc

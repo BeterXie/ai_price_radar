@@ -75,15 +75,22 @@ def main() -> None:
     assert replay_headers == {"visitorid": "stable", "X-App": "ok"}
 
     scanner.rate_limiter = GlobalRateLimiter(0)
+    scanner.timeout_ms = 35_000
+    evaluation: dict[str, object] = {}
+
+    def evaluate_with_timeout(_, script: str, payload: dict[str, object]) -> dict[str, object]:
+        evaluation.update({"script": script, "payload": payload})
+        return {
+            "status": 200,
+            "text": "<html><script>var arg1='ABC123';</script></html>",
+        }
+
     challenge_page = type(
         "ChallengePage",
         (),
         {
             "url": "https://pay.ldxp.cn/shop/TEST01",
-            "evaluate": lambda self, script, payload: {
-                "status": 200,
-                "text": "<html><script>var arg1='ABC123';</script></html>",
-            },
+            "evaluate": evaluate_with_timeout,
         },
     )()
     try:
@@ -92,6 +99,12 @@ def main() -> None:
         assert exc.status == "rate_limited"
     else:
         raise AssertionError("JavaScript challenge was not classified as rate_limited")
+    evaluated_payload = evaluation["payload"]
+    evaluated_script = evaluation["script"]
+    assert isinstance(evaluated_payload, dict)
+    assert isinstance(evaluated_script, str)
+    assert evaluated_payload["timeoutMs"] == 35_000
+    assert "AbortController" in evaluated_script
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
