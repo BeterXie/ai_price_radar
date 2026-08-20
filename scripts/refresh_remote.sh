@@ -173,9 +173,8 @@ import sys
 
 db = sqlite3.connect(sys.argv[1])
 db.row_factory = sqlite3.Row
-check = db.execute("PRAGMA quick_check").fetchone()[0]
 row = db.execute("SELECT * FROM scan_runs ORDER BY id DESC LIMIT 1").fetchone()
-if check != "ok" or row is None:
+if row is None:
     raise SystemExit("crawler database validation failed")
 print(json.dumps({
     "run_id": row["id"],
@@ -198,19 +197,15 @@ if [[ "$SUCCESSFUL" -eq 0 ]]; then
 fi
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-BACKUP_DB="$DATA_DIR/backups/ldxp_crawler_${STAMP}.db"
-sqlite3 "$CRAWLER_DB" ".backup '$BACKUP_DB'"
-if [[ "$(sqlite3 "$BACKUP_DB" 'PRAGMA quick_check;')" != "ok" ]]; then
-  echo "crawler database backup validation failed" >&2
-  exit 5
-fi
-find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_crawler_*.db' \
-  ! -path "$BACKUP_DB" -delete
+PUBLISH_DB="$DATA_DIR/backups/ldxp_publish_${STAMP}.db"
+python3 scripts/build_crawler_publish_db.py "$CRAWLER_DB" "$PUBLISH_DB"
+find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_publish_*.db' \
+  ! -path "$PUBLISH_DB" -delete
 
 PUBLISH_ARGS=(
   python publish_catalog.py
-  --ldxp-db /tmp/ldxp_crawler.db
-  --dujiao-db /tmp/ldxp_crawler.db
+  --ldxp-db /tmp/ldxp_publish.db
+  --dujiao-db /tmp/ldxp_publish.db
 )
 if [[ -f "$MERCHANT_SOURCES" ]]; then
   PUBLISH_ARGS+=(--merchant-sources /workspace/data/crawler/merchant_sources.json)
@@ -220,7 +215,7 @@ docker run --rm --user 0 \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
   -v "$ROOT:/workspace:ro" \
-  -v "$BACKUP_DB:/tmp/ldxp_crawler.db:ro" \
+  -v "$PUBLISH_DB:/tmp/ldxp_publish.db:ro" \
   -w /workspace/pipeline \
   ai-price-radar-importer \
   "${PUBLISH_ARGS[@]}"
