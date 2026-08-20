@@ -35,6 +35,7 @@ def test_build_publish_db_copies_only_current_publisher_inputs(tmp_path):
     )
     db.commit()
     db.close()
+    source.chmod(0o444)
 
     counts = build_publish_db(source, target)
 

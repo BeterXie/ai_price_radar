@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.10] - 2026-08-20
+
+### Fixed
+
+- Compact publication uses a deferred SQLite transaction so the production SQLite runtime does not request a write lock on the attached read-only crawler database.
+
 ## [3.7.9] - 2026-08-20
 
 ### Fixed
