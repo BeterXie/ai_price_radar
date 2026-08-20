@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.11] - 2026-08-20
+
+### Fixed
+
+- The crawler now stores only current matches and run summaries. The unused per-scan `product_snapshots` history no longer grows the operational SQLite database and delays each publication copy.
+- Ten-minute inventory refreshes now update only LDXP data while carrying other published sources forward, so a transient external-source timeout cannot block inventory publication.
+
 ## [3.7.10] - 2026-08-20
 
 ### Fixed

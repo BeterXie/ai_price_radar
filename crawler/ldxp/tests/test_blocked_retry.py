@@ -4,7 +4,36 @@ from datetime import datetime, timezone
 
 import ldxp_gpt_crawler as cli
 from ldxp_crawler.db import StateDB
-from ldxp_crawler.models import ShopScanResult
+from ldxp_crawler.models import ProductMatch, ShopScanResult
+
+
+def test_successful_scan_keeps_only_current_match_state(tmp_path):
+    db = StateDB(tmp_path / "crawler.db")
+    db.upsert_candidate("SHOP1", "https://pay.ldxp.cn/shop/SHOP1", "test", 100)
+    db.save_scan_result(
+        ShopScanResult(
+            token="SHOP1",
+            status="success",
+            matches=[
+                ProductMatch(
+                    product_key="P1",
+                    product_name="ChatGPT",
+                    matched_keywords=["gpt"],
+                )
+            ],
+        ),
+        run_id=None,
+    )
+
+    tables = {
+        row[0]
+        for row in db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    assert "product_snapshots" not in tables
+    assert db.conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 1
+    db.close()
 
 
 def test_blocked_candidate_retries_after_backoff_and_manual_override(tmp_path):

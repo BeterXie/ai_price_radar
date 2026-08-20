@@ -33,6 +33,15 @@ def test_remote_refresh_uses_dedicated_importer_image():
     assert "$COMPOSE build importer" in quick_deploy
 
 
+def test_inventory_refresh_carries_other_sources_forward():
+    refresh = (ROOT / "scripts" / "refresh_remote.sh").read_text(encoding="utf-8")
+    inventory_publish = refresh.split('if [[ "$MODE" == "inventory" ]]', 1)[1]
+    inventory_publish = inventory_publish.split("else", 1)[0]
+    assert "python sync_source.py" in inventory_publish
+    assert "--connector ldxp" in inventory_publish
+    assert "--source /tmp/ldxp_publish.db" in inventory_publish
+
+
 def test_remote_crawler_mounts_and_runs_dujiao_discovery_seeds():
     compose = (ROOT / "docker-compose.pricememo.yml").read_text(encoding="utf-8")
     refresh = (ROOT / "scripts/refresh_remote.sh").read_text(encoding="utf-8")
