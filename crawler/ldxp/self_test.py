@@ -106,6 +106,28 @@ def main() -> None:
     assert evaluated_payload["timeoutMs"] == 35_000
     assert "AbortController" in evaluated_script
 
+    teardown_events: list[str] = []
+
+    class TeardownContext:
+        def storage_state(self, *, path: str) -> None:
+            teardown_events.append(f"storage:{Path(path).name}")
+
+        def close(self) -> None:
+            teardown_events.append("context-close")
+
+    class TeardownPlaywright:
+        def stop(self) -> None:
+            teardown_events.append("playwright-stop")
+
+    teardown_scanner = object.__new__(BrowserShopScanner)
+    teardown_scanner.context = TeardownContext()
+    teardown_scanner._pw = TeardownPlaywright()
+    teardown_scanner.storage_state_path = Path("browser_state.json")
+    teardown_scanner.__exit__(None, None, None)
+    assert teardown_events == ["storage:browser_state.json", "playwright-stop"]
+    assert teardown_scanner.context is None
+    assert teardown_scanner._pw is None
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         db_path = root / "v1.db"

@@ -186,10 +186,12 @@ class BrowserShopScanner:
         try:
             self.save_state()
         finally:
-            if self.context:
-                self.context.close()
-            if self._pw:
-                self._pw.stop()
+            try:
+                if self._pw:
+                    self._pw.stop()
+            finally:
+                self.context = None
+                self._pw = None
 
     def save_state(self) -> None:
         if not self.context:
