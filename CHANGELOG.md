@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.7] - 2026-08-20
+
+### Fixed
+
+- Persistent Chromium teardown now stops the Playwright connection directly instead of waiting indefinitely for `BrowserContext.close()` after all shops were scanned.
+
 ## [3.7.6] - 2026-08-20
 
 ### Fixed
