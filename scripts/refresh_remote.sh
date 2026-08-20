@@ -16,6 +16,20 @@ cleanup_crawler_container() {
   docker rm -f "$CRAWLER_CONTAINER_NAME" >/dev/null 2>&1 || true
 }
 
+cleanup_browser_profile_singletons() {
+  local profile="$DATA_DIR/browser_profile"
+  local name path
+  for name in SingletonLock SingletonSocket SingletonCookie; do
+    path="$profile/$name"
+    if [[ -L "$path" ]]; then
+      unlink "$path"
+    elif [[ -e "$path" ]]; then
+      echo "refusing to remove non-symlink browser profile singleton: $path" >&2
+      return 6
+    fi
+  done
+}
+
 trap 'cleanup_crawler_container' EXIT
 trap 'exit 143' TERM INT HUP
 
@@ -35,6 +49,7 @@ run_crawler() {
 
 run_browser_crawler() {
   cleanup_crawler_container
+  cleanup_browser_profile_singletons
   "${COMPOSE[@]}" run --rm --name "$CRAWLER_CONTAINER_NAME" --entrypoint xvfb-run crawler \
     -a python ldxp_gpt_crawler.py "$@"
 }

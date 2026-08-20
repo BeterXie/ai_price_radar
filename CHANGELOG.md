@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.6] - 2026-08-20
+
+### Fixed
+
+- Browser-replayed shop API requests now abort at the configured crawler timeout instead of allowing one unresponsive source to block every later scan and publication.
+- Browser refreshes remove stale Chromium singleton symlinks left by a terminated crawler, and inventory refreshes receive a one-hour service budget so a completed scan can finish atomic publication.
+- Release metadata is aligned on `3.7.6` across the API, Web package, lockfile, and repository version marker.
+
 ## [3.7.4] - 2026-08-08
 
 ### Fixed
