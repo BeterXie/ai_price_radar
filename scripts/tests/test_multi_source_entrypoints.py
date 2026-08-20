@@ -19,7 +19,10 @@ def test_remote_refresh_uses_dedicated_importer_image():
     assert "ai-price-radar-importer" in publish_block
     assert "ai-price-radar-api" not in publish_block
     assert '-v "$ROOT:/workspace:ro"' in publish_block
-    assert '-v "$BACKUP_DB:/tmp/ldxp_crawler.db:ro"' in publish_block
+    assert "build_crawler_publish_db.py" in refresh
+    assert "PRAGMA quick_check" not in refresh
+    assert 'sqlite3 "$CRAWLER_DB" ".backup' not in refresh
+    assert '-v "$PUBLISH_DB:/tmp/ldxp_publish.db:ro"' in publish_block
     assert "-w /workspace/pipeline" in publish_block
 
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")

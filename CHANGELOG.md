@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.8] - 2026-08-20
+
+### Fixed
+
+- Scheduled publication now copies only the three current crawler tables used by the publisher instead of validating, copying, and revalidating the full multi-gigabyte history database on every refresh.
+
 ## [3.7.7] - 2026-08-20
 
 ### Fixed
