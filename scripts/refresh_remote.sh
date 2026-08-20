@@ -202,13 +202,21 @@ python3 scripts/build_crawler_publish_db.py "$CRAWLER_DB" "$PUBLISH_DB"
 find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_publish_*.db' \
   ! -path "$PUBLISH_DB" -delete
 
-PUBLISH_ARGS=(
-  python publish_catalog.py
-  --ldxp-db /tmp/ldxp_publish.db
-  --dujiao-db /tmp/ldxp_publish.db
-)
-if [[ -f "$MERCHANT_SOURCES" ]]; then
-  PUBLISH_ARGS+=(--merchant-sources /workspace/data/crawler/merchant_sources.json)
+if [[ "$MODE" == "inventory" ]]; then
+  PUBLISH_ARGS=(
+    python sync_source.py
+    --connector ldxp
+    --source /tmp/ldxp_publish.db
+  )
+else
+  PUBLISH_ARGS=(
+    python publish_catalog.py
+    --ldxp-db /tmp/ldxp_publish.db
+    --dujiao-db /tmp/ldxp_publish.db
+  )
+  if [[ -f "$MERCHANT_SOURCES" ]]; then
+    PUBLISH_ARGS+=(--merchant-sources /workspace/data/crawler/merchant_sources.json)
+  fi
 fi
 
 docker run --rm --user 0 \

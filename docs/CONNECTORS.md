@@ -17,7 +17,7 @@ python pipeline/publish_catalog.py \
   --merchant-sources /data/merchant_sources.json
 ```
 
-`publish_catalog.py` creates one draft snapshot, imports every configured source, and publishes only after all imports succeed. A failed source rolls the transaction back and leaves the previous complete snapshot online. `sync_source.py` remains a compatibility tool for local or incremental operations; it carries the current catalog forward and must not be used as the authoritative production refresh.
+`publish_catalog.py` creates one draft snapshot, imports every configured source, and publishes only after all imports succeed. A failed source rolls the transaction back and leaves the previous complete snapshot online. Hourly production refreshes use this authoritative path. The 10-minute inventory refresh uses `sync_source.py` to update only current LDXP inventory while carrying the other sources forward, so a temporarily unavailable external shop cannot block inventory publication.
 
 ## Merchant JSON Feed
 

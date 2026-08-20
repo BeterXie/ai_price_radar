@@ -95,24 +95,6 @@ class StateDB:
                 note TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS product_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id INTEGER,
-                token TEXT NOT NULL,
-                product_key TEXT,
-                product_name TEXT NOT NULL,
-                matched_keywords TEXT NOT NULL,
-                listed_price REAL,
-                real_price REAL,
-                stock_count INTEGER,
-                product_status TEXT,
-                category_name TEXT,
-                product_url TEXT,
-                raw_json TEXT,
-                observed_at TEXT NOT NULL,
-                FOREIGN KEY(run_id) REFERENCES scan_runs(id)
-            );
-
             CREATE TABLE IF NOT EXISTS dujiao_candidates (
                 origin TEXT PRIMARY KEY,
                 discovered_urls TEXT NOT NULL DEFAULT '[]',
@@ -135,7 +117,6 @@ class StateDB:
 
             CREATE INDEX IF NOT EXISTS idx_candidates_status ON candidates(status);
             CREATE INDEX IF NOT EXISTS idx_matches_token ON matches(token);
-            CREATE INDEX IF NOT EXISTS idx_snapshots_token ON product_snapshots(token, observed_at);
             CREATE INDEX IF NOT EXISTS idx_dujiao_candidates_status ON dujiao_candidates(status, last_verified_at);
             """
         )
@@ -544,7 +525,7 @@ class StateDB:
         now = utc_now()
         with self.conn:
             if result.is_successful_scan:
-                # Replace current state only after a successful scan. Historical snapshots remain.
+                # Replace current state only after a successful scan.
                 self.conn.execute("DELETE FROM matches WHERE token=?", (result.token,))
                 for product in result.matches:
                     payload = (
@@ -576,30 +557,6 @@ class StateDB:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         payload,
-                    )
-                    self.conn.execute(
-                        """
-                        INSERT INTO product_snapshots(
-                            run_id, token, product_key, product_name, matched_keywords,
-                            listed_price, real_price, stock_count, product_status,
-                            category_name, product_url, raw_json, observed_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            run_id,
-                            result.token,
-                            product.product_key,
-                            product.product_name,
-                            json.dumps(product.matched_keywords, ensure_ascii=False),
-                            product.listed_price,
-                            product.real_price,
-                            product.stock_count,
-                            product.product_status,
-                            product.category_name,
-                            product.product_url,
-                            json.dumps(product.raw, ensure_ascii=False),
-                            now,
-                        ),
                     )
                 self.conn.execute(
                     """
