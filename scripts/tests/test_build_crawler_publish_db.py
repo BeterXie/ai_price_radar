@@ -1,6 +1,13 @@
 import sqlite3
+from pathlib import Path
 
 from scripts.build_crawler_publish_db import build_publish_db
+
+
+def test_build_publish_db_supports_production_python_syntax():
+    source = (Path(__file__).resolve().parents[1] / "build_crawler_publish_db.py").read_text(encoding="utf-8")
+    assert "dict[" not in source
+    assert "missing_ok=" not in source
 
 
 def test_build_publish_db_copies_only_current_publisher_inputs(tmp_path):
