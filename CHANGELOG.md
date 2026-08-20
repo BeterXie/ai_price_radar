@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.9] - 2026-08-20
+
+### Fixed
+
+- The compact crawler publication helper now runs on the production host's Python 3.6 runtime.
+
 ## [3.7.8] - 2026-08-20
 
 ### Fixed

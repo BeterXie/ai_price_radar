@@ -2,12 +2,13 @@ import json
 import sqlite3
 import sys
 from pathlib import Path
+from typing import Dict
 
 
 PUBLISH_TABLES = ("candidates", "matches", "dujiao_candidates")
 
 
-def build_publish_db(source: Path, target: Path) -> dict[str, int]:
+def build_publish_db(source: Path, target: Path) -> Dict[str, int]:
     source = source.resolve()
     target = target.resolve()
     if not source.is_file():
@@ -16,8 +17,8 @@ def build_publish_db(source: Path, target: Path) -> dict[str, int]:
         raise FileExistsError(f"publish database already exists: {target}")
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(target, uri=True)
-    counts: dict[str, int] = {}
+    db = sqlite3.connect(str(target), uri=True)
+    counts = {}  # type: Dict[str, int]
     try:
         source_uri = f"{source.as_uri()}?mode=ro"
         db.execute("ATTACH DATABASE ? AS source", (source_uri,))
@@ -38,7 +39,8 @@ def build_publish_db(source: Path, target: Path) -> dict[str, int]:
     except Exception:
         db.rollback()
         db.close()
-        target.unlink(missing_ok=True)
+        if target.exists():
+            target.unlink()
         raise
     db.close()
     return counts
