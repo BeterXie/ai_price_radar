@@ -12,15 +12,15 @@ type PageHeroProps = {
 
 export function PageHero({ eyebrow, title, description, meta, actions, aside, compact = false }: PageHeroProps) {
   return (
-    <header className={`page-hero ${aside ? "grid items-end gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]" : ""}`}>
+    <header className={`page-hero ${aside ? "grid items-end gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]" : ""}`} data-vds-layer="event">
       <div className={compact ? "max-w-4xl" : "max-w-5xl"}>
         {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-        <h1 className={`${compact ? "page-title" : "display-title"} ${eyebrow ? "mt-4" : ""}`}>{title}</h1>
-        {description ? <div className="lede mt-6">{description}</div> : null}
-        {meta ? <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[color:var(--muted)]">{meta}</div> : null}
-        {actions ? <div className="mt-7 flex flex-wrap gap-3">{actions}</div> : null}
+        <h1 className={`${compact ? "page-title" : "display-title"} ${eyebrow ? "mt-4" : ""}`} data-vds-role="title">{title}</h1>
+        {description ? <div className="lede mt-6" data-vds-role="explanation">{description}</div> : null}
+        {meta ? <div className="page-meta mt-5" data-vds-role="evidence">{meta}</div> : null}
+        {actions ? <div className="mt-7 flex flex-wrap gap-3" data-vds-role="action">{actions}</div> : null}
       </div>
-      {aside ? <aside>{aside}</aside> : null}
+      {aside ? <aside data-vds-layer="evidence">{aside}</aside> : null}
     </header>
   );
 }
@@ -52,9 +52,22 @@ export function InfoPage({
   children: ReactNode;
 }) {
   return (
-    <main id="main-content" className="shell">
+    <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="page-orientation factual-sequence responsive-reading closing-path">
       <PageHero eyebrow={eyebrow} title={title} description={description} meta={meta} compact />
       <div className="content-stage py-10 sm:py-14">{children}</div>
     </main>
+  );
+}
+
+export function FactLedger({ items }: { items: readonly (readonly [string, ReactNode])[] }) {
+  return (
+    <div className="fact-ledger" data-vds-layer="evidence">
+      {items.map(([title, copy]) => (
+        <section key={title} className="fact-ledger-row">
+          <h2>{title}</h2>
+          <div>{copy}</div>
+        </section>
+      ))}
+    </div>
   );
 }

@@ -13,10 +13,10 @@ export default async function CorrectionsPage() {
   let loadFailed = false;
   try { data = await getCorrections("limit=100"); } catch { loadFailed = true; }
   return (
-    <InfoPage title="公开纠错记录" description="这里只显示已处理并允许公开的摘要，不显示联系方式、私密描述和内部审核记录。">
-      {loadFailed ? <div className="empty-state" role="alert">纠错记录暂时无法加载，请稍后刷新页面。</div> : !data?.items.length ? <div className="empty-state" role="status">暂无公开纠错记录。</div> : (
+    <InfoPage eyebrow="数据与反馈" title="公开纠错记录" description="这里只显示已处理并允许公开的摘要。联系方式、私密描述和内部审核记录不会出现在本页。">
+      {loadFailed ? <div className="empty-state" role="alert"><p>纠错记录暂时无法加载。</p><a href="/corrections" className="button-primary mt-6">重新加载</a></div> : !data?.items.length ? <div className="empty-state" role="status">暂无公开纠错记录。</div> : (
         <div className="divide-y divide-[color:var(--line)] border-y border-[color:var(--line-strong)]">
-          {data.items.map((item) => <article key={item.id} className="grid gap-4 py-7 md:grid-cols-[180px_1fr]"><div><p className="mono text-xs text-[color:var(--brand)]">#{item.id} · {kinds[item.kind] || item.kind}</p><p className="mt-2 text-xs text-[color:var(--muted)]">处理于 {exactTime(item.resolved_at)}</p></div><div><h2 className="text-lg font-semibold">{item.public_summary}</h2>{item.merchant_response && <div className="surface-subtle mt-4 p-4"><p className="text-xs font-semibold text-[color:var(--muted)]">商家公开回应</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[color:var(--muted)]">{item.merchant_response}</p></div>}</div></article>)}
+          {data.items.map((item) => <article key={item.id} className="grid gap-4 py-7 md:grid-cols-[180px_1fr]"><div><p className="mono text-xs font-semibold text-[color:var(--info)]">#{item.id} · {kinds[item.kind] || item.kind}</p><p className="mt-2 text-xs text-[color:var(--muted)]">处理于 {exactTime(item.resolved_at)}</p></div><div><h2 className="text-lg font-semibold">{item.public_summary}</h2>{item.merchant_response && <div className="surface-subtle mt-4 p-4"><p className="text-xs font-semibold text-[color:var(--muted)]">商家公开回应</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[color:var(--muted)]">{item.merchant_response}</p></div>}</div></article>)}
         </div>
       )}
     </InfoPage>

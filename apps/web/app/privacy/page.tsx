@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { InfoPage } from "@/components/page-shell";
+import { FactLedger, InfoPage } from "@/components/page-shell";
 
 export const metadata: Metadata = { title: "隐私政策", description: "AI Price Radar 的数据与隐私处理说明。", alternates: { canonical: "/privacy" } };
 const items = [
@@ -8,5 +8,5 @@ const items = [
   ["关注清单", "关注产品与目标价保存在浏览器 localStorage。服务端生成 Atom Feed 时只读取 URL 中的产品标识和目标价，不保存账号、邮箱或关注清单。"],
   ["日志与安全", "服务可能记录为运行、安全和限流所必需的技术日志，例如请求时间、接口状态和经过哈希处理的限流标识。"],
   ["删除与更正", "公开信息所有者可通过纠错表单提交更正、隐藏或来源移除请求，并提供足以核验的说明。"],
-];
-export default function PrivacyPage() { return <InfoPage title="隐私政策" meta={<span>生效日期：2026 年 7 月 29 日</span>}><div className="editorial divide-y divide-[color:var(--line)] border-y border-[color:var(--line-strong)]">{items.map(([title, copy]) => <section key={title} className="py-7"><h2>{title}</h2><p className="mt-3">{copy}</p></section>)}</div></InfoPage>; }
+] as const;
+export default function PrivacyPage() { return <InfoPage eyebrow="隐私与数据" title="隐私政策" description="说明公开目录、纠错申请、关注清单和技术日志会处理哪些信息。" meta={<span>生效日期：2026 年 7 月 29 日</span>}><FactLedger items={items} /></InfoPage>; }

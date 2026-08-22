@@ -96,7 +96,7 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
     + Object.keys(workflowGuides).length;
 
   return (
-    <main id="main-content">
+    <main id="main-content" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="guide-orientation searchable-index evidence-cards responsive-filtering">
       <GuideJsonLd data={breadcrumbJsonLd([{ name: "首页", path: "/" }, { name: "教程中心", path: "/guides" }])} />
       <div className="shell">
         <PageHero
@@ -104,9 +104,9 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
           title="购买前看懂，购买后会用"
         description="先分清买到的是账号、充值、团队席位、兑换码还是 API 额度，再按交付方式查看操作步骤和安全提醒。具体交付和售后以商品原页面为准。"
           compact
-          aside={<div className="radar-field surface-panel p-6">
+          aside={<div className="radar-field p-6">
             <BookOpenText size={27} aria-hidden="true" />
-            <p className="mt-5 text-sm font-semibold">当前教程目录</p>
+            <p className="mt-5 section-kicker">当前教程目录</p>
             <p className="mt-2 text-4xl font-semibold tracking-[-.055em]">{1 + guideCount}</p>
             <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">覆盖 {Object.keys(brandGuides).length} 个品牌、{Object.keys(productGuides).length} 个产品、{Object.keys(deliveryGuides).length} 种交付方式、{Object.keys(generalGuides).length} 篇通用指南和 {Object.keys(workflowGuides).length} 个工作流。</p>
           </div>}
@@ -114,7 +114,7 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
       </div>
 
       <div className="shell py-10 sm:py-12">
-        <section aria-labelledby="guide-search-title" className="surface-panel p-5 sm:p-6">
+        <section aria-labelledby="guide-search-title" className="surface-panel p-5 sm:p-6" data-vds-layer="evidence">
           <div className="flex items-center gap-3">
             <MagnifyingGlass size={22} aria-hidden="true" />
             <h2 id="guide-search-title" className="text-xl font-semibold">搜索和筛选教程</h2>
@@ -155,10 +155,10 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
           ) : null}
         </section>
 
-      <GuideIndex title="第一次购买先看" description="先确认买的是什么、账号由谁控制，以及交付后能否自行修改资料。">
+        <GuideIndex title="第一次购买先看" description="先确认买的是什么、账号由谁控制，以及交付后能否自行修改资料。">
           <GuideCard href="/guides/buying-checklist" title="购买前检查" description="核对产品、交付方式、期限、质保和售后条件。" meta="通用指南" />
           <GuideCard href="/guides/account-control" title="判断账号控制权" description="分清登录凭据、邮箱、恢复渠道和 MFA 的控制方。" meta="账号安全" />
-        <GuideCard href="/guides/subscription-verification" title="确认订阅状态" description="从官方账户页确认套餐、期限、账单和续费状态。" meta="状态确认" />
+          <GuideCard href="/guides/subscription-verification" title="确认订阅状态" description="从官方账户页确认套餐、期限、账单和续费状态。" meta="状态确认" />
         </GuideIndex>
 
         <GuideIndex id="brands" title="全部品牌" description="查看品牌产品范围、套餐选择、常见交付和官方帮助入口。" empty={brands.length === 0}>
@@ -179,7 +179,7 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
           {deliveries.map((guide) => <GuideCard key={guide.deliveryType} href={`/guides/delivery/${guide.deliveryType}`} title={guide.title} description={guide.summary} meta={guide.shortLabel} />)}
         </GuideIndex>
 
-      <GuideIndex id="general" title="安全和售后指南" description="排查登录与激活问题，整理售后材料，保护账号、密钥和隐私。" empty={general.length === 0}>
+        <GuideIndex id="general" title="安全和售后指南" description="排查登录与激活问题，整理售后材料，保护账号、密钥和隐私。" empty={general.length === 0}>
           {general.map((guide) => <GuideCard key={guide.slug} href={`/guides/${guide.slug}`} title={guide.title} description={guide.description} meta="通用指南" />)}
         </GuideIndex>
 

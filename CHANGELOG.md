@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.13] - 2026-08-22
+
+### Changed
+
+- Refreshed the full Web experience with the Signal Ledger visual system, clearer hierarchy, more consistent typography, responsive layouts, and unified interaction states.
+- Reworked public-facing copy to describe observed prices and data freshness more precisely across product, guide, watchlist, submission, policy, and administration surfaces.
+- Connected catalog search terms to the public catalog API and preserved available offers when product metadata is incomplete.
+
 ## [3.7.12] - 2026-08-22
 
 ### Fixed

@@ -27,7 +27,7 @@ export function SiteHeader() {
           <span className="brand-mark"><Image src="/icon.svg?theme=production-lime" alt="" width={25} height={25} priority /></span>
           <span className="min-w-0">
             <span className="block truncate font-semibold tracking-[-0.035em]">AI Price Radar</span>
-            <span className="hidden text-[10px] font-medium tracking-[.06em] text-[color:var(--muted)] sm:block">公开报价与价格记录</span>
+            <span className="hidden text-[11px] font-medium text-[color:var(--muted)] sm:block">公开报价记录</span>
           </span>
         </Link>
 

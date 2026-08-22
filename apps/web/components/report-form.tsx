@@ -4,9 +4,9 @@ import { FormEvent, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
-export function ReportForm({ offerId }: { offerId?: number }) {
+export function ReportForm({ offerId, previewState }: { offerId?: number; previewState?: "sent" | "limited" | "error" }) {
   const [message, setMessage] = useState("");
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "limited" | "error">("idle");
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "limited" | "error">(previewState || "idle");
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (message.trim().length < 10) return;
@@ -25,7 +25,7 @@ export function ReportForm({ offerId }: { offerId?: number }) {
   }
   const canSubmit = message.trim().length >= 10;
   return (
-    <form onSubmit={submit} className="surface-panel p-5">
+    <form onSubmit={submit} className="surface-panel p-5" data-vds-layer="evidence">
       <label className="text-sm font-medium" htmlFor="report-message">发现价格、库存或分类错误？</label>
       <textarea id="report-message" value={message} onChange={(e) => { setMessage(e.target.value); if (state !== "sending") setState("idle"); }} className="field mt-3 min-h-28 resize-y text-sm" placeholder="请说明哪一项需要修正，并提供可核验信息。" />
       <div className="mt-3 flex items-center justify-between gap-4">

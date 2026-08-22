@@ -215,6 +215,7 @@ def snapshot(db: Session = Depends(get_db)) -> CatalogSnapshotPublic:
 
 @router.get("/catalog/groups", response_model=CatalogOfferGroupPageResponse)
 def catalog_groups(
+    q: str = Query(default="", max_length=100),
     platform: str = Query(default="", max_length=50),
     brand: str = Query(default="", max_length=50),
     product: str = Query(default="", max_length=160),
@@ -237,6 +238,7 @@ def catalog_groups(
     current = get_snapshot(db, snapshot)
     items, total, offer_total, in_stock_count, comparable_offer_count, trusted_offer_count, last_updated_at = get_catalog_group_page(
         db,
+        q=q,
         platform=brand or platform,
         product_slug=product,
         offset=offset,

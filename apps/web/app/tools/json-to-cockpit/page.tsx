@@ -12,6 +12,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default function JsonToCockpitPage() {
-  return <CockpitJsonConverter />;
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function JsonToCockpitPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const rawState = Array.isArray(params.state) ? params.state.at(-1) : params.state;
+  return <CockpitJsonConverter previewState={rawState === "error" ? "error" : undefined} />;
 }

@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Price Radar · 全站方向预览</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-width: 320px; }
+    body {
+      background: #11130f;
+      color: #12130f;
+      font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      text-rendering: optimizeLegibility;
+    }
+    button, input { font: inherit; }
+    .direction-switcher {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      min-height: 58px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid #30332c;
+      background: #11130f;
+      padding: 8px 20px;
+      color: #f8f9f3;
+    }
+    .switcher-title { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+    .switcher-note { margin-top: 3px; color: #a8aca1; font-size: 11px; }
+    .direction-tabs { display: flex; gap: 6px; }
+    .direction-tabs a {
+      border: 1px solid #3c4037;
+      border-radius: 8px;
+      color: #d9dcd2;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .direction-tabs a[aria-current="page"] { border-color: #cfff47; background: #cfff47; color: #12130f; }
+    .preview { display: none; min-height: calc(100dvh - 58px); }
+    .preview:not(.active) { display: none !important; }
+    .preview.active { display: block; }
+    .preview.workbench.active { display: grid; }
+    .logo {
+      display: grid;
+      width: 35px;
+      height: 35px;
+      place-items: center;
+      border: 1px solid currentColor;
+      border-radius: 9px;
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand strong { display: block; font-size: 15px; letter-spacing: -.03em; }
+    .brand small { display: block; margin-top: 2px; font-size: 10px; opacity: .62; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+    /* 01 — Signal Ledger -------------------------------------------------- */
+    .ledger {
+      --paper: #f4f1e8;
+      --panel: #fffef9;
+      --ink: #171914;
+      --muted: #62685e;
+      --line: #c7cbbf;
+      --line-strong: #9fa797;
+      --signal: #bae64c;
+      --signal-wash: #e8f6bd;
+      --info: #1f645c;
+      --info-wash: #e2efeb;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    .ledger .site-header {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      min-height: 66px;
+      border-bottom: 1px solid var(--line);
+      padding: 0 max(28px, calc((100vw - 1320px) / 2));
+    }
+    .ledger .brand small { font-size: 11px; }
+    .ledger .primary-nav { display: flex; gap: 2px; border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+    .ledger .primary-nav span { padding: 8px 12px; border-radius: 7px; color: var(--muted); font-size: 13px; font-weight: 650; }
+    .ledger .primary-nav .current { background: var(--ink); color: white; }
+    .ledger .header-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .ledger .header-actions span { border: 1px solid var(--line-strong); border-radius: 8px; padding: 9px 11px; font-size: 12px; font-weight: 650; }
+    .ledger .update-rail {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line);
+      padding: 9px max(28px, calc((100vw - 1320px) / 2));
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .ledger .update-rail strong { color: var(--ink); }
+    .ledger .live { display: inline-flex; align-items: center; gap: 8px; }
+    .ledger .live::before { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px rgb(186 230 76 / .22); content: ""; }
+    .ledger .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(360px, .72fr);
+      gap: clamp(44px, 6vw, 90px);
+      align-items: center;
+      width: min(1320px, calc(100% - 56px));
+      margin: auto;
+      padding: 58px 0 48px;
+    }
+    .ledger .eyebrow { margin: 0; color: var(--info); font-size: 12px; font-weight: 750; }
+    .ledger h1 { max-width: 760px; margin: 14px 0 0; font-size: clamp(50px, 4.8vw, 72px); line-height: .98; letter-spacing: -.068em; }
+    .ledger .lede { max-width: 720px; margin: 22px 0 0; color: var(--muted); font-size: 17px; line-height: 1.72; }
+    .ledger .search { display: grid; grid-template-columns: 24px minmax(0,1fr) auto; align-items: center; max-width: 720px; margin-top: 28px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--panel); padding: 7px 7px 7px 14px; }
+    .ledger .search input { min-width: 0; border: 0; background: transparent; padding: 10px; outline: 0; font-size: 14px; }
+    .ledger .search button { border: 0; border-radius: 8px; background: var(--ink); color: white; padding: 12px 18px; font-weight: 700; }
+    .ledger .quick { display: flex; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+    .ledger .quick b { color: var(--ink); }
+    .ledger .pulse-board { overflow: hidden; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel); }
+    .ledger .pulse-head { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px; border-bottom: 1px solid var(--line); }
+    .ledger .pulse-head h2 { margin: 0; font-size: 16px; }
+    .ledger .pill { border: 1px solid #89aa28; border-radius: 999px; background: var(--signal-wash); padding: 5px 9px; font-size: 11px; font-weight: 750; }
+    .ledger .quote { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .ledger .quote small { color: var(--muted); font-size: 12px; }
+    .ledger .quote h3 { margin: 6px 0 0; font-size: 15px; }
+    .ledger .quote strong { font-family: ui-monospace, Consolas, monospace; font-size: 19px; }
+    .ledger .quote p { margin: 5px 0 0; color: var(--muted); font-size: 11px; text-align: right; }
+    .ledger .board-link { display: flex; justify-content: space-between; padding: 14px 18px; background: var(--info-wash); color: var(--info); font-size: 12px; font-weight: 750; }
+    .ledger .decision-band { border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); }
+    .ledger .decision-inner { display: grid; grid-template-columns: 230px 1fr; gap: 28px; width: min(1320px, calc(100% - 56px)); margin: auto; padding: 18px 0 22px; }
+    .ledger .decision-label { color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .ledger .decision-label strong { display: block; margin-bottom: 5px; color: var(--ink); font-size: 17px; }
+    .ledger .filters { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1px; border: 1px solid var(--line-strong); background: var(--line); }
+    .ledger .filter { background: var(--panel); padding: 12px 14px; }
+    .ledger .filter small { color: var(--muted); font-size: 12px; }
+    .ledger .filter b { display: block; margin-top: 4px; font-size: 13px; }
+    .ledger .catalog-preview { width: min(1320px, calc(100% - 56px)); margin: auto; padding: 23px 0 42px; }
+    .ledger .catalog-head { display: grid; grid-template-columns: 40px 1.6fr .7fr .7fr .55fr; gap: 20px; padding: 0 8px 11px; color: var(--muted); font-size: 11px; }
+    .ledger .catalog-row { display: grid; grid-template-columns: 40px 1.6fr .7fr .7fr .55fr; gap: 20px; align-items: center; border-top: 1px solid var(--line); padding: 14px 8px; }
+    .ledger .catalog-row .idx { color: #7f867a; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+    .ledger .catalog-row h3 { margin: 0; font-size: 15px; letter-spacing: -.02em; }
+    .ledger .catalog-row p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .ledger .coverage strong { color: var(--info); }
+    .ledger .stock { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
+    .ledger .stock::before { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); content: ""; }
+    .ledger .price { font-family: ui-monospace, Consolas, monospace; font-size: 17px; font-weight: 750; }
+
+    /* 02 — Radar Workbench ------------------------------------------------ */
+    .workbench { --ink:#e9edf2; --muted:#8f9aa5; --line:#2b343c; --signal:#cfff47; --cyan:#77e8ff; display: grid; grid-template-columns: 232px minmax(0,1fr); min-height: calc(100dvh - 58px); background: #0d1216; color: var(--ink); }
+    .workbench .side { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #0a0f13; padding: 20px 16px; }
+    .workbench .side .brand { margin: 0 4px 26px; }
+    .workbench .side .logo { color: var(--signal); }
+    .workbench .side-label { margin: 20px 8px 8px; color: #697581; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .workbench .side-link { display: flex; align-items: center; justify-content: space-between; min-height: 40px; border-radius: 7px; padding: 0 10px; color: #abb5be; font-size: 12px; }
+    .workbench .side-link.current { background: #1e282f; color: white; }
+    .workbench .side-link.current::after { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); content: ""; }
+    .workbench .side-status { margin-top: auto; border: 1px solid var(--line); border-radius: 9px; padding: 12px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .workbench .side-status b { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; color: var(--ink); font-size: 11px; }
+    .workbench .side-status b::before { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 13px var(--signal); content:""; }
+    .workbench .app { min-width: 0; }
+    .workbench .topbar { display: grid; grid-template-columns: minmax(260px,1fr) auto auto; align-items: center; gap: 12px; min-height: 64px; border-bottom: 1px solid var(--line); padding: 10px 22px; }
+    .workbench .global-search { display: flex; align-items: center; gap: 10px; max-width: 620px; border: 1px solid var(--line); border-radius: 8px; background: #151d23; padding: 10px 12px; color: #83909b; font-size: 12px; }
+    .workbench .time-control, .workbench .header-button { border: 1px solid var(--line); border-radius: 7px; background: #11191f; padding: 10px 12px; color: var(--ink); font-size: 11px; }
+    .workbench .workspace { padding: 24px; }
+    .workbench .workspace-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+    .workbench h1 { margin: 0; font-size: 37px; letter-spacing: -.055em; }
+    .workbench .workspace-head p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .workbench .view-switch { display: flex; gap: 3px; border: 1px solid var(--line); border-radius: 7px; padding: 3px; }
+    .workbench .view-switch span { border-radius: 5px; padding: 7px 10px; color: var(--muted); font-size: 10px; }
+    .workbench .view-switch .current { background: #27323a; color: white; }
+    .workbench .metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-top: 20px; }
+    .workbench .metric { border: 1px solid var(--line); border-radius: 9px; background: #121a20; padding: 14px; }
+    .workbench .metric small { color: var(--muted); font-size: 9px; }
+    .workbench .metric strong { display: block; margin-top: 8px; font-size: 24px; letter-spacing: -.04em; }
+    .workbench .metric em { color: var(--signal); font-size: 10px; font-style: normal; }
+    .workbench .work-grid { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 12px; margin-top: 12px; }
+    .workbench .filters { border: 1px solid var(--line); border-radius: 9px; background: #11191f; padding: 14px; }
+    .workbench .filters h2 { margin: 0 0 14px; font-size: 13px; }
+    .workbench .filter-group { border-top: 1px solid var(--line); padding: 13px 0; }
+    .workbench .filter-group:first-of-type { border-top: 0; }
+    .workbench .filter-group strong { display: block; margin-bottom: 9px; font-size: 10px; }
+    .workbench .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .workbench .chip { border: 1px solid #34414b; border-radius: 5px; padding: 6px 7px; color: #9ba7b1; font-size: 9px; }
+    .workbench .chip.on { border-color: var(--signal); color: var(--signal); }
+    .workbench .range { height: 5px; margin: 14px 2px 5px; border-radius: 999px; background: linear-gradient(90deg,var(--signal) 0 58%,#303a42 58%); }
+    .workbench .table-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #11191f; }
+    .workbench .table-title { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid var(--line); }
+    .workbench .table-title h2 { margin: 0; font-size: 13px; }
+    .workbench .table-title span { color: var(--muted); font-size: 9px; }
+    .workbench .table-head, .workbench .table-row { display: grid; grid-template-columns: minmax(260px,1.7fr) 88px 100px 112px 92px; gap: 14px; align-items: center; padding: 10px 14px; }
+    .workbench .table-head { border-bottom: 1px solid var(--line); color: #788590; font-size: 9px; }
+    .workbench .table-row { min-height: 62px; border-bottom: 1px solid #222c33; font-size: 10px; }
+    .workbench .table-row h3 { margin: 0; font-size: 12px; }
+    .workbench .table-row p { margin: 4px 0 0; color: var(--muted); font-size: 9px; }
+    .workbench .table-row .price { color: white; font-family: ui-monospace,Consolas,monospace; font-size: 15px; font-weight: 750; }
+    .workbench .tag { display: inline-flex; align-items:center; gap:5px; color: var(--signal); font-weight: 700; }
+    .workbench .tag::before { width:7px;height:7px;border-radius:50%;background:var(--signal);content:""; }
+    .workbench .coverage { color: var(--cyan); }
+
+    /* 03 — Editorial Atlas ------------------------------------------------ */
+    .atlas { --paper:#f3eee4; --ink:#17241e; --muted:#6f736c; --line:#c7c2b6; --cobalt:#2448d8; --clay:#c95438; min-height: calc(100dvh - 58px); background: var(--paper); color: var(--ink); }
+    .atlas .site-header { display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:72px;border-bottom:1px solid var(--ink);padding:0 max(28px,calc((100vw - 1320px)/2)); }
+    .atlas .logo { border-radius:50%; color:var(--cobalt); }
+    .atlas .primary-nav { display:flex;gap:24px;font-size:12px;font-weight:700; }
+    .atlas .primary-nav span:first-child { color:var(--cobalt);text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:8px; }
+    .atlas .edition { color:var(--muted);font-size:10px;text-align:right; }
+    .atlas .hero { width:min(1320px,calc(100% - 56px));margin:auto;padding:48px 0 32px; }
+    .atlas .hero-top { display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.55fr);gap:60px;align-items:end; }
+    .atlas .chapter { color:var(--clay);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
+    .atlas h1 { max-width:900px;margin:12px 0 0;font-size:clamp(58px,6.2vw,92px);line-height:.9;letter-spacing:-.075em; }
+    .atlas .manifesto { border-left:5px solid var(--cobalt);padding:7px 0 7px 20px;color:var(--muted);font-size:14px;line-height:1.75; }
+    .atlas .manifesto strong { display:block;margin-bottom:7px;color:var(--ink);font-size:17px; }
+    .atlas .search-line { display:grid;grid-template-columns:1fr auto;gap:12px;margin-top:34px;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);padding:13px 0; }
+    .atlas .search-line div { color:var(--muted);font-size:13px; }
+    .atlas .search-line b { color:var(--ink); }
+    .atlas .search-line button { border:0;background:var(--cobalt);color:white;padding:10px 18px;font-weight:700; }
+    .atlas .atlas-grid { display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:40px;width:min(1320px,calc(100% - 56px));margin:auto;border-top:1px solid var(--ink);padding:26px 0 44px; }
+    .atlas .section-head { display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:13px; }
+    .atlas .section-head h2 { margin:0;font-size:27px;letter-spacing:-.045em; }
+    .atlas .section-head span { color:var(--muted);font-size:10px; }
+    .atlas .story-row { display:grid;grid-template-columns:60px minmax(0,1.25fr) .7fr .45fr;gap:22px;align-items:center;border-bottom:1px solid var(--line);padding:17px 0; }
+    .atlas .story-row .num { color:var(--clay);font-family:ui-monospace,Consolas,monospace;font-size:10px; }
+    .atlas .story-row h3 { margin:0;font-size:16px;letter-spacing:-.03em; }
+    .atlas .story-row p { margin:5px 0 0;color:var(--muted);font-size:10px; }
+    .atlas .story-row .fact { color:var(--muted);font-size:11px;line-height:1.55; }
+    .atlas .story-row .price { color:var(--cobalt);font-family:ui-monospace,Consolas,monospace;font-size:18px;font-weight:800; }
+    .atlas .folio { border-left:1px solid var(--ink);padding-left:24px; }
+    .atlas .folio h2 { margin:0;font-size:16px; }
+    .atlas .folio-card { margin-top:16px;border-top:5px solid var(--clay);background:#e8e0d3;padding:16px; }
+    .atlas .folio-card.blue { border-top-color:var(--cobalt);background:#e3e5e6; }
+    .atlas .folio-card small { color:var(--muted);font-size:9px; }
+    .atlas .folio-card h3 { margin:10px 0 0;font-size:18px;line-height:1.2; }
+    .atlas .folio-card p { margin:9px 0 0;color:var(--muted);font-size:11px;line-height:1.6; }
+    .atlas .folio-card a { display:inline-block;margin-top:16px;color:var(--cobalt);font-size:11px;font-weight:800; }
+    .atlas .facts { display:grid;grid-template-columns:repeat(3,1fr);margin-top:18px;border:1px solid var(--ink); }
+    .atlas .facts div { min-height:82px;border-left:1px solid var(--ink);padding:13px; }
+    .atlas .facts div:first-child { border-left:0; }
+    .atlas .facts small { color:var(--muted);font-size:9px; }
+    .atlas .facts strong { display:block;margin-top:9px;font-size:19px; }
+
+    @media (max-width: 900px) {
+      .direction-switcher { align-items: flex-start; flex-direction: column; }
+      .direction-tabs { width: 100%; overflow-x: auto; }
+      .ledger .site-header { grid-template-columns: 1fr auto; padding-inline: 14px; }
+      .ledger .primary-nav { display: none; }
+      .ledger .header-actions span:first-child { display:none; }
+      .ledger .update-rail { padding-inline: 14px; }
+      .ledger .update-rail > span:not(.live) { display:none; }
+      .ledger .hero-grid { grid-template-columns:1fr;width:calc(100% - 28px);padding:35px 0; }
+      .ledger h1 { max-width: 360px; font-size:43px; line-height:1.02; }
+      .ledger .lede { font-size:16px;line-height:1.68; }
+      .ledger .quick { flex-wrap:wrap;row-gap:8px; }
+      .ledger .pulse-head { align-items:flex-start;gap:12px; }
+      .ledger .decision-inner { grid-template-columns:1fr;width:calc(100% - 28px); }
+      .ledger .filters { grid-template-columns:1fr 1fr; }
+      .ledger .catalog-preview { width:calc(100% - 28px); }
+      .ledger .catalog-head { display:none; }
+      .ledger .catalog-row { grid-template-columns:28px 1fr auto;gap:12px; }
+      .ledger .catalog-row > :nth-child(3), .ledger .catalog-row > :nth-child(4) { display:none; }
+      .workbench { grid-template-columns:1fr; }
+      .workbench .side { display:none; }
+      .workbench .topbar { grid-template-columns:1fr auto;padding-inline:14px; }
+      .workbench .time-control { display:none; }
+      .workbench .workspace { padding:18px 14px; }
+      .workbench .metrics { grid-template-columns:1fr 1fr; }
+      .workbench .work-grid { grid-template-columns:1fr; }
+      .workbench .filters { display:none; }
+      .workbench .table-head { display:none; }
+      .workbench .table-row { grid-template-columns:1fr auto; }
+      .workbench .table-row > :nth-child(2),.workbench .table-row > :nth-child(3),.workbench .table-row > :nth-child(5){display:none;}
+      .atlas .site-header { padding-inline:14px; }
+      .atlas .primary-nav,.atlas .edition { display:none; }
+      .atlas .hero,.atlas .atlas-grid { width:calc(100% - 28px); }
+      .atlas .hero-top,.atlas .atlas-grid { grid-template-columns:1fr;gap:26px; }
+      .atlas h1 { font-size:49px; }
+      .atlas .story-row { grid-template-columns:30px 1fr auto; }
+      .atlas .story-row .fact { display:none; }
+      .atlas .folio { border-left:0;border-top:1px solid var(--ink);padding:22px 0 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="direction-switcher" data-vds-layer="furniture">
+    <div><div class="switcher-title">AI Price Radar · 全站 UI 方向预览</div><div class="switcher-note">真实文案与数据长度 · 选择一个方向后再进入全站实施</div></div>
+    <nav class="direction-tabs" aria-label="设计方向">
+      <a href="?direction=signal-ledger" data-direction="signal-ledger">01 · Signal Ledger</a>
+      <a href="?direction=radar-workbench" data-direction="radar-workbench">02 · Radar Workbench</a>
+      <a href="?direction=editorial-atlas" data-direction="editorial-atlas">03 · Editorial Atlas</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="signal-ledger" class="preview ledger" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="status-rail ledger-alignment semantic-signal responsive-disclosure">
+      <header class="site-header">
+        <div class="brand"><span class="logo">◎</span><span><strong>AI Price Radar</strong><small>公开报价记录</small></span></div>
+        <nav class="primary-nav"><span class="current">报价目录</span><span>购买指南</span><span>数据方法</span></nav>
+        <div class="header-actions"><span>关注清单</span><span>申请收录</span></div>
+      </header>
+      <div class="update-rail" data-vds-role="evidence" data-vds-cause="持续显示快照的新鲜度与来源证据"><span class="live"><strong>5 分钟前完成刷新</strong></span><span>快照 #1258 · 3,798 条报价 · 2,257 条有货</span><span>每条报价保留来源和观测时间</span></div>
+      <div class="hero-grid">
+        <div data-vds-layer="event">
+          <p class="eyebrow">公开 AI 商品报价</p>
+          <h1 data-vds-role="title">先分清商品，再比较价格</h1>
+          <p class="lede" data-vds-role="explanation">把公开店铺里的订阅、账号、API 额度和辅助服务整理到同一份报价台账。按库存、交付方式、来源和更新时间筛选，再进入商品页核对。</p>
+          <div class="search"><span>⌕</span><input aria-label="搜索产品或交付方式" placeholder="搜索产品或交付方式" /><button>查报价</button></div>
+          <div class="quick"><span>常用入口</span><b>OpenAI</b><b>Claude</b><b>仅看有货</b><b>购买前检查</b></div>
+        </div>
+        <aside class="pulse-board" data-vds-layer="evidence">
+          <div class="pulse-head"><h2>刚更新的有货报价</h2><span class="pill">5 分钟前刷新</span></div>
+          <div class="quote"><div><small>OpenAI · 170 条有货</small><h3>ChatGPT Pro 5x</h3></div><div><strong>¥488.00</strong><p>观测价</p></div></div>
+          <div class="quote"><div><small>Claude · 107 条有货</small><h3>Claude Pro</h3></div><div><strong>¥126.99</strong><p>观测价</p></div></div>
+          <div class="quote"><div><small>X · 30 条有货</small><h3>X Premium</h3></div><div><strong>¥50.00</strong><p>观测价</p></div></div>
+          <div class="board-link" data-vds-role="action">查看全部报价 <span>→</span></div>
+        </aside>
+      </div>
+      <section class="decision-band">
+        <div class="decision-inner"><div class="decision-label"><strong>已选条件</strong>这些条件会同时作用于下面的报价。</div><div class="filters"><div class="filter"><small>品牌</small><b>OpenAI ×</b></div><div class="filter"><small>商品</small><b>ChatGPT Free ×</b></div><div class="filter"><small>库存</small><b>仅看有货</b></div><div class="filter"><small>更新时间</small><b>24 小时内</b></div></div></div>
+      </section>
+      <section class="catalog-preview" data-vds-layer="evidence">
+        <div class="catalog-head"><span></span><span>商品与交付方式</span><span>信息覆盖</span><span>库存</span><span>观测价</span></div>
+        <div class="catalog-row"><span class="idx">01</span><div><h3>OpenAI 普通账号｜验证码直登｜长效微软邮箱交付</h3><p>成品账号 · 自动发货 · 期限未注明 · 4 家店铺</p></div><div class="coverage"><strong>91 / 100</strong><p>31 个来源</p></div><span class="stock">56 条有货</span><span class="price">¥1.00</span></div>
+        <div class="catalog-row"><span class="idx">02</span><div><h3>ChatGPT Plus 个人订阅</h3><p>订阅 / 直充 · 人工交付 · 1 个月 · 12 家店铺</p></div><div class="coverage"><strong>98 / 100</strong><p>信息充足</p></div><span class="stock">322 条有货</span><span class="price">¥11.50</span></div>
+      </section>
+    </section>
+
+    <section id="radar-workbench" class="preview workbench" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="persistent-navigation filter-workbench view-mode status-metrics">
+      <aside class="side" data-vds-layer="furniture">
+        <div class="brand"><span class="logo">◎</span><span><strong>AI Price Radar</strong><small>报价监测工作台</small></span></div>
+        <div class="side-label">比较</div><div class="side-link current">报价工作台</div><div class="side-link">关注清单</div><div class="side-link">价格变化</div>
+        <div class="side-label">理解</div><div class="side-link">购买指南</div><div class="side-link">数据方法</div><div class="side-link">纠错记录</div>
+        <div class="side-label">参与</div><div class="side-link">申请收录</div><div class="side-link">开源项目</div>
+        <div class="side-status"><b>数据刷新正常</b>快照 #1258<br />上次完成：5 分钟前<br />下一次库存检查：4 分钟后</div>
+      </aside>
+      <div class="app">
+        <header class="topbar"><div class="global-search">⌕&nbsp;&nbsp;搜索产品、品牌或交付方式</div><button class="time-control">最近 24 小时⌄</button><button class="header-button">提交来源</button></header>
+        <div class="workspace">
+          <div class="workspace-head"><div><h1 data-vds-role="title">报价工作台</h1><p data-vds-role="explanation">先锁定商品口径，再对比价格、库存、来源和更新时间。</p></div><div class="view-switch"><span class="current">列表</span><span>表格</span><span>变化</span></div></div>
+          <div class="metrics" data-vds-role="evidence"><div class="metric"><small>当前报价</small><strong>3,798</strong><em>+12 本轮新增</em></div><div class="metric"><small>有货报价</small><strong>2,257</strong><em>59.4% 可购买</em></div><div class="metric"><small>纳入统计</small><strong>1,763</strong><em>排除异常口径</em></div><div class="metric"><small>数据新鲜度</small><strong>5 min</strong><em>快照 #1258</em></div></div>
+          <div class="work-grid">
+            <aside class="filters"><h2>筛选报价 <span style="float:right;color:var(--signal)">3 已选</span></h2><div class="filter-group"><strong>品牌</strong><div class="chips"><span class="chip on">OpenAI</span><span class="chip">Claude</span><span class="chip">Gemini</span><span class="chip">Grok</span></div></div><div class="filter-group"><strong>商品类型</strong><div class="chips"><span class="chip on">成品账号</span><span class="chip">订阅</span><span class="chip">API</span><span class="chip">团队席位</span></div></div><div class="filter-group"><strong>价格上限 · ¥200</strong><div class="range"></div></div><div class="filter-group"><strong>状态</strong><div class="chips"><span class="chip on">有货</span><span class="chip on">24 小时内更新</span></div></div></aside>
+            <section class="table-shell" data-vds-layer="evidence"><div class="table-title"><h2>OpenAI · 当前可比较报价</h2><span>99 组 · 按近期最低价排序</span></div><div class="table-head"><span>商品与来源</span><span>覆盖</span><span>交付</span><span>库存</span><span>价格</span></div>
+              <div class="table-row"><div><h3>ChatGPT Free 普通账号｜长效微软邮箱交付</h3><p>4 家店铺 · 成品账号 · 期限未注明</p></div><span class="coverage">91 / 100</span><span>自动发货</span><span class="tag">56 条有货</span><span class="price">¥1.00</span></div>
+              <div class="table-row"><div><h3>ChatGPT Plus 个人订阅</h3><p>12 家店铺 · 订阅 / 直充 · 1 个月</p></div><span class="coverage">98 / 100</span><span>人工交付</span><span class="tag">322 条有货</span><span class="price">¥11.50</span></div>
+              <div class="table-row"><div><h3>OpenAI API 额度｜独立密钥交付</h3><p>8 家店铺 · API 额度 · 期限未注明</p></div><span class="coverage">94 / 100</span><span>自动发货</span><span class="tag">43 条有货</span><span class="price">¥18.00</span></div>
+              <div class="table-row"><div><h3>ChatGPT Pro 5x｜成品号</h3><p>6 家店铺 · 成品账号 · 1 个月</p></div><span class="coverage">100 / 100</span><span>人工交付</span><span class="tag">170 条有货</span><span class="price">¥488.00</span></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="editorial-atlas" class="preview atlas" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="editorial-scale chapter-index evidence-stories color-coded-guidance">
+      <header class="site-header"><div class="brand"><span class="logo">◎</span><span><strong>AI Price Radar</strong><small>价格与购买指南</small></span></div><nav class="primary-nav"><span>报价</span><span>购买指南</span><span>数据方法</span><span>关注</span></nav><div class="edition">公开报价记录<br />2026 · 08 · 22</div></header>
+      <section class="hero" data-vds-layer="event"><div class="hero-top"><div><p class="chapter">Price atlas / 公开报价图谱</p><h1 data-vds-role="title">价格只是入口，条件决定能否比较</h1></div><p class="manifesto" data-vds-role="explanation"><strong>一份面向购买决策的公开记录</strong>把商品口径、价格、库存、交付方式、来源与更新时间放回同一个上下文。</p></div><div class="search-line"><div>⌕&nbsp;&nbsp;<b>查找产品</b>&nbsp;&nbsp;ChatGPT Plus、Claude Pro、API 额度…</div><button>开始查价 →</button></div><div class="facts"><div><small>本轮报价</small><strong>3,798 条</strong></div><div><small>有货报价</small><strong>2,257 条</strong></div><div><small>最后更新</small><strong>5 分钟前</strong></div></div></section>
+      <section class="atlas-grid"><div><div class="section-head"><h2>本轮值得先看的报价</h2><span>按可比性、库存与更新时间排序</span></div><div class="story-row"><span class="num">01</span><div><h3>ChatGPT Plus 个人订阅</h3><p>订阅 / 直充 · 1 个月 · 12 家店铺</p></div><span class="fact">322 条有货<br />信息覆盖 98 / 100</span><span class="price">¥11.50</span></div><div class="story-row"><span class="num">02</span><div><h3>Claude Pro 个人会员</h3><p>订阅 / 充值 · 1 个月 · 8 家店铺</p></div><span class="fact">107 条有货<br />信息覆盖 100 / 100</span><span class="price">¥126.99</span></div><div class="story-row"><span class="num">03</span><div><h3>OpenAI API 额度｜独立密钥交付</h3><p>API 额度 · 自动发货 · 8 家店铺</p></div><span class="fact">43 条有货<br />信息覆盖 94 / 100</span><span class="price">¥18.00</span></div></div><aside class="folio"><h2>买前与买后</h2><div class="folio-card"><small>购买前 · 控制权</small><h3>账号能不能由你自己改资料？</h3><p>先核对登录凭据、邮箱、恢复渠道和 MFA 的控制方式。</p><a>查看检查清单 →</a></div><div class="folio-card blue"><small>购买后 · 状态</small><h3>如何确认订阅已经生效？</h3><p>从官方账户页核对套餐、期限、账单和续费状态。</p><a>查看操作步骤 →</a></div></aside></section>
+    </section>
+  </main>
+  <script>
+    const valid = ["signal-ledger", "radar-workbench", "editorial-atlas"];
+    const requested = new URLSearchParams(location.search).get("direction");
+    const active = valid.includes(requested) ? requested : valid[0];
+    document.querySelectorAll(".preview").forEach((node) => node.classList.toggle("active", node.id === active));
+    document.querySelectorAll("[data-direction]").forEach((link) => {
+      if (link.dataset.direction === active) link.setAttribute("aria-current", "page");
+    });
+  </script>
+</body>
+</html>

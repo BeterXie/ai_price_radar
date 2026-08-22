@@ -434,6 +434,7 @@ def get_product_group_page(
 def get_catalog_group_page(
     db: Session,
     *,
+    q: str = "",
     platform: str = "",
     product_slug: str = "",
     offset: int,
@@ -449,6 +450,13 @@ def get_catalog_group_page(
     )
     if platform:
         stmt = stmt.where(Product.platform == platform)
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(or_(
+            Product.display_name.ilike(pattern),
+            Product.slug.ilike(pattern),
+            RawProduct.original_name.ilike(pattern),
+        ))
     if product_slug:
         stmt = stmt.where(Product.slug == product_slug)
     offers = list(db.scalars(_apply_offer_filters(stmt, filters)).unique())

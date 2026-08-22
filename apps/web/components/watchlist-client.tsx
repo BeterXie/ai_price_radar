@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BellRinging, CheckCircle, Copy, Rss, Trash } from "@phosphor-icons/react";
+import { ArrowClockwise, BellRinging, CheckCircle, Copy, Rss, Trash } from "@phosphor-icons/react";
 import type { CatalogResponse, ProductCard } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
 import { readWatchlist, WATCHLIST_EVENT, type WatchItem, writeWatchlist } from "@/components/watch-button";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
-export function WatchlistClient() {
+export function WatchlistClient({ previewState }: { previewState?: "empty" | "loading" | "error" }) {
   const [items, setItems] = useState<WatchItem[]>([]);
   const [products, setProducts] = useState<Record<string, ProductCard>>({});
   const [copied, setCopied] = useState(false);
@@ -72,22 +72,58 @@ export function WatchlistClient() {
     window.setTimeout(() => setCopied(false), 1600);
   }
 
-  if (!items.length) {
+  if (previewState === "loading") {
     return (
-      <div className="empty-state">
+      <section className="surface-panel p-6" role="status" aria-busy="true" data-vds-layer="evidence">
+        <p className="section-kicker">正在读取当前浏览器</p>
+        <h2 className="mt-3 text-2xl font-semibold">正在加载关注清单</h2>
+        <div className="mt-6 grid gap-2" aria-hidden="true">
+          <span className="h-14 animate-pulse rounded-[8px] bg-[color:var(--subtle)]" />
+          <span className="h-14 animate-pulse rounded-[8px] bg-[color:var(--subtle)]" />
+        </div>
+      </section>
+    );
+  }
+
+  if (previewState === "error") {
+    return (
+      <div className="empty-state" role="alert" data-vds-layer="evidence">
+        <ArrowClockwise className="mx-auto" size={34} />
+        <h2 className="mt-4 text-2xl font-semibold text-[color:var(--ink)]">关注清单暂时无法读取</h2>
+        <p className="mt-3 text-sm leading-6">当前浏览器中的内容没有被修改。退出错误预览后可以重新读取。</p>
+        <Link href="/watchlist" className="button-primary mt-6">重新读取</Link>
+      </div>
+    );
+  }
+
+  if (previewState === "empty" || !items.length) {
+    return (
+      <div className="empty-state" role="status">
         <BellRinging className="mx-auto" size={34} />
-        <h2 className="mt-4 text-2xl font-semibold">关注清单还是空的</h2>
-        <p className="mt-3 text-sm leading-6 text-black/50">进入任意商品页，点击“加入关注清单”。关注数据只保存在当前浏览器。</p>
+        <h2 className="mt-4 text-2xl font-semibold text-[color:var(--ink)]">还没有关注商品</h2>
+        <p className="mt-3 text-sm leading-6">进入任意商品页，点击“加入关注清单”。这里会显示当前观测价、库存和更新时间。</p>
         <Link href="/products" className="button-primary mt-6">浏览报价目录</Link>
       </div>
     );
   }
 
+  const reachedCount = items.filter((item) => {
+    const product = products[item.slug];
+    const current = product?.lowest_price ? Number(product.lowest_price) : null;
+    const threshold = item.threshold ? Number(item.threshold) : null;
+    return Boolean(product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold)));
+  }).length;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-vds-layer="evidence" data-vds-action="local-state price-threshold live-status feed-recovery">
+      <section className="data-strip sm:grid-cols-3" aria-label="关注清单概况">
+        <div className="data-cell"><p className="data-label">关注商品</p><p className="data-value">{items.length}</p></div>
+        <div className="data-cell"><p className="data-label">达到提醒条件</p><p className="data-value">{reachedCount}</p></div>
+        <div className="data-cell"><p className="data-label">保存位置</p><p className="data-value !text-base">当前浏览器</p></div>
+      </section>
       <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
         <div className="grid gap-3 border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 text-xs text-[color:var(--muted)] md:grid-cols-[1fr_150px_150px_110px]">
-          <span>商品与当前状态</span><span>近期有货最低价</span><span>提醒目标价</span><span>操作</span>
+          <span>商品与当前状态</span><span>近期有货观测价</span><span>提醒目标价</span><span>操作</span>
         </div>
         <div className="divide-y divide-[color:var(--line)]">
           {items.map((item) => {
@@ -96,18 +132,18 @@ export function WatchlistClient() {
             const threshold = item.threshold ? Number(item.threshold) : null;
             const reached = Boolean(product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold)));
             return (
-              <div key={item.slug} className="grid gap-4 px-5 py-5 md:grid-cols-[1fr_150px_150px_110px] md:items-center">
+              <div key={item.slug} className="watchlist-row grid gap-4 px-5 py-5 md:grid-cols-[1fr_150px_150px_110px] md:items-center">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Link href={`/products/${encodeURIComponent(item.slug)}`} className="font-semibold hover:underline">{product?.display_name || item.name}</Link>
                     {reached && <span className="status-pill status-success !py-1 !text-[10px]"><CheckCircle size={12} weight="fill" />达到条件</span>}
                   </div>
-                  <p className="mt-2 text-xs text-black/45">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条纳入统计 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "报价暂时无法加载"}</p>
+                  <p className="mt-2 text-xs text-[color:var(--muted)]">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条纳入统计 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "报价暂时无法加载，可稍后刷新"}</p>
                 </div>
                 <div className="font-semibold">{product ? money(product.lowest_price, product.price_currency) : "暂无"}</div>
                 <label className="text-xs text-black/45">
                   <span className="sr-only">{item.name} 提醒目标价</span>
-                  <span className="flex items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>{product?.price_currency || item.currency || "CNY"}</span><input value={item.threshold} onChange={(event) => updateThreshold(item.slug, event.target.value)} inputMode="decimal" placeholder="不限" className="w-full bg-transparent py-2.5 pl-1 outline-none" /></span>
+                  <span className="flex min-h-11 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>{product?.price_currency || item.currency || "CNY"}</span><input value={item.threshold} onChange={(event) => updateThreshold(item.slug, event.target.value)} inputMode="decimal" placeholder="不限" className="w-full bg-transparent py-2.5 pl-1 outline-none" /></span>
                 </label>
                 <button type="button" onClick={() => remove(item.slug)} className="button-tertiary !justify-start !px-0 text-[color:var(--danger)]"><Trash size={16} />移除</button>
               </div>

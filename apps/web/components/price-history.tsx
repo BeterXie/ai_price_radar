@@ -31,7 +31,7 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
     .map(Number)
     .filter(Number.isFinite);
   if (recent.length < 2 || priceValues.length < 2) {
-    return <div className="grid h-56 place-items-center rounded-[18px] border hairline text-sm text-black/45">历史数据不足，暂时无法显示趋势</div>;
+    return <div className="empty-state grid h-56 place-items-center !p-6 text-sm">历史数据不足，暂时无法显示趋势</div>;
   }
 
   const min = Math.min(...priceValues);
@@ -47,11 +47,11 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
   const lastMedian = [...medians].reverse().find((value): value is number => value !== null);
 
   return (
-    <figure className="rounded-[18px] border hairline bg-[color:var(--panel)] p-5">
+    <figure className="rounded-[9px] border hairline bg-[color:var(--panel)] p-5">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap gap-4">
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-black" />近期有货最低价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest, currency)}</span>
-          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-[color:var(--line-strong)]" />常见价格 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian, currency)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 bg-[color:var(--info)]" />近期有货观测价 {lastLowest === undefined ? "暂无" : formatPrice(lastLowest, currency)}</span>
+          <span className="flex items-center gap-2"><span className="h-0.5 w-5 border-t-2 border-dashed border-[color:var(--line-strong)]" />常见观测价 {lastMedian === undefined ? "暂无" : formatPrice(lastMedian, currency)}</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 bg-[color:var(--accent)]" />有货观测</span>
         </div>
         <span className="text-black/40">最近 {recent.length} 天</span>
@@ -66,10 +66,10 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
             return <rect key={`${point.bucket_at}-stock`} x={Math.max(0, x)} y={height + 36 - barHeight} width={barWidth} height={barHeight} fill="var(--accent)" opacity="0.9" />;
           })}
           <path d={linePath(medians, min, max, width, height)} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="7 6" opacity="0.45" vectorEffect="non-scaling-stroke" />
-          <path d={linePath(lowest, min, max, width, height)} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+          <path d={linePath(lowest, min, max, width, height)} fill="none" stroke="var(--info)" strokeWidth="3" vectorEffect="non-scaling-stroke" />
         </svg>
       </div>
-      <figcaption className="mt-3 flex justify-between mono text-[11px] text-black/40"><span>{firstDate}</span><span>低 {formatPrice(min, currency)} · 高 {formatPrice(max, currency)}</span><span>{lastDate}</span></figcaption>
+      <figcaption className="mt-3 flex justify-between text-[11px] font-medium text-[color:var(--muted)]"><span>{firstDate}</span><span>范围 {formatPrice(min, currency)} – {formatPrice(max, currency)}</span><span>{lastDate}</span></figcaption>
     </figure>
   );
 }

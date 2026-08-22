@@ -11,12 +11,12 @@ type GuideIndexProps = {
 export function GuideIndex({ id, title, description, children, empty = false }: GuideIndexProps) {
   return (
     <section id={id} className="scroll-mt-24 border-t border-[color:var(--line-strong)] py-10 sm:py-12">
-      <div className="max-w-3xl">
+      <div className="guide-index-heading max-w-3xl">
         <h2 className="text-3xl font-semibold tracking-[-.045em]">{title}</h2>
         {description ? <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">{description}</p> : null}
       </div>
       {empty ? (
-        <div className="mt-6 rounded-[14px] border hairline bg-[color:var(--panel)] p-6 text-sm text-[color:var(--muted)]">
+        <div className="empty-state mt-6 !p-6 text-sm">
           没有符合当前条件的教程。可以清空筛选后再试。
         </div>
       ) : (

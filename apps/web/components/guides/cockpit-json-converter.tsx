@@ -36,12 +36,12 @@ function downloadName(): string {
   return `cockpit-import-${timestamp}.json`;
 }
 
-export function CockpitJsonConverter() {
+export function CockpitJsonConverter({ previewState }: { previewState?: "error" }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputText, setInputText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<readonly string[]>([]);
   const [result, setResult] = useState<CockpitConversionResult>({ accounts: [], issues: [] });
-  const [error, setError] = useState("");
+  const [error, setError] = useState(previewState === "error" ? "JSON 解析失败。输入内容仍可修改，请检查格式后重新转换。" : "");
   const [fileSummary, setFileSummary] = useState("");
 
   const outputText = useMemo(() => {
@@ -147,15 +147,15 @@ export function CockpitJsonConverter() {
   }
 
   return (
-    <main id="main-content" className="shell py-5 sm:py-8">
-      <header className="page-hero !pt-6">
+    <main id="main-content" className="shell py-5 sm:py-8" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="privacy-preflight dual-pane-conversion local-validation explicit-output">
+      <header className="page-hero !pt-6" data-vds-layer="event">
         <Link href="/guides/products/codex-access" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold hover:underline">
           <ArrowLeft size={18} aria-hidden="true" />
           返回 Codex 教程
         </Link>
         <p className="eyebrow mt-5"><span className="signal-dot" aria-hidden="true" />浏览器本地工具</p>
-        <h1 className="page-title mt-5">JSON 转 Cockpit</h1>
-        <p className="lede mt-5">
+        <h1 className="page-title mt-5" data-vds-role="title">JSON 转 Cockpit</h1>
+        <p className="lede mt-5" data-vds-role="explanation">
           把常见 ChatGPT Session、CPA、Sub2、Codex auth.json 等账号 JSON 转成 Cockpit Tools 可导入的格式。支持粘贴 JSON 或批量选择文件。
         </p>
       </header>
@@ -175,10 +175,10 @@ export function CockpitJsonConverter() {
       </section>
 
       <div className="mt-8 grid items-start gap-5 xl:grid-cols-2">
-        <section className="rounded-[14px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 sm:p-6" aria-labelledby="converter-input-title">
+        <section className="surface-panel p-5 sm:p-6" aria-labelledby="converter-input-title" data-vds-layer="evidence">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="mono text-xs text-black/45">01 / 输入</p>
+              <p className="section-kicker">步骤 1 · 输入</p>
               <h2 id="converter-input-title" className="mt-2 text-2xl font-semibold tracking-[-.035em]">选择文件或粘贴 JSON</h2>
             </div>
             <button type="button" onClick={clearAll} className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold hover:underline">
@@ -250,10 +250,10 @@ export function CockpitJsonConverter() {
           </button>
         </section>
 
-        <section className="rounded-[14px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 sm:p-6" aria-labelledby="converter-output-title">
+        <section className="surface-panel p-5 sm:p-6" aria-labelledby="converter-output-title" data-vds-layer="evidence">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="mono text-xs text-black/45">02 / 输出</p>
+              <p className="section-kicker">步骤 2 · 输出</p>
               <h2 id="converter-output-title" className="mt-2 text-2xl font-semibold tracking-[-.035em]">Cockpit 导入 JSON</h2>
             </div>
             <button

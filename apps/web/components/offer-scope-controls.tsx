@@ -77,11 +77,11 @@ function FilterForm({
         </label>
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="text-xs font-medium text-black/55">最低价
-          <span className="mt-1.5 flex w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="min_price" defaultValue={values.min_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
+        <label className="text-xs font-medium text-black/55">价格下限
+          <span className="mt-1.5 flex min-h-11 w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="min_price" defaultValue={values.min_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
         </label>
-        <label className="text-xs font-medium text-black/55">最高价
-          <span className="mt-1.5 flex w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="max_price" defaultValue={values.max_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
+        <label className="text-xs font-medium text-black/55">价格上限
+          <span className="mt-1.5 flex min-h-11 w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="max_price" defaultValue={values.max_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
         </label>
         <label className="mb-2 flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="in_stock" value="true" defaultChecked={values.in_stock === "true"} className="h-5 w-5 accent-[color:var(--brand-strong)]" />仅看有货</label>
         <button type="submit" className="button-primary tactile ml-auto">应用筛选</button>
@@ -95,22 +95,23 @@ export function OfferScopeControls({
   values,
   resetHref,
   hiddenFields = {},
+  defaultOpen = false,
 }: {
   action: string;
   values: OfferFilterValues;
   resetHref: string;
   hiddenFields?: Record<string, string>;
+  defaultOpen?: boolean;
 }) {
   const activeFilterCount = Object.entries(values).filter(([name, value]) => name === "comparable" ? value === "false" : Boolean(value)).length;
   return (
     <section className="offer-filters py-5" aria-labelledby="offer-filter-title">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div><h2 id="offer-filter-title" className="text-sm font-semibold">报价筛选</h2><p className="mt-1 text-xs text-[color:var(--muted)]">下方条件只筛选当前品牌、商品和来源。</p></div>
+        <div><h2 id="offer-filter-title" className="text-sm font-semibold">更多条件</h2><p className="mt-1 text-xs text-[color:var(--muted)]">继续按交付形态、期限、质保和价格范围缩小报价。</p></div>
         <Link href={resetHref} className="button-tertiary !min-h-9 !px-3 text-xs">重置筛选</Link>
       </div>
-      <div className="hidden md:block"><FilterForm action={action} values={values} hiddenFields={hiddenFields} /></div>
-      <details className="offer-filter-disclosure md:hidden">
-        <summary>筛选报价 <span>{activeFilterCount ? `${activeFilterCount} 项已选` : "全部条件"}</span></summary>
+      <details className="offer-filter-disclosure" open={defaultOpen}>
+        <summary>展开筛选 <span>{activeFilterCount ? `${activeFilterCount} 项已选` : "全部条件"}</span></summary>
         <div className="mt-3"><FilterForm action={action} values={values} hiddenFields={hiddenFields} /></div>
       </details>
     </section>

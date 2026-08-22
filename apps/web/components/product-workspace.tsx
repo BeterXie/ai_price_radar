@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowSquareOut, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { ArrowSquareOut, Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
 import { PriceHistory } from "@/components/price-history";
@@ -81,6 +81,7 @@ export function ProductWorkspace({
     },
   } : null;
   const filters = filterValues(rawParams);
+  const previewState = single(rawParams, "state");
   const productGuide = getProductGuide(product.slug);
   const guideFaq = productGuide?.faq[0];
 
@@ -96,17 +97,17 @@ export function ProductWorkspace({
 
       <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
         <div className="data-strip sm:grid-cols-3">
-          <div className="data-cell"><p className="data-label">近期有货最低价</p><p className="data-value">{money(product.lowest_price, product.price_currency)}</p></div>
-          <div className="data-cell"><p className="data-label">常见价格</p><p className="data-value">{money(product.median_price, product.price_currency)}</p></div>
+          <div className="data-cell"><p className="data-label">近期有货观测价</p><p className="data-value">{money(product.lowest_price, product.price_currency)}</p></div>
+          <div className="data-cell"><p className="data-label">常见观测价</p><p className="data-value">{money(product.median_price, product.price_currency)}</p></div>
           <div className="data-cell"><p className="data-label">信息覆盖</p><p className="data-value">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">/ 100，{product.data_quality_label}</span></p><p className="mt-1 text-xs text-[color:var(--muted)]">{product.source_count} 个来源</p></div>
         </div>
         <WatchButton slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
       </section>
 
       {product.official_reference && (
-        <section className="surface-panel mt-4 border-l-4 !border-l-[color:var(--info)] p-5">
+        <section className="evidence-callout mt-4" data-vds-layer="evidence">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div><p className="mono text-xs tracking-[.12em] text-black/45">官方价格 · 更新于 {product.official_reference.checked_at}</p><h2 className="mt-2 text-xl font-semibold">{product.official_reference.plan} · {product.official_reference.currency} {product.official_reference.price} / 月</h2><p className="mt-2 max-w-3xl text-xs leading-5 text-black/50">{product.official_reference.note}</p></div>
+            <div><p className="section-kicker">官方价格参考 · 更新于 {product.official_reference.checked_at}</p><h2 className="mt-2 text-xl font-semibold">{product.official_reference.plan} · {product.official_reference.currency} {product.official_reference.price} / 月</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted)]">{product.official_reference.note}</p></div>
             <a href={product.official_reference.url} target="_blank" rel="noreferrer" className="button-secondary shrink-0">查看官方来源 <ArrowSquareOut size={16} /></a>
           </div>
         </section>
@@ -145,11 +146,11 @@ export function ProductWorkspace({
                 ))}
               </div>
             </div>
-            <div className="grid gap-5">
+          <div className="grid gap-5">
               <div>
                 <h3 className="text-sm font-semibold">购买前提示</h3>
                 <ul className="mt-3 grid gap-2 text-sm leading-6 text-[color:var(--muted)]">
-                  {productGuide.buyingChecklist.slice(0, 3).map((item) => <li key={item} className="border-l-2 border-[color:var(--brand)] pl-3">{item}</li>)}
+                  {productGuide.buyingChecklist.slice(0, 3).map((item) => <li key={item} className="flex items-start gap-2"><span className="mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-[color:var(--accent)] text-[color:var(--accent-ink)]"><Check size={12} weight="bold" /></span><span>{item}</span></li>)}
                 </ul>
               </div>
               {guideFaq && (
@@ -171,9 +172,9 @@ export function ProductWorkspace({
       <section className="border-t border-[color:var(--line-strong)] py-12" aria-labelledby="product-comparison-guide">
         <div className="max-w-5xl">
           <h2 id="product-comparison-guide" className="text-3xl font-semibold tracking-[-.04em]">购买前检查</h2>
-          <ul className="mt-6 grid gap-4 text-sm leading-6 text-[color:var(--muted)] md:grid-cols-2">
+          <ul className="decision-list mt-6 grid text-sm leading-6 text-[color:var(--muted)] md:grid-cols-2">
             {seo.comparisonPoints.map((point) => (
-              <li key={point} className="border-l-2 border-[color:var(--accent)] pl-4">{point}</li>
+              <li key={point}>{point}</li>
             ))}
           </ul>
           <div className="mt-10 border-t hairline">
@@ -189,8 +190,8 @@ export function ProductWorkspace({
       </section>
 
       <section className="grid gap-10 border-t border-[color:var(--line-strong)] py-12 lg:grid-cols-[1.35fr_.65fr]">
-        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-black/50">按天显示近期有货最低价、常见价格和有货数量。</p><PriceHistory points={product.trend} /></div>
-        <aside><ReportForm /></aside>
+        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-[color:var(--muted)]">按天显示近期有货观测价、常见观测价和有货数量。</p><PriceHistory points={previewState === "history-empty" ? [] : product.trend} /></div>
+        <aside><ReportForm previewState={previewState === "report-success" ? "sent" : previewState === "report-error" ? "error" : undefined} /></aside>
       </section>
       <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(product.snapshot_at)}</p>
     </>

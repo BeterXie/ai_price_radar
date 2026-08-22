@@ -106,10 +106,10 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
       <summary className="grid min-h-[84px] cursor-pointer list-none gap-4 px-4 py-4 marker:hidden sm:px-5 lg:grid-cols-[minmax(0,1fr)_150px_150px_32px] lg:items-center [&::-webkit-details-marker]:hidden">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {productName && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[10px] font-medium">{productName}</span>}
+            {productName && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[11px] font-medium">{productName}</span>}
             <h3 className="[overflow-wrap:anywhere] text-[15px] font-semibold leading-6 tracking-[-.01em]">{offer.original_name}</h3>
-            {offer.is_trusted_price ? <span className="status-pill status-success !py-1 !text-[10px]">纳入近期价格统计</span> : !offer.is_comparable ? <span className="status-pill status-warning !py-1 !text-[10px]">类型不同，不直接比价</span> : <span className="status-pill status-danger !py-1 !text-[10px]">价格明显偏离同类报价</span>}
-            {group && group.shop_count > 1 && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[10px]">同款 {group.shop_count} 家店铺</span>}
+            {offer.is_trusted_price ? <span className="status-pill status-success !py-1 !text-[11px]">纳入近期价格统计</span> : !offer.is_comparable ? <span className="status-pill status-warning !py-1 !text-[11px]">类型不同，不直接比价</span> : <span className="status-pill status-danger !py-1 !text-[11px]">价格明显偏离同类报价</span>}
+            {group && group.shop_count > 1 && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[11px]">同款 {group.shop_count} 家店铺</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">
             <span className="flex items-center gap-1.5"><Storefront size={15} />{group ? `${group.shop_count} 家店铺 · ${group.offer_count} 条报价` : offer.shop_name}</span>
@@ -185,7 +185,7 @@ function TableFrame({ children, footer }: { children: React.ReactNode; footer: R
     <div className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
       <div className="bg-[color:var(--subtle)] px-5 py-3 text-xs text-[color:var(--muted)]">
         <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看交付、售后和来源</div>
-        <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>最低价</span><span>详情</span></div>
+        <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>观测价</span><span>详情</span></div>
       </div>
       <div className="divide-y divide-[color:var(--line)]">{children}</div>
       {footer}

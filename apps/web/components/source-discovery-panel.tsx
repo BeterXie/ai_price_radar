@@ -115,7 +115,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
       </div>
       {error && <p className="rounded-[10px] bg-[#f2d8d2] p-4 text-[color:var(--danger)]">{error}</p>}
 
-      <div className="grid gap-px overflow-hidden rounded-[18px] border hairline bg-[color:var(--line)] sm:grid-cols-3 lg:grid-cols-5">
+      <div className="data-table-frame grid gap-px overflow-hidden border hairline bg-[color:var(--line)] sm:grid-cols-3 lg:grid-cols-5">
         {[
           ["发现原始 URL", funnel.discovered_raw],
           ["归一化候选", funnel.normalized],
@@ -130,10 +130,10 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
         ))}
       </div>
       <p className="text-xs text-black/50">
-        漏斗口径：统计各运行“首次新增候选”的首次验证转化（检测 / AI 命中 / 自动批准 / 待审 / 失败 / 转入收录），不是全量历史累计。
+        漏斗口径：统计各运行“首次新增候选”的首次验证转化（检测 / AI 命中 / 自动批准 / 待审 / 失败 / 转入收录）。全量历史累计不在此口径中。
       </p>
 
-      <div className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
+      <div className="data-table-frame overflow-hidden border hairline bg-[color:var(--panel)]">
         <div className="border-b hairline px-5 py-4 font-semibold">发现运行记录</div>
         <div className="divide-y divide-[color:var(--line)]">
           {runs.length === 0 && <p className="px-5 py-4 text-sm text-black/50">还没有发现运行记录。</p>}
@@ -142,7 +142,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
               <span className="mono text-xs text-black/40">#{run.id} · {run.trigger}</span>
               <div>
                 <p className="text-sm">
-                  {run.adapters.join("、")} · <span className="rounded-full bg-[color:var(--accent)] px-2 py-0.5 text-xs">{runStatusLabel(run.status)}</span>
+                  {run.adapters.join("、")} · <span className="status-pill status-info">{runStatusLabel(run.status)}</span>
                 </p>
                 <p className="mt-1 text-xs text-black/50">
                   原始 {run.discovered_raw_count} / 归一化 {run.normalized_count} / 重复 {run.duplicate_count} / 新增 {run.new_candidate_count} / 检测 {run.detected_count} / AI 命中 {run.ai_matched_count} / 自动批准 {run.auto_approved_count} / 待审 {run.pending_review_count} / 失败 {run.validation_failed_count} / 转入收录 {run.promoted_intake_count}
@@ -158,7 +158,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[18px] border hairline bg-[color:var(--panel)]">
+      <div className="data-table-frame overflow-hidden border hairline bg-[color:var(--panel)]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b hairline px-5 py-4">
           <div className="font-semibold">来源候选池</div>
           <div className="flex flex-wrap gap-2">
@@ -202,7 +202,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                 </div>
               </div>
               {expandedId === candidate.id && (
-                <div className="mt-4 grid gap-3 rounded-[12px] bg-[color:var(--accent)] p-4 text-sm">
+                <div className="mt-4 grid gap-3 rounded-[9px] bg-[color:var(--info-soft)] p-4 text-sm">
                   <p className="break-all">发现来源：{candidate.discovery_sources.join("、") || "未知"}</p>
                   <p className="break-all">候选键：{candidate.candidate_key}</p>
                   <p className="break-all">检测后来源：{candidate.detected_source_url || "未检测"}</p>

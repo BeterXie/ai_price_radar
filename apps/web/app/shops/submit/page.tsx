@@ -13,15 +13,22 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ShopSubmitPage() {
-  return (
-    <main id="main-content" className="shell py-12 md:py-16">
-      <section className="grid gap-10 lg:grid-cols-[.85fr_1.15fr] lg:gap-16">
-        <div className="lg:pt-4">
-          <p className="mono text-xs tracking-[.15em] text-black/45">来源收录</p>
-          <h1 className="mt-4 max-w-xl text-5xl font-semibold leading-[.96] tracking-[-.06em] sm:text-6xl">提交商品来源</h1>
-          <p className="mt-6 max-w-xl text-base leading-7 text-[color:var(--muted)]">提交公开店铺、商品页面或结构化 JSON Feed。来源类型默认自动识别，我们会核验可访问性、商品范围和报价信息，再决定是否收录。</p>
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
+export default async function ShopSubmitPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const rawState = Array.isArray(params.state) ? params.state.at(-1) : params.state;
+  const previewState = rawState === "success" ? "submitted" : rawState === "error" ? "error" : undefined;
+  return (
+    <main id="main-content" className="shell py-12 md:py-16" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="task-orientation eligibility-check structured-form explicit-feedback">
+      <section className="shop-submit-layout">
+        <div className="shop-submit-intro lg:pt-4">
+          <p className="eyebrow">来源收录</p>
+          <h1 className="page-title mt-4" data-vds-role="title">提交商品来源</h1>
+          <p className="lede mt-6" data-vds-role="explanation">提交公开店铺、商品页面或结构化 JSON Feed。系统会识别来源类型，并核验可访问性、商品范围和报价信息。</p>
+        </div>
+
+        <div className="shop-submit-criteria">
           <div className="mt-10 max-w-xl border-t border-black">
             {[
               { Icon: Eye, title: "核验公开页面", copy: "确认页面或 Feed 无需登录即可访问，并能稳定读取公开商品。" },
@@ -38,10 +45,10 @@ export default function ShopSubmitPage() {
             ))}
           </div>
 
-          <p className="mt-6 max-w-xl text-xs leading-5 text-black/45">提交申请不代表自动收录。非公开来源、不含目标商品或无法稳定核验的来源不会进入公开目录。</p>
+          <p className="mt-6 max-w-xl text-sm leading-6 text-[color:var(--muted)]">申请会先经过审核和读取验证。公开可访问、包含目标商品并能稳定核验的来源才会进入报价目录。</p>
         </div>
 
-        <ShopRequestForm />
+        <ShopRequestForm previewState={previewState} />
       </section>
     </main>
   );

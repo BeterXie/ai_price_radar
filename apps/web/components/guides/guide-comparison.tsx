@@ -2,7 +2,7 @@ export function GuideComparison({ title, columns, rows }: { title?: string; colu
   return (
     <div>
       {title ? <h3 className="text-lg font-semibold">{title}</h3> : null}
-      <div className={title ? "mt-4 hidden overflow-x-auto rounded-[14px] border hairline md:block" : "hidden overflow-x-auto rounded-[14px] border hairline md:block"}>
+      <div className={title ? "mt-4 hidden overflow-x-auto rounded-[9px] border hairline md:block" : "hidden overflow-x-auto rounded-[9px] border hairline md:block"}>
         <table className="w-full min-w-[620px] border-collapse text-left text-sm">
           <thead className="bg-black/[.045]">
             <tr>{columns.map((column) => <th key={column} scope="col" className="border-b hairline px-4 py-3 font-semibold">{column}</th>)}</tr>
@@ -22,7 +22,7 @@ export function GuideComparison({ title, columns, rows }: { title?: string; colu
       </div>
       <div className={title ? "mt-4 grid gap-3 md:hidden" : "grid gap-3 md:hidden"}>
         {rows.map((row, rowIndex) => (
-          <dl key={`${rowIndex}-${row[0] || "row"}`} className="rounded-[12px] border hairline bg-[color:var(--panel)] p-4">
+          <dl key={`${rowIndex}-${row[0] || "row"}`} className="rounded-[9px] border hairline bg-[color:var(--panel)] p-4">
             {columns.map((column, columnIndex) => (
               <div key={column} className="grid gap-1 border-b hairline py-3 first:pt-0 last:border-b-0 last:pb-0">
                 <dt className="text-xs font-semibold text-[color:var(--muted)]">{column}</dt>

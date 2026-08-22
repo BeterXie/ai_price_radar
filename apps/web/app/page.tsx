@@ -33,26 +33,35 @@ export default async function HomePage() {
   const data = await getProducts("sort=quality");
   const products = data.items.slice(0, 6);
   return (
-    <main id="main-content">
+    <main id="main-content" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="snapshot-rail ledger-alignment semantic-search responsive-recomposition">
+      <div className="snapshot-rail" data-vds-role="evidence" data-vds-cause="持续显示本轮报价的新鲜度与来源证据">
+        <div className="shell snapshot-rail-inner">
+          <span className="snapshot-state">{data.snapshot_at ? `${relativeTime(data.snapshot_at)}完成刷新` : "暂未取得刷新时间"}</span>
+          <span>快照 #{data.snapshot_id || "—"} · {data.offer_count} 条报价 · {data.in_stock_count} 条有货</span>
+          <span>每条报价保留来源和观测时间</span>
+        </div>
+      </div>
+
       <section className="home-hero border-b border-[color:var(--line-strong)]">
-        <div className="shell grid items-center gap-8 py-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,.78fr)] lg:py-14 xl:gap-12">
+        <div className="shell grid items-center gap-10 py-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,.72fr)] lg:py-14 xl:gap-16" data-vds-layer="event">
           <div className="min-w-0">
-            <p className="eyebrow">公开报价目录</p>
-            <h1 className="display-title mt-4">AI 订阅报价对比</h1>
-            <p className="lede mt-5">汇总公开店铺的订阅、账号和 API 额度报价，帮助你比较价格、库存、交付方式和更新时间。</p>
+            <p className="eyebrow">公开 AI 商品报价</p>
+            <h1 className="display-title mt-4" data-vds-role="title">先分清商品，<span className="whitespace-nowrap">再比较价格</span></h1>
+            <p className="lede mt-5" data-vds-role="explanation">把公开店铺里的订阅、账号、API 额度和辅助服务整理到同一份报价台账。按库存、交付方式、来源和更新时间筛选，再进入商品页核对。</p>
             <div className="mt-7 max-w-2xl"><SearchBox /></div>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[color:var(--muted)]">
-              <span className="font-medium">常用筛选</span>
+              <span className="font-medium">常用入口</span>
               <Link href="/products?platform=OpenAI" className="quick-link">OpenAI</Link>
               <Link href="/products?platform=Claude" className="quick-link">Claude</Link>
               <Link href="/products?in_stock=true" className="quick-link">仅看有货</Link>
+              <Link href="/guides/buying-checklist" className="quick-link">购买前检查</Link>
             </div>
           </div>
 
-          <aside className="live-board min-w-0 overflow-hidden" aria-label="近期有货报价">
+          <aside className="live-board min-w-0 overflow-hidden" aria-label="刚更新的有货报价" data-vds-layer="evidence">
             <div className="flex items-center justify-between gap-4 border-b border-[color:var(--line)] p-5">
-              <h2 className="text-lg font-semibold tracking-[-.025em]">最近更新</h2>
-              <span className={`status-pill ${data.snapshot_at ? "status-success" : "status-info"}`}>{data.snapshot_at ? `更新于 ${relativeTime(data.snapshot_at)}` : "暂无更新时间"}</span>
+              <h2 className="text-lg font-semibold tracking-[-.025em]">刚更新的有货报价</h2>
+              <span className={`status-pill ${data.snapshot_at ? "status-success" : "status-info"}`}>{data.snapshot_at ? `${relativeTime(data.snapshot_at)}刷新` : "暂无更新时间"}</span>
             </div>
             <div className="divide-y divide-[color:var(--line)]">
               {products.slice(0, 3).map((product) => (
@@ -64,12 +73,12 @@ export default async function HomePage() {
                   </div>
                   <div className="text-right">
                     <p className="mono text-lg font-semibold">{money(product.lowest_price, product.price_currency)}</p>
-                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">近期有货最低价</p>
+                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">观测价</p>
                   </div>
                 </Link>
               ))}
             </div>
-            <Link href="/products" className="live-board-link">查看全部报价 <ArrowRight size={17} /></Link>
+            <Link href="/products" className="live-board-link" data-vds-role="action">查看全部报价 <ArrowRight size={17} /></Link>
           </aside>
         </div>
 
@@ -81,16 +90,16 @@ export default async function HomePage() {
         </dl>
       </section>
 
-      <section className="shell py-12 sm:py-16">
-        <SectionIntro title="近期报价" description="优先显示有货、近期更新且没有明显偏离同类价格的商品。" action={<Link href="/products" className="button-secondary">查看全部报价 <ArrowRight size={17} /></Link>} />
-        <div className="mt-2">{products.map((product, index) => <ProductCard key={product.slug} product={product} index={index} />)}</div>
+      <section className="shell py-12 sm:py-16" data-vds-layer="evidence">
+        <SectionIntro title="当前报价" description="优先显示有货、近期更新且商品口径明确的报价。" action={<Link href="/products" className="button-secondary">查看全部报价 <ArrowRight size={17} /></Link>} />
+        <div className="mt-2">{products.map((product) => <ProductCard key={product.slug} product={product} />)}</div>
       </section>
 
       <section className="method-band border-y border-[color:var(--line-strong)]">
         <div className="shell grid lg:grid-cols-[.58fr_1.42fr]">
           <div className="border-b border-[color:var(--line)] py-10 lg:border-b-0 lg:border-r lg:pr-10 lg:py-12">
             <h2 className="text-3xl font-semibold tracking-[-.04em]">报价包含哪些信息</h2>
-            <p className="mt-4 max-w-md text-sm leading-7 text-[color:var(--muted)]">每条报价保留来源、更新时间、商品类型和交付说明。最低价只用于同类商品比较。</p>
+            <p className="mt-4 max-w-md text-sm leading-7 text-[color:var(--muted)]">每条报价保留来源、更新时间、商品类型和交付说明。用于展示的参考价只在同类商品内计算。</p>
             <Link href="/methodology" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[color:var(--brand-strong)]">查看数据方法 <ArrowRight size={17} /></Link>
           </div>
           <div className="divide-y divide-[color:var(--line)] lg:grid lg:grid-cols-2 lg:divide-x lg:divide-y-0">

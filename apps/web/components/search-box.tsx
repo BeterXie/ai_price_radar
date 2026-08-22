@@ -18,12 +18,12 @@ export function SearchBox({ defaultValue = "" }: { defaultValue?: string }) {
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="搜索 ChatGPT Plus、Claude Pro、API 额度…"
-        aria-label="搜索产品"
+        placeholder="搜索产品或交付方式"
+        aria-label="搜索产品或交付方式"
         className="min-h-11 min-w-0 flex-1 bg-transparent px-1 outline-none placeholder:text-[color:var(--muted)]/70"
       />
       <button className="button-primary tactile shrink-0">
-        搜索 <ArrowRight size={16} weight="bold" />
+        查报价 <ArrowRight size={16} weight="bold" />
       </button>
     </form>
   );

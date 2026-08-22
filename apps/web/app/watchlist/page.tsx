@@ -8,10 +8,15 @@ export const metadata: Metadata = {
   alternates: { canonical: "/watchlist" },
 };
 
-export default function WatchlistPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function WatchlistPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const rawState = Array.isArray(params.state) ? params.state.at(-1) : params.state;
+  const previewState = rawState === "empty" || rawState === "loading" || rawState === "error" ? rawState : undefined;
   return (
-    <InfoPage title="关注清单" description="关注内容保存在当前浏览器，本站不会主动推送通知。如需接收价格或补货更新，请将 Atom 地址添加到阅读器。">
-      <WatchlistClient />
+    <InfoPage eyebrow="当前浏览器" title="关注清单" description="保存关注商品和目标价，并生成可添加到阅读器的 Atom 地址。关注内容只保存在当前浏览器。">
+      <WatchlistClient previewState={previewState} />
     </InfoPage>
   );
 }
