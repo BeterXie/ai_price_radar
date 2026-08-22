@@ -42,6 +42,11 @@ def test_inventory_refresh_carries_other_sources_forward():
     assert "--source /tmp/ldxp_publish.db" in inventory_publish
 
 
+def test_remote_browser_scans_have_a_per_shop_hard_timeout():
+    refresh = (ROOT / "scripts" / "refresh_remote.sh").read_text(encoding="utf-8")
+    assert refresh.count("--shop-timeout 120") == 3
+
+
 def test_remote_crawler_mounts_and_runs_dujiao_discovery_seeds():
     compose = (ROOT / "docker-compose.pricememo.yml").read_text(encoding="utf-8")
     refresh = (ROOT / "scripts/refresh_remote.sh").read_text(encoding="utf-8")

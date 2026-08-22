@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.12] - 2026-08-22
+
+### Fixed
+
+- Each shop scan now runs inside a supervised browser Worker with a hard wall-clock deadline. A wedged Playwright page or renderer is terminated with its Chromium process group, recorded as a transient failure, and scanning continues with a fresh browser.
+
 ## [3.7.11] - 2026-08-20
 
 ### Fixed

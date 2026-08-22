@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from ldxp_crawler import __version__
-from ldxp_crawler.browser_scanner import BrowserShopScanner
+from ldxp_crawler.browser_worker import BrowserScanSupervisor
 from ldxp_crawler.db import StateDB
 from ldxp_crawler.discovery import Discovery, build_session
 from ldxp_crawler.dujiao_discovery import (
@@ -137,6 +137,7 @@ def add_scan_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--storage-state", type=Path, default=Path("browser_state.json"))
     parser.add_argument("--manual-challenge-seconds", type=int, default=300, help="有头模式等待人工正常验证的秒数")
     parser.add_argument("--page-wait", type=float, default=3.0, help="页面打开后等待前端请求的秒数")
+    parser.add_argument("--shop-timeout", type=float, default=120.0, help="单家店铺浏览器 Worker 的硬时限秒数")
     parser.add_argument("--request-interval", type=float, default=2.0, help="全进程浏览器/API 请求最小间隔")
     parser.add_argument("--max-pages", type=int, default=30)
     parser.add_argument("--page-size", type=int, default=100)
@@ -458,6 +459,7 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
         "page_size": args.page_size,
         "fetch_mode": args.fetch_mode,
         "request_interval": args.request_interval,
+        "shop_timeout": args.shop_timeout,
         "matched_only": args.matched_only,
         "circuit_breaker": args.circuit_breaker,
     }
@@ -488,7 +490,8 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
     )
 
     try:
-        with BrowserShopScanner(
+        shop_timeout = max(30.0, args.shop_timeout, args.manual_challenge_seconds + args.timeout + 10.0)
+        with BrowserScanSupervisor(
             profile_dir=args.browser_profile,
             storage_state_path=args.storage_state,
             executable_path=args.executable_path,
@@ -500,7 +503,9 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
             page_size=args.page_size,
             fetch_mode=args.fetch_mode,
             request_interval=args.request_interval,
+            shop_timeout=shop_timeout,
             logger=logger,
+            verbose=args.verbose,
         ) as scanner:
             for index, candidate in enumerate(candidates, start=1):
                 result = scanner.scan_shop(candidate, keywords)

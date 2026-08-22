@@ -94,7 +94,7 @@ def test_all_blocked_batch_is_failed_and_circuit_breaks(tmp_path, monkeypatch):
                 error="temporary block",
             )
 
-    monkeypatch.setattr(cli, "BrowserShopScanner", BlockedScanner)
+    monkeypatch.setattr(cli, "BrowserScanSupervisor", BlockedScanner)
     args = cli.build_parser().parse_args(
         [
             "scan",
