@@ -122,6 +122,7 @@ case "$MODE" in
       --storage-state /data/browser_state.json \
       --output-dir /data/output \
       --limit 100 \
+      --shop-timeout 120 \
       --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
@@ -140,6 +141,7 @@ case "$MODE" in
       --browser-profile /data/browser_profile \
       --storage-state /data/browser_state.json \
       --limit 25 \
+      --shop-timeout 120 \
       --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
@@ -156,6 +158,7 @@ case "$MODE" in
       --browser-profile /data/browser_profile \
       --storage-state /data/browser_state.json \
       --limit 100 \
+      --shop-timeout 120 \
       --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
