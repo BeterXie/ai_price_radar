@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.19] - 2026-08-27
+
+### Fixed
+
+- 16688 discovery now uses the platform's public AI source marketplace to resolve public goods to canonical `/shop/{shop_no}` URLs before the existing detector and review flow.
+- Unified source discovery now runs before legacy Dujiao revalidation, and the 16688 and Common Crawl adapters run before the high-volume Bing adapter so Bing cannot consume their discovery opportunity.
+
 ## [3.7.17] - 2026-08-27
 
 ### Fixed

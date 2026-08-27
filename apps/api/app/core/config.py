@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     discovery_worker_key: str = ""
     intake_lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
     discovery_enabled: bool = True
-    discovery_sources: str = "seed,bing,github,commoncrawl"
+    discovery_sources: str = "seed,16688,commoncrawl,bing,github"
     discovery_max_raw_urls: int = Field(default=2000, ge=1, le=10_000)
     discovery_max_new_candidates: int = Field(default=1000, ge=1, le=10_000)
     discovery_max_processed_candidates: int = Field(default=3000, ge=1, le=10_000)

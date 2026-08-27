@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
-from app.database import Base
-from app.models import Offer, OfferHistory, Product, RawProduct, Shop
+from app.database import Base, get_db
+from app.main import app
+from app.models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Shop
 from app.services.catalog import (
     OfferFilters,
     _plain_text,
@@ -119,6 +122,86 @@ def test_public_shop_tokens_only_include_visible_fresh_approved_offers():
         db.commit()
 
         assert list_public_shop_tokens(db) == ["public-a", "public-b"]
+
+
+def test_public_shop_tokens_api_uses_current_snapshot():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        old_snapshot = CatalogSnapshot(source="old", published_at=now - timedelta(days=1))
+        current_snapshot = CatalogSnapshot(source="current", published_at=now)
+        visible_product = Product(slug="current-shop-product", platform="OpenAI", display_name="Current shop product")
+        hidden_product = Product(
+            slug="hidden-shop-product",
+            platform="OpenAI",
+            display_name="Hidden shop product",
+            is_visible=False,
+        )
+        db.add_all([old_snapshot, current_snapshot, visible_product, hidden_product])
+        db.flush()
+
+        def add_offer(
+            token: str,
+            *,
+            snapshot: CatalogSnapshot,
+            product: Product = visible_product,
+            active: bool = True,
+            approved: bool = True,
+            visible: bool = True,
+        ) -> None:
+            shop = Shop(
+                token=token,
+                name=token,
+                source_url=f"https://example.com/{token}",
+                is_visible=visible,
+            )
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=token,
+                original_name=product.display_name,
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                snapshot_id=snapshot.id,
+                stock_status="in_stock",
+                source_url=shop.source_url,
+                observed_at=now,
+                active=active,
+                approved=approved,
+            ))
+
+        add_offer("old-public", snapshot=old_snapshot)
+        add_offer("current-public", snapshot=current_snapshot)
+        add_offer("inactive", snapshot=current_snapshot, active=False)
+        add_offer("unapproved", snapshot=current_snapshot, approved=False)
+        add_offer("hidden-shop", snapshot=current_snapshot, visible=False)
+        add_offer("hidden-product", snapshot=current_snapshot, product=hidden_product)
+        db.commit()
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        response = TestClient(app).get("/api/v1/shops")
+        assert response.status_code == 200
+        assert response.json() == ["current-public"]
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():

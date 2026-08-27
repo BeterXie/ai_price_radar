@@ -76,7 +76,7 @@ run_source_discovery() {
     --db /data/ldxp_crawler.db \
     --seed-file /config/general_seeds.txt \
     --api-url "${DISCOVERY_API_URL:-http://api:8000}" \
-    --sources "${DISCOVERY_SOURCES:-seed,bing,github,commoncrawl}" \
+    --sources "${DISCOVERY_SOURCES:-seed,16688,commoncrawl,bing,github}" \
     --max-raw-urls "${DISCOVERY_MAX_RAW_URLS:-2000}" \
     --max-unique-candidates "${DISCOVERY_MAX_NEW_CANDIDATES:-1000}" \
     --request-interval "${DISCOVERY_REQUEST_INTERVAL_SECONDS:-2}" \
@@ -88,11 +88,14 @@ run_source_discovery() {
     --github-max-candidates "${DISCOVERY_GITHUB_MAX_CANDIDATES:-300}" \
     --cc-indexes "${DISCOVERY_COMMONCRAWL_INDEXES:-2}" \
     --cc-max-urls "${DISCOVERY_COMMONCRAWL_MAX_URLS:-500}" \
+    --16688-source-pages "${DISCOVERY_16688_SOURCE_PAGES:-3}" \
     --keywords "${KEYWORDS[@]}"
 }
 
 case "$MODE" in
   discover)
+    # Run unified public-source discovery first so 16688 is not delayed by legacy Dujiao revalidation.
+    run_source_discovery
     run_crawler discover \
       --db /data/ldxp_crawler.db \
       --keywords "${KEYWORDS[@]}" \
@@ -102,9 +105,6 @@ case "$MODE" in
       --cc-indexes 3 \
       --max-discovered 500
     run_dujiao_discovery
-    # docker compose injects DISCOVERY_WORKER_KEY into the crawler container.
-    # The systemd host service does not need to load the production .env.
-    run_source_discovery
     exit 0
     ;;
   full)

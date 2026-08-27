@@ -31,6 +31,7 @@ from ldxp_crawler.source_discovery.bing import BingAdapter
 from ldxp_crawler.source_discovery.commoncrawl import CommonCrawlAdapter
 from ldxp_crawler.source_discovery.github import GitHubAdapter
 from ldxp_crawler.source_discovery.keywords import all_keywords
+from ldxp_crawler.source_discovery.platform_16688 import Platform16688Adapter
 from ldxp_crawler.source_discovery.seed import SeedAdapter
 from ldxp_crawler.utils import extract_shop_token, merge_unique
 
@@ -110,7 +111,7 @@ def add_dujiao_discovery_args(parser: argparse.ArgumentParser) -> None:
 
 
 def add_source_discovery_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--sources", default="seed,bing,github,commoncrawl", help="逗号分隔：seed,bing,github,commoncrawl")
+    parser.add_argument("--sources", default="seed,16688,commoncrawl,bing,github", help="逗号分隔：seed,16688,commoncrawl,bing,github")
     parser.add_argument("--seed", action="append", default=[], help="种子候选 URL，可重复")
     parser.add_argument("--seed-file", type=Path, default=Path("config/discovery/general_seeds.txt"))
     parser.add_argument("--api-url", default=os.getenv("DISCOVERY_API_URL", ""), help="统一候选池 API 地址")
@@ -128,6 +129,7 @@ def add_source_discovery_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--github-token", default=os.getenv("GITHUB_TOKEN", ""), help="可选的 GitHub Token，只发送给 api.github.com")
     parser.add_argument("--cc-indexes", type=int, default=2)
     parser.add_argument("--cc-max-urls", type=int, default=500)
+    parser.add_argument("--16688-source-pages", dest="source_16688_pages", type=int, default=3)
 
 
 def add_scan_args(parser: argparse.ArgumentParser) -> None:
@@ -339,23 +341,26 @@ def run_source_discovery(args: argparse.Namespace, logger: logging.Logger) -> No
         max_github_candidates=max(0, args.github_max_candidates),
         max_cc_indexes=max(1, args.cc_indexes),
         max_cc_urls=max(1, args.cc_max_urls),
+        max_16688_source_pages=min(max(1, args.source_16688_pages), 10),
         github_token=args.github_token,
     )
     bridge = DiscoveryBridge(args.api_url, args.worker_key, timeout=args.timeout)
     selected = {value.strip().casefold() for value in args.sources.split(",") if value.strip()}
-    unsupported = selected - {"seed", "bing", "github", "commoncrawl"}
+    unsupported = selected - {"seed", "16688", "bing", "github", "commoncrawl"}
     if unsupported:
         raise ValueError(f"unsupported source discovery adapters: {', '.join(sorted(unsupported))}")
     keywords = merge_unique([*all_keywords(), *args.keywords])
     adapters = []
     if "seed" in selected:
         adapters.append(SeedAdapter(args.seed, args.seed_file))
+    if "16688" in selected:
+        adapters.append(Platform16688Adapter(session, timeout=args.timeout))
+    if "commoncrawl" in selected:
+        adapters.append(CommonCrawlAdapter(session, timeout=args.timeout))
     if "bing" in selected:
         adapters.append(BingAdapter(session, timeout=args.timeout))
     if "github" in selected:
         adapters.append(GitHubAdapter(session, timeout=args.timeout))
-    if "commoncrawl" in selected:
-        adapters.append(CommonCrawlAdapter(session, timeout=args.timeout))
     if not adapters:
         raise ValueError("no source discovery adapters selected")
     runner = DiscoveryRunner(

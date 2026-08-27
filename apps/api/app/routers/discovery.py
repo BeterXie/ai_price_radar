@@ -38,7 +38,7 @@ runs_router = APIRouter(
     dependencies=[Depends(require_discovery_worker)],
 )
 
-KNOWN_ADAPTERS = frozenset({"seed", "bing", "github", "commoncrawl", "manual"})
+KNOWN_ADAPTERS = frozenset({"seed", "16688", "bing", "github", "commoncrawl", "manual"})
 MAX_PAYLOAD_BYTES = 1024 * 1024
 
 

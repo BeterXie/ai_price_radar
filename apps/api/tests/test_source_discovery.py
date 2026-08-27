@@ -516,6 +516,15 @@ def test_discovery_runs_lifecycle_and_admin_listing(client):
     assert detail.status_code == 200
 
 
+def test_discovery_run_accepts_16688_adapter(client):
+    created = client.post(
+        "/api/v1/internal/source-discovery/runs",
+        headers=DISCOVERY_HEADERS,
+        json={"trigger": "manual", "adapters": ["16688"]},
+    )
+    assert created.status_code == 200
+
+
 def test_discovery_run_funnel_counts_follow_candidate_results(client, engine):
     run_id = client.post(
         "/api/v1/internal/source-discovery/runs",

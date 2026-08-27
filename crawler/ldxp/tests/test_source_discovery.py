@@ -21,6 +21,7 @@ from ldxp_crawler.source_discovery.bing import BingAdapter, extract_bing_result_
 from ldxp_crawler.source_discovery.commoncrawl import CommonCrawlAdapter
 from ldxp_crawler.source_discovery.github import GitHubAdapter, normalize_github_homepage
 from ldxp_crawler.source_discovery.keywords import all_keywords, bing_16688_queries, bing_woocommerce_queries
+from ldxp_crawler.source_discovery.platform_16688 import Platform16688Adapter
 from ldxp_crawler.source_discovery.seed import SeedAdapter
 from ldxp_gpt_crawler import build_parser
 
@@ -70,6 +71,10 @@ class FakeSession:
         self.calls: list[tuple[str, dict]] = []
 
     def get(self, url: str, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.handler(url, kwargs)
+
+    def post(self, url: str, **kwargs):
         self.calls.append((url, kwargs))
         return self.handler(url, kwargs)
 
@@ -330,6 +335,45 @@ def test_commoncrawl_adapter_reserves_capacity_for_16688():
     ]
 
 
+def test_16688_source_adapter_resolves_public_goods_to_official_shop_urls():
+    def handler(url: str, kwargs: dict):
+        if url.endswith("/index/SourceCategory/tree"):
+            assert kwargs["json"] == {}
+            return FakeResponse(200, document={
+                "code": 1,
+                "data": {"list": [{"id": 1, "name": "AI与效率"}]},
+            })
+        if url.endswith("/index/SourceGoods/list"):
+            assert kwargs["json"] == {
+                "page_no": 1,
+                "page_size": 20,
+                "source_category_id": 1,
+            }
+            return FakeResponse(200, document={
+                "code": 1,
+                "data": {
+                    "total": 2,
+                    "list": [
+                        {"goods_no": "G1", "name": "ChatGPT Plus"},
+                        {"goods_no": "G2", "name": "Codex 接码"},
+                    ],
+                },
+            })
+        assert url.endswith("/shopApi/goods/detail")
+        shop_no = {"G1": "S100", "G2": "S200"}[kwargs["json"]["goods_no"]]
+        return FakeResponse(200, document={"code": 1, "data": {"shop_no": shop_no}})
+
+    adapter = Platform16688Adapter(FakeSession(handler), timeout=3)
+    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(request_interval_seconds=0)))
+
+    assert [item.url for item in results] == [
+        "https://www.16688.com.cn/shop/S100",
+        "https://www.16688.com.cn/shop/S200",
+    ]
+    assert [item.discovered_by for item in results] == ["16688-source:G1", "16688-source:G2"]
+    assert all(item.platform_hint == "16688" for item in results)
+
+
 def test_runner_submits_batches_deduplicates_and_finishes_run():
     bridge = FakeBridge()
 
@@ -405,3 +449,5 @@ def test_cli_exposes_discover_sources_command(monkeypatch):
     env_args = build_parser().parse_args(["discover-sources"])
     assert env_args.api_url == "http://api:8000"
     assert env_args.worker_key == "worker-test"
+    assert "16688" in env_args.sources.split(",")
+    assert env_args.source_16688_pages == 3

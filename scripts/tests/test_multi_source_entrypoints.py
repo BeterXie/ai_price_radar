@@ -56,6 +56,13 @@ def test_remote_crawler_mounts_and_runs_dujiao_discovery_seeds():
     assert "--max-processed-candidates" in refresh
 
 
+def test_remote_discovery_prioritizes_unified_16688_source_discovery():
+    refresh = (ROOT / "scripts/refresh_remote.sh").read_text(encoding="utf-8")
+    discover_block = refresh.split("  discover)", 1)[1].split("  full)", 1)[0]
+    assert discover_block.index("run_source_discovery") < discover_block.index("run_dujiao_discovery")
+    assert "--16688-source-pages" in refresh
+
+
 def test_source_detector_has_no_database_network_or_credentials():
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     detector = compose.split("  source-detector:\n", 1)[1].split("\n  web:\n", 1)[0]
