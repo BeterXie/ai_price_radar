@@ -64,6 +64,36 @@ def test_source_sync_resolves_once_and_reuses_the_validated_numeric_ip():
     assert tls.server_names == ["shop.example", "shop.example"]
 
 
+def test_connect_retries_a_valid_ipv4_address_after_unreachable_ipv6_and_pins_it():
+    resolutions = 0
+    connections: list[tuple[str, int]] = []
+    ipv6 = "2606:4700:4700::1111"
+    ipv4 = "93.184.216.34"
+
+    def resolver(*_args, **_kwargs):
+        nonlocal resolutions
+        resolutions += 1
+        return [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", (ipv6, 443, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (ipv4, 443)),
+        ]
+
+    def connector(address, timeout):
+        del timeout
+        connections.append(address)
+        if address[0] == ipv6:
+            raise OSError(101, "Network is unreachable")
+        return FakeSocket(response(b"{}"))
+
+    client = PinnedHTTPSClient(resolver=resolver, connector=connector, ssl_context=FakeTLSContext())
+
+    client.get("https://shop.example/config", accept="application/json")
+    client.get("https://shop.example/products", accept="application/json")
+
+    assert resolutions == 1
+    assert connections == [(ipv6, 443), (ipv4, 443), (ipv4, 443)]
+
+
 def test_any_non_public_address_rejects_the_entire_resolution_set():
     connected = False
 

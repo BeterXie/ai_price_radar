@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.15] - 2026-08-27
+
+### Fixed
+
+- The isolated source detector now falls back to another already-validated public DNS address when an initial socket connection fails, allowing 16688 sources to work on IPv4-only egress networks that resolve IPv6 first.
+- A successful fallback address is pinned for the rest of the detection run without re-resolving DNS or weakening the existing public-address and TLS hostname checks.
+
 ## [3.7.14] - 2026-08-27
 
 ### Added

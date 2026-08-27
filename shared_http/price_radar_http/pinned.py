@@ -54,7 +54,7 @@ class PinnedHTTPSClient:
         self.deadline = time.monotonic() + max_task_seconds
         self.request_timeout = request_timeout
         self.user_agent = user_agent
-        self._pinned_addresses: dict[tuple[str, int], str] = {}
+        self._pinned_addresses: dict[tuple[str, int], tuple[str, ...]] = {}
 
     @staticmethod
     def normalize_url(value: object) -> str:
@@ -134,15 +134,33 @@ class PinnedHTTPSClient:
             raise ValueError("source hostname resolved to a non-public address")
         return addresses
 
-    def _pinned_address(self, host: str, port: int) -> str:
+    def _pinned_addresses_for(self, host: str, port: int) -> tuple[str, ...]:
         key = (host, port)
         cached = self._pinned_addresses.get(key)
         if cached is not None:
             return cached
-        addresses = self._public_addresses(host, port)
-        selected = addresses[0]
-        self._pinned_addresses[key] = selected
-        return selected
+        addresses = tuple(self._public_addresses(host, port))
+        self._pinned_addresses[key] = addresses
+        return addresses
+
+    def _connect(self, host: str, port: int) -> socket.socket:
+        key = (host, port)
+        candidates = self._pinned_addresses_for(host, port)
+        failures: list[OSError] = []
+        for address in candidates:
+            timeout = min(self.request_timeout, self._remaining_seconds())
+            try:
+                raw_socket = self.connector((address, port), timeout=timeout)
+            except OSError as exc:
+                failures.append(exc)
+                continue
+            if address != candidates[0]:
+                self._pinned_addresses[key] = (
+                    address,
+                    *(candidate for candidate in candidates if candidate != address),
+                )
+            return raw_socket
+        raise failures[-1]
 
     def _request(
         self,
@@ -157,9 +175,7 @@ class PinnedHTTPSClient:
         parsed = urllib.parse.urlsplit(url)
         host = parsed.hostname or ""
         port = parsed.port or 443
-        address = self._pinned_address(host, port)
-        timeout = min(self.request_timeout, self._remaining_seconds())
-        raw_socket = self.connector((address, port), timeout=timeout)
+        raw_socket = self._connect(host, port)
         tls_socket: ssl.SSLSocket | None = None
         response: http.client.HTTPResponse | None = None
         try:
