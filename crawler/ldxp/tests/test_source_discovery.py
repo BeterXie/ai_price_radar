@@ -274,10 +274,11 @@ def test_commoncrawl_adapter_uses_cdx_without_warc(tmp_path: Path):
         assert ("output", "json") in params
         assert ("filter", "status:200") in params
         assert ("filter", "mime:text/html") in params
-        return FakeResponse(200, body=lines.encode("utf-8"))
+        pattern = dict(kwargs["params"])["url"]
+        return FakeResponse(200, body=lines.encode("utf-8") if pattern == "pay.ldxp.cn/shop/*" else b"")
 
     adapter = CommonCrawlAdapter(FakeSession(handler), timeout=3)
-    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_cc_indexes=1, max_cc_urls=2, request_interval_seconds=0)))
+    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_cc_indexes=1, max_cc_urls=3, request_interval_seconds=0)))
     assert [item.url for item in results] == [
         "https://pay.ldxp.cn/shop/TOKEN1",
         "https://pay.ldxp.cn/shop/TOKEN2",
@@ -295,7 +296,7 @@ def test_commoncrawl_adapter_discovers_16688_shop_pages():
         return FakeResponse(200, body=b"")
 
     adapter = CommonCrawlAdapter(FakeSession(handler), timeout=3)
-    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_cc_indexes=1, max_cc_urls=1, request_interval_seconds=0)))
+    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_cc_indexes=1, max_cc_urls=2, request_interval_seconds=0)))
     assert len(results) == 1
     assert results[0].platform_hint == "16688"
 

@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.17] - 2026-08-27
+
+### Fixed
+
+- Updated Common Crawl discovery regression coverage for the new platform-reserved budget semantics.
+
 ## [3.7.16] - 2026-08-27
 
 ### Fixed
