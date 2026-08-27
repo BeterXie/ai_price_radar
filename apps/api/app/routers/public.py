@@ -44,6 +44,7 @@ from ..services.catalog import (
     get_product_group_page,
     get_product_offer_page,
     get_shop_detail,
+    list_public_shop_tokens,
     get_snapshot,
     list_product_cards,
 )
@@ -432,6 +433,11 @@ def offer_description(offer_id: int, db: Session = Depends(get_db)) -> OfferDesc
     if description is None:
         raise HTTPException(status_code=404, detail="offer not found")
     return OfferDescriptionResponse(offer_id=offer_id, original_description=description)
+
+
+@router.get("/shops", response_model=list[str])
+def shops(db: Session = Depends(get_db)) -> list[str]:
+    return list_public_shop_tokens(db)
 
 
 @router.get("/shops/{token}", response_model=ShopDetail)

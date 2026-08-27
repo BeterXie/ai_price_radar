@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getProducts } from "@/lib/api";
+import { getProducts, getShopTokens } from "@/lib/api";
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +37,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...Object.keys(workflowGuides).map((slug) => ({ url: `${SITE_URL}/guides/workflows/${encodeURIComponent(slug)}`, lastModified: GUIDE_LAST_MODIFIED })),
   ];
   try {
-    const catalog = await getProducts("sort=quality");
+    const [catalog, shopTokens] = await Promise.all([getProducts("sort=quality"), getShopTokens()]);
     const snapshotAt = validDate(catalog.snapshot_at);
     staticPages[0].lastModified = snapshotAt;
     staticPages[1].lastModified = snapshotAt;
     return [
       ...staticPages,
       ...guidePages,
+      ...shopTokens.map((token) => ({ url: `${SITE_URL}/shops/${encodeURIComponent(token)}` })),
       ...catalog.items
         .filter((product) => product.offer_count > 0)
         .map((product) => ({

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import create_engine
@@ -17,6 +17,7 @@ from app.services.catalog import (
     get_product_group_page,
     get_product_offer_page,
     list_product_cards,
+    list_public_shop_tokens,
 )
 
 
@@ -76,6 +77,48 @@ def test_product_offers_are_returned_in_pages():
         assert next_page is not None
         assert len(next_page) == 5
         assert next_page[0].price == Decimal("130.00")
+
+
+def test_public_shop_tokens_only_include_visible_fresh_approved_offers():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        product = Product(slug="shop-index-product", platform="OpenAI", display_name="Shop index product")
+        db.add(product)
+        db.flush()
+
+        def add_shop(token: str, *, visible: bool = True, approved: bool = True, observed_at: datetime = now):
+            shop = Shop(token=token, name=token, source_url=f"https://example.com/{token}", is_visible=visible)
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=token,
+                original_name="Shop index product",
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                stock_status="in_stock",
+                source_url=shop.source_url,
+                observed_at=observed_at,
+                approved=approved,
+            ))
+
+        add_shop("public-b")
+        add_shop("public-a")
+        add_shop("hidden", visible=False)
+        add_shop("unapproved", approved=False)
+        add_shop("stale", observed_at=now - timedelta(days=30))
+        db.commit()
+
+        assert list_public_shop_tokens(db) == ["public-a", "public-b"]
 
 
 def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():

@@ -829,3 +829,25 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         offer_count=len(offers),
         offers=[_offer_public(x, median_price=medians.get(_median_key(x))) for x in offers],
     )
+
+
+def list_public_shop_tokens(db: Session) -> list[str]:
+    """Return shop tokens that have at least one currently public offer."""
+    snapshot = get_current_snapshot(db)
+    stmt = (
+        select(Shop.token)
+        .join(Offer, Offer.shop_id == Shop.id)
+        .join(Product, Offer.product_id == Product.id)
+        .where(
+            Shop.is_visible.is_(True),
+            Product.is_visible.is_(True),
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            Offer.observed_at >= _fresh_cutoff(),
+        )
+        .distinct()
+        .order_by(Shop.token.asc())
+    )
+    if snapshot is not None:
+        stmt = stmt.where(Offer.snapshot_id == snapshot.id)
+    return list(db.scalars(stmt))

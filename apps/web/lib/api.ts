@@ -34,6 +34,14 @@ export async function getShop(token: string): Promise<ShopDetail | null> {
   }
 }
 
+export async function getShopTokens(): Promise<string[]> {
+  try {
+    return await apiFetch<string[]>("/api/v1/shops");
+  } catch {
+    return [];
+  }
+}
+
 export async function getMeta(): Promise<Meta> {
   return apiFetch("/api/v1/meta");
 }
