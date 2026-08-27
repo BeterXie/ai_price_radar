@@ -119,3 +119,28 @@ def test_dns_resolution_has_a_per_request_timeout_inside_the_source_deadline():
     with pytest.raises(TimeoutError, match="DNS resolution"):
         client.get("https://slow.example", accept="text/plain")
     assert time.monotonic() - started_at < 0.5
+
+
+def test_json_post_writes_utf8_body_and_matching_content_length():
+    sent: list[bytes] = []
+
+    class CapturingSocket(FakeSocket):
+        def sendall(self, request: bytes):
+            sent.append(request)
+
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+        ],
+        connector=lambda *_args, **_kwargs: CapturingSocket(response(b"{}")),
+        ssl_context=FakeTLSContext(),
+    )
+
+    client.post_json("https://16688.com.cn/shopApi/shop/detail", {"shop_no": "派大星"})
+
+    body = '{"shop_no":"派大星"}'.encode("utf-8")
+    assert len(sent) == 1
+    assert sent[0].startswith(b"POST /shopApi/shop/detail HTTP/1.1\r\n")
+    assert b"Content-Type: application/json\r\n" in sent[0]
+    assert f"Content-Length: {len(body)}\r\n".encode() in sent[0]
+    assert sent[0].endswith(b"\r\n\r\n" + body)

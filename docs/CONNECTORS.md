@@ -7,6 +7,7 @@ AI Price Radar separates source reading from database publication. A connector c
 - `ldxp`: reads the crawler SQLite database.
 - `merchant-json`: reads a local JSON file or a public HTTPS JSON Feed.
 - `dujiao-next`: reads a Dujiao-Next shop through its unauthenticated public REST API.
+- `16688`: reads a public 16688 shop through the shop detail and goods list APIs.
 
 Production publication must use one authoritative multi-source transaction:
 
@@ -65,9 +66,15 @@ Discovery evidence is stored privately in the crawler SQLite `dujiao_candidates`
 
 The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-domain discovery from template prose requires a separate URL Index/WARC content-analysis job; the low-frequency discovery command deliberately does not issue broad or misleading CDX queries.
 
+## 16688
+
+Submit an official shop URL such as `https://www.16688.com.cn/shop/HARVEY`. The connector first resolves the public alias through `POST /shopApi/shop/detail`, then reads the canonical shop number through `POST /shopApi/goods/list` with `sort=default`. Published records use the canonical URL and a platform-scoped shop token such as `16688-S343514`; product keys are prefixed with `16688:`. This keeps an 16688 shop distinct from a same-named shop on LDXP or another platform.
+
+16688 sources use the same asynchronous detector, administrator approval and atomic multi-source snapshot as the other public connectors. Automatic discovery approval is disabled by default with `DISCOVERY_16688_AUTO_APPROVE=false`.
+
 ## Unified source discovery engine
 
-`discover-sources` runs the unified candidate pool flow: seed, Bing AI-product queries, bounded GitHub homepage discovery and fixed Common Crawl CDX patterns submit normalized candidates to the internal API through the Discovery Bridge (`X-Discovery-Worker-Key`, independent from the intake/detector keys). The runner never holds database credentials, deduplicates by candidate key, submits in batches of 100, isolates adapter failures and records one structured run summary.
+`discover-sources` runs the unified candidate pool flow: seed, Bing AI-product queries (including 16688 `/shop/{code}` searches), bounded GitHub homepage discovery and fixed Common Crawl CDX patterns (including 16688 shop paths) submit normalized candidates to the internal API through the Discovery Bridge (`X-Discovery-Worker-Key`, independent from the intake/detector keys). The runner never holds database credentials, deduplicates by candidate key, submits in batches of 100, isolates adapter failures and records one structured run summary. A discovered 16688 shop is then verified by the detector and its public goods API before it can enter review.
 
 The Source Detector worker claims candidates with `FOR UPDATE SKIP LOCKED` leases, probes the platform with `PinnedHTTPSClient` budgets, reads a bounded public product sample, classifies product names with the catalog classifier, and reports exact `detected_source_url` / `detected_source_key` values. WooCommerce auto-approval requires a valid Store API contract, purchasable products, valid prices/currencies and at least one classified AI product. Schema.org candidates default to `pending_review`; `DISCOVERY_SCHEMA_AUTO_APPROVE` must be explicitly enabled before any strict auto-approval can occur. Qualified candidates are promoted idempotently into `source_intakes` (`origin='discovery'`) and enter the existing atomic publisher; no second publication path exists.
 

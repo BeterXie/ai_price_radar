@@ -2,6 +2,18 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.14] - 2026-08-27
+
+### Added
+
+- Added public 16688 shop intake, source detection, approval, atomic publication, and the `16688` connector for public shop and goods APIs.
+- Normalized 16688 aliases such as `/shop/HARVEY` to the canonical shop number and scoped shop tokens and product keys by platform so same-named shops do not collide.
+- Extended automatic discovery through Bing and Common Crawl for 16688 shop URLs, while keeping discovery auto-approval disabled by default.
+
+### Changed
+
+- Added the v11 database constraint migration for 16688 source intakes and discovery candidates.
+
 ## [3.7.13] - 2026-08-22
 
 ### Changed

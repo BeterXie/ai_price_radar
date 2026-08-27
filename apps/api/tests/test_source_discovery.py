@@ -29,6 +29,7 @@ def make_client(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(settings, "discovery_woocommerce_auto_approve", True)
     monkeypatch.setattr(settings, "discovery_schema_auto_approve", False)
     monkeypatch.setattr(settings, "discovery_merchant_auto_approve", False)
+    monkeypatch.setattr(settings, "discovery_16688_auto_approve", False)
 
     def override_db():
         with Session(engine) as db:
@@ -260,6 +261,35 @@ def test_woocommerce_auto_approval_promotes_to_approved_intake(client, engine):
         assert intake.source_key == "https://shop.example.com"
         assert intake.approved_at is not None
         assert intake.product_count == 3
+
+
+def test_16688_candidate_promotes_to_pending_review_by_default(client, engine):
+    source_url = "https://www.16688.com.cn/shop/S343514"
+    upsert(client, source_url, hint="16688")
+    task = claim(client)[0]
+    response = report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        detected_platform="16688",
+        detected_source_key=source_url,
+        detected_source_url=source_url,
+        total_product_count=2,
+        ai_product_count=1,
+        sample_products=[{"name": "ChatGPT Plus 月卡", "url": "https://www.16688.com.cn/goods/G1"}],
+        fingerprints=["16688-public-api"],
+        confidence_score=88,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "promoted"
+    with Session(engine) as db:
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.id == body["promoted_intake_id"]))
+        assert intake is not None
+        assert intake.source_type == "16688"
+        assert intake.detected_platform == "16688"
+        assert intake.status == "pending_review"
+        assert intake.source_url == source_url
 
 
 def test_auto_approval_low_confidence_keeps_intake_pending(client, engine):

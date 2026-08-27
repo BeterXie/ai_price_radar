@@ -72,6 +72,18 @@ def bing_schema_org_queries(keywords: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(queries))
 
 
+def bing_16688_queries(keywords: Sequence[str] = ()) -> list[str]:
+    """Search indexed 16688 shop pages, not product pages, for AI sources."""
+    del keywords
+    return [
+        'site:16688.com.cn/shop "ChatGPT"',
+        'site:16688.com.cn/shop "Claude"',
+        'site:16688.com.cn/shop "Gemini"',
+        'site:16688.com.cn/shop "Grok"',
+        'site:16688.com.cn/shop "OpenAI"',
+    ]
+
+
 GITHUB_HOMEPAGE_QUERIES = (
     '"AI price" in:name,description,readme is:public',
     '"ChatGPT Plus" "woocommerce" in:readme is:public',

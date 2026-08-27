@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     discovery_woocommerce_auto_approve: bool = True
     discovery_schema_auto_approve: bool = False
     discovery_merchant_auto_approve: bool = False
+    discovery_16688_auto_approve: bool = False
     resend_api_key: str = ""
     resend_from: str = ""
     smtp_host: str = ""

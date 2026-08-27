@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Callable
 
-from . import dujiao_next, ldxp, merchant_json, schema_org, woocommerce_store
+from . import dujiao_next, ldxp, merchant_json, platform_16688, schema_org, woocommerce_store
 
 Loader = Callable[[str | Path], Iterable[dict[str, Any]]]
 
@@ -12,6 +12,7 @@ CONNECTORS: dict[str, Loader] = {
     "dujiao-next": dujiao_next.load_records,
     "ldxp": ldxp.load_records,
     "merchant-json": merchant_json.load_records,
+    "16688": platform_16688.load_records,
     "schema-org": schema_org.load_records,
     "woocommerce-store": woocommerce_store.load_records,
 }

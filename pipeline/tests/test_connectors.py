@@ -7,16 +7,97 @@ import pytest
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from connectors import get_connector
-from connectors import dujiao_next, merchant_json
+from connectors import dujiao_next, merchant_json, platform_16688
 from connectors.merchant_json import _validate_remote_url
 from common import Offer, Shop, ensure_products, session_for, upsert_offer
 
 
 def test_connector_registry_includes_all_structured_platform_loaders():
+    assert "16688" in get_connector.__globals__["CONNECTORS"]
     assert "woocommerce-store" in get_connector.__globals__["CONNECTORS"]
     assert "schema-org" in get_connector.__globals__["CONNECTORS"]
     assert callable(get_connector("woocommerce-store"))
     assert callable(get_connector("schema-org"))
+
+
+def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeClient:
+        normalize_url = staticmethod(PinnedHTTPSClient.normalize_url)
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def post_json(self, url: str, payload: dict[str, object]):
+            calls.append((url, payload))
+            if url.endswith("/shopApi/shop/detail"):
+                document = {
+                    "code": 1,
+                    "data": {"shop_no": "S343514", "name": "Same Name"},
+                }
+            else:
+                document = {
+                    "code": 1,
+                    "data": {"list": [
+                        {
+                            "goods_no": "G1",
+                            "name": "ChatGPT Plus 月卡",
+                            "price": 99,
+                            "stock_available_quantity": 4,
+                            "stock_available_status": "normal",
+                        },
+                        {
+                            "goods_no": "G2",
+                            "name": "普通商品",
+                            "price": 10,
+                            "stock_available_quantity": 0,
+                            "stock_available_status": "out",
+                        },
+                    ]},
+                }
+            return PinnedResponse(
+                200,
+                {"content-type": "application/json"},
+                json.dumps(document).encode(),
+            )
+
+    monkeypatch.setattr(platform_16688, "PinnedHTTPSClient", FakeClient)
+    records = list(get_connector("16688")("https://www.16688.com.cn/shop/HARVEY"))
+
+    assert [item["product_key"] for item in records] == ["16688:G1", "16688:G2"]
+    assert all(item["token"] == "16688-S343514" for item in records)
+    assert all(item["shop_name"] == "Same Name" for item in records)
+    assert records[0]["shop_url"] == "https://www.16688.com.cn/shop/S343514"
+    assert records[0]["product_url"] == "https://www.16688.com.cn/goods/G1"
+    assert records[0]["stock_count"] == 4
+    assert records[1]["stock_count"] == 0
+    assert calls == [
+        (
+            "https://www.16688.com.cn/shopApi/shop/detail",
+            {"shop_no": "HARVEY"},
+        ),
+        (
+            "https://www.16688.com.cn/shopApi/goods/list",
+            {"shop_no": "S343514", "sort": "default"},
+        ),
+    ]
+
+    db = session_for("sqlite://")
+    try:
+        db.add(Shop(
+            token="S343514",
+            name="Same Name",
+            source_url="https://pay.ldxp.cn/shop/S343514",
+            platform="ldxp",
+        ))
+        db.flush()
+        for record in records:
+            upsert_offer(db, record, ensure_products(db))
+        assert db.query(Shop).count() == 2
+        assert db.query(Shop).filter(Shop.platform == "16688").one().token == "16688-S343514"
+    finally:
+        db.close()
 
 
 def test_merchant_json_connector_normalizes_feed(tmp_path: Path):

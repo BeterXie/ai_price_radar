@@ -4,6 +4,7 @@ from .normalize import (
     candidate_key_for,
     normalize_candidate_url,
     normalize_origin,
+    platform_hint_for_candidate,
 )
 from .runner import DiscoveryRunner
 
@@ -17,4 +18,5 @@ __all__ = [
     "candidate_key_for",
     "normalize_candidate_url",
     "normalize_origin",
+    "platform_hint_for_candidate",
 ]

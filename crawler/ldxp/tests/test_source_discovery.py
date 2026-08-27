@@ -15,11 +15,12 @@ from ldxp_crawler.source_discovery import (
     DiscoveryRunner,
     candidate_key_for,
     normalize_candidate_url,
+    platform_hint_for_candidate,
 )
 from ldxp_crawler.source_discovery.bing import BingAdapter, extract_bing_result_urls
 from ldxp_crawler.source_discovery.commoncrawl import CommonCrawlAdapter
 from ldxp_crawler.source_discovery.github import GitHubAdapter, normalize_github_homepage
-from ldxp_crawler.source_discovery.keywords import all_keywords, bing_woocommerce_queries
+from ldxp_crawler.source_discovery.keywords import all_keywords, bing_16688_queries, bing_woocommerce_queries
 from ldxp_crawler.source_discovery.seed import SeedAdapter
 from ldxp_gpt_crawler import build_parser
 
@@ -141,6 +142,12 @@ def test_keywords_are_deduplicated_and_include_brand_and_chinese_terms():
     queries = bing_woocommerce_queries(("chatgpt",))
     assert '"ChatGPT Plus" "add to cart"' in queries
     assert '"chatgpt" "add to cart"' in queries
+    assert 'site:16688.com.cn/shop "ChatGPT"' in bing_16688_queries()
+
+
+def test_16688_shop_urls_get_a_platform_hint():
+    assert platform_hint_for_candidate("https://www.16688.com.cn/shop/HARVEY") == "16688"
+    assert platform_hint_for_candidate("https://www.16688.com.cn/goods/G1") == "unknown"
 
 
 def test_seed_adapter_reads_file_and_skips_comments(tmp_path: Path):
@@ -187,7 +194,23 @@ def test_bing_adapter_bounds_pages_and_queries():
         '"OpenAI API" "AggregateOffer"',
         '"SuperGrok" "price"',
         '"chatgpt" "Product" "price"',
-    ]))
+    ] + bing_16688_queries(("chatgpt",))))
+
+
+def test_bing_adapter_discovers_16688_shop_pages_with_platform_hint():
+    query = bing_16688_queries()[0]
+    rss = b'''<?xml version="1.0"?><rss><channel>
+      <item><link>https://www.16688.com.cn/shop/HARVEY</link></item>
+    </channel></rss>'''
+
+    def handler(url: str, _kwargs: dict):
+        current_query = parse_qs(urlsplit(url).query)["q"][0]
+        return FakeResponse(200, body=rss if current_query == query else b"")
+
+    adapter = BingAdapter(FakeSession(handler), timeout=3)
+    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_bing_pages=1, max_bing_count=10, request_interval_seconds=0)))
+    assert results[0].url == "https://www.16688.com.cn/shop/HARVEY"
+    assert results[0].platform_hint == "16688"
 
 
 def test_github_adapter_token_and_rate_limit_behavior(tmp_path: Path):
@@ -259,6 +282,22 @@ def test_commoncrawl_adapter_uses_cdx_without_warc(tmp_path: Path):
         "https://pay.ldxp.cn/shop/TOKEN1",
         "https://pay.ldxp.cn/shop/TOKEN2",
     ]
+
+
+def test_commoncrawl_adapter_discovers_16688_shop_pages():
+    lines = json.dumps({"url": "https://www.16688.com.cn/shop/HARVEY"})
+
+    def handler(url: str, kwargs: dict):
+        if url == "https://index.commoncrawl.org/collinfo.json":
+            return FakeResponse(200, document=[{"id": "CC-MAIN-1", "cdx-api": "https://index.commoncrawl.org/CC-MAIN-1-index"}])
+        if dict(kwargs["params"])["url"] == "16688.com.cn/shop/*":
+            return FakeResponse(200, body=lines.encode("utf-8"))
+        return FakeResponse(200, body=b"")
+
+    adapter = CommonCrawlAdapter(FakeSession(handler), timeout=3)
+    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_cc_indexes=1, max_cc_urls=1, request_interval_seconds=0)))
+    assert len(results) == 1
+    assert results[0].platform_hint == "16688"
 
 
 def test_runner_submits_batches_deduplicates_and_finishes_run():

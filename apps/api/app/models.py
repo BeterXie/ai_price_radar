@@ -171,7 +171,7 @@ class SourceIntake(Base):
         UniqueConstraint("source_type", "source_key", name="uq_source_intakes_source"),
         CheckConstraint(
             "source_type IN ('unknown', 'ldxp', 'merchant_json', 'dujiao_next', "
-            "'woocommerce', 'schema_org', 'other')",
+            "'woocommerce', '16688', 'schema_org', 'other')",
             name="ck_source_intakes_type",
         ),
         CheckConstraint(
@@ -256,7 +256,7 @@ class SourceCandidate(Base):
         ),
         CheckConstraint(
             "detected_platform IN ('unknown', 'ldxp', 'dujiao_next', 'merchant_json', "
-            "'woocommerce', 'schema_org', 'other')",
+            "'woocommerce', '16688', 'schema_org', 'other')",
             name="ck_source_candidates_platform",
         ),
         Index("ix_source_candidates_status_next_verify", "status", "next_verify_at"),

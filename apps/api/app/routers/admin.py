@@ -218,7 +218,7 @@ def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Sour
         if intake.source_type == "ldxp":
             intake.status = "queued"
             next_step = "等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "schema_org"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}:
             intake.status = "approved"
             next_step = "等待下一次完整目录发布"
         elif intake.source_type == "other":
@@ -285,7 +285,7 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
         elif intake.source_type == "ldxp":
             intake.status = "queued"
             decision_note = "已重新排队，等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "schema_org"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}:
             intake.status = "approved" if intake.approved_at is not None else "pending_review"
             decision_note = (
                 "已恢复，等待下一次完整目录发布"

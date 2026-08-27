@@ -67,7 +67,7 @@ def test_approval_routes_only_ldxp_to_worker_queue(routing_client):
         intake_ids = {
             source_type: _add_intake(db, source_type, "pending_review")
             for source_type in (
-                "ldxp", "dujiao_next", "merchant_json", "woocommerce", "schema_org", "other", "unknown",
+                "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other", "unknown",
             )
         }
         db.commit()
@@ -77,6 +77,7 @@ def test_approval_routes_only_ldxp_to_worker_queue(routing_client):
         "dujiao_next": (200, "approved"),
         "merchant_json": (200, "approved"),
         "woocommerce": (200, "approved"),
+        "16688": (200, "approved"),
         "schema_org": (200, "approved"),
         "other": (409, None),
         "unknown": (409, None),
@@ -105,6 +106,7 @@ def test_retry_preserves_each_source_workflow(routing_client):
             "dujiao_next": _add_intake(db, "dujiao_next", "validation_failed", approved=True),
             "merchant_json": _add_intake(db, "merchant_json", "validation_failed"),
             "woocommerce": _add_intake(db, "woocommerce", "validation_failed", approved=True),
+            "16688": _add_intake(db, "16688", "validation_failed", approved=True),
             "schema_org": _add_intake(db, "schema_org", "validation_failed"),
             "other": _add_intake(db, "other", "validation_failed"),
         }
@@ -116,6 +118,7 @@ def test_retry_preserves_each_source_workflow(routing_client):
         "dujiao_next": (200, "approved"),
         "merchant_json": (200, "pending_review"),
         "woocommerce": (200, "approved"),
+        "16688": (200, "approved"),
         "schema_org": (200, "pending_review"),
         "other": (409, None),
     }

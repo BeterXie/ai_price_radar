@@ -34,6 +34,9 @@ MONEY_PATTERN = re.compile(r"[0-9]+")
 WOO_PAGE_SIZE = 50
 WOO_MAX_PRODUCTS = 2_000
 WOO_MAX_PAGES = 100
+PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
+PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
+PLATFORM_16688_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +244,60 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
         sample_products=samples,
         fingerprints=fingerprints,
         confidence_score=88 if fully_validated else 49,
+    )
+
+
+def _16688_qualify(source_url: str, client: PinnedHTTPSClient) -> QualificationResult:
+    parsed = urllib.parse.urlsplit(source_url)
+    host = (parsed.hostname or "").casefold()
+    match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host not in PLATFORM_16688_HOSTS or match is None or parsed.port not in (None, 443) or parsed.query or parsed.fragment:
+        raise ValueError("16688 source URL is not a shop URL")
+    shop_no = urllib.parse.unquote(match.group(1)).strip()
+    if not PLATFORM_16688_CODE.fullmatch(shop_no):
+        raise ValueError("16688 shop code is invalid")
+    origin = _origin(source_url)
+    response = client.post_json(
+        f"{origin}/shopApi/goods/list",
+        {"shop_no": shop_no, "sort": "default"},
+    )
+    document = _json(response)
+    if not isinstance(document, dict) or document.get("code") != 1:
+        raise ValueError("16688 goods API returned an error")
+    data = document.get("data")
+    items = data.get("list") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise ValueError("16688 goods API response is missing a list")
+
+    samples: list[dict[str, str]] = []
+    ai_count = 0
+    seen_goods: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("16688 goods item must be an object")
+        goods_no = str(item.get("goods_no") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if not PLATFORM_16688_CODE.fullmatch(goods_no) or not name or goods_no in seen_goods:
+            raise ValueError("16688 goods list contains an invalid or duplicate item")
+        seen_goods.add(goods_no)
+        if _classify(name):
+            ai_count += 1
+            _append_sample(
+                samples,
+                name,
+                f"{origin}/goods/{urllib.parse.quote(goods_no, safe='._~-')}",
+                goods_no,
+            )
+    return QualificationResult(
+        status="detected",
+        detected_platform="16688",
+        detected_source_key=source_url,
+        detected_source_url=source_url,
+        total_product_count=len(items),
+        ai_product_count=ai_count,
+        sample_products=samples,
+        fingerprints=["16688-public-api"],
+        confidence_score=88,
     )
 
 
@@ -581,6 +638,8 @@ def qualify_candidate(
             return _dujiao_qualify(_origin(source_url), client)
         if platform == "woocommerce":
             return _woocommerce_qualify(_origin(source_url), client)
+        if platform == "16688":
+            return _16688_qualify(source_url, client)
         if platform == "schema_org":
             return _schema_qualify(source_url, client)
         if platform == "merchant_json":

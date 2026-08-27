@@ -67,7 +67,7 @@ type Report = {
   created_at: string;
 };
 
-type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "woocommerce" | "schema_org" | "other";
+type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "woocommerce" | "16688" | "schema_org" | "other";
 
 type SourceIntake = {
   id: number;
@@ -223,6 +223,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const sourceTypeLabels: Record<string, string> = {
     unknown: "待识别来源",
     ldxp: "链动小铺",
+    "16688": "16688",
     dujiao_next: "Dujiao-Next",
     woocommerce: "WooCommerce",
     schema_org: "Schema.org 独立站",
@@ -295,7 +296,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                   {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
                   {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">其他独立站仅支持管理员人工接入，不会进入自动验证或发布队列。</p>}
-                  {["merchant_json", "woocommerce", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
+                  {["merchant_json", "woocommerce", "16688", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
                   {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
                   {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}

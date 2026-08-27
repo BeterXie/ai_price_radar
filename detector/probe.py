@@ -17,6 +17,9 @@ MAX_TASK_BYTES = 2 * 1024 * 1024
 MAX_TASK_SECONDS = 15.0
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
+PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
+PLATFORM_16688_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
+PLATFORM_16688_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +128,40 @@ def _schema_from_sitemap(
     return None
 
 
+def _probe_16688(
+    parsed: urllib.parse.SplitResult,
+    requested_shop_no: str,
+    client: PinnedHTTPSClient,
+) -> ProbeResult:
+    if not PLATFORM_16688_CODE.fullmatch(requested_shop_no):
+        raise ValueError("16688 shop code is invalid")
+    host = (parsed.hostname or "").casefold()
+    origin = urllib.parse.urlunsplit(("https", host, "", "", ""))
+    detail = _json(client.post_json(
+        f"{origin}/shopApi/shop/detail",
+        {"shop_no": requested_shop_no},
+    ))
+    if not isinstance(detail, dict) or detail.get("code") != 1 or not isinstance(detail.get("data"), dict):
+        raise ValueError("source is not a valid 16688 shop")
+    shop = detail["data"]
+    shop_no = str(shop.get("shop_no") or requested_shop_no).strip()
+    if not PLATFORM_16688_CODE.fullmatch(shop_no):
+        raise ValueError("16688 shop detail returned an invalid shop number")
+    listing = _json(client.post_json(
+        f"{origin}/shopApi/goods/list",
+        {"shop_no": shop_no, "sort": "default"},
+    ))
+    if not isinstance(listing, dict) or listing.get("code") != 1:
+        raise ValueError("16688 goods API returned an error")
+    data = listing.get("data")
+    items = data.get("list") if isinstance(data, dict) else None
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise ValueError("16688 goods API response is invalid")
+    source_url = f"{origin}/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
+    shop_name = str(shop.get("name") or shop_no or host).strip()
+    return ProbeResult("16688", source_url, source_url, shop_name, len(items))
+
+
 def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> ProbeResult:
     client = client or PinnedHTTPSClient(
         max_response_bytes=MAX_RESPONSE_BYTES,
@@ -140,6 +177,11 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         token = urllib.parse.unquote(match.group(1)).strip()
         source_url = f"https://pay.ldxp.cn/shop/{urllib.parse.quote(token, safe='._~-')}"
         return ProbeResult("ldxp", source_url, token.casefold())
+
+    match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host in PLATFORM_16688_HOSTS and match:
+        shop_no = urllib.parse.unquote(match.group(1)).strip()
+        return _probe_16688(parsed, shop_no, client)
 
     origin = urllib.parse.urlunsplit(("https", parsed.netloc, "", "", ""))
     try:

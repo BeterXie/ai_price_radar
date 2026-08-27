@@ -97,10 +97,16 @@ def test_shop_request_requires_valid_contact_email(api_client):
     assert invalid.status_code == 422
 
 
-@pytest.mark.parametrize("platform", ["woocommerce", "schema_org"])
-def test_structured_platform_submission_can_be_detected_and_reviewed(api_client, platform):
+@pytest.mark.parametrize(
+    ("platform", "source_url"),
+    [
+        ("woocommerce", "https://woocommerce.example/products/example"),
+        ("schema_org", "https://schema-org.example/products/example"),
+        ("16688", "https://www.16688.com.cn/shop/S343514"),
+    ],
+)
+def test_structured_platform_submission_can_be_detected_and_reviewed(api_client, platform, source_url):
     client, engine = api_client
-    source_url = f"https://{platform.replace('_', '-')}.example/products/example"
     response = client.post(
         "/api/v1/shop-requests",
         json={
@@ -122,6 +128,16 @@ def test_structured_platform_submission_can_be_detected_and_reviewed(api_client,
             "pending_review",
         )
         assert intake.source_url == source_url
+
+
+def test_16688_submission_uses_platform_scoped_alias_token(api_client):
+    client, _ = api_client
+    response = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "source_type": "16688", "shop_url": "https://www.16688.com.cn/shop/HARVEY"},
+    )
+    assert response.status_code == 201
+    assert response.json()["shop_token"] == "16688-HARVEY"
 
 
 def test_submission_is_an_intake_and_outbox_is_transactional(api_client):

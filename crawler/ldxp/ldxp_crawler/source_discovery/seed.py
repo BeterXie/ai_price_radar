@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from .models import DiscoveredCandidate, DiscoveryAdapter, DiscoveryBudget
-from .normalize import normalize_candidate_url
+from .normalize import normalize_candidate_url, platform_hint_for_candidate
 
 
 class SeedAdapter(DiscoveryAdapter):
@@ -36,5 +36,5 @@ class SeedAdapter(DiscoveryAdapter):
             yield DiscoveredCandidate(
                 url=normalized,
                 discovered_by="seed",
-                platform_hint="unknown",
+                platform_hint=platform_hint_for_candidate(normalized),
             )

@@ -238,11 +238,11 @@ class ReportOut(BaseModel):
 
 class ShopRequestCreate(BaseModel):
     source_type: Literal[
-        "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed",
+        "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
         "woocommerce", "schema_org", "other",
     ] = "auto"
     declared_platform: Literal[
-        "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed",
+        "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
         "woocommerce", "schema_org", "other",
     ] | None = None
     shop_url: HttpUrl
@@ -333,7 +333,7 @@ class SourceDetectionResult(BaseModel):
     status: Literal["pending_review", "validation_failed"]
     attempt_count: int = Field(ge=1)
     detected_platform: Literal[
-        "ldxp", "dujiao_next", "merchant_json", "woocommerce", "schema_org", "other", "unknown",
+        "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other", "unknown",
     ] = "unknown"
     source_url: str = Field(default="", max_length=2000)
     source_key: str = Field(default="", max_length=300)

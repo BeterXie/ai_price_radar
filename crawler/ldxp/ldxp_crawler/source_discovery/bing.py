@@ -9,9 +9,9 @@ from typing import Any
 
 import requests
 
-from .keywords import bing_schema_org_queries, bing_woocommerce_queries
+from .keywords import bing_16688_queries, bing_schema_org_queries, bing_woocommerce_queries
 from .models import DiscoveredCandidate, DiscoveryAdapter, DiscoveryBudget
-from .normalize import normalize_candidate_url
+from .normalize import normalize_candidate_url, platform_hint_for_candidate
 
 
 def extract_bing_result_urls(content: bytes) -> list[str]:
@@ -61,6 +61,7 @@ class BingAdapter(DiscoveryAdapter):
         queries = [
             *bing_woocommerce_queries(keywords),
             *bing_schema_org_queries(keywords),
+            *bing_16688_queries(keywords),
         ]
         seen: set[str] = set()
         for query in queries:
@@ -87,7 +88,7 @@ class BingAdapter(DiscoveryAdapter):
                     yield DiscoveredCandidate(
                         url=normalized,
                         discovered_by=f"bing:{query}",
-                        platform_hint="unknown",
+                        platform_hint=platform_hint_for_candidate(normalized),
                         matched_query=query,
                     )
                 time.sleep(max(0.0, budget.request_interval_seconds) + random.uniform(0, 0.4))

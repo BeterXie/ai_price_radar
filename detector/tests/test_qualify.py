@@ -24,6 +24,30 @@ class FakeClient:
         return handler(url, accept)
 
 
+class Fake16688Client:
+    normalize_url = staticmethod(__import__("price_radar_http").PinnedHTTPSClient.normalize_url)
+
+    def __init__(self):
+        self.post_calls: list[tuple[str, dict[str, object]]] = []
+
+    def post_json(self, url: str, payload: dict[str, object], *, accept: str = "application/json") -> PinnedResponse:
+        url = self.normalize_url(url)
+        self.post_calls.append((url, payload))
+        if url.endswith("/shopApi/shop/detail"):
+            document = {"code": 1, "data": {"shop_no": "S343514", "name": "派大星（900多人群）"}}
+        else:
+            document = {
+                "code": 1,
+                "data": {
+                    "list": [
+                        {"goods_no": "G1", "name": "ChatGPT Plus 月卡"},
+                        {"goods_no": "G2", "name": "普通商品"},
+                    ],
+                },
+            }
+        return PinnedResponse(200, {"content-type": "application/json"}, json.dumps(document, ensure_ascii=False).encode())
+
+
 def _json_route(payload, *, status=200, content_type="application/json", headers=None):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     response_headers = {"content-type": content_type}
@@ -309,6 +333,20 @@ def test_dujiao_product_api_qualifies_ai_product():
     assert result.total_product_count == 2
     assert result.ai_product_count == 1
     assert result.sample_products[0]["product_slug"] == "chatgpt-plus"
+
+
+def test_16688_alias_qualifies_and_uses_canonical_shop_number():
+    client = Fake16688Client()
+    result = qualify_candidate("https://www.16688.com.cn/shop/HARVEY", "16688", client=client)
+    assert result.status == "detected"
+    assert result.detected_platform == "16688"
+    assert result.detected_source_key == result.detected_source_url == "https://www.16688.com.cn/shop/S343514"
+    assert result.total_product_count == 2
+    assert result.ai_product_count == 1
+    assert result.sample_products[0]["url"] == "https://www.16688.com.cn/goods/G1"
+    assert result.fingerprints == ["16688-public-api"]
+    assert result.confidence_score == 88
+    assert len(client.post_calls) == 3
 
 
 def test_schema_org_product_page_qualifies_with_price_and_same_origin():

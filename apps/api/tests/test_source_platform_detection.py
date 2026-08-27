@@ -14,6 +14,17 @@ def test_detection_recognizes_ldxp_without_fetching():
     assert result.source_key == "abc123"
 
 
+def test_detection_recognizes_16688_without_fetching_and_scopes_token():
+    result = detect_source_platform(
+        "https://www.16688.com.cn/shop/HARVEY",
+        fetch_json=lambda _url: (_ for _ in ()).throw(AssertionError("16688 should not be fetched here")),
+        resolver=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("16688 should not resolve here")),
+    )
+    assert result.platform == "16688"
+    assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/HARVEY"
+    assert result.shop_token == "16688-HARVEY"
+
+
 def test_detection_recognizes_dujiao_next_public_contract():
     def fetch(url: str):
         if url.endswith("/config"):

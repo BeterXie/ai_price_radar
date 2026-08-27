@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import re
 import socket
 import urllib.parse
 from collections.abc import Callable
@@ -17,6 +18,7 @@ SOURCE_PLATFORM_LABELS = {
     "dujiao_next": "Dujiao-Next",
     "merchant_json": "商家 Feed",
     "woocommerce": "WooCommerce",
+    "16688": "16688",
     "schema_org": "独立站",
     "other": "其他独立站",
 }
@@ -26,6 +28,7 @@ SOURCE_KIND_BY_PLATFORM = {
     "dujiao_next": "public_api",
     "merchant_json": "public_feed",
     "woocommerce": "public_api",
+    "16688": "public_api",
     "schema_org": "structured_data",
     "other": "public_page",
 }
@@ -42,6 +45,8 @@ PLATFORM_ALIASES = {
 }
 
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
+PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
+PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 MAX_DETECTION_BYTES = 1024 * 1024
 
 
@@ -119,11 +124,30 @@ def _ldxp_detection(url: str) -> SourceDetection | None:
     return SourceDetection("ldxp", source_url, token.casefold(), token)
 
 
+def _16688_detection(url: str) -> SourceDetection | None:
+    parsed = urllib.parse.urlsplit(url)
+    host = (parsed.hostname or "").casefold()
+    match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
+    if (
+        host not in PLATFORM_16688_HOSTS
+        or match is None
+        or parsed.port not in (None, 443)
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    shop_no = urllib.parse.unquote(match.group(1)).strip()
+    source_url = f"https://{host}/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
+    return SourceDetection("16688", source_url, source_url, f"16688-{shop_no}")
+
+
 def prepare_source_submission(value: object) -> SourceDetection:
     """Normalize a submission without DNS resolution or outbound network access."""
     normalized = _normalized_https_url(value)
     if ldxp := _ldxp_detection(normalized):
         return SourceDetection("unknown", ldxp.source_url, ldxp.source_key, ldxp.shop_token)
+    if platform := _16688_detection(normalized):
+        return SourceDetection("unknown", platform.source_url, platform.source_key, platform.shop_token)
     token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
     return SourceDetection("unknown", normalized, normalized, token)
 
@@ -207,6 +231,8 @@ def detect_source_platform(
     normalized = _normalized_https_url(value)
     if ldxp := _ldxp_detection(normalized):
         return ldxp
+    if platform := _16688_detection(normalized):
+        return platform
 
     if not _ensure_public_host(normalized, resolver):
         token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]

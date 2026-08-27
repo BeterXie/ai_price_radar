@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import urllib.parse
 
 from price_radar_http import PinnedHTTPSClient
 
 
 ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce", "ldxp"})
+PLATFORM_16688_HOSTS = frozenset({"16688.com.cn", "www.16688.com.cn"})
+PLATFORM_16688_SHOP_PATH = re.compile(r"^/shop/[A-Za-z0-9._~-]+$", re.IGNORECASE)
 
 
 def normalize_candidate_url(value: object) -> str:
@@ -28,6 +31,16 @@ def normalize_origin(value: str) -> str:
     host = parsed.hostname or ""
     rendered_host = f"[{host}]" if ":" in host else host
     return urllib.parse.urlunsplit(("https", rendered_host, "", "", ""))
+
+
+def platform_hint_for_candidate(value: str) -> str:
+    parsed = urllib.parse.urlsplit(value)
+    if (
+        (parsed.hostname or "").casefold() in PLATFORM_16688_HOSTS
+        and PLATFORM_16688_SHOP_PATH.fullmatch(parsed.path.rstrip("/"))
+    ):
+        return "16688"
+    return "unknown"
 
 
 def candidate_key_for(normalized_url: str, platform_hint: str) -> str:

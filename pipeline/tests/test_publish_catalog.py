@@ -289,13 +289,15 @@ def test_all_structured_intake_platforms_use_the_atomic_publish_path():
             "(1, 'woocommerce', 'woocommerce', 'https://woo.example', 'approved'), "
             "(2, 'schema_org', 'schema_org', 'https://structured.example', 'published'), "
             "(3, 'schema_org', 'other', 'https://mismatch.example', 'approved'), "
-            "(4, 'woocommerce', 'woocommerce', 'https://disabled.example', 'disabled')"
+            "(4, 'woocommerce', 'woocommerce', 'https://disabled.example', 'disabled'), "
+            "(5, '16688', '16688', 'https://www.16688.com.cn/shop/S343514', 'approved')"
         ))
         db.commit()
 
         assert approved_intake_sources(db) == [
             SourceSpec("woocommerce-store", "https://woo.example", (1,)),
             SourceSpec("schema-org", "https://structured.example", (2,)),
+            SourceSpec("16688", "https://www.16688.com.cn/shop/S343514", (5,)),
         ]
     finally:
         db.close()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
+import json
 import queue
 import socket
 import ssl
@@ -143,7 +144,15 @@ class PinnedHTTPSClient:
         self._pinned_addresses[key] = selected
         return selected
 
-    def get(self, value: object, *, accept: str) -> PinnedResponse:
+    def _request(
+        self,
+        value: object,
+        *,
+        method: str,
+        accept: str,
+        body: bytes = b"",
+        content_type: str = "",
+    ) -> PinnedResponse:
         url = self.normalize_url(value)
         parsed = urllib.parse.urlsplit(url)
         host = parsed.hostname or ""
@@ -158,14 +167,16 @@ class PinnedHTTPSClient:
             tls_socket = self.ssl_context.wrap_socket(raw_socket, server_hostname=host)
             target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
             host_header = f"[{host}]" if ":" in host else host
-            request = (
-                f"GET {target} HTTP/1.1\r\n"
-                f"Host: {host_header}\r\n"
-                f"Accept: {accept}\r\n"
-                f"User-Agent: {self.user_agent}\r\n"
-                "Connection: close\r\n\r\n"
-            ).encode("ascii")
-            tls_socket.sendall(request)
+            headers = [
+                f"{method} {target} HTTP/1.1\r\n",
+                f"Host: {host_header}\r\n",
+                f"Accept: {accept}\r\n",
+                f"User-Agent: {self.user_agent}\r\n",
+                "Connection: close\r\n",
+            ]
+            if content_type:
+                headers.extend((f"Content-Type: {content_type}\r\n", f"Content-Length: {len(body)}\r\n"))
+            tls_socket.sendall("".join(headers).encode("ascii") + b"\r\n" + body)
             response = http.client.HTTPResponse(tls_socket)
             response.begin()
             headers = {key.casefold(): header_value for key, header_value in response.getheaders()}
@@ -203,3 +214,22 @@ class PinnedHTTPSClient:
                 tls_socket.close()
             else:
                 raw_socket.close()
+
+    def get(self, value: object, *, accept: str) -> PinnedResponse:
+        return self._request(value, method="GET", accept=accept)
+
+    def post_json(
+        self,
+        value: object,
+        payload: dict[str, Any],
+        *,
+        accept: str = "application/json",
+    ) -> PinnedResponse:
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return self._request(
+            value,
+            method="POST",
+            accept=accept,
+            body=body,
+            content_type="application/json",
+        )

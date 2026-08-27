@@ -17,15 +17,16 @@ from .source_platform import canonical_source_platform, normalize_public_https_u
 
 
 DETECTED_PLATFORMS = frozenset(
-    {"unknown", "ldxp", "dujiao_next", "merchant_json", "woocommerce", "schema_org", "other"}
+    {"unknown", "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other"}
 )
 ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce", "ldxp"})
-PROMOTABLE_PLATFORMS = frozenset({"dujiao_next", "merchant_json", "woocommerce", "schema_org"})
+PROMOTABLE_PLATFORMS = frozenset({"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"})
 AUTO_APPROVE_SETTING = {
     "dujiao_next": "discovery_dujiao_auto_approve",
     "woocommerce": "discovery_woocommerce_auto_approve",
     "schema_org": "discovery_schema_auto_approve",
     "merchant_json": "discovery_merchant_auto_approve",
+    "16688": "discovery_16688_auto_approve",
 }
 TERMINAL_MANUAL_STATUSES = frozenset({"rejected", "disabled"})
 FAILURE_BACKOFF_HOURS = {

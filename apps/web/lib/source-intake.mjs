@@ -1,6 +1,7 @@
 export const SOURCE_INTAKE_OPTIONS = [
   { id: "auto", label: "自动识别（推荐）" },
   { id: "ldxp", label: "链动小铺" },
+  { id: "16688", label: "16688" },
   { id: "dujiao_next", label: "Dujiao-Next" },
   { id: "woocommerce", label: "WooCommerce" },
   { id: "schema_org", label: "Schema.org 独立站" },
@@ -18,6 +19,11 @@ export const SOURCE_INTAKE_COPY = {
     fieldLabel: "公开店铺地址",
     placeholder: "https://pay.ldxp.cn/shop/xxxxx",
     hint: "例如 https://pay.ldxp.cn/shop/xxxxx。系统仍会核对实际来源类型。",
+  },
+  16688: {
+    fieldLabel: "16688 店铺地址",
+    placeholder: "https://www.16688.com.cn/shop/HARVEY",
+    hint: "例如 https://www.16688.com.cn/shop/HARVEY；系统会读取公开店铺商品和真实店铺编号。",
   },
   dujiao_next: {
     fieldLabel: "店铺根地址",

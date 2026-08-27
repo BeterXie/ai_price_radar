@@ -53,6 +53,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   dujiao_next: "Dujiao-Next",
   merchant_json: "商家 Feed",
   woocommerce: "WooCommerce",
+  "16688": "16688",
   schema_org: "Schema.org",
   other: "其他",
 };

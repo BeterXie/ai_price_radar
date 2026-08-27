@@ -17,6 +17,9 @@ class StubClient:
     def get(self, value, *, accept):
         return next(self.responses)
 
+    def post_json(self, value, payload, *, accept="application/json"):
+        return next(self.responses)
+
 
 def response(document, *, status=200, content_type="application/json"):
     return ProbeResponse(status, {"content-type": content_type}, json.dumps(document).encode())
@@ -43,6 +46,18 @@ def test_detector_recognizes_merchant_feed_after_dujiao_probe_fails():
     result = probe_source("https://feed.example/catalog.json", client=client)
     assert result.detected_platform == "merchant_json"
     assert result.shop_name == "Feed Store"
+
+
+def test_detector_recognizes_16688_alias_and_normalizes_shop_number():
+    client = StubClient([
+        response({"code": 1, "data": {"shop_no": "S343514", "name": "派大星（900多人群）"}}),
+        response({"code": 1, "data": {"list": [{"goods_no": "G1"}, {"goods_no": "G2"}]}}),
+    ])
+    result = probe_source("https://www.16688.com.cn/shop/HARVEY", client=client)
+    assert result.detected_platform == "16688"
+    assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/S343514"
+    assert result.shop_name == "派大星（900多人群）"
+    assert result.product_count == 2
 
 
 def test_detector_recognizes_woocommerce_store_api_before_generic_json():
