@@ -337,14 +337,14 @@ def report_source_intake_result(
         raise HTTPException(status_code=409, detail="merchant feed is not handled by the LDXP worker")
 
     if payload.status == "onboarded":
+        if payload.attempt_count != intake.attempt_count:
+            raise HTTPException(status_code=409, detail="stale intake attempt")
         if intake.status == "onboarded":
             return _response(intake)
         if intake.status != "validated":
             raise HTTPException(status_code=409, detail=f"cannot onboard intake in status {intake.status}")
         if not payload.published:
             raise HTTPException(status_code=409, detail="onboarded requires a successful published sync")
-        if payload.attempt_count != intake.attempt_count:
-            raise HTTPException(status_code=409, detail="stale intake attempt")
         if payload.product_count <= 0 and intake.product_count <= 0:
             raise HTTPException(status_code=422, detail="onboarded requires at least one product")
         intake.status = "onboarded"

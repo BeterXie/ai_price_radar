@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.21] - 2026-08-27
+
+### Fixed
+
+- Enforced attempt matching before accepting an idempotent LDXP onboarding response, so a stale onboarding report cannot be mistaken for a retry of the current attempt.
+
 ## [3.7.20] - 2026-08-27
 
 ### Fixed

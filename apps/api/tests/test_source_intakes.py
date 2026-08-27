@@ -419,6 +419,12 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         json={"status": "onboarded", "attempt_count": claim_attempt, "product_count": 2, "published": True},
     )
     assert repeated_onboard.status_code == 200
+    stale_onboard = client.post(
+        f"/api/v1/internal/source-intakes/{intake_id}/result",
+        headers=worker_headers,
+        json={"status": "onboarded", "attempt_count": claim_attempt + 1, "product_count": 2, "published": True},
+    )
+    assert stale_onboard.status_code == 409
 
     with Session(engine) as db:
         events = list(db.scalars(select(NotificationOutbox)))
