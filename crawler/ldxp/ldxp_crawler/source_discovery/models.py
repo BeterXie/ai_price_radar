@@ -25,7 +25,7 @@ class DiscoveryBudget:
     max_github_candidates: int = 300
     max_cc_indexes: int = 2
     max_cc_urls: int = 500
-    max_16688_source_pages: int = 3
+    max_16688_source_pages: int = 10
     github_token: str = ""
 
 

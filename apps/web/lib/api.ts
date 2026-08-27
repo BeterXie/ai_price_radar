@@ -1,4 +1,4 @@
-import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, PublicCorrectionPage, ShopDetail } from "@/lib/types";
+import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, PublicCorrectionPage, ShopCard, ShopDetail, ShopListResponse } from "@/lib/types";
 
 const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -34,11 +34,21 @@ export async function getShop(token: string): Promise<ShopDetail | null> {
   }
 }
 
+/** Returns a flat list of shop tokens for callers that only need identifiers. */
 export async function getShopTokens(): Promise<string[]> {
   try {
-    return await apiFetch<string[]>("/api/v1/shops");
+    return await apiFetch<string[]>("/api/v1/shops/tokens");
   } catch {
     return [];
+  }
+}
+
+/** Returns paginated ShopCard list for directory / source pages. */
+export async function getShopCards(query = ""): Promise<ShopListResponse> {
+  try {
+    return await apiFetch<ShopListResponse>(`/api/v1/shops${query ? `?${query}` : ""}`);
+  } catch {
+    return { items: [], total: 0 };
   }
 }
 

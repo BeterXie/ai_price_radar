@@ -129,7 +129,7 @@ def add_source_discovery_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--github-token", default=os.getenv("GITHUB_TOKEN", ""), help="可选的 GitHub Token，只发送给 api.github.com")
     parser.add_argument("--cc-indexes", type=int, default=2)
     parser.add_argument("--cc-max-urls", type=int, default=500)
-    parser.add_argument("--16688-source-pages", dest="source_16688_pages", type=int, default=3)
+    parser.add_argument("--16688-source-pages", dest="source_16688_pages", type=int, default=10)
 
 
 def add_scan_args(parser: argparse.ArgumentParser) -> None:
@@ -341,7 +341,7 @@ def run_source_discovery(args: argparse.Namespace, logger: logging.Logger) -> No
         max_github_candidates=max(0, args.github_max_candidates),
         max_cc_indexes=max(1, args.cc_indexes),
         max_cc_urls=max(1, args.cc_max_urls),
-        max_16688_source_pages=min(max(1, args.source_16688_pages), 10),
+        max_16688_source_pages=min(max(1, args.source_16688_pages), 50),
         github_token=args.github_token,
     )
     bridge = DiscoveryBridge(args.api_url, args.worker_key, timeout=args.timeout)

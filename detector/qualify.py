@@ -110,8 +110,33 @@ def _append_sample(samples: list[dict[str, str]], name: str, url: str, slug: str
     samples.append(item)
 
 
-def _classify(name: str, category: str = "") -> str | None:
-    return classify_product(name, category).slug
+def _classify(
+    name: str,
+    category: str = "",
+    description: str = "",
+    *,
+    source_platform: str = "",
+) -> str | None:
+    return classify_product(
+        name,
+        category,
+        description,
+        source_platform=source_platform,
+    ).slug
+
+
+def _16688_category(item: dict[str, Any]) -> str:
+    value = item.get("sourceCategory") or item.get("source_category")
+    if isinstance(value, dict):
+        return str(value.get("name") or "").strip()
+    return str(value or "").strip()
+
+
+def _16688_description(item: dict[str, Any]) -> str:
+    return " ".join(
+        str(item.get(key) or "")
+        for key in ("description", "content", "instruction", "remark")
+    ).strip()
 
 
 def _dujiao_qualify(origin: str, client: PinnedHTTPSClient) -> QualificationResult:
@@ -280,7 +305,12 @@ def _16688_qualify(source_url: str, client: PinnedHTTPSClient) -> QualificationR
         if not PLATFORM_16688_CODE.fullmatch(goods_no) or not name or goods_no in seen_goods:
             raise ValueError("16688 goods list contains an invalid or duplicate item")
         seen_goods.add(goods_no)
-        if _classify(name):
+        if _classify(
+            name,
+            _16688_category(item),
+            _16688_description(item),
+            source_platform="16688",
+        ):
             ai_count += 1
             _append_sample(
                 samples,

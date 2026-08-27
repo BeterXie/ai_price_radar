@@ -8,10 +8,37 @@ import { exactTime, relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+const SITE_URL = "https://ai.pricememo.cn";
+
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
   const { token } = await params;
   const shop = await getShop(token);
-  return { title: shop ? `${shop.name}报价` : "店铺不存在" };
+
+  if (!shop) {
+    return {
+      title: "店铺不存在",
+      robots: { index: false, follow: true },
+    };
+  }
+
+  const canonical = `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`;
+  const description = `查看 ${shop.name} 在 ${shop.source_platform_label} 的 AI 商品公开报价、库存、交付方式、更新时间和原始来源。`;
+
+  return {
+    title: `${shop.name}｜${shop.source_platform_label} AI 商品报价`,
+    description,
+    alternates: { canonical },
+    robots: {
+      index: shop.offer_count > 0,
+      follow: true,
+    },
+    openGraph: {
+      title: `${shop.name}｜${shop.source_platform_label} AI 商品报价`,
+      description,
+      url: canonical,
+      type: "website",
+    },
+  };
 }
 
 export default async function ShopPage({ params }: { params: Promise<{ token: string }> }) {
@@ -20,6 +47,7 @@ export default async function ShopPage({ params }: { params: Promise<{ token: st
   if (!shop) notFound();
   const lastSeen = new Date(shop.last_seen_at || shop.last_success_at || shop.first_seen_at).getTime();
   const observedDays = Math.max(1, Math.floor((lastSeen - new Date(shop.first_seen_at).getTime()) / 86_400_000) + 1);
+
   return (
     <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="source-identity health-context observed-offers outbound-verification">
       <PageHero eyebrow={`公开来源 · ${shop.source_platform_label}`} title={shop.name} compact meta={<><span>来源编号：{shop.token}</span><span>采集方式：{shop.source_kind_label}</span><span className="flex items-center gap-2"><Calendar size={17} />已收录 {observedDays} 天</span><span className="flex items-center gap-2"><Clock size={17} />最近成功更新：{relativeTime(shop.last_success_at)}</span><span>最近观测：{exactTime(shop.last_seen_at)}</span></>} actions={<a href={shop.source_url} target="_blank" rel="noreferrer nofollow" className="button-primary tactile">访问原店铺 <ArrowSquareOut size={17} /></a>} />

@@ -73,14 +73,38 @@ def bing_schema_org_queries(keywords: Sequence[str]) -> list[str]:
 
 
 def bing_16688_queries(keywords: Sequence[str] = ()) -> list[str]:
-    """Search indexed 16688 shop pages, not product pages, for AI sources."""
-    del keywords
+    """Search indexed 16688 shop pages, not product pages, for AI sources.
+
+    Uses a fixed high-value term list rather than a cartesian product of all
+    keywords to stay within Bing RSS query budget and minimise low-value noise.
+    The ``keywords`` parameter is accepted for interface compatibility but is
+    intentionally not used to generate additional queries.
+    """
+    _ = keywords  # accepted for interface compatibility; not used
+    high_value_terms = [
+        # Priority 1 – brand / product names
+        "ChatGPT",
+        "Codex",
+        "OpenAI",
+        "Claude",
+        "Gemini",
+        "Grok",
+        # Priority 2 – specific plans
+        "ChatGPT Plus",
+        "ChatGPT Pro",
+        "SuperGrok",
+        "Claude Pro",
+        "Gemini Advanced",
+        "OpenAI API",
+        # Priority 3 – service / fulfilment keywords
+        "Codex 接码",
+        "接码",
+        "验证码",
+        "成品号",
+    ]
     return [
-        'site:16688.com.cn/shop "ChatGPT"',
-        'site:16688.com.cn/shop "Claude"',
-        'site:16688.com.cn/shop "Gemini"',
-        'site:16688.com.cn/shop "Grok"',
-        'site:16688.com.cn/shop "OpenAI"',
+        f'site:16688.com.cn/shop "{term}"'
+        for term in high_value_terms
     ]
 
 

@@ -851,3 +851,113 @@ def list_public_shop_tokens(db: Session) -> list[str]:
     if snapshot is not None:
         stmt = stmt.where(Offer.snapshot_id == snapshot.id)
     return list(db.scalars(stmt))
+
+
+def list_public_shops(
+    db: Session,
+    *,
+    source_platform: str = "",
+    q: str = "",
+    offset: int = 0,
+    limit: int = 50,
+    sort: str = "offer_count",
+) -> "ShopListResponse":
+    """Return paginated ShopCard summaries for shops with public offers.
+
+    Only shops that are visible and have at least one currently active,
+    approved, non-stale offer linked to a visible product are included.
+    """
+    from sqlalchemy import func as sqlfunc
+
+    from ..schemas import ShopCard, ShopListResponse
+    from .source_platform import canonical_source_platform
+
+    snapshot = get_current_snapshot(db)
+    cutoff = _fresh_cutoff()
+    platform_filter = canonical_source_platform(source_platform) if source_platform else ""
+
+    base = (
+        select(
+            Shop,
+            sqlfunc.count(Offer.id.distinct()).label("offer_count"),
+            sqlfunc.sum(
+                case((or_(Offer.stock_count > 0, Offer.stock_status == "in_stock"), 1), else_=0)
+            ).label("in_stock_count"),
+            sqlfunc.count(Offer.product_id.distinct()).label("product_count"),
+        )
+        .join(Offer, Offer.shop_id == Shop.id)
+        .join(Product, Offer.product_id == Product.id)
+        .where(
+            Shop.is_visible.is_(True),
+            Product.is_visible.is_(True),
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            Offer.observed_at >= cutoff,
+        )
+        .group_by(Shop.id)
+    )
+
+    if snapshot is not None:
+        base = base.where(Offer.snapshot_id == snapshot.id)
+
+    if platform_filter:
+        base = base.where(Shop.platform == platform_filter)
+
+    if q:
+        base = base.where(Shop.name.ilike(f"%{q}%"))
+
+    # Count total before pagination
+    count_stmt = select(sqlfunc.count()).select_from(base.subquery())
+    total: int = db.scalar(count_stmt) or 0
+
+    # Sorting
+    offer_count = sqlfunc.count(Offer.id.distinct())
+    sort_columns = {
+        "offer_count": [offer_count.desc(), Shop.name.asc().nulls_last(), Shop.token.asc()],
+        "name": [Shop.name.asc().nulls_last(), Shop.token.asc()],
+        "last_seen": [Shop.last_seen_at.desc().nulls_last(), Shop.token.asc()],
+    }.get(sort, [offer_count.desc(), Shop.name.asc().nulls_last(), Shop.token.asc()])
+    base = base.order_by(*sort_columns).offset(offset).limit(limit)
+
+    rows = db.execute(base).all()
+
+    # Fetch product slugs per shop (separate query to avoid N+1 on large sets)
+    shop_ids = [row.Shop.id for row in rows]
+    slugs_by_shop: dict[int, list[str]] = defaultdict(list)
+    if shop_ids:
+        slug_stmt = (
+            select(Offer.shop_id, Product.slug)
+            .join(Product, Offer.product_id == Product.id)
+            .where(
+                Offer.shop_id.in_(shop_ids),
+                Offer.active.is_(True),
+                Offer.approved.is_(True),
+                Offer.observed_at >= cutoff,
+                Product.is_visible.is_(True),
+            )
+            .distinct()
+            .order_by(Offer.shop_id.asc(), Product.slug.asc())
+        )
+        if snapshot is not None:
+            slug_stmt = slug_stmt.where(Offer.snapshot_id == snapshot.id)
+        for shop_id, slug in db.execute(slug_stmt):
+            slugs_by_shop[shop_id].append(slug)
+
+    items = [
+        ShopCard(
+            token=row.Shop.token,
+            name=row.Shop.name,
+            source_url=row.Shop.source_url,
+            source_platform=canonical_source_platform(row.Shop.platform),
+            source_platform_label=source_platform_label(row.Shop.platform),
+            offer_count=row.offer_count or 0,
+            in_stock_count=int(row.in_stock_count or 0),
+            product_count=row.product_count or 0,
+            first_seen_at=row.Shop.first_seen_at,
+            last_seen_at=row.Shop.last_seen_at,
+            last_success_at=row.Shop.last_success_at,
+            product_slugs=slugs_by_shop.get(row.Shop.id, []),
+        )
+        for row in rows
+    ]
+    return ShopListResponse(items=items, total=total)

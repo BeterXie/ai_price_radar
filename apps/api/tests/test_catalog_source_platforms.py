@@ -100,5 +100,32 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
             {"id": "schema_org", "label": "独立站"},
             {"id": "woocommerce", "label": "WooCommerce"},
         ]
+
+        # Test shops listing
+        shops_res = client.get("/api/v1/shops")
+        assert shops_res.status_code == 200
+        shops_data = shops_res.json()
+        assert shops_data["total"] == 4  # ldxp, dujiao, woo, structured (feed-shop was on old snapshot)
+        tokens = [s["token"] for s in shops_data["items"]]
+        assert "dujiao-shop" in tokens
+        assert "feed-shop" not in tokens
+        dujiao_card = next(item for item in shops_data["items"] if item["token"] == "dujiao-shop")
+        assert dujiao_card["in_stock_count"] == dujiao_card["offer_count"] == 2
+
+        # Test filter by source_platform
+        dujiao_shops = client.get("/api/v1/shops", params={"source_platform": "dujiao_next"}).json()
+        assert dujiao_shops["total"] == 1
+        assert dujiao_shops["items"][0]["token"] == "dujiao-shop"
+        assert dujiao_shops["items"][0]["offer_count"] == 2
+        assert "chatgpt-plus" in dujiao_shops["items"][0]["product_slugs"]
+        assert "claude-pro" in dujiao_shops["items"][0]["product_slugs"]
+        aliased_filter = client.get("/api/v1/shops", params={"source_platform": "dujiao-next"}).json()
+        assert aliased_filter["total"] == 1
+        assert aliased_filter["items"][0]["source_platform"] == "dujiao_next"
+
+        # Test tokens-only legacy endpoint
+        tokens_res = client.get("/api/v1/shops/tokens")
+        assert tokens_res.status_code == 200
+        assert tokens_res.json() == sorted(["dujiao-shop", "ldxp-shop", "structured-shop", "woo-shop"])
     finally:
         app.dependency_overrides.clear()

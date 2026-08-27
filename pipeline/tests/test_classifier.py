@@ -72,6 +72,23 @@ def test_description_is_only_used_for_tags_and_risks():
     assert "限制退款" in result.risks
 
 
+def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
+    result = classify(
+        "官方充值 Plus CDK",
+        "AI与效率",
+        {
+            "description": "商品内容：GP.T Plus 1个月",
+            "instruction": "官方订阅充值",
+        "remark": "质保30天",
+    },
+    source_platform="16688",
+)
+    assert result.slug == "chatgpt-plus"
+    assert classify("G Pro X20 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
+    assert classify("GP.T Plus 菲区 CDK").slug is None
+    assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-super"
+
+
 def test_description_can_refine_an_already_identified_openai_product():
     result = classify("ChatGPT 独享账号", "OpenAI", {"description": "Business Team 自动拉入"})
     assert result.slug == "chatgpt-k12"

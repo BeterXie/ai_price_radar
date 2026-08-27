@@ -19,6 +19,34 @@ def test_plus_excludes_api():
 @pytest.mark.parametrize(
     ("title", "slug"),
     [
+        ("GP.T Plus 菲区 CDK", "chatgpt-plus"),
+        ("GTP Pro 5x 菲区充值", "chatgpt-pro-5x"),
+        ("PRO 20X 官方充值月卡", "chatgpt-pro-20x"),
+        ("G Pro X20 官方充值月卡", "chatgpt-pro-20x"),
+        ("G Plus 官方充值", "chatgpt-plus"),
+        ("Gro Heavy 速刷成品号", "grok-super"),
+        ("Supergro 30刀月卡", "grok-super"),
+        ("Gro-free 普号", "grok-account"),
+    ],
+)
+def test_16688_aliases_are_platform_specific(title: str, slug: str):
+    assert classify_product(title, source_platform="16688").slug == slug
+    assert classify_product(title).slug is None
+
+
+def test_16688_alias_can_use_description_context():
+    result = classify_product(
+        "官方充值 Plus CDK",
+        "AI与效率",
+        "商品内容：GP.T Plus 1个月，官方订阅充值",
+        source_platform="16688",
+    )
+    assert result.slug == "chatgpt-plus"
+
+
+@pytest.mark.parametrize(
+    ("title", "slug"),
+    [
         ("ChatGPT Free 成品号", "chatgpt-account"),
         ("GPT Team 团队邀请 月付", "chatgpt-k12"),
         ("ChatGPT K12 自动拉", "chatgpt-k12"),

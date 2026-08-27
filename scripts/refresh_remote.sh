@@ -88,7 +88,7 @@ run_source_discovery() {
     --github-max-candidates "${DISCOVERY_GITHUB_MAX_CANDIDATES:-300}" \
     --cc-indexes "${DISCOVERY_COMMONCRAWL_INDEXES:-2}" \
     --cc-max-urls "${DISCOVERY_COMMONCRAWL_MAX_URLS:-500}" \
-    --16688-source-pages "${DISCOVERY_16688_SOURCE_PAGES:-3}" \
+    --16688-source-pages "${DISCOVERY_16688_SOURCE_PAGES:-10}" \
     --keywords "${KEYWORDS[@]}"
 }
 

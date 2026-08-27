@@ -161,6 +161,26 @@ export type ShopDetail = {
   offers: Offer[];
 };
 
+export type ShopCard = {
+  token: string;
+  name: string;
+  source_url: string;
+  source_platform: string;
+  source_platform_label: string;
+  offer_count: number;
+  in_stock_count: number;
+  product_count: number;
+  first_seen_at: string;
+  last_seen_at: string | null;
+  last_success_at: string | null;
+  product_slugs: string[];
+};
+
+export type ShopListResponse = {
+  items: ShopCard[];
+  total: number;
+};
+
 export type Meta = {
   platforms: string[];
   brands: string[];

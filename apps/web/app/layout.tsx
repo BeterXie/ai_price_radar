@@ -9,7 +9,7 @@ import { CommunityPrompts } from "@/components/community-prompts";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai.pricememo.cn"),
-  title: { default: "AI Price Radar", template: "%s · AI Price Radar" },
+  title: { default: "AI Price Radar · PriceMemo", template: "%s · AI Price Radar · PriceMemo" },
   description: "聚合公开 AI 订阅商品报价，比较价格、库存、来源和更新时间。",
   openGraph: { siteName: "AI Price Radar", locale: "zh_CN", type: "website" },
 };

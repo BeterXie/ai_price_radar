@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getProducts, getShopTokens } from "@/lib/api";
+import { getMeta, getProducts, getShopCards } from "@/lib/api";
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 const SITE_URL = "https://ai.pricememo.cn";
 const GUIDE_LAST_MODIFIED = new Date("2026-08-03");
 
-function validDate(value: string | null) {
+function validDate(value: string | null | undefined) {
   if (!value) return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
@@ -17,6 +17,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: SITE_URL },
     { url: `${SITE_URL}/products` },
+    { url: `${SITE_URL}/shops` },
+    { url: `${SITE_URL}/sources` },
     { url: `${SITE_URL}/tools/json-to-cockpit`, lastModified: GUIDE_LAST_MODIFIED },
     { url: `${SITE_URL}/shops/submit` },
     { url: `${SITE_URL}/watchlist` },
@@ -36,21 +38,61 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...Object.keys(generalGuides).map((slug) => ({ url: `${SITE_URL}/guides/${encodeURIComponent(slug)}`, lastModified: GUIDE_LAST_MODIFIED })),
     ...Object.keys(workflowGuides).map((slug) => ({ url: `${SITE_URL}/guides/workflows/${encodeURIComponent(slug)}`, lastModified: GUIDE_LAST_MODIFIED })),
   ];
+
   try {
-    const [catalog, shopTokens] = await Promise.all([getProducts("sort=quality"), getShopTokens()]);
+    const [catalog, shopsData, meta] = await Promise.all([
+      getProducts("sort=quality"),
+      getShopCards("sort=offer_count&limit=500"),
+      getMeta(),
+    ]);
+    const sourceCatalogs = await Promise.all(
+      meta.source_platforms.map(async (platform) => ({
+        platform,
+        catalog: await getProducts(`source_platform=${encodeURIComponent(platform.id)}&sort=quality`),
+      })),
+    );
+
     const snapshotAt = validDate(catalog.snapshot_at);
     staticPages[0].lastModified = snapshotAt;
     staticPages[1].lastModified = snapshotAt;
+
+    // Source platform pages – only include platforms with active offers
+    const sourcePlatformPages: MetadataRoute.Sitemap = meta.source_platforms.map((platform) => ({
+      url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}`,
+      lastModified: snapshotAt,
+    }));
+
+    // Shop pages – only shops with public offers
+    const shopPages: MetadataRoute.Sitemap = shopsData.items.map((shop) => ({
+      url: `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`,
+      lastModified: validDate(shop.last_seen_at ?? shop.last_success_at) ?? snapshotAt,
+    }));
+
+    // Product pages
+    const productPages: MetadataRoute.Sitemap = catalog.items
+      .filter((product) => product.offer_count > 0)
+      .map((product) => ({
+        url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
+        lastModified: validDate(product.last_updated_at) || snapshotAt,
+      }));
+
+    // Only emit source/product URLs that exist in that source's own catalog.
+    const sourceProductPages: MetadataRoute.Sitemap = sourceCatalogs.flatMap(({ platform, catalog: sourceCatalog }) =>
+      sourceCatalog.items
+        .filter((product) => product.offer_count >= 2)
+        .map((product) => ({
+          url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}/products/${encodeURIComponent(product.slug)}`,
+          lastModified: validDate(product.last_updated_at) || snapshotAt,
+        })),
+    );
+
     return [
       ...staticPages,
       ...guidePages,
-      ...shopTokens.map((token) => ({ url: `${SITE_URL}/shops/${encodeURIComponent(token)}` })),
-      ...catalog.items
-        .filter((product) => product.offer_count > 0)
-        .map((product) => ({
-          url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
-          lastModified: validDate(product.last_updated_at) || snapshotAt,
-        })),
+      ...sourcePlatformPages,
+      ...shopPages,
+      ...productPages,
+      ...sourceProductPages,
     ];
   } catch {
     return [...staticPages, ...guidePages];

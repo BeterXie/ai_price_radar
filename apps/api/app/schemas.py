@@ -184,6 +184,28 @@ class ShopDetail(BaseModel):
     offers: list[OfferPublic]
 
 
+class ShopCard(BaseModel):
+    """Lightweight shop summary for directory listings and SEO pages."""
+
+    token: str
+    name: str
+    source_url: str
+    source_platform: str
+    source_platform_label: str
+    offer_count: int
+    in_stock_count: int
+    product_count: int
+    first_seen_at: datetime
+    last_seen_at: datetime | None
+    last_success_at: datetime | None
+    product_slugs: list[str] = Field(default_factory=list)
+
+
+class ShopListResponse(BaseModel):
+    items: list[ShopCard]
+    total: int
+
+
 class CatalogResponse(BaseModel):
     items: list[ProductCard]
     total: int

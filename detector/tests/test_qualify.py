@@ -40,7 +40,13 @@ class Fake16688Client:
                 "code": 1,
                 "data": {
                     "list": [
-                        {"goods_no": "G1", "name": "ChatGPT Plus 月卡"},
+                        {
+                            "goods_no": "G1",
+                            "name": "官方充值 Plus CDK",
+                            "description": "商品详情",
+                            "content": "GP.T Plus 1个月官方订阅充值",
+                            "instruction": "质保30天",
+                        },
                         {"goods_no": "G2", "name": "普通商品"},
                     ],
                 },

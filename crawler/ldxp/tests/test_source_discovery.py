@@ -150,6 +150,35 @@ def test_keywords_are_deduplicated_and_include_brand_and_chinese_terms():
     assert 'site:16688.com.cn/shop "ChatGPT"' in bing_16688_queries()
 
 
+def test_bing_16688_queries_coverage():
+    """Verify that bing_16688_queries() covers all high-value discovery terms."""
+    queries = bing_16688_queries()
+
+    # No duplicates
+    assert len(queries) == len(set(queries))
+
+    joined = " ".join(queries)
+
+    # Priority 1 – brand / product names
+    assert "ChatGPT" in joined
+    assert "Codex" in joined
+    assert "OpenAI" in joined
+    assert "Claude" in joined
+    assert "Gemini" in joined
+    assert "Grok" in joined
+
+    # Priority 3 – service / fulfilment keywords
+    assert "接码" in joined
+    assert "验证码" in joined
+    assert "成品号" in joined
+
+    # All queries must be scoped to the official 16688 shop domain
+    for query in queries:
+        assert "site:16688.com.cn/shop" in query, (
+            f"Query does not restrict to 16688 shop domain: {query!r}"
+        )
+
+
 def test_16688_shop_urls_get_a_platform_hint():
     assert platform_hint_for_candidate("https://www.16688.com.cn/shop/HARVEY") == "16688"
     assert platform_hint_for_candidate("https://www.16688.com.cn/goods/G1") == "unknown"
@@ -374,6 +403,81 @@ def test_16688_source_adapter_resolves_public_goods_to_official_shop_urls():
     assert all(item.platform_hint == "16688" for item in results)
 
 
+def test_16688_source_adapter_prioritizes_ai_and_scans_all_categories():
+    list_calls: list[tuple[int, int]] = []
+    detail_calls: list[str] = []
+
+    def handler(url: str, kwargs: dict):
+        if url.endswith("/index/SourceCategory/tree"):
+            return FakeResponse(200, document={
+                "code": 1,
+                "data": {"list": [
+                    {"id": 2, "name": "游戏相关"},
+                    {"id": 1, "name": "AI与效率"},
+                    {"id": 3, "name": "软件工具"},
+                ]},
+            })
+        if url.endswith("/index/SourceGoods/list"):
+            payload = kwargs["json"]
+            list_calls.append((payload["source_category_id"], payload["page_no"]))
+            items = {
+                1: [{"goods_no": "G-AI", "name": "G Plus", "merchant": {"merchant_no": "M1"}}],
+                2: [{"goods_no": "G-GAME", "name": "另一商品", "merchant": {"merchant_no": "M1"}}],
+                3: [{"goods_no": "G-TOOL", "name": "工具", "merchant": {"merchant_no": "M3"}}],
+            }[payload["source_category_id"]]
+            return FakeResponse(200, document={"code": 1, "data": {"total": 1, "list": items}})
+        assert url.endswith("/shopApi/goods/detail")
+        goods_no = kwargs["json"]["goods_no"]
+        detail_calls.append(goods_no)
+        shop_no = {"G-AI": "S1", "G-TOOL": "S3"}[goods_no]
+        return FakeResponse(200, document={"code": 1, "data": {"shop_no": shop_no}})
+
+    adapter = Platform16688Adapter(FakeSession(handler), timeout=3)
+    results = list(adapter.discover(
+        keywords=(),
+        budget=DiscoveryBudget(request_interval_seconds=0),
+    ))
+
+    assert [item.url for item in results] == [
+        "https://www.16688.com.cn/shop/S1",
+        "https://www.16688.com.cn/shop/S3",
+    ]
+    assert list_calls == [(1, 1), (2, 1), (3, 1)]
+    assert detail_calls == ["G-AI", "G-TOOL"]
+
+
+def test_16688_source_adapter_uses_one_global_page_budget():
+    list_calls: list[tuple[int, int]] = []
+
+    def handler(url: str, kwargs: dict):
+        if url.endswith("/index/SourceCategory/tree"):
+            return FakeResponse(200, document={
+                "code": 1,
+                "data": {"list": [
+                    {"id": 1, "name": "AI与效率"},
+                    {"id": 2, "name": "游戏相关"},
+                ]},
+            })
+        if url.endswith("/index/SourceGoods/list"):
+            payload = kwargs["json"]
+            list_calls.append((payload["source_category_id"], payload["page_no"]))
+            goods_no = "G1" if payload["page_no"] == 1 else "G2"
+            return FakeResponse(200, document={
+                "code": 1,
+                "data": {"total": 40, "list": [{"goods_no": goods_no, "name": "商品"}]},
+            })
+        goods_no = kwargs["json"]["goods_no"]
+        return FakeResponse(200, document={"code": 1, "data": {"shop_no": goods_no}})
+
+    adapter = Platform16688Adapter(FakeSession(handler), timeout=3)
+    list(adapter.discover(
+        keywords=(),
+        budget=DiscoveryBudget(max_16688_source_pages=2, request_interval_seconds=0),
+    ))
+
+    assert list_calls == [(1, 1), (1, 2)]
+
+
 def test_runner_submits_batches_deduplicates_and_finishes_run():
     bridge = FakeBridge()
 
@@ -450,4 +554,4 @@ def test_cli_exposes_discover_sources_command(monkeypatch):
     assert env_args.api_url == "http://api:8000"
     assert env_args.worker_key == "worker-test"
     assert "16688" in env_args.sources.split(",")
-    assert env_args.source_16688_pages == 3
+    assert env_args.source_16688_pages == 10

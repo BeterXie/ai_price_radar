@@ -158,6 +158,7 @@ CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指
 CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
 IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
 NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
+PLATFORM_16688 = "16688"
 RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率"]
 SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池"]
 TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
@@ -318,7 +319,71 @@ def first_title_brand(text: str) -> str | None:
     return min(positions)[1] if positions else None
 
 
-def classify_identity(title_text: str, category_text: str, description_text: str = "") -> tuple[str | None, bool]:
+def compact_latin(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+
+
+def platform_16688_chatgpt_alias_tier(value: str) -> str | None:
+    compact = compact_latin(value)
+    if any(marker in compact for marker in ("pro20x", "20xpro", "prox20", "x20pro")):
+        return "chatgpt-pro-20x"
+    if any(marker in compact for marker in ("pro5x", "5xpro", "prox5", "x5pro")):
+        return "chatgpt-pro-5x"
+    if any(marker in compact for marker in ("gptpro", "gtppro", "gpro")):
+        return "chatgpt-pro"
+    if any(marker in compact for marker in ("gptplus", "gtpplus", "gplus")):
+        return "chatgpt-plus"
+    if any(marker in compact for marker in ("gptgo", "gtpgo", "ggo")):
+        return "chatgpt-go"
+    return None
+
+
+def platform_16688_grok_alias(value: str) -> str | None:
+    compact = compact_latin(value)
+    if any(marker in compact for marker in ("groheavy", "grosuper", "supergro")):
+        return "grok-super"
+    if "grofree" in compact:
+        return "grok-account"
+    return None
+
+
+def classify_16688_alias(title_text: str, category_text: str, description_text: str) -> str | None:
+    if contains(title_text, GENERIC_EMAIL_MARKERS):
+        return None
+
+    title_grok = platform_16688_grok_alias(title_text)
+    if title_grok:
+        return title_grok
+    title_alias = platform_16688_chatgpt_alias_tier(title_text)
+    if title_alias:
+        return title_alias
+
+    title_plain_tier = None
+    if contains(title_text, CHATGPT_PLUS_MARKERS):
+        title_plain_tier = "chatgpt-plus"
+    elif contains(title_text, CHATGPT_GO_MARKERS):
+        title_plain_tier = "chatgpt-go"
+    elif contains(title_text, CHATGPT_PRO_MARKERS):
+        title_plain_tier = "chatgpt-pro"
+
+    context = " ".join([category_text, description_text])
+    context_grok = platform_16688_grok_alias(context)
+    context_chatgpt = platform_16688_chatgpt_alias_tier(context)
+    if title_plain_tier and context_chatgpt:
+        return title_plain_tier
+    if context_grok and not context_chatgpt and contains(title_text, CATEGORY_COMMERCE_MARKERS):
+        return context_grok
+    if context_chatgpt and contains(title_text, CATEGORY_COMMERCE_MARKERS):
+        return context_chatgpt
+    return None
+
+
+def classify_identity(
+    title_text: str,
+    category_text: str,
+    description_text: str = "",
+    source_platform: str = "",
+) -> tuple[str | None, bool]:
     identity_text = norm(" ".join([title_text, category_text]))
     tier_text = norm(" ".join([identity_text, description_text]))
     if contains(identity_text, RELAY_MARKERS) and contains(identity_text, ["api", "key", "token", "额度"]):
@@ -334,6 +399,10 @@ def classify_identity(title_text: str, category_text: str, description_text: str
         if len(category_brands) == 1 and not contains(title_text, GENERIC_EMAIL_MARKERS) and contains(title_text, CATEGORY_COMMERCE_MARKERS):
             brand = category_brands[0]
     if brand is None:
+        if str(source_platform or "").strip().casefold() == PLATFORM_16688:
+            alias_slug = classify_16688_alias(title_text, category_text, description_text)
+            if alias_slug:
+                return alias_slug, True
         return None, False
     if brand == "codex":
         return "codex-access", True
@@ -392,10 +461,24 @@ def classify_identity(title_text: str, category_text: str, description_text: str
     return None, False
 
 
-def classify(title: str, category: str = "", raw: dict[str, Any] | None = None) -> Classification:
-    description_text = norm(str((raw or {}).get("description", "")))
+def classify(
+    title: str,
+    category: str = "",
+    raw: dict[str, Any] | None = None,
+    *,
+    source_platform: str = "",
+) -> Classification:
+    raw = raw or {}
+    source_platform = source_platform or str(raw.get("source_platform") or "")
+    description_values = [raw.get("description", "")]
+    if source_platform.strip().casefold() == PLATFORM_16688:
+        description_values.extend(raw.get(key, "") for key in ("content", "instruction", "remark"))
+        category_value = raw.get("sourceCategory") or raw.get("source_category")
+        if isinstance(category_value, dict):
+            description_values.append(category_value.get("name", ""))
+    description_text = norm(" ".join(str(value or "") for value in description_values))
     detail_text = norm(" ".join([title, category, description_text]))
-    slug, specific_match = classify_identity(norm(title), norm(category), description_text)
+    slug, specific_match = classify_identity(norm(title), norm(category), description_text, source_platform)
     tags = [label for label, words in TAG_RULES.items() if any(norm(x) in detail_text for x in words)]
     risks = [label for label, words in RISK_RULES.items() if any(norm(x) in detail_text for x in words)]
     if slug != "chatgpt-k12":
@@ -559,7 +642,12 @@ def upsert_offer(
     raw.raw_json = raw_json
     raw.last_seen_at = observed_at
 
-    result = classify(raw.original_name, raw.original_category, raw_json)
+    result = classify(
+        raw.original_name,
+        raw.original_category,
+        raw_json,
+        source_platform=str(record.get("source_platform") or shop.platform or ""),
+    )
     offer = db.scalar(select(Offer).where(Offer.raw_product_id == raw.id))
     price = parse_decimal(record.get("listed_price") if record.get("listed_price") not in (None, "") else record.get("price"))
     currency = normalize_currency(record.get("currency"))

@@ -29,7 +29,9 @@ from ..schemas import (
     PublicCorrectionPage,
     ReportCreate,
     ReportOut,
+    ShopCard,
     ShopDetail,
+    ShopListResponse,
     ShopRequestCreate,
     ShopRequestOut,
 )
@@ -45,6 +47,7 @@ from ..services.catalog import (
     get_product_offer_page,
     get_shop_detail,
     list_public_shop_tokens,
+    list_public_shops,
     get_snapshot,
     list_product_cards,
 )
@@ -435,8 +438,28 @@ def offer_description(offer_id: int, db: Session = Depends(get_db)) -> OfferDesc
     return OfferDescriptionResponse(offer_id=offer_id, original_description=description)
 
 
-@router.get("/shops", response_model=list[str])
-def shops(db: Session = Depends(get_db)) -> list[str]:
+@router.get("/shops", response_model=ShopListResponse)
+def shops(
+    source_platform: str = Query("", description="Filter by source platform, e.g. 16688"),
+    q: str = Query("", description="Search shop name"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    sort: str = Query("offer_count", description="Sort: offer_count | name | last_seen"),
+    db: Session = Depends(get_db),
+) -> ShopListResponse:
+    return list_public_shops(
+        db,
+        source_platform=source_platform,
+        q=q,
+        offset=offset,
+        limit=limit,
+        sort=sort,
+    )
+
+
+@router.get("/shops/tokens", response_model=list[str])
+def shop_tokens(db: Session = Depends(get_db)) -> list[str]:
+    """Return a flat list of shop tokens (used by sitemap and legacy callers)."""
     return list_public_shop_tokens(db)
 
 
