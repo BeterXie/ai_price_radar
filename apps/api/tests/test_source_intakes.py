@@ -428,6 +428,42 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         assert "https://ai.pricememo.cn/shops/APPROVE1" in onboarded_mail.text_body
 
 
+def test_closed_intake_attempt_ignores_retried_scan_result(api_client):
+    client, _ = api_client
+    intake_id = client.post("/api/v1/shop-requests", json=_payload("RETRY1")).json()["request_id"]
+    _detect(client, intake_id)
+    admin_headers = {"X-Admin-Key": "admin-test"}
+    worker_headers = {"X-Intake-Worker-Key": "worker-test"}
+    assert client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers=admin_headers).status_code == 200
+    claim = client.post(
+        "/api/v1/internal/source-intakes/claim",
+        headers=worker_headers,
+        json={"limit": 1, "lease_seconds": 300},
+    ).json()[0]
+    attempt_count = claim["attempt_count"]
+    validated = client.post(
+        f"/api/v1/internal/source-intakes/{intake_id}/result",
+        headers=worker_headers,
+        json={"status": "validated", "attempt_count": attempt_count, "product_count": 1},
+    )
+    assert validated.status_code == 200
+
+    retried = client.post(
+        f"/api/v1/internal/source-intakes/{intake_id}/result",
+        headers=worker_headers,
+        json={"status": "no_products", "attempt_count": attempt_count, "product_count": 0},
+    )
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "validated"
+
+    stale = client.post(
+        f"/api/v1/internal/source-intakes/{intake_id}/result",
+        headers=worker_headers,
+        json={"status": "no_products", "attempt_count": attempt_count + 1, "product_count": 0},
+    )
+    assert stale.status_code == 409
+
+
 def test_declared_platform_mismatch_is_saved_and_reported(api_client, monkeypatch):
     client, engine = api_client
     response = client.post(

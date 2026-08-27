@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import sync_ldxp
+from ldxp_intake import collect_intake_metadata
 
 
 def test_load_records_opens_source_read_only(tmp_path, monkeypatch):
@@ -79,6 +80,18 @@ def test_load_records_preserves_intake_attempt_metadata(tmp_path):
     records = list(sync_ldxp.load_records(source))
     assert records[0]["intake_id"] == 9
     assert records[0]["intake_attempt_count"] == 2
+
+
+def test_collect_intake_metadata_groups_tokens_by_current_attempt():
+    tokens, attempts = collect_intake_metadata([
+        {"intake_id": 7, "intake_attempt_count": 3, "token": "ABC123"},
+        {"intake_id": "7", "intake_attempt_count": "3", "token": "XYZ789"},
+        {"intake_id": 8, "intake_attempt_count": 0, "token": "NO-ATTEMPT"},
+        {"intake_id": "invalid", "intake_attempt_count": 1, "token": "IGNORED"},
+    ])
+
+    assert tokens == {7: {"ABC123", "XYZ789"}, 8: {"NO-ATTEMPT"}}
+    assert attempts == {7: 3}
 
 
 def test_onboard_only_after_published_import_succeeds():

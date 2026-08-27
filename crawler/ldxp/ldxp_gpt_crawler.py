@@ -517,8 +517,14 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
                 attempted += 1
                 db.save_scan_result(result, run_id)
                 intake_id = candidate["intake_id"]
-                if intake_bridge.enabled and intake_id is not None:
-                    intake_attempt = int(candidate["intake_attempt_count"] or 0)
+                intake_attempt = int(candidate["intake_attempt_count"] or 0)
+                reported_attempt = int(candidate["intake_reported_attempt_count"] or 0)
+                if (
+                    intake_bridge.enabled
+                    and intake_id is not None
+                    and intake_attempt > 0
+                    and reported_attempt != intake_attempt
+                ):
                     intake_status, product_count, failure_reason = intake_result_payload(result)
                     try:
                         intake_bridge.report_result(
@@ -527,6 +533,11 @@ def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> d
                             status=intake_status,
                             product_count=product_count,
                             failure_reason=failure_reason,
+                        )
+                        db.mark_intake_result_reported(
+                            token=str(candidate["token"]),
+                            intake_id=int(intake_id),
+                            attempt_count=intake_attempt,
                         )
                     except IntakeBridgeError as exc:
                         logger.error("收录申请结果回报失败：%s", str(exc))

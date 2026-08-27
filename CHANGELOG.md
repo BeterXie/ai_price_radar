@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.20] - 2026-08-27
+
+### Fixed
+
+- Prevented completed LDXP intake attempts from being re-reported on later inventory scans, eliminating false production `409` errors while retaining the metadata required for publication onboarding.
+- Made same-attempt scan-result retries idempotent after an intake reaches a closed state; a newer attempt remains rejected as stale.
+- Restored LDXP application onboarding after a successful atomic multi-source snapshot, so validated applications with public offers are marked as published.
+
 ## [3.7.19] - 2026-08-27
 
 ### Fixed

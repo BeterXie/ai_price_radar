@@ -26,6 +26,9 @@ from common import (
     utcnow,
 )
 from connectors import get_connector
+from connectors.ldxp import load_records as load_ldxp_records
+from intake_bridge import IntakeBridge
+from ldxp_intake import collect_intake_metadata, onboard_published_intakes, published_offer_counts
 
 
 UNREVIEWED_DUJIAO_ENV = "AI_PRICE_RADAR_ALLOW_UNREVIEWED_DUJIAO"
@@ -200,6 +203,47 @@ def public_offer_count(
     ) or 0)
 
 
+def onboard_validated_ldxp_intakes(
+    db: Session,
+    *,
+    snapshot_id: int,
+    intake_tokens: dict[int, set[str]],
+    intake_attempts: dict[int, int],
+    api_url: str,
+    worker_key: str,
+    bridge_factory=IntakeBridge,
+) -> list[dict[str, object]]:
+    inspector = inspect(db.get_bind())
+    if (
+        not intake_tokens
+        or not inspector.has_table("source_intakes")
+        or "attempt_count" not in {column["name"] for column in inspector.get_columns("source_intakes")}
+    ):
+        return []
+    public_counts = published_offer_counts(db, snapshot_id, intake_tokens)
+    if not public_counts:
+        return []
+    current_attempts = {
+        int(row["id"]): int(row["attempt_count"])
+        for row in db.execute(text(
+            "SELECT id, attempt_count FROM source_intakes "
+            "WHERE source_type='ldxp' AND status='validated'"
+        )).mappings()
+    }
+    eligible_counts = {
+        intake_id: product_count
+        for intake_id, product_count in public_counts.items()
+        if intake_attempts.get(intake_id) == current_attempts.get(intake_id)
+    }
+    return onboard_published_intakes(
+        eligible_counts,
+        intake_attempts,
+        api_url=api_url,
+        worker_key=worker_key,
+        bridge_factory=bridge_factory,
+    )
+
+
 def import_source_into_snapshot(
     db: Session,
     *,
@@ -360,10 +404,22 @@ def main() -> int:
         parser.error(str(exc))
     db = session_for(args.database_url)
     try:
+        intake_tokens: dict[int, set[str]] = {}
+        intake_attempts: dict[int, int] = {}
+        if args.ldxp_db:
+            intake_tokens, intake_attempts = collect_intake_metadata(load_ldxp_records(args.ldxp_db))
         sources = merge_sources([*sources, *approved_intake_sources(db)])
         if not sources:
             parser.error("no importable sources were configured or approved")
         result = publish_sources(db, sources)
+        onboarding_errors = onboard_validated_ldxp_intakes(
+            db,
+            snapshot_id=result.snapshot_id,
+            intake_tokens=intake_tokens,
+            intake_attempts=intake_attempts,
+            api_url=os.getenv("INTAKE_API_URL", ""),
+            worker_key=os.getenv("INTAKE_WORKER_KEY", ""),
+        )
     except ImportLockUnavailable as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))
         return 3
@@ -376,9 +432,12 @@ def main() -> int:
         "snapshot_id": result.snapshot_id,
         "offer_count": result.offer_count,
         "published": True,
+        "onboarding_failed": len(onboarding_errors),
         "imports": [asdict(item) for item in result.imports],
     }, ensure_ascii=False))
-    return 0
+    for error in onboarding_errors:
+        print(json.dumps({**error, "published_data_remains_validated": True}, ensure_ascii=False))
+    return 0 if not onboarding_errors else 2
 
 
 if __name__ == "__main__":

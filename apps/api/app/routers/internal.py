@@ -372,9 +372,13 @@ def report_source_intake_result(
         db.commit()
         return _response(intake)
 
-    if intake.status == payload.status and payload.status in {"no_products", "validation_failed"}:
-        return _response(intake)
-    if intake.status == payload.status == "validated":
+    # The browser worker can retry its result after the API committed it. A closed
+    # attempt must not be reopened or produce a false 409, but a newer attempt remains strict.
+    if (
+        payload.status in {"validated", "no_products", "validation_failed"}
+        and intake.status in {"validated", "no_products", "validation_failed", "onboarded"}
+        and payload.attempt_count == intake.attempt_count
+    ):
         return _response(intake)
     if intake.status != "validating":
         raise HTTPException(status_code=409, detail=f"cannot report result from status {intake.status}")

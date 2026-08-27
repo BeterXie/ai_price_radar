@@ -61,6 +61,37 @@ def test_intake_claim_keeps_original_token_case(tmp_path: Path):
         db.close()
 
 
+def test_reported_intake_attempt_is_cleared_for_a_new_claim(tmp_path: Path):
+    db = StateDB(tmp_path / "crawler.db")
+    try:
+        db.upsert_intake_candidate(
+            intake_id=43,
+            token="ABC123",
+            url="https://pay.ldxp.cn/shop/ABC123",
+            shop_name="人工申请",
+            attempt_count=1,
+        )
+        assert db.mark_intake_result_reported(token="ABC123", intake_id=43, attempt_count=1)
+        row = db.conn.execute(
+            "SELECT intake_reported_attempt_count FROM candidates WHERE token='ABC123'"
+        ).fetchone()
+        assert row[0] == 1
+
+        db.upsert_intake_candidate(
+            intake_id=43,
+            token="ABC123",
+            url="https://pay.ldxp.cn/shop/ABC123",
+            shop_name="人工申请",
+            attempt_count=2,
+        )
+        row = db.conn.execute(
+            "SELECT intake_attempt_count, intake_reported_attempt_count FROM candidates WHERE token='ABC123'"
+        ).fetchone()
+        assert tuple(row) == (2, None)
+    finally:
+        db.close()
+
+
 def test_scan_results_map_to_validated_no_products_and_failure():
     success = ShopScanResult(
         token="shop",

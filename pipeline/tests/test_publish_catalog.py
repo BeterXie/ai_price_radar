@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from common import CatalogSnapshot, Offer, begin_snapshot, ensure_products, session_for
+from common import CatalogSnapshot, Offer, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
 from connectors import CONNECTORS
 from publish_catalog import (
     SourceImportError,
@@ -15,6 +15,7 @@ from publish_catalog import (
     approved_dujiao_sources,
     approved_intake_sources,
     import_source_into_snapshot,
+    onboard_validated_ldxp_intakes,
     publish_sources,
     validate_dujiao_source_access,
 )
@@ -138,6 +139,74 @@ def test_single_source_import_targets_draft_without_publishing(monkeypatch: pyte
         assert db.query(CatalogSnapshot).filter(CatalogSnapshot.published_at.isnot(None)).count() == 0
     finally:
         db.rollback()
+        db.close()
+
+
+def test_validated_ldxp_intake_is_onboarded_only_after_public_snapshot():
+    calls = []
+
+    class FakeBridge:
+        enabled = True
+
+        def __init__(self, api_url, worker_key):
+            assert (api_url, worker_key) == ("http://api", "worker")
+
+        def onboard(self, **payload):
+            calls.append(payload)
+            return {"status": "onboarded"}
+
+    db = session_for("sqlite://")
+    try:
+        db.execute(text(
+            "CREATE TABLE source_intakes ("
+            "id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, status TEXT NOT NULL, "
+            "attempt_count INTEGER NOT NULL)"
+        ))
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, status, attempt_count) "
+            "VALUES (7, 'ldxp', 'validated', 3)"
+        ))
+        snapshot = begin_snapshot(db, "ldxp")
+        upsert_offer(
+            db,
+            {
+                **record("ldxp-intake"),
+                "token": "INTAKE-7",
+                "source_platform": "ldxp",
+                "collected_at": utcnow().isoformat(),
+            },
+            ensure_products(db),
+            snapshot.id,
+        )
+        snapshot.published_at = utcnow()
+        db.commit()
+
+        errors = onboard_validated_ldxp_intakes(
+            db,
+            snapshot_id=snapshot.id,
+            intake_tokens={7: {"INTAKE-7"}},
+            intake_attempts={7: 3},
+            api_url="http://api",
+            worker_key="worker",
+            bridge_factory=FakeBridge,
+        )
+
+        assert errors == []
+        assert calls == [{"intake_id": 7, "attempt_count": 3, "product_count": 1}]
+
+        db.execute(text("UPDATE source_intakes SET status='onboarded' WHERE id=7"))
+        db.commit()
+        assert onboard_validated_ldxp_intakes(
+            db,
+            snapshot_id=snapshot.id,
+            intake_tokens={7: {"INTAKE-7"}},
+            intake_attempts={7: 3},
+            api_url="http://api",
+            worker_key="worker",
+            bridge_factory=FakeBridge,
+        ) == []
+        assert len(calls) == 1
+    finally:
         db.close()
 
 

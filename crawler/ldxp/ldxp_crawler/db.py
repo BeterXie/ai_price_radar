@@ -53,7 +53,8 @@ class StateDB:
                 consecutive_failures INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT,
                 intake_id INTEGER,
-                intake_attempt_count INTEGER
+                intake_attempt_count INTEGER,
+                intake_reported_attempt_count INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS matches (
@@ -130,6 +131,7 @@ class StateDB:
             "consecutive_failures": "INTEGER NOT NULL DEFAULT 0",
             "intake_id": "INTEGER",
             "intake_attempt_count": "INTEGER",
+            "intake_reported_attempt_count": "INTEGER",
         }
         for name, ddl in migrations.items():
             self._ensure_column("candidates", name, ddl)
@@ -417,6 +419,7 @@ class StateDB:
                 UPDATE candidates
                 SET url=?, sources=?, source_score=MAX(source_score, ?), updated_at=?,
                     status='pending', next_retry_at=NULL, intake_id=?, intake_attempt_count=?,
+                    intake_reported_attempt_count=NULL,
                     shop_name=COALESCE(NULLIF(?, ''), shop_name), shop_url=?
                 WHERE token=?
                 """,
@@ -457,6 +460,24 @@ class StateDB:
             inserted = True
         self.conn.commit()
         return inserted
+
+    def mark_intake_result_reported(
+        self,
+        *,
+        token: str,
+        intake_id: int,
+        attempt_count: int,
+    ) -> bool:
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                UPDATE candidates
+                SET intake_reported_attempt_count=?, updated_at=?
+                WHERE token=? AND intake_id=? AND intake_attempt_count=?
+                """,
+                (attempt_count, utc_now(), token, intake_id, attempt_count),
+            )
+        return cursor.rowcount == 1
 
     def candidate_count(self) -> int:
         return int(self.conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0])
