@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.16] - 2026-08-27
+
+### Fixed
+
+- Scheduled unified source discovery now obtains its worker key inside the Compose crawler container instead of incorrectly requiring the systemd host service to load the production `.env`.
+- Common Crawl discovery reserves candidate capacity for 16688, so high-volume LDXP URLs cannot consume the complete run budget before 16688 shop paths are queried.
+
 ## [3.7.15] - 2026-08-27
 
 ### Fixed

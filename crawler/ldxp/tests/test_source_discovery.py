@@ -300,6 +300,35 @@ def test_commoncrawl_adapter_discovers_16688_shop_pages():
     assert results[0].platform_hint == "16688"
 
 
+def test_commoncrawl_adapter_reserves_capacity_for_16688():
+    ldxp_lines = "\n".join(
+        json.dumps({"url": f"https://pay.ldxp.cn/shop/TOKEN{index}"})
+        for index in range(3)
+    ).encode("utf-8")
+    apex_16688 = json.dumps({"url": "https://16688.com.cn/shop/ALPHA"}).encode("utf-8")
+    www_16688 = json.dumps({"url": "https://www.16688.com.cn/shop/BRAVO"}).encode("utf-8")
+
+    def handler(url: str, kwargs: dict):
+        if url == "https://index.commoncrawl.org/collinfo.json":
+            return FakeResponse(200, document=[{"id": "CC-MAIN-1", "cdx-api": "https://index.commoncrawl.org/CC-MAIN-1-index"}])
+        pattern = dict(kwargs["params"])["url"]
+        return FakeResponse(200, body={
+            "pay.ldxp.cn/shop/*": ldxp_lines,
+            "16688.com.cn/shop/*": apex_16688,
+            "www.16688.com.cn/shop/*": www_16688,
+        }[pattern])
+
+    adapter = CommonCrawlAdapter(FakeSession(handler), timeout=3)
+    results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_cc_indexes=1, max_cc_urls=4, request_interval_seconds=0)))
+
+    assert [item.url for item in results] == [
+        "https://pay.ldxp.cn/shop/TOKEN0",
+        "https://pay.ldxp.cn/shop/TOKEN1",
+        "https://16688.com.cn/shop/ALPHA",
+        "https://www.16688.com.cn/shop/BRAVO",
+    ]
+
+
 def test_runner_submits_batches_deduplicates_and_finishes_run():
     bridge = FakeBridge()
 

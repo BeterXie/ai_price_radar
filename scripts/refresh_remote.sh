@@ -76,7 +76,6 @@ run_source_discovery() {
     --db /data/ldxp_crawler.db \
     --seed-file /config/general_seeds.txt \
     --api-url "${DISCOVERY_API_URL:-http://api:8000}" \
-    --worker-key "${DISCOVERY_WORKER_KEY:-}" \
     --sources "${DISCOVERY_SOURCES:-seed,bing,github,commoncrawl}" \
     --max-raw-urls "${DISCOVERY_MAX_RAW_URLS:-2000}" \
     --max-unique-candidates "${DISCOVERY_MAX_NEW_CANDIDATES:-1000}" \
@@ -103,11 +102,9 @@ case "$MODE" in
       --cc-indexes 3 \
       --max-discovered 500
     run_dujiao_discovery
-    if [[ -n "${DISCOVERY_WORKER_KEY:-}" ]]; then
-      run_source_discovery
-    else
-      echo "DISCOVERY_WORKER_KEY is empty; unified source discovery skipped"
-    fi
+    # docker compose injects DISCOVERY_WORKER_KEY into the crawler container.
+    # The systemd host service does not need to load the production .env.
+    run_source_discovery
     exit 0
     ;;
   full)
