@@ -5,7 +5,7 @@ import { ArrowClockwise, Check, Eye, EyeSlash, Key, X } from "@phosphor-icons/re
 import { money } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const PRODUCT_OPTIONS = [
   "chatgpt-account",
   "chatgpt-plus",

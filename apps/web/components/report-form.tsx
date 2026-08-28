@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 export function ReportForm({ offerId, previewState }: { offerId?: number; previewState?: "sent" | "limited" | "error" }) {
   const [message, setMessage] = useState("");

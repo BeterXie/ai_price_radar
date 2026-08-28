@@ -7,7 +7,7 @@ import type { CatalogResponse, ProductCard } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
 import { readWatchlist, WATCHLIST_EVENT, type WatchItem, writeWatchlist } from "@/components/watch-button";
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 export function WatchlistClient({ previewState }: { previewState?: "empty" | "loading" | "error" }) {
   const [items, setItems] = useState<WatchItem[]>([]);
