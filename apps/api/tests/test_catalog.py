@@ -197,7 +197,7 @@ def test_public_shop_tokens_api_uses_current_snapshot():
 
     app.dependency_overrides[get_db] = override_db
     try:
-        response = TestClient(app).get("/api/v1/shops")
+        response = TestClient(app).get("/api/v1/shops/cards")
         assert response.status_code == 200
         assert response.json()["total"] == 1
         assert [item["token"] for item in response.json()["items"]] == ["current-public"]

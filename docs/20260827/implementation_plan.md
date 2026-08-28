@@ -60,14 +60,13 @@
 
 #### [MODIFY] [public.py](file:///c:/Users/59908/ai_price_radar_v3/apps/api/app/routers/public.py)
 
-升级 `GET /api/v1/shops` 端点：
-- 当前返回 `list[str]`（token 列表）
-- 新增查询参数：`q`, `source_platform`, `offset`, `limit`, `sort`
-- 默认行为：当无筛选参数时，保持返回 `list[str]` 以兼容现有 sitemap 调用
-- 当带有 `detail=true` 或其他筛选参数时，返回 `ShopListResponse`
+保留 `GET /api/v1/shops` 端点返回 `list[str]`（token 列表），并新增独立的店铺卡片端点：
+- `GET /api/v1/shops/cards` 返回分页 `ShopListResponse`
+- 卡片端点支持 `q`, `source_platform`, `offset`, `limit`, `sort`
+- `GET /api/v1/shops/tokens` 继续提供语义明确的轻量 token 列表
 
 > [!NOTE]
-> 为保持向后兼容，采用双模式端点设计。现有 `getShopTokens()` 前端调用无需改动。新增一个独立端点 `GET /api/v1/shops/cards` 返回 `ShopListResponse`，避免破坏现有接口。
+> 为保持向后兼容，采用保留原端点并新增独立端点的设计。现有 `getShopTokens()` 前端调用无需改动；新增 `GET /api/v1/shops/cards` 返回 `ShopListResponse`，避免破坏现有接口。
 
 ---
 
@@ -204,7 +203,7 @@ title: {
 ## Open Questions
 
 > [!IMPORTANT]
-> **API 兼容性策略**：当前 `GET /api/v1/shops` 返回 `list[str]`，前端 `getShopTokens()` 和 sitemap 都依赖此行为。建议新增独立端点 `GET /api/v1/shops/cards` 返回 `ShopListResponse`，而非修改现有端点。是否同意此方案？
+> **API 兼容性策略（已采用）**：`GET /api/v1/shops` 保持 `list[str]` 返回值，前端 `getShopTokens()` 和 sitemap 使用该主契约；目录和来源页调用独立的 `GET /api/v1/shops/cards` 获取分页 `ShopListResponse`。
 
 > [!NOTE]
 > **P1 / P2 阶段**：Breadcrumb JSON-LD、CollectionPage/ItemList 结构化数据、内链强化等 P1 任务是否在本次一并实现，还是先完成 P0 后再做？

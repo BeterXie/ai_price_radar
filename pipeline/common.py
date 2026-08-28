@@ -166,6 +166,7 @@ GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号"
 CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登"]
 CHATGPT_SERVICE_MARKERS = ["接码", "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"]
 CHATGPT_PRODUCT_MARKERS = ["成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值"]
+CHATGPT_EXPLICIT_PRODUCT_MARKERS = ["成品", "半成品", "账号", "已注册", "会员", "充值", "代充", "直充", "卡密", "cdk", "兑换码"]
 TAG_RULES = {
     "Team": ["team", "团队", "车位"], "Business": ["business"], "K12": ["k12"],
     "邀请": ["邀请", "自动拉", "拉入"], "母号": ["母号"], "子号": ["子号"],
@@ -348,8 +349,24 @@ def platform_16688_grok_alias(value: str) -> str | None:
 
 
 def classify_16688_alias(title_text: str, category_text: str, description_text: str) -> str | None:
-    if contains(title_text, GENERIC_EMAIL_MARKERS):
+    if (
+        contains(title_text, CHATGPT_NON_PRODUCT_MARKERS)
+        and not contains(title_text, CHATGPT_EXPLICIT_PRODUCT_MARKERS)
+    ) or contains(title_text, NON_TARGET_PLUS_MARKERS):
         return None
+
+    alias_identity = norm(" ".join([title_text, category_text]))
+    if contains(alias_identity, NON_TARGET_PLUS_MARKERS) or contains(alias_identity, GENERIC_EMAIL_MARKERS):
+        return None
+
+    has_chatgpt_alias = platform_16688_chatgpt_alias_tier(alias_identity) is not None or contains(
+        alias_identity,
+        BRAND_MARKERS["chatgpt"],
+    )
+    if has_chatgpt_alias and contains(alias_identity, CHATGPT_API_MARKERS):
+        if contains(alias_identity, ["中转", "倍率"]):
+            return None
+        return "openai-api-credit"
 
     title_grok = platform_16688_grok_alias(title_text)
     if title_grok:
@@ -438,7 +455,10 @@ def classify_identity(
         if contains(identity_text, ["中转", "倍率"]):
             return None, False
         return "openai-api-credit", True
-    if contains(title_text, CHATGPT_NON_PRODUCT_MARKERS):
+    if (
+        contains(title_text, CHATGPT_NON_PRODUCT_MARKERS)
+        and not contains(title_text, CHATGPT_EXPLICIT_PRODUCT_MARKERS)
+    ):
         return None, False
     if (contains(title_text, CHATGPT_SERVICE_MARKERS) and not contains(title_text, CHATGPT_PRODUCT_MARKERS)) or (
         contains(title_text, GENERIC_EMAIL_MARKERS) and not contains(title_text, CHATGPT_PRODUCT_MARKERS)
@@ -471,14 +491,18 @@ def classify(
     raw = raw or {}
     source_platform = source_platform or str(raw.get("source_platform") or "")
     description_values = [raw.get("description", "")]
+    category_values = [category]
     if source_platform.strip().casefold() == PLATFORM_16688:
         description_values.extend(raw.get(key, "") for key in ("content", "instruction", "remark"))
         category_value = raw.get("sourceCategory") or raw.get("source_category")
         if isinstance(category_value, dict):
-            description_values.append(category_value.get("name", ""))
+            category_values.append(category_value.get("name", ""))
+        elif category_value:
+            category_values.append(str(category_value))
+    category_text = norm(" ".join(str(value or "") for value in category_values))
     description_text = norm(" ".join(str(value or "") for value in description_values))
-    detail_text = norm(" ".join([title, category, description_text]))
-    slug, specific_match = classify_identity(norm(title), norm(category), description_text, source_platform)
+    detail_text = norm(" ".join([title, category_text, description_text]))
+    slug, specific_match = classify_identity(norm(title), category_text, description_text, source_platform)
     tags = [label for label, words in TAG_RULES.items() if any(norm(x) in detail_text for x in words)]
     risks = [label for label, words in RISK_RULES.items() if any(norm(x) in detail_text for x in words)]
     if slug != "chatgpt-k12":

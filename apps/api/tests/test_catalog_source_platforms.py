@@ -54,7 +54,14 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         woo = Shop(token="woo-shop", name="Woo", source_url="https://woo.example.com", platform="woocommerce")
         structured = Shop(token="structured-shop", name="Structured", source_url="https://structured.example.com", platform="schema_org")
         old_feed = Shop(token="feed-shop", name="Feed", source_url="https://feed.example.com/catalog.json", platform="merchant_json")
-        db.add_all([old, current, openai, claude, ldxp, dujiao, woo, structured, old_feed])
+        hidden_only = Shop(token="hidden-only-shop", name="Hidden only", source_url="https://hidden.example.com", platform="16688")
+        hidden_product = Product(
+            slug="hidden-only-product",
+            platform="OpenAI",
+            display_name="Hidden only product",
+            is_visible=False,
+        )
+        db.add_all([old, current, openai, claude, hidden_product, ldxp, dujiao, woo, structured, old_feed, hidden_only])
         db.flush()
         _offer(db, snapshot=current, product=openai, shop=ldxp, key="openai-ldxp")
         _offer(db, snapshot=current, product=openai, shop=dujiao, key="openai-dujiao")
@@ -62,6 +69,7 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         _offer(db, snapshot=current, product=openai, shop=woo, key="openai-woo")
         _offer(db, snapshot=current, product=openai, shop=structured, key="openai-structured")
         _offer(db, snapshot=old, product=openai, shop=old_feed, key="old-feed")
+        _offer(db, snapshot=current, product=hidden_product, shop=hidden_only, key="hidden-only")
         db.commit()
 
     def override_db():
@@ -101,8 +109,13 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
             {"id": "woocommerce", "label": "WooCommerce"},
         ]
 
-        # Test shops listing
-        shops_res = client.get("/api/v1/shops")
+        # The legacy endpoint remains a flat token list.
+        legacy_shop_tokens = client.get("/api/v1/shops")
+        assert legacy_shop_tokens.status_code == 200
+        assert legacy_shop_tokens.json() == sorted(["dujiao-shop", "ldxp-shop", "structured-shop", "woo-shop"])
+
+        # The directory endpoint returns paginated shop cards.
+        shops_res = client.get("/api/v1/shops/cards")
         assert shops_res.status_code == 200
         shops_data = shops_res.json()
         assert shops_data["total"] == 4  # ldxp, dujiao, woo, structured (feed-shop was on old snapshot)
@@ -113,15 +126,29 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         assert dujiao_card["in_stock_count"] == dujiao_card["offer_count"] == 2
 
         # Test filter by source_platform
-        dujiao_shops = client.get("/api/v1/shops", params={"source_platform": "dujiao_next"}).json()
+        dujiao_shops = client.get("/api/v1/shops/cards", params={"source_platform": "dujiao_next"}).json()
         assert dujiao_shops["total"] == 1
         assert dujiao_shops["items"][0]["token"] == "dujiao-shop"
         assert dujiao_shops["items"][0]["offer_count"] == 2
         assert "chatgpt-plus" in dujiao_shops["items"][0]["product_slugs"]
         assert "claude-pro" in dujiao_shops["items"][0]["product_slugs"]
-        aliased_filter = client.get("/api/v1/shops", params={"source_platform": "dujiao-next"}).json()
+        aliased_filter = client.get("/api/v1/shops/cards", params={"source_platform": "dujiao-next"}).json()
         assert aliased_filter["total"] == 1
         assert aliased_filter["items"][0]["source_platform"] == "dujiao_next"
+
+        paged = client.get("/api/v1/shops/cards", params={"offset": 1, "limit": 2, "sort": "name"})
+        assert paged.status_code == 200
+        assert paged.json()["total"] == 4
+        assert len(paged.json()["items"]) == 2
+        assert [item["token"] for item in paged.json()["items"]] == ["ldxp-shop", "structured-shop"]
+
+        meta_without_hidden_only_source = client.get("/api/v1/meta").json()
+        assert {item["id"] for item in meta_without_hidden_only_source["source_platforms"]} == {
+            "dujiao_next",
+            "ldxp",
+            "schema_org",
+            "woocommerce",
+        }
 
         # Test tokens-only legacy endpoint
         tokens_res = client.get("/api/v1/shops/tokens")

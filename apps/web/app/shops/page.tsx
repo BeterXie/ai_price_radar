@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getShopCards } from "@/lib/api";
+import { redirect } from "next/navigation";
+import { getMeta, getShopCards } from "@/lib/api";
 import { PageHero } from "@/components/page-shell";
+import { DIRECTORY_PAGE_SIZE, getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -15,23 +17,31 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-const PLATFORM_LABELS: Record<string, string> = {
-  "16688": "16688",
-  ldxp: "LDXP",
-  dujiao_next: "独角",
-  merchant_json: "Merchant JSON",
-  woocommerce: "WooCommerce",
-  schema_org: "Schema.org",
-};
-
 export default async function ShopsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ source_platform?: string }>;
+  searchParams: Promise<{ source_platform?: string; page?: string }>;
 }) {
-  const { source_platform = "" } = await searchParams;
-  const query = source_platform ? `source_platform=${encodeURIComponent(source_platform)}&sort=offer_count&limit=200` : "sort=offer_count&limit=200";
-  const { items: shops, total } = await getShopCards(query);
+  const { source_platform = "", page: rawPage = "1" } = await searchParams;
+  const page = parsePage(rawPage);
+  const pageHref = (targetPage: number) => {
+    const params = new URLSearchParams();
+    if (source_platform) params.set("source_platform", source_platform);
+    params.set("page", String(targetPage));
+    return `/shops?${params.toString()}`;
+  };
+  const queryParams = new URLSearchParams({
+    sort: "offer_count",
+    offset: String((page - 1) * DIRECTORY_PAGE_SIZE),
+    limit: String(DIRECTORY_PAGE_SIZE),
+  });
+  if (source_platform) queryParams.set("source_platform", source_platform);
+  const [{ items: shops, total }, meta] = await Promise.all([
+    getShopCards(queryParams.toString()),
+    getMeta(),
+  ]);
+  const totalPages = getTotalPages(total, DIRECTORY_PAGE_SIZE);
+  if (page > totalPages) redirect(pageHref(totalPages));
 
   return (
     <main id="main-content" className="shell">
@@ -49,7 +59,7 @@ export default async function ShopsPage({
         >
           全部
         </Link>
-        {Object.entries(PLATFORM_LABELS).map(([id, label]) => (
+        {meta.source_platforms.map(({ id, label }) => (
           <Link
             key={id}
             href={`/shops?source_platform=${encodeURIComponent(id)}`}
@@ -90,6 +100,7 @@ export default async function ShopsPage({
           </div>
         )}
       </section>
+      <PaginationNav page={page} totalPages={totalPages} hrefForPage={pageHref} ariaLabel="店铺目录分页" />
     </main>
   );
 }

@@ -34,8 +34,9 @@
 
 ### 接口路由 (`public.py`)
 在 [public.py](file:///C:/Users/59908/ai_price_radar_v3/apps/api/app/routers/public.py) 中：
-- 升级 `GET /api/v1/shops` 返回 `ShopListResponse`。
-- 保留 `GET /api/v1/shops/tokens` 作为轻量 token 列表接口，确保向后兼容性。
+- 保留 `GET /api/v1/shops` 返回 `list[str]` token 列表，维持既有调用契约。
+- 新增 `GET /api/v1/shops/cards` 返回分页 `ShopListResponse`，供店铺目录和来源页使用。
+- 保留 `GET /api/v1/shops/tokens` 作为语义明确的轻量 token 列表接口。
 
 ---
 

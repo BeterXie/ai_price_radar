@@ -29,7 +29,6 @@ from ..schemas import (
     PublicCorrectionPage,
     ReportCreate,
     ReportOut,
-    ShopCard,
     ShopDetail,
     ShopListResponse,
     ShopRequestCreate,
@@ -438,8 +437,13 @@ def offer_description(offer_id: int, db: Session = Depends(get_db)) -> OfferDesc
     return OfferDescriptionResponse(offer_id=offer_id, original_description=description)
 
 
-@router.get("/shops", response_model=ShopListResponse)
-def shops(
+@router.get("/shops", response_model=list[str])
+def shops(db: Session = Depends(get_db)) -> list[str]:
+    return list_public_shop_tokens(db)
+
+
+@router.get("/shops/cards", response_model=ShopListResponse)
+def shop_cards(
     source_platform: str = Query("", description="Filter by source platform, e.g. 16688"),
     q: str = Query("", description="Search shop name"),
     offset: int = Query(0, ge=0),
@@ -478,10 +482,12 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     offer_stmt = (
         select(Offer)
         .join(Shop, Offer.shop_id == Shop.id)
+        .join(Product, Offer.product_id == Product.id)
         .where(
             Offer.active.is_(True),
             Offer.approved.is_(True),
             Shop.is_visible.is_(True),
+            Product.is_visible.is_(True),
             Offer.observed_at >= datetime.now(timezone.utc) - timedelta(hours=settings.stale_offer_hours),
         )
     )

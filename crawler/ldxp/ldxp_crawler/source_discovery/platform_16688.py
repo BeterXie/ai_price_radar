@@ -123,13 +123,19 @@ class Platform16688Adapter(DiscoveryAdapter):
         seen_shops: set[str] = set()
         shop_by_merchant: dict[str, str] = {}
         pages_left = self._limit(budget.max_16688_source_pages)
+        next_pages = {category_id: 1 for category_id in category_ids}
+        active_categories = set(category_ids)
 
         # The source marketplace exposes products, not a public shop directory.
-        # Scan the AI category first, then spend the remaining global page budget
-        # on every other public category so one category cannot starve the rest.
-        for category_id in category_ids:
-            page_no = 1
-            while pages_left > 0:
+        # Start with the AI category, then rotate through the remaining
+        # categories so a large category cannot consume the whole budget.
+        while active_categories and pages_left > 0:
+            for category_id in category_ids:
+                if pages_left <= 0:
+                    return
+                if category_id not in active_categories:
+                    continue
+                page_no = next_pages[category_id]
                 listing = self._post_json(
                     SOURCE_GOODS_LIST_PATH,
                     {
@@ -141,11 +147,13 @@ class Platform16688Adapter(DiscoveryAdapter):
                 pages_left -= 1
                 self._pause(budget)
                 if listing is None:
-                    break
+                    active_categories.discard(category_id)
+                    continue
                 data = listing.get("data")
                 items = data.get("list") if isinstance(data, dict) else None
                 if not isinstance(items, list) or not items:
-                    break
+                    active_categories.discard(category_id)
+                    continue
 
                 for item in items:
                     if not isinstance(item, dict):
@@ -189,7 +197,6 @@ class Platform16688Adapter(DiscoveryAdapter):
                 except (TypeError, ValueError):
                     exhausted = len(items) < PAGE_SIZE
                 if exhausted:
-                    break
-                page_no += 1
-            if pages_left <= 0:
-                return
+                    active_categories.discard(category_id)
+                else:
+                    next_pages[category_id] += 1

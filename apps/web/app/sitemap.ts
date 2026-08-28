@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getMeta, getProducts, getShopCards } from "@/lib/api";
+import { getMeta, getProducts, getShopTokens } from "@/lib/api";
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
@@ -40,9 +40,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const [catalog, shopsData, meta] = await Promise.all([
+    const shopTokensPromise = getShopTokens().catch(() => [] as string[]);
+    const [catalog, shopTokens, meta] = await Promise.all([
       getProducts("sort=quality"),
-      getShopCards("sort=offer_count&limit=500"),
+      shopTokensPromise,
       getMeta(),
     ]);
     const sourceCatalogs = await Promise.all(
@@ -57,15 +58,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages[1].lastModified = snapshotAt;
 
     // Source platform pages – only include platforms with active offers
-    const sourcePlatformPages: MetadataRoute.Sitemap = meta.source_platforms.map((platform) => ({
-      url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}`,
-      lastModified: snapshotAt,
-    }));
+    const sourcePlatformPages: MetadataRoute.Sitemap = sourceCatalogs
+      .filter(({ catalog: sourceCatalog }) => sourceCatalog.offer_count > 0)
+      .map(({ platform }) => ({
+        url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}`,
+        lastModified: snapshotAt,
+      }));
 
     // Shop pages – only shops with public offers
-    const shopPages: MetadataRoute.Sitemap = shopsData.items.map((shop) => ({
-      url: `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`,
-      lastModified: validDate(shop.last_seen_at ?? shop.last_success_at) ?? snapshotAt,
+    const shopPages: MetadataRoute.Sitemap = shopTokens.map((token) => ({
+      url: `${SITE_URL}/shops/${encodeURIComponent(token)}`,
+      lastModified: snapshotAt,
     }));
 
     // Product pages

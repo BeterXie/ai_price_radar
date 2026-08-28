@@ -34,6 +34,23 @@ def test_16688_aliases_are_platform_specific(title: str, slug: str):
     assert classify_product(title).slug is None
 
 
+@pytest.mark.parametrize(
+    ("title", "category", "expected"),
+    [
+        ("GP.T Plus 使用指南", "", None),
+        ("G Plus 镜像站", "", None),
+        ("G Plus API额度", "", "openai-api-credit"),
+        ("Gmail API额度", "", None),
+        ("百度网盘 API额度", "", None),
+        ("API额度", "Gmail", None),
+        ("API额度", "百度网盘", None),
+        ("G Plus 成品号 附使用教程", "", "chatgpt-plus"),
+    ],
+)
+def test_16688_aliases_reject_non_products_and_preserve_api_classification(title: str, category: str, expected: str | None):
+    assert classify_product(title, category, source_platform="16688").slug == expected
+
+
 def test_16688_alias_can_use_description_context():
     result = classify_product(
         "官方充值 Plus CDK",

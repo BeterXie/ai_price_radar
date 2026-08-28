@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getProducts, getShopCards, getMeta } from "@/lib/api";
 import { PageHero, SectionIntro } from "@/components/page-shell";
+import { DIRECTORY_PAGE_SIZE, getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -62,10 +63,14 @@ function getMeta_for(source: string) {
 
 export default async function SourcePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ source: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { source } = await params;
+  const { page: rawPage = "1" } = await searchParams;
+  const page = parsePage(rawPage);
 
   // Validate that this source platform actually exists
   const apiMeta = await getMeta();
@@ -73,13 +78,22 @@ export default async function SourcePage({
   if (!platformExists) notFound();
 
   const pageMeta = getMeta_for(source);
+  const pageHref = (targetPage: number) => `/sources/${encodeURIComponent(source)}?page=${targetPage}`;
+  const shopQuery = new URLSearchParams({
+    source_platform: source,
+    sort: "offer_count",
+    offset: String((page - 1) * DIRECTORY_PAGE_SIZE),
+    limit: String(DIRECTORY_PAGE_SIZE),
+  });
   const [catalog, shopsData] = await Promise.all([
     getProducts(`source_platform=${encodeURIComponent(source)}&sort=quality`),
-    getShopCards(`source_platform=${encodeURIComponent(source)}&sort=offer_count&limit=100`),
+    getShopCards(shopQuery.toString()),
   ]);
 
   const shops = shopsData.items;
   const products = catalog.items.filter((p) => p.offer_count > 0);
+  const totalPages = getTotalPages(shopsData.total, DIRECTORY_PAGE_SIZE);
+  if (page > totalPages) redirect(pageHref(totalPages));
 
   return (
     <main id="main-content" className="shell">
@@ -96,7 +110,7 @@ export default async function SourcePage({
           <p className="text-xs text-black/50 mt-1">当前有效报价</p>
         </div>
         <div>
-          <p className="text-2xl font-semibold">{shops.length}</p>
+          <p className="text-2xl font-semibold">{shopsData.total}</p>
           <p className="text-xs text-black/50 mt-1">当前店铺数</p>
         </div>
         <div>
@@ -127,7 +141,7 @@ export default async function SourcePage({
       {/* Shops */}
       {shops.length > 0 && (
         <section className="mt-10">
-          <SectionIntro eyebrow="来源店铺" title={`当前店铺 · ${shops.length}`} description="点击店铺名查看该店铺的完整报价详情。" />
+          <SectionIntro eyebrow="来源店铺" title={`当前店铺 · ${shopsData.total}`} description="点击店铺名查看该店铺的完整报价详情。" />
           <div className="mt-4 divide-y divide-black/8">
             {shops.map((shop) => (
               <div key={shop.token} className="py-4 flex items-start justify-between gap-4">
@@ -153,6 +167,7 @@ export default async function SourcePage({
           </div>
         </section>
       )}
+      <PaginationNav page={page} totalPages={totalPages} hrefForPage={pageHref} ariaLabel="来源店铺分页" />
     </main>
   );
 }

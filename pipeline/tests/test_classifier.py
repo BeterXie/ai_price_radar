@@ -89,6 +89,32 @@ def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
     assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-super"
 
 
+@pytest.mark.parametrize(
+    ("title", "category", "expected"),
+    [
+        ("GP.T Plus 使用指南", "", None),
+        ("G Plus 镜像站", "", None),
+        ("G Plus API额度", "", "openai-api-credit"),
+        ("Gmail API额度", "", None),
+        ("百度网盘 API额度", "", None),
+        ("API额度", "Gmail", None),
+        ("API额度", "百度网盘", None),
+        ("G Plus 成品号 附使用教程", "", "chatgpt-plus"),
+    ],
+)
+def test_16688_aliases_reject_non_products_and_preserve_api_classification(title: str, category: str, expected: str | None):
+    assert classify(title, category, source_platform="16688").slug == expected
+
+
+def test_16688_source_category_can_supply_product_identity():
+    result = classify(
+        "Plus 官方充值",
+        raw={"sourceCategory": {"name": "ChatGPT"}},
+        source_platform="16688",
+    )
+    assert result.slug == "chatgpt-plus"
+
+
 def test_description_can_refine_an_already_identified_openai_product():
     result = classify("ChatGPT 独享账号", "OpenAI", {"description": "Business Team 自动拉入"})
     assert result.slug == "chatgpt-k12"

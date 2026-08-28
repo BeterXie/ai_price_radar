@@ -55,6 +55,23 @@ def test_low_confidence_new_offer_stays_pending_review():
         db.close()
 
 
+def test_16688_source_category_is_used_during_offer_import():
+    db = session_for("sqlite://")
+    try:
+        products = ensure_products(db)
+        source_record = record("Plus 官方充值")
+        source_record["source_platform"] = "16688"
+        source_record["category_name"] = ""
+        source_record["raw_json"] = {"sourceCategory": {"name": "ChatGPT"}}
+
+        upsert_offer(db, source_record, products)
+
+        offer = db.query(Offer).one()
+        assert offer.product_id == products["chatgpt-plus"].id
+    finally:
+        db.close()
+
+
 def test_offer_and_history_preserve_valid_currency_changes():
     db = session_for("sqlite://")
     try:

@@ -446,7 +446,7 @@ def test_16688_source_adapter_prioritizes_ai_and_scans_all_categories():
     assert detail_calls == ["G-AI", "G-TOOL"]
 
 
-def test_16688_source_adapter_uses_one_global_page_budget():
+def test_16688_source_adapter_rotates_categories_with_one_global_page_budget():
     list_calls: list[tuple[int, int]] = []
 
     def handler(url: str, kwargs: dict):
@@ -475,7 +475,7 @@ def test_16688_source_adapter_uses_one_global_page_budget():
         budget=DiscoveryBudget(max_16688_source_pages=2, request_interval_seconds=0),
     ))
 
-    assert list_calls == [(1, 1), (1, 2)]
+    assert list_calls == [(1, 1), (2, 1)]
 
 
 def test_runner_submits_batches_deduplicates_and_finishes_run():

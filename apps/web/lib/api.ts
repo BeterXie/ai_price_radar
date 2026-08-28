@@ -36,20 +36,12 @@ export async function getShop(token: string): Promise<ShopDetail | null> {
 
 /** Returns a flat list of shop tokens for callers that only need identifiers. */
 export async function getShopTokens(): Promise<string[]> {
-  try {
-    return await apiFetch<string[]>("/api/v1/shops/tokens");
-  } catch {
-    return [];
-  }
+  return apiFetch<string[]>("/api/v1/shops");
 }
 
 /** Returns paginated ShopCard list for directory / source pages. */
 export async function getShopCards(query = ""): Promise<ShopListResponse> {
-  try {
-    return await apiFetch<ShopListResponse>(`/api/v1/shops${query ? `?${query}` : ""}`);
-  } catch {
-    return { items: [], total: 0 };
-  }
+  return apiFetch<ShopListResponse>(`/api/v1/shops/cards${query ? `?${query}` : ""}`);
 }
 
 export async function getMeta(): Promise<Meta> {

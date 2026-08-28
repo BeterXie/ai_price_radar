@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProduct, getMeta } from "@/lib/api";
 import { PageHero } from "@/components/page-shell";
-import { OfferTable } from "@/components/offer-table";
+import { OfferGroupTable } from "@/components/offer-table";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +134,13 @@ export default async function SourceProductPage({
 
       {/* Offers */}
       <section className="mt-8">
-        <OfferTable offers={product.offers} />
+        <OfferGroupTable
+          groups={product.offer_groups}
+          productSlug={product.slug}
+          totalCount={product.offer_group_count}
+          snapshotId={product.snapshot_id}
+          filterQuery={`source_platform=${encodeURIComponent(source)}`}
+        />
       </section>
 
       {/* Back links */}
