@@ -39,65 +39,73 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...Object.keys(workflowGuides).map((slug) => ({ url: `${SITE_URL}/guides/workflows/${encodeURIComponent(slug)}`, lastModified: GUIDE_LAST_MODIFIED })),
   ];
 
-  try {
-    const shopTokensPromise = getShopTokens().catch(() => [] as string[]);
-    const [catalog, shopTokens, meta] = await Promise.all([
-      getProducts("sort=quality"),
-      shopTokensPromise,
-      getMeta(),
-    ]);
-    const sourceCatalogs = await Promise.all(
-      meta.source_platforms.map(async (platform) => ({
-        platform,
-        catalog: await getProducts(`source_platform=${encodeURIComponent(platform.id)}&sort=quality`),
-      })),
-    );
+  // Keep each upstream request independent. A temporary failure in one catalog
+  // should not make the whole dynamic sitemap disappear for this crawl.
+  const [catalog, shopTokens, meta] = await Promise.all([
+    getProducts("sort=quality").catch(() => null),
+    getShopTokens().catch(() => [] as string[]),
+    getMeta().catch(() => null),
+  ]);
 
-    const snapshotAt = validDate(catalog.snapshot_at);
+  const snapshotAt = validDate(catalog?.snapshot_at);
+  if (snapshotAt) {
     staticPages[0].lastModified = snapshotAt;
     staticPages[1].lastModified = snapshotAt;
+  }
 
-    // Source platform pages – only include platforms with active offers
-    const sourcePlatformPages: MetadataRoute.Sitemap = sourceCatalogs
-      .filter(({ catalog: sourceCatalog }) => sourceCatalog.offer_count > 0)
-      .map(({ platform }) => ({
-        url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}`,
-        lastModified: snapshotAt,
-      }));
+  const sourceCatalogs = meta
+    ? (
+        await Promise.all(
+          meta.source_platforms.map(async (platform) => {
+            const sourceCatalog = await getProducts(
+              `source_platform=${encodeURIComponent(platform.id)}&sort=quality`,
+            ).catch(() => null);
+            return sourceCatalog ? { platform, catalog: sourceCatalog } : null;
+          }),
+        )
+      ).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    : [];
 
-    // Shop pages – only shops with public offers
-    const shopPages: MetadataRoute.Sitemap = shopTokens.map((token) => ({
-      url: `${SITE_URL}/shops/${encodeURIComponent(token)}`,
+  // Source platform pages – only include platforms with active offers.
+  const sourcePlatformPages: MetadataRoute.Sitemap = sourceCatalogs
+    .filter(({ catalog: sourceCatalog }) => sourceCatalog.offer_count > 0)
+    .map(({ platform }) => ({
+      url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}`,
       lastModified: snapshotAt,
     }));
 
-    // Product pages
-    const productPages: MetadataRoute.Sitemap = catalog.items
-      .filter((product) => product.offer_count > 0)
-      .map((product) => ({
-        url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
-        lastModified: validDate(product.last_updated_at) || snapshotAt,
-      }));
+  // Shop pages – only shops with public offers.
+  const shopPages: MetadataRoute.Sitemap = shopTokens.map((token) => ({
+    url: `${SITE_URL}/shops/${encodeURIComponent(token)}`,
+    lastModified: snapshotAt,
+  }));
 
-    // Only emit source/product URLs that exist in that source's own catalog.
-    const sourceProductPages: MetadataRoute.Sitemap = sourceCatalogs.flatMap(({ platform, catalog: sourceCatalog }) =>
-      sourceCatalog.items
-        .filter((product) => product.offer_count >= 2)
+  // Product pages are emitted only when the global catalog request succeeded.
+  const productPages: MetadataRoute.Sitemap = catalog
+    ? catalog.items
+        .filter((product) => product.offer_count > 0)
         .map((product) => ({
-          url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}/products/${encodeURIComponent(product.slug)}`,
+          url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
           lastModified: validDate(product.last_updated_at) || snapshotAt,
-        })),
-    );
+        }))
+    : [];
 
-    return [
-      ...staticPages,
-      ...guidePages,
-      ...sourcePlatformPages,
-      ...shopPages,
-      ...productPages,
-      ...sourceProductPages,
-    ];
-  } catch {
-    return [...staticPages, ...guidePages];
-  }
+  // Only emit source/product URLs that exist in that source's own catalog.
+  const sourceProductPages: MetadataRoute.Sitemap = sourceCatalogs.flatMap(({ platform, catalog: sourceCatalog }) =>
+    sourceCatalog.items
+      .filter((product) => product.offer_count >= 2)
+      .map((product) => ({
+        url: `${SITE_URL}/sources/${encodeURIComponent(platform.id)}/products/${encodeURIComponent(product.slug)}`,
+        lastModified: validDate(product.last_updated_at) || snapshotAt,
+      })),
+  );
+
+  return [
+    ...staticPages,
+    ...guidePages,
+    ...sourcePlatformPages,
+    ...shopPages,
+    ...productPages,
+    ...sourceProductPages,
+  ];
 }

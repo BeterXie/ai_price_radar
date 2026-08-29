@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowSquareOut, Calendar, Clock, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { OfferTable } from "@/components/offer-table";
@@ -69,6 +70,23 @@ export default async function ShopPage({ params }: { params: Promise<{ token: st
         name: `${shop.source_platform_label} 公开店铺来源`,
       },
     },
+    ...(shop.products.length > 0
+      ? [
+          {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "@id": `${canonical}#products`,
+            name: `${shop.name} 相关标准产品`,
+            numberOfItems: shop.products.length,
+            itemListElement: shop.products.map((product, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              name: product.display_name,
+              url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
+            })),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -78,6 +96,27 @@ export default async function ShopPage({ params }: { params: Promise<{ token: st
       <section className="evidence-callout mt-6">
         <div className="flex items-center gap-3"><ShieldCheck size={22} /><div><p className="text-sm font-semibold">来源更新状态：{shop.source_health.score} / 100 · {shop.source_health.label}</p><p className="mt-1 text-xs leading-5 text-black/50">{shop.source_health.reasons.join("；")}。这里只说明页面能否正常更新，不代表商家信誉或交易安全。</p></div></div>
       </section>
+      {shop.products.length > 0 && (
+        <section className="py-10" aria-labelledby="shop-products-title">
+          <SectionIntro
+            eyebrow="标准产品"
+            title={`相关标准产品 · ${shop.products.length}`}
+            description="从店铺当前公开报价映射到稳定的标准产品页，方便继续核对不同来源的价格。"
+          />
+          <div className="mt-4 flex flex-wrap gap-2">
+            {shop.products.map((product) => (
+              <Link
+                key={product.slug}
+                href={`/products/${encodeURIComponent(product.slug)}`}
+                className="rounded-full border border-black/15 px-3 py-1.5 text-sm hover:border-black/40 transition-colors"
+              >
+                {product.display_name}
+                <span className="ml-1.5 text-xs text-black/40">{product.offer_count} 条报价</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="py-12"><SectionIntro eyebrow="当前报价" title={`当前公开报价 · ${shop.offer_count}`} description="点开每条报价可核对交付、来源、原文与更新时间。" /><div className="mt-6"><OfferTable offers={shop.offers} /></div></section>
     </main>
   );

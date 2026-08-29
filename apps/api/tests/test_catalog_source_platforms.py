@@ -125,6 +125,17 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         dujiao_card = next(item for item in shops_data["items"] if item["token"] == "dujiao-shop")
         assert dujiao_card["in_stock_count"] == dujiao_card["offer_count"] == 2
 
+        # Shop detail exposes stable standard-product links for crawl discovery.
+        dujiao_detail = client.get("/api/v1/shops/dujiao-shop")
+        assert dujiao_detail.status_code == 200
+        assert {
+            (product["slug"], product["display_name"], product["offer_count"], product["in_stock_count"])
+            for product in dujiao_detail.json()["products"]
+        } == {
+            ("chatgpt-plus", "ChatGPT Plus", 1, 1),
+            ("claude-pro", "Claude Pro", 1, 1),
+        }
+
         # Test filter by source_platform
         dujiao_shops = client.get("/api/v1/shops/cards", params={"source_platform": "dujiao_next"}).json()
         assert dujiao_shops["total"] == 1

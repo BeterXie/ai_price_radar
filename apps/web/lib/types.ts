@@ -158,7 +158,15 @@ export type ShopDetail = {
   consecutive_failures: number;
   source_health: SourceHealth;
   offer_count: number;
+  products: ShopProduct[];
   offers: Offer[];
+};
+
+export type ShopProduct = {
+  slug: string;
+  display_name: string;
+  offer_count: number;
+  in_stock_count: number;
 };
 
 export type ShopCard = {

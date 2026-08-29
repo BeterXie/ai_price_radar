@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 from statistics import median
 from typing import Any
 
-from sqlalchemy import case, not_, or_, select
+from sqlalchemy import case, func, not_, or_, select
 from sqlalchemy.orm import Session, contains_eager
 
 from ..core.config import get_settings
@@ -21,6 +21,7 @@ from ..schemas import (
     PriceTrendPoint,
     ProductCard,
     ProductDetail,
+    ShopProduct,
     ShopDetail,
 )
 from .official_pricing import official_reference_for
@@ -804,13 +805,46 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
     shop = db.scalar(select(Shop).where(Shop.token == token, Shop.is_visible.is_(True)))
     if shop is None:
         return None
+    snapshot = get_current_snapshot(db)
     offers = list(db.scalars(
-        _base_public_offer_query(db)
+        _base_public_offer_query(db, snapshot=snapshot)
         .join(Product, Offer.product_id == Product.id)
         .where(Offer.shop_id == shop.id, Product.is_visible.is_(True))
         .order_by(*_offer_ordering())
     ).unique())
     medians = _median_prices(offers, comparable_only=True)
+    product_stmt = (
+        select(
+            Product.slug,
+            Product.display_name,
+            func.count(Offer.id).label("offer_count"),
+            func.sum(
+                case((or_(Offer.stock_count > 0, Offer.stock_status == "in_stock"), 1), else_=0)
+            ).label("in_stock_count"),
+        )
+        .join(Offer, Offer.product_id == Product.id)
+        .where(
+            Offer.shop_id == shop.id,
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            Offer.product_id.is_not(None),
+            Product.is_visible.is_(True),
+            Offer.observed_at >= _fresh_cutoff(),
+        )
+        .group_by(Product.id)
+        .order_by(Product.display_name.asc(), Product.slug.asc())
+    )
+    if snapshot is not None:
+        product_stmt = product_stmt.where(Offer.snapshot_id == snapshot.id)
+    products = [
+        ShopProduct(
+            slug=slug,
+            display_name=display_name,
+            offer_count=offer_count or 0,
+            in_stock_count=int(in_stock_count or 0),
+        )
+        for slug, display_name, offer_count, in_stock_count in db.execute(product_stmt)
+    ]
     return ShopDetail(
         token=shop.token,
         name=shop.name or shop.token,
@@ -827,6 +861,7 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         consecutive_failures=shop.consecutive_failures,
         source_health=asdict(source_health(shop)),
         offer_count=len(offers),
+        products=products,
         offers=[_offer_public(x, median_price=medians.get(_median_key(x))) for x in offers],
     )
 

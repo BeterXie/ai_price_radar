@@ -165,6 +165,15 @@ class OfferDescriptionResponse(BaseModel):
     original_description: str
 
 
+class ShopProduct(BaseModel):
+    """A standard product represented by a shop's current public offers."""
+
+    slug: str
+    display_name: str
+    offer_count: int
+    in_stock_count: int
+
+
 class ShopDetail(BaseModel):
     token: str
     name: str
@@ -181,6 +190,7 @@ class ShopDetail(BaseModel):
     consecutive_failures: int
     source_health: SourceHealthPublic
     offer_count: int
+    products: list[ShopProduct] = Field(default_factory=list)
     offers: list[OfferPublic]
 
 
