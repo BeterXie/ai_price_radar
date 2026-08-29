@@ -92,6 +92,8 @@ $env:NEXT_PUBLIC_SITE_NAME = "AI Price Radar"
 $env:NEXT_PUBLIC_SUPPORT_ENABLED = "true"
 $env:NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL = "https://ai.pricememo.cn/support/wechat.jpg"
 $env:NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL = "https://ai.pricememo.cn/support/alipay.jpg"
+# 可选：替换为真实 ID 后启用 GA4 页面浏览和 AI 引荐事件；不启用时保持为空。
+# $env:NEXT_PUBLIC_GA_MEASUREMENT_ID = "G-XXXXXXXXXX"
 
 npm --prefix apps/web run build
 
@@ -121,10 +123,11 @@ scp "C:\Users\59908\Pictures\alipay.jpg" "pricememo-prod:/tmp/alipay.jpg"
 2. 解压源码到 /opt/ai-price-radar-staging-$Stamp
 3. 解压 .next/standalone 和 .next/static
 4. 从当前运行目录复制 .env；确认新增的 `DETECTOR_WORKER_KEY` 至少 32 字节，且不同于 Admin/Intake Worker Key
-5. python3 scripts/production_preflight.py
-6. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
-7. 覆盖 /opt/ai-price-radar-v3，但保留 .env、data/、backups/
-8. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
+5. 如果启用 IndexNow，将同一个 `INDEXNOW_KEY` 写入生产 `.env`；未配置时 `/indexnow-key.txt` 应保持不可用
+6. python3 scripts/production_preflight.py
+7. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
+8. 覆盖 /opt/ai-price-radar-v3，但保留 .env、data/、backups/
+9. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
 ```
 
 随后构建并依次切换 API、来源检测 Worker、Web：

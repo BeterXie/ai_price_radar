@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getMeta, getShopCards } from "@/lib/api";
 import { PageHero } from "@/components/page-shell";
+import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 import { DIRECTORY_PAGE_SIZE, getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { relativeTime } from "@/lib/format";
 
@@ -10,12 +11,26 @@ export const dynamic = "force-dynamic";
 
 const SITE_URL = "https://ai.pricememo.cn";
 
-export const metadata: Metadata = {
-  title: "AI 来源店铺目录",
-  description: "查看 AI Price Radar 收录的公开 AI 商品店铺，包含 16688、LDXP 等平台来源的报价数、库存和最近更新时间。",
-  alternates: { canonical: `${SITE_URL}/shops` },
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<Metadata> {
+  const params = await searchParams;
+  const canonical = `${SITE_URL}/shops`;
+  return {
+    title: "AI 来源店铺目录",
+    description: "查看 AI Price Radar 收录的公开 AI 商品店铺，包含 16688、LDXP 等平台来源的报价数、库存和最近更新时间。",
+    alternates: { canonical },
+    robots: { index: Object.keys(params).length === 0, follow: true },
+    openGraph: {
+      title: "AI 来源店铺目录",
+      description: "查看公开 AI 商品店铺的报价数、库存和最近更新时间。",
+      url: canonical,
+      type: "website",
+    },
+  };
+}
 
 export default async function ShopsPage({
   searchParams,
@@ -42,9 +57,36 @@ export default async function ShopsPage({
   ]);
   const totalPages = getTotalPages(total, DIRECTORY_PAGE_SIZE);
   if (page > totalPages) redirect(pageHref(totalPages));
+  const canonical = `${SITE_URL}/shops`;
+  const structuredData = [
+    breadcrumbJsonLd([
+      { name: "首页", path: "/" },
+      { name: "来源店铺", path: "/shops" },
+    ]),
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "@id": canonical,
+      url: canonical,
+      name: "AI 来源店铺目录",
+      description: "查看公开 AI 商品店铺的报价数、库存和最近更新时间。",
+      isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+      mainEntity: {
+        "@type": "ItemList",
+        numberOfItems: shops.length,
+        itemListElement: shops.map((shop, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: shop.name,
+          url: `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`,
+        })),
+      },
+    },
+  ];
 
   return (
     <main id="main-content" className="shell">
+      <JsonLd data={structuredData} />
       <PageHero
         eyebrow="来源目录"
         title="AI 来源店铺目录"
@@ -71,7 +113,8 @@ export default async function ShopsPage({
       </section>
 
       {/* Shop list */}
-      <section className="mt-8">
+      <section aria-labelledby="shop-list-title" className="mt-8">
+        <h2 id="shop-list-title" className="sr-only">有公开报价的店铺</h2>
         {shops.length === 0 ? (
           <p className="text-black/50 py-12 text-center">暂无符合条件的店铺</p>
         ) : (

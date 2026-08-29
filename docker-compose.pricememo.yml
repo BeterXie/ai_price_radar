@@ -17,6 +17,8 @@ services:
       dockerfile: Dockerfile.prebuilt
       args:
         ALPINE_REPOSITORY_HOST: mirrors.aliyun.com
+    environment:
+      INDEXNOW_KEY: ${INDEXNOW_KEY:-}
     volumes:
       - ./data/support:/app/public/support:ro
     networks:

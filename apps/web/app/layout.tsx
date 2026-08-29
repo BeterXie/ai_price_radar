@@ -6,6 +6,8 @@ import { BackToTop } from "@/components/back-to-top";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CommunityPrompts } from "@/components/community-prompts";
+import { SiteStructuredData } from "@/components/structured-data";
+import { GoogleAnalytics } from "@/components/google-analytics";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai.pricememo.cn"),
@@ -18,6 +20,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
+        <SiteStructuredData />
+        <GoogleAnalytics />
         <a href="#page-content" className="skip-link">跳到主要内容</a>
         <SiteHeader />
         <div id="page-content" tabIndex={-1}>{children}</div>

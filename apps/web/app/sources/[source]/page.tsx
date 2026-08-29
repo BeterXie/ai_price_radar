@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getProducts, getShopCards, getMeta } from "@/lib/api";
 import { PageHero, SectionIntro } from "@/components/page-shell";
+import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 import { DIRECTORY_PAGE_SIZE, getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { relativeTime } from "@/lib/format";
 
@@ -37,17 +38,19 @@ const DEFAULT_META = (source: string) => ({
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ source: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
-  const { source } = await params;
+  const [{ source }, rawParams] = await Promise.all([params, searchParams]);
   const meta = getMeta_for(source);
   const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}`;
   return {
     title: meta.title,
     description: meta.description,
     alternates: { canonical },
-    robots: { index: true, follow: true },
+    robots: { index: Object.keys(rawParams).length === 0, follow: true },
     openGraph: {
       title: meta.title,
       description: meta.description,
@@ -78,6 +81,7 @@ export default async function SourcePage({
   if (!platformExists) notFound();
 
   const pageMeta = getMeta_for(source);
+  const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}`;
   const pageHref = (targetPage: number) => `/sources/${encodeURIComponent(source)}?page=${targetPage}`;
   const shopQuery = new URLSearchParams({
     source_platform: source,
@@ -94,9 +98,36 @@ export default async function SourcePage({
   const products = catalog.items.filter((p) => p.offer_count > 0);
   const totalPages = getTotalPages(shopsData.total, DIRECTORY_PAGE_SIZE);
   if (page > totalPages) redirect(pageHref(totalPages));
+  const structuredData = [
+    breadcrumbJsonLd([
+      { name: "首页", path: "/" },
+      { name: "来源平台", path: "/sources" },
+      { name: pageMeta.h1, path: `/sources/${encodeURIComponent(source)}` },
+    ]),
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "@id": canonical,
+      url: canonical,
+      name: pageMeta.h1,
+      description: pageMeta.intro,
+      isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+      mainEntity: {
+        "@type": "ItemList",
+        numberOfItems: products.length,
+        itemListElement: products.map((product, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: product.display_name,
+          url: `${SITE_URL}/sources/${encodeURIComponent(source)}/products/${encodeURIComponent(product.slug)}`,
+        })),
+      },
+    },
+  ];
 
   return (
     <main id="main-content" className="shell">
+      <JsonLd data={structuredData} />
       <PageHero
         eyebrow={`来源平台 · ${source}`}
         title={pageMeta.h1}
@@ -104,7 +135,8 @@ export default async function SourcePage({
       />
 
       {/* Stats */}
-      <section className="mt-6 grid grid-cols-3 gap-4 rounded-xl border border-black/10 p-5">
+      <section aria-labelledby="source-stats-title" className="mt-6 grid grid-cols-3 gap-4 rounded-xl border border-black/10 p-5">
+        <h2 id="source-stats-title" className="sr-only">来源平台数据概况</h2>
         <div>
           <p className="text-2xl font-semibold">{catalog.offer_count}</p>
           <p className="text-xs text-black/50 mt-1">当前有效报价</p>

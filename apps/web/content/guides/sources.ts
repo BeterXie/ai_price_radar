@@ -42,6 +42,7 @@ export const OFFICIAL_SOURCES = {
   grokHelp: officialSource("xAI Help Center", "https://help.x.ai/", "xAI"),
   grokApi: officialSource("xAI API Documentation", "https://docs.x.ai/", "xAI"),
   xHelp: officialSource("X Help Center", "https://help.x.com/", "X"),
+  xPremium: officialSource("X Premium 帮助", "https://help.x.com/en/using-x/x-premium", "X"),
   xTerms: officialSource("X Terms of Service", "https://x.com/en/tos", "X"),
   openaiCodexConfig: officialSource(
     "Codex configuration",

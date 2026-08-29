@@ -1,9 +1,52 @@
+import { OFFICIAL_SOURCES } from "@/content/guides/sources";
+import type { OfficialSource } from "@/lib/guides/types";
+import type { OfficialPriceReference } from "@/lib/types";
+
 export type ProductSeoContent = {
   metaDescription: string;
   intro: string;
   comparisonPoints: readonly string[];
   faqs: readonly { question: string; answer: string }[];
 };
+
+export type ProductEvidenceSource = Pick<OfficialSource, "title" | "url" | "publisher" | "lastCheckedAt">;
+
+const BRAND_EVIDENCE_SOURCES: Record<string, readonly OfficialSource[]> = {
+  OpenAI: [OFFICIAL_SOURCES.openaiHelp, OFFICIAL_SOURCES.openaiPlatform, OFFICIAL_SOURCES.openaiTerms],
+  Claude: [OFFICIAL_SOURCES.anthropicHelp, OFFICIAL_SOURCES.anthropicDocs, OFFICIAL_SOURCES.anthropicTerms],
+  Gemini: [OFFICIAL_SOURCES.geminiHelp, OFFICIAL_SOURCES.geminiApi, OFFICIAL_SOURCES.googleAccount],
+  Grok: [OFFICIAL_SOURCES.grokHelp, OFFICIAL_SOURCES.grokApi, OFFICIAL_SOURCES.xHelp],
+  X: [OFFICIAL_SOURCES.xHelp, OFFICIAL_SOURCES.xPremium, OFFICIAL_SOURCES.xTerms],
+};
+
+export function getProductEvidenceSources(
+  brand: string,
+  officialReference: OfficialPriceReference | null | undefined,
+  guideSources: readonly OfficialSource[] = [],
+): readonly ProductEvidenceSource[] {
+  const priceSource: OfficialSource | null = officialReference
+    ? {
+        title: `${officialReference.provider} ${officialReference.plan} 官方价格参考`,
+        url: officialReference.url,
+        publisher: officialReference.provider,
+        lastCheckedAt: officialReference.checked_at,
+        kind: "platform_official",
+      }
+    : null;
+  const candidates = [
+    ...guideSources,
+    ...(priceSource ? [priceSource] : []),
+    ...(BRAND_EVIDENCE_SOURCES[brand] || []),
+  ];
+  const seen = new Set<string>();
+  const unique = candidates.filter((source) => {
+    if (seen.has(source.url)) return false;
+    seen.add(source.url);
+    return true;
+  });
+
+  return unique.slice(0, 3);
+}
 
 const PRODUCT_SEO: Record<string, ProductSeoContent> = {
   "chatgpt-account": {

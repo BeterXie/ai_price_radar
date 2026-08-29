@@ -4,6 +4,10 @@ import { notFound } from "next/navigation";
 import { getProduct, getMeta } from "@/lib/api";
 import { PageHero } from "@/components/page-shell";
 import { OfferGroupTable } from "@/components/offer-table";
+import { ProductEvidence } from "@/components/product-evidence";
+import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
+import { getProductEvidenceSources } from "@/lib/product-seo";
+import { getProductGuide } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -97,9 +101,43 @@ export default async function SourceProductPage({
   if (!product || product.offer_count === 0) notFound();
 
   const pageMeta = getPageMeta(source, slug, product.display_name);
+  const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}/products/${encodeURIComponent(slug)}`;
+  const productGuide = getProductGuide(product.slug);
+  const evidenceSources = getProductEvidenceSources(product.brand, product.official_reference, productGuide?.officialSources);
+  const structuredData: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "@id": `${canonical}#product`,
+    name: product.display_name,
+    description: pageMeta.description,
+    url: canonical,
+    mainEntityOfPage: canonical,
+    inLanguage: "zh-CN",
+    isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+    brand: { "@type": "Brand", name: product.brand },
+    citation: evidenceSources.map((sourceItem) => ({
+      "@type": "WebPage",
+      "@id": sourceItem.url,
+      name: sourceItem.title,
+      url: sourceItem.url,
+      publisher: { "@type": "Organization", name: sourceItem.publisher },
+    })),
+  };
+  if (product.lowest_price && product.trusted_offer_count > 0) {
+    structuredData.offers = {
+      "@type": "AggregateOffer",
+      priceCurrency: product.price_currency,
+      lowPrice: product.lowest_price,
+      highPrice: product.highest_price || product.lowest_price,
+      offerCount: product.trusted_offer_count,
+      availability: product.in_stock_count > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: canonical,
+    };
+  }
 
   return (
     <main id="main-content" className="shell">
+      <JsonLd data={structuredData} />
       {/* Breadcrumb */}
       <nav aria-label="breadcrumb" className="text-sm text-black/40 mb-4 flex gap-1.5">
         <Link href="/" className="hover:text-black">首页</Link>
@@ -117,7 +155,8 @@ export default async function SourceProductPage({
       />
 
       {/* Stats */}
-      <section className="mt-6 grid grid-cols-3 gap-4 rounded-xl border border-black/10 p-5">
+      <section aria-labelledby="source-product-stats-title" className="mt-6 grid grid-cols-3 gap-4 rounded-xl border border-black/10 p-5">
+        <h2 id="source-product-stats-title" className="sr-only">来源产品数据概况</h2>
         <div>
           <p className="text-2xl font-semibold">{product.offer_count}</p>
           <p className="text-xs text-black/50 mt-1">当前报价数</p>
@@ -133,7 +172,10 @@ export default async function SourceProductPage({
       </section>
 
       {/* Offers */}
-      <section className="mt-8">
+      <ProductEvidence sources={evidenceSources} />
+
+      <section className="mt-8" aria-labelledby="source-product-offers-title">
+        <h2 id="source-product-offers-title" className="sr-only">当前报价</h2>
         <OfferGroupTable
           groups={product.offer_groups}
           productSlug={product.slug}

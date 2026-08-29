@@ -10,6 +10,7 @@ import { ReportForm } from "@/components/report-form";
 import { SearchBox } from "@/components/search-box";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
+import { getProductSeoContent } from "@/lib/product-seo";
 
 const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 const EMPTY_META = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
@@ -113,7 +114,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         ? `${activeBrand} 报价`
         : "AI 商品报价";
   const headingDescription = product
-    ? product.description
+    ? getProductSeoContent(product.slug, product.display_name, product.description).intro
     : searchQuery
       ? "匹配商品名称与来源商品标题。继续按品牌、库存、交付方式和更新时间缩小范围。"
       : "按品牌、商品类型、交付方式、库存和更新时间筛选公开报价。";
@@ -124,7 +125,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         <div className="catalog-heading-copy">
           <p className="text-xs font-semibold text-[color:var(--brand-strong)]">{product ? product.brand : activeBrand || "全部品牌"}</p>
           <h1 data-vds-role="title">{headingTitle}</h1>
-          <p data-vds-role="explanation">{headingDescription}</p>
+          <p id={product ? "product-description" : undefined} data-vds-role="explanation">{headingDescription}</p>
         </div>
         {!product ? <div className="catalog-heading-search"><SearchBox defaultValue={searchQuery} /></div> : null}
       </header>

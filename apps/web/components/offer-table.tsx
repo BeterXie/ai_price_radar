@@ -112,8 +112,25 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
             {group && group.shop_count > 1 && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[11px]">同款 {group.shop_count} 家店铺</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-black/50">
-            <span className="flex items-center gap-1.5"><Storefront size={15} />{group ? `${group.shop_count} 家店铺 · ${group.offer_count} 条报价` : offer.shop_name}</span>
-            <span>{offer.source_platform_label} · {offer.source_kind_label}</span>
+            <span className="flex items-center gap-1.5">
+              <Storefront size={15} />
+              <Link
+                href={`/shops/${encodeURIComponent(offer.shop_token)}`}
+                className="hover:underline"
+                aria-label={group ? `查看代表来源店铺 ${offer.shop_name}` : `查看店铺 ${offer.shop_name}`}
+              >
+                {group ? `${group.shop_count} 家店铺` : offer.shop_name}
+              </Link>
+              {group ? ` · ${group.offer_count} 条报价` : null}
+            </span>
+            <span>
+              {offer.source_platform ? (
+                <Link href={`/sources/${encodeURIComponent(offer.source_platform)}`} className="hover:underline">
+                  {offer.source_platform_label}
+                </Link>
+              ) : offer.source_platform_label}
+              {" · "}{offer.source_kind_label}
+            </span>
             <span>{DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type}</span>
             <span>{PERIOD_LABELS[offer.service_period] || offer.service_period}</span>
             <span>{WARRANTY_LABELS[offer.warranty] || offer.warranty}</span>

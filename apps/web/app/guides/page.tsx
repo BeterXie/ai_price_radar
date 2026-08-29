@@ -21,19 +21,24 @@ function includesQuery(values: readonly string[], query: string) {
   return haystack.includes(query.toLocaleLowerCase("zh-CN"));
 }
 
-export const metadata: Metadata = {
-  title: "AI 商品购买与使用教程中心",
-  description: "了解账号、代充、团队席位、卡密与 API 额度的区别，查看购买前检查、使用步骤、安全提示和售后材料准备指南。",
-  alternates: { canonical: "https://ai.pricememo.cn/guides" },
-  openGraph: {
+export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
+  const params = await searchParams;
+  const hasQuery = Object.keys(params).length > 0;
+  return {
     title: "AI 商品购买与使用教程中心",
-    description: "购买前看懂交付方式，购买后确认服务和账号状态。",
-    url: "https://ai.pricememo.cn/guides",
-    siteName: "AI Price Radar",
-    locale: "zh_CN",
-    type: "website",
-  },
-};
+    description: "了解账号、代充、团队席位、卡密与 API 额度的区别，查看购买前检查、使用步骤、安全提示和售后材料准备指南。",
+    alternates: { canonical: "https://ai.pricememo.cn/guides" },
+    robots: { index: !hasQuery, follow: true },
+    openGraph: {
+      title: "AI 商品购买与使用教程中心",
+      description: "购买前看懂交付方式，购买后确认服务和账号状态。",
+      url: "https://ai.pricememo.cn/guides",
+      siteName: "AI Price Radar",
+      locale: "zh_CN",
+      type: "website",
+    },
+  };
+}
 
 export default async function GuidesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;

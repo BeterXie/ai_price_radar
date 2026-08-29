@@ -4,6 +4,7 @@ import test from "node:test";
 import { guideRegistry } from "../lib/guides/registry.ts";
 import { PRODUCT_SLUGS, KNOWN_DELIVERY_TYPES, BRAND_SLUGS, GENERAL_GUIDE_SLUGS, WORKFLOW_GUIDE_SLUGS } from "../lib/guides/types.ts";
 import { validateGuideRegistry } from "../lib/guides/validation.ts";
+import { getProductEvidenceSources } from "../lib/product-seo.ts";
 
 const EXPECTED_MATRIX = {
   "chatgpt-account": ["finished_account", "semi_finished_account", "trial_account", "shared_pool", "verification_service"],
@@ -122,4 +123,18 @@ test("content states safety boundaries without offering bypass instructions", ()
   assert.doesNotMatch(content, /(?:如何|教你|步骤如下).{0,8}绕过|绕过.{0,8}(?:方法|配置示例)/);
   assert.doesNotMatch(content, /绝对稳定|永久不封/);
   assert.doesNotMatch(content, /请.{0,8}(提交|发送).{0,8}(密码|验证码|恢复码)/);
+});
+
+test("every product has three distinct official evidence anchors", () => {
+  for (const product of Object.values(guideRegistry.products)) {
+    const brand = product.brand === "openai"
+      ? "OpenAI"
+      : product.brand === "x"
+        ? "X"
+        : product.brand[0].toUpperCase() + product.brand.slice(1);
+    const sources = getProductEvidenceSources(brand, null, product.officialSources);
+    assert.equal(sources.length, 3, product.productSlug);
+    assert.equal(new Set(sources.map((source) => source.url)).size, 3, product.productSlug);
+    for (const source of sources) assert.equal(new URL(source.url).protocol, "https:", source.url);
+  }
 });

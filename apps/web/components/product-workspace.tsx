@@ -2,13 +2,15 @@ import Link from "next/link";
 import { ArrowSquareOut, Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
+import { JsonLd } from "@/components/structured-data";
+import { ProductEvidence } from "@/components/product-evidence";
 import { PriceHistory } from "@/components/price-history";
 import { ReportForm } from "@/components/report-form";
 import { WatchButton } from "@/components/watch-button";
 import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime } from "@/lib/format";
 import { getProductGuide } from "@/lib/guides/registry";
-import { getProductSeoContent } from "@/lib/product-seo";
+import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
 import type { ProductDetail } from "@/lib/types";
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -62,32 +64,47 @@ export function ProductWorkspace({
 }) {
   const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
-  const structuredData = product.lowest_price && product.trusted_offer_count > 0 ? {
+  const productGuide = getProductGuide(product.slug);
+  const evidenceSources = getProductEvidenceSources(product.brand, product.official_reference, productGuide?.officialSources);
+  const structuredData: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Product",
     "@id": `${canonical}#product`,
     name: product.display_name,
-    description: seo.metaDescription,
+    description: seo.intro,
+    url: canonical,
+    mainEntityOfPage: canonical,
+    inLanguage: "zh-CN",
+    isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
     image: `${canonical}/opengraph-image`,
     category: product.product_type,
     brand: { "@type": "Brand", name: product.brand },
-    offers: {
+    citation: evidenceSources.map((source) => ({
+      "@type": "WebPage",
+      "@id": source.url,
+      name: source.title,
+      url: source.url,
+      publisher: { "@type": "Organization", name: source.publisher },
+    })),
+  };
+  if (product.lowest_price && product.trusted_offer_count > 0) {
+    structuredData.offers = {
       "@type": "AggregateOffer",
       priceCurrency: product.price_currency,
       lowPrice: product.lowest_price,
       highPrice: product.highest_price || product.lowest_price,
       offerCount: product.trusted_offer_count,
+      availability: product.in_stock_count > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       url: canonical,
-    },
-  } : null;
+    };
+  }
   const filters = filterValues(rawParams);
   const previewState = single(rawParams, "state");
-  const productGuide = getProductGuide(product.slug);
   const guideFaq = productGuide?.faq[0];
 
   return (
     <>
-      {structuredData && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} />}
+      <JsonLd data={structuredData} />
       <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
         <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条纳入统计</p>
         <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
@@ -112,6 +129,8 @@ export function ProductWorkspace({
           </div>
         </section>
       )}
+
+      <ProductEvidence sources={evidenceSources} />
 
       <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
 
@@ -178,7 +197,7 @@ export function ProductWorkspace({
             ))}
           </ul>
           <div className="mt-10 border-t hairline">
-            <h2 className="py-5 text-xl font-semibold">常见问题</h2>
+            <h3 className="py-5 text-xl font-semibold">常见问题</h3>
             {seo.faqs.map((faq) => (
               <details key={faq.question} className="group border-t hairline py-4 first:border-t-0">
                 <summary className="cursor-pointer font-medium">{faq.question}</summary>
