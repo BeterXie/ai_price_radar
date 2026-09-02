@@ -17,10 +17,10 @@ from ..schemas import (
     DeliveryPriceSummary,
     OfferGroupPublic,
     OfferPublic,
-    PricePoint,
     PriceTrendPoint,
     ProductCard,
     ProductDetail,
+    ProductHistoryResponse,
     ShopProduct,
     ShopDetail,
 )
@@ -333,15 +333,18 @@ def _price_trend(
     stmt = (
         select(OfferHistory, Offer)
         .join(Offer, OfferHistory.offer_id == Offer.id)
+        .join(Shop, Offer.shop_id == Shop.id)
         .where(
             Offer.product_id == product_id,
+            Offer.approved.is_(True),
+            Shop.is_visible.is_(True),
             OfferHistory.currency == currency,
             OfferHistory.observed_at >= cutoff,
         )
         .order_by(OfferHistory.observed_at.asc())
     )
     if source_platform:
-        stmt = stmt.join(Shop, Offer.shop_id == Shop.id).where(Shop.platform == source_platform)
+        stmt = stmt.where(Shop.platform == source_platform)
     rows = db.execute(stmt).all()
     grouped: dict[datetime, list[tuple[OfferHistory, Offer]]] = defaultdict(list)
     for history, offer in rows:
@@ -667,16 +670,6 @@ def get_product_detail(
     trusted_in_stock = [x for x in comparable_in_stock if _is_trusted_offer(x, medians)]
     median_price = price_median(x.price for x in comparable_in_stock)
 
-    history_stmt = (
-        select(OfferHistory)
-        .join(Offer, OfferHistory.offer_id == Offer.id)
-        .where(Offer.product_id == product.id)
-    )
-    if filters.source_platform:
-        history_stmt = history_stmt.join(Shop, Offer.shop_id == Shop.id).where(Shop.platform == filters.source_platform)
-    history_stmt = history_stmt.order_by(OfferHistory.observed_at.desc()).limit(120)
-    history = list(db.scalars(history_stmt))
-    history.reverse()
     all_tags = sorted({tag for offer in offers for tag in (offer.tags or [])})
 
     breakdown: list[DeliveryPriceSummary] = []
@@ -733,9 +726,31 @@ def get_product_detail(
         snapshot_id=snapshot.id if snapshot else None,
         snapshot_at=snapshot.published_at if snapshot else None,
         offer_groups=offer_groups,
-        history=[PricePoint(observed_at=x.observed_at, price=x.price, currency=x.currency, stock_status=x.stock_status) for x in history],
-        trend=_price_trend(db, product.id, currency=PRICE_CURRENCY, source_platform=filters.source_platform),
+        history=[],
+        trend=[],
     )
+
+
+def _product_trend(
+    db: Session,
+    product_id: int,
+    *,
+    source_platform: str = "",
+) -> list[PriceTrendPoint]:
+    return _price_trend(db, product_id, currency=PRICE_CURRENCY, source_platform=source_platform)
+
+
+def get_product_history(
+    db: Session,
+    slug: str,
+    *,
+    source_platform: str = "",
+) -> ProductHistoryResponse | None:
+    product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
+    if product is None:
+        return None
+    trend = _product_trend(db, product.id, source_platform=source_platform)
+    return ProductHistoryResponse(trend=trend)
 
 
 def get_product_offer_page(

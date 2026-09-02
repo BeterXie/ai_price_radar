@@ -26,6 +26,7 @@ from ..schemas import (
     OfferGroupPageResponse,
     OfferPageResponse,
     ProductDetail,
+    ProductHistoryResponse,
     PublicCorrectionPage,
     ReportCreate,
     ReportOut,
@@ -42,6 +43,7 @@ from ..services.catalog import (
     get_group_offers,
     get_offer_description,
     get_product_detail,
+    get_product_history,
     get_product_group_page,
     get_product_offer_page,
     get_shop_detail,
@@ -314,6 +316,22 @@ def product_detail(
     return result
 
 
+@router.get("/products/{slug}/history", response_model=ProductHistoryResponse)
+def product_history(
+    slug: str,
+    source_platform: str = Query(default="", max_length=50),
+    db: Session = Depends(get_db),
+) -> ProductHistoryResponse:
+    result = get_product_history(
+        db,
+        slug,
+        source_platform=_offer_filters(source_platform=source_platform).source_platform,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="product not found")
+    return result
+
+
 @router.get("/products/{slug}/offers", response_model=OfferPageResponse)
 def product_offers(
     slug: str,
@@ -561,12 +579,16 @@ def _watch_targets(value: str) -> list[tuple[str, Decimal | None]]:
 
 @router.get("/watch.atom", response_class=Response)
 def watch_feed(
-    targets: str = Query(default="", max_length=1000),
+    targets: str = Query(
+        default="",
+        max_length=1000,
+        description="逗号分隔的关注目标，格式为 product-slug[:目标价]，例如 chatgpt-plus:16",
+    ),
     db: Session = Depends(get_db),
 ) -> Response:
     parsed = _watch_targets(targets)
     if not parsed:
-        raise HTTPException(status_code=422, detail="至少提供一个有效关注目标")
+        raise HTTPException(status_code=422, detail="至少提供一个有效关注目标，请使用 targets=product-slug[:目标价]")
     now = datetime.now(timezone.utc)
     entries: list[str] = []
     latest: datetime | None = None

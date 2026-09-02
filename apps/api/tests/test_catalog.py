@@ -17,6 +17,7 @@ from app.services.catalog import (
     get_group_offers,
     get_offer_description,
     get_product_detail,
+    get_product_history,
     get_product_group_page,
     get_product_offer_page,
     list_product_cards,
@@ -533,7 +534,9 @@ def test_catalog_aggregates_and_filters_do_not_mix_currencies():
         assert detail.related_lowest_price == Decimal("100.00")
         assert detail.offer_groups[0].price_currency == "CNY"
         assert detail.offer_groups[0].lowest_price == Decimal("100.00")
-        assert detail.trend[-1].trusted_lowest_price == Decimal("100.00")
+        trend = get_product_history(db, product.slug)
+        assert trend is not None
+        assert trend.trend[-1].trusted_lowest_price == Decimal("100.00")
 
         groups, _, offer_total = get_product_group_page(
             db,

@@ -5,9 +5,10 @@ export const metadata: Metadata = { title: "开发者与数据接入", descripti
 const endpoints = [
   ["GET /api/v1/products", "标准产品卡片、近期有货观测价、官方价格参考与信息覆盖情况。"],
   ["GET /api/v1/catalog/groups", "跨产品同款报价目录，支持交付、期限、质保、库存、更新时间和价格区间筛选。"],
-  ["GET /api/v1/products/{slug}", "产品详情、同款报价、90 天聚合价格与库存趋势。"],
+  ["GET /api/v1/products/{slug}", "产品详情与同款报价；90 天历史趋势由独立 history 接口按需加载。"],
+  ["GET /api/v1/products/{slug}/history", "按需读取最近 90 天聚合价格与库存趋势，支持 source_platform 筛选。"],
   ["GET /api/v1/corrections", "已解决且允许公开的纠错摘要，不返回联系方式和原始私密内容。"],
-  ["GET /api/v1/watch.atom", "无需账号的价格与补货 Atom Feed。"],
+  ["GET /api/v1/watch.atom?targets={slug}:{price}", "无需账号的价格与补货 Atom Feed；targets 必填，可用逗号分隔多个 product-slug[:目标价]。"],
 ];
 
 export default function DevelopersPage() {
@@ -18,6 +19,7 @@ export default function DevelopersPage() {
         <div className="data-table-frame mt-6 overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]" data-vds-layer="evidence">
           {endpoints.map(([method, copy]) => <div key={method} className="grid gap-2 border-b border-[color:var(--line)] p-5 last:border-b-0 md:grid-cols-[280px_1fr]"><code className="mono text-sm font-semibold text-[color:var(--info)]">{method}</code><p className="text-sm leading-6 text-[color:var(--muted)]">{copy}</p></div>)}
         </div>
+        <p className="mt-4 text-sm leading-6 text-[color:var(--muted)]">Atom 示例：<code className="mono">/api/v1/watch.atom?targets=chatgpt-plus:16,claude-pro</code>（客户端构造时请对 targets 查询参数进行 URL 编码）。未提供有效 targets 时接口会返回 422。</p>
       </section>
       <section className="data-table-frame mt-12 grid gap-px overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--line)] md:grid-cols-2" data-vds-layer="evidence">
         <div className="bg-[color:var(--panel)] p-6"><h2 className="text-2xl font-semibold">商家 JSON Feed</h2><p className="mt-3 text-sm leading-7 text-[color:var(--muted)]">Feed 可返回商品数组，或包含 shop、updated_at、items 的对象。商品至少提供稳定 ID、名称和来源 URL；价格、库存、类别与公开描述按统一导入模型处理。</p><a href="/shops/submit" className="button-primary mt-6">提交 Feed 地址</a></div>

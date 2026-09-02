@@ -96,6 +96,10 @@ export type ProductDetail = ProductCard & {
   trend: PriceTrendPoint[];
 };
 
+export type ProductHistory = {
+  trend: PriceTrendPoint[];
+};
+
 export type DeliveryPriceSummary = {
   delivery_type: string;
   price_currency: string;

@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.models import Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake
-from app.services.catalog import get_product_detail, list_product_cards
+from app.services.catalog import get_product_detail, get_product_history, list_product_cards
 from app.services.source_health import source_health
 
 
@@ -80,11 +80,63 @@ def test_product_exposes_official_reference_quality_and_aggregated_trend():
         assert cards[0].source_count == 3
         assert cards[0].data_quality_score >= 55
 
-        detail = get_product_detail(db, product.slug)
-        assert detail is not None
-        assert detail.trend
-        assert detail.trend[-1].trusted_lowest_price == Decimal("15.00")
-        assert detail.trend[-1].median_price == Decimal("15.00")
+        trend = get_product_history(db, product.slug)
+        assert trend is not None
+        assert trend.trend
+        assert trend.trend[-1].trusted_lowest_price == Decimal("15.00")
+        assert trend.trend[-1].median_price == Decimal("15.00")
+
+
+def test_product_detail_defers_history_and_history_endpoint_loads_it():
+    engine = _engine()
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        _seed_product(db)
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        detail = client.get("/api/v1/products/chatgpt-plus")
+        assert detail.status_code == 200
+        assert detail.json()["history"] == []
+        assert detail.json()["trend"] == []
+
+        history = client.get("/api/v1/products/chatgpt-plus/history")
+        assert history.status_code == 200
+        assert history.json()["trend"]
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_product_history_excludes_unapproved_and_hidden_offers_but_keeps_inactive_history():
+    engine = _engine()
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        _seed_product(db)
+        offers = list(db.scalars(select(Offer).order_by(Offer.id)))
+        offers[0].approved = False
+        offers[1].shop.is_visible = False
+        offers[2].active = False
+        db.commit()
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        response = TestClient(app).get("/api/v1/products/chatgpt-plus/history")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["trend"][-1]["observation_count"] == 1
+        assert payload["trend"][-1]["trusted_lowest_price"] == "20.00"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_source_health_is_factual_and_penalizes_scan_failures():
@@ -160,6 +212,23 @@ def test_watch_atom_feed_contains_threshold_state():
         assert response.headers["content-type"].startswith("application/atom+xml")
         assert "达到提醒条件" in response.text
         assert "CNY 15.00" in response.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_watch_atom_feed_requires_targets():
+    engine = _engine()
+    Base.metadata.create_all(engine)
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        response = TestClient(app).get("/api/v1/watch.atom")
+        assert response.status_code == 422
+        assert "targets" in response.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 

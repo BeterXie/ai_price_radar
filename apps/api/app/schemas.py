@@ -132,7 +132,11 @@ class ProductDetail(ProductCard):
     snapshot_at: datetime | None
     offers: list[OfferPublic] = Field(default_factory=list)
     offer_groups: list[OfferGroupPublic] = Field(default_factory=list)
-    history: list[PricePoint]
+    history: list[PricePoint] = Field(default_factory=list)
+    trend: list[PriceTrendPoint] = Field(default_factory=list)
+
+
+class ProductHistoryResponse(BaseModel):
     trend: list[PriceTrendPoint] = Field(default_factory=list)
 
 
