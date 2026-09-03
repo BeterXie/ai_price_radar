@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     report_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=24 * 60 * 60)
     trusted_proxy_cidrs: str = ""
     shop_intake_admin_emails: str = "admin@example.invalid"
+    shop_intake_auto_approve: bool = False
     intake_worker_key: str = ""
     detector_worker_key: str = ""
     discovery_worker_key: str = ""

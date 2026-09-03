@@ -883,3 +883,76 @@ def test_admin_change_platform_and_redetect(api_client):
     assert res.json()["status"] == "submitted"
     assert res.json()["source_type"] == "unknown"
 
+
+def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
+    client, engine = api_client
+    settings = get_settings()
+    monkeypatch.setattr(settings, "shop_intake_auto_approve", True)
+    monkeypatch.setattr(settings, "shop_intake_admin_emails", "admin@example.com")
+
+    # 1. ldxp auto-approves to queued
+    intake_id = client.post("/api/v1/shop-requests", json=_payload("AUTO1")).json()["request_id"]
+    detected = _detect(client, intake_id, platform="ldxp")
+    assert detected.json()["status"] == "queued"
+    assert detected.json()["workflow_status"] == "approved"
+
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.status == "queued"
+        assert intake.approved_at is not None
+        assert "已自动通过初审" in intake.decision_note
+
+        # Verify notifications
+        admin_notice = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.event_type == "shop_request.auto_approved.admin",
+                NotificationOutbox.recipient == "admin@example.com",
+            )
+        )
+        assert admin_notice is not None
+        assert "自动审批通过" in admin_notice.subject
+
+        applicant_notice = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.event_type == "shop_request.approved",
+                NotificationOutbox.recipient == intake.contact_email,
+            )
+        )
+        assert applicant_notice is not None
+        assert "已自动通过初审" in applicant_notice.subject
+
+    # 2. dujiao_next auto-approves to approved
+    intake_id_dj = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://dj.example.com", "source_type": "dujiao_next"},
+    ).json()["request_id"]
+    detected_dj = _detect(
+        client,
+        intake_id_dj,
+        platform="dujiao_next",
+        source_url="https://dj.example.com",
+        source_key="https://dj.example.com",
+    )
+    assert detected_dj.json()["status"] == "approved"
+    assert detected_dj.json()["workflow_status"] == "approved"
+
+
+def test_shop_intake_auto_approve_ignores_other(api_client, monkeypatch):
+    client, engine = api_client
+    settings = get_settings()
+    monkeypatch.setattr(settings, "shop_intake_auto_approve", True)
+
+    intake_id = client.post(
+        "/api/v1/shop-requests",
+        json={**_payload(), "shop_url": "https://custom.example.com"},
+    ).json()["request_id"]
+    detected = _detect(
+        client,
+        intake_id,
+        platform="other",
+        source_url="https://custom.example.com",
+        source_key="https://custom.example.com",
+    )
+    assert detected.json()["status"] == "pending_review"
+
+

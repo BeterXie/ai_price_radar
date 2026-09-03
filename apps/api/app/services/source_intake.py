@@ -148,6 +148,26 @@ def enqueue_transition_notification(
     )
 
 
+def enqueue_admin_notification(
+    db: Session,
+    intake: SourceIntake,
+    *,
+    event_type: str,
+    subject: str,
+    text_body: str,
+) -> None:
+    for recipient in admin_recipients():
+        enqueue_outbox(
+            db,
+            event_type=event_type,
+            recipient=recipient,
+            subject=subject,
+            text_body=text_body,
+            dedupe_key=f"source-intake:{intake.id}:{event_type}:{recipient}",
+        )
+
+
+
 def email_statuses(db: Session, intake_id: int) -> dict[str, str]:
     rows = list(
         db.scalars(

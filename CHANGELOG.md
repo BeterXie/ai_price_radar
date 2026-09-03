@@ -2,6 +2,23 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.32] - 2026-09-04
+
+### Added
+
+- **Automatic Shop Intake Approval**: Enabled automated shop intake approval via `SHOP_INTAKE_AUTO_APPROVE` (`True` in production). When a store request completes automated security and platform detection (`ldxp`, `dujiao_next`, `woocommerce`, `16688`, `merchant_json`, `schema_org`), it is automatically approved into the worker validation/publishing queue without requiring manual admin intervention.
+- **Admin Auto-Approval Email Notifications**: Automatically dispatches a notification email (`shop_request.auto_approved.admin`) to configured administrator emails (`SHOP_INTAKE_ADMIN_EMAILS`) whenever a shop request is automatically approved, providing full store details, detected platform, and direct links to the admin console.
+
+### Changed
+
+- **Applicant Notification**: Added explicit notifications to applicants confirming automatic approval upon successful probe detection.
+
+### Deployment
+
+- Follow `docs/QUICK_DEPLOY.md` and deploy only tag `v3.7.32` after CI passes.
+- Rebuild and restart `api`.
+- Set `SHOP_INTAKE_AUTO_APPROVE=true` in `.env` on production.
+
 ## [3.7.31] - 2026-09-04
 
 ### Added

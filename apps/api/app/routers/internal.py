@@ -19,7 +19,12 @@ from ..schemas import (
     SourceIntakeResult,
 )
 from ..security import require_detector_worker, require_intake_worker
-from ..services.source_intake import enqueue_transition_notification, site_url, utcnow
+from ..services.source_intake import (
+    enqueue_admin_notification,
+    enqueue_transition_notification,
+    site_url,
+    utcnow,
+)
 from ..services.source_platform import canonical_source_platform, prepare_source_submission, workflow_status
 
 router = APIRouter(
@@ -237,6 +242,7 @@ def report_source_detection_result(
             shop_name=payload.shop_name.strip(),
             product_count=payload.product_count,
         )
+        _apply_intake_approval_and_notifications(db, merged, platform, settings=get_settings())
         db.commit()
         return _response(merged)
 
@@ -248,7 +254,7 @@ def report_source_detection_result(
         intake.shop_name = payload.shop_name.strip()
     intake.product_count = payload.product_count
     intake.failure_reason = ""
-    intake.status = "pending_review"
+    _apply_intake_approval_and_notifications(db, intake, platform, settings=get_settings())
     try:
         db.commit()
         return _response(intake)
@@ -270,8 +276,63 @@ def report_source_detection_result(
         shop_name=payload.shop_name.strip(),
         product_count=payload.product_count,
     )
+    _apply_intake_approval_and_notifications(db, merged, platform, settings=get_settings())
     db.commit()
     return _response(merged)
+
+
+def _apply_intake_approval_and_notifications(
+    db: Session,
+    intake: SourceIntake,
+    platform: str,
+    *,
+    settings: Any,
+) -> None:
+    if intake.status not in {"submitted", "detecting", "pending_review"}:
+        return
+    is_auto_approvable = (
+        bool(settings.shop_intake_auto_approve)
+        and platform in {"ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}
+    )
+    if is_auto_approvable:
+        now = utcnow()
+        intake.approved_at = now
+        if platform == "ldxp":
+            intake.status = "queued"
+            next_step = "等待链动小铺 Worker 验证"
+        else:
+            intake.status = "approved"
+            next_step = "等待下一次完整目录发布"
+        intake.decision_note = f"已自动通过初审，{next_step}"
+        enqueue_transition_notification(
+            db,
+            intake,
+            event_type="shop_request.approved",
+            subject="店铺收录申请已自动通过初审",
+            text_body=(
+                f"你的店铺收录申请（#{intake.id}）已通过安全检测并自动通过初审。\n"
+                f"来源类型：{intake.source_type}\n"
+                f"当前状态：{next_step}；商品成功进入完整快照后才会正式收录。"
+            ),
+        )
+        enqueue_admin_notification(
+            db,
+            intake,
+            event_type="shop_request.auto_approved.admin",
+            subject=f"【自动审批通过】店铺收录已自动批准：{intake.shop_name or intake.source_key}（#{intake.id}）",
+            text_body=(
+                f"店铺收录申请（#{intake.id}）已通过安全检测并自动通过初审。\n"
+                f"来源类型：{intake.source_type}\n"
+                f"来源地址：{intake.source_url}\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"联系邮箱：{intake.contact_email}\n"
+                f"当前状态：{next_step}；商品成功进入完整快照后将自动公开。\n"
+                f"审批管理：{site_url(f'/admin?intake={intake.id}#source-intake-{intake.id}')}\n"
+            ),
+        )
+    else:
+        intake.status = "pending_review"
+
 
 
 @router.post("/claim", response_model=list[SourceIntakeClaimOut])
