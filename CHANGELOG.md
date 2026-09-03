@@ -2,6 +2,18 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.33] - 2026-09-04
+
+### Security
+
+- **CRLF & Email Header Injection Protection**:
+  - Sanitized `subject`, `recipient`, and `dedupe_key` across the outbox notification pipeline (`apps/api/app/services/source_intake.py` and `apps/api/app/services/outbox.py`).
+  - Added strict email format validation in `ShopRequestCreate` forbidding CRLF, control characters, commas, and quotes.
+  - Added strict sanitization to `shop_name` and `note` stripping all control characters and angle brackets to prevent header and template injection.
+- **SSRF Hardening**:
+  - Strengthened `normalize_public_https_url` in `apps/api/app/services/source_platform.py` to forbid internal hostnames, loopback/private/link-local/multicast IPs, and internal TLD suffixes (`.local`, `.internal`, `.lan`, `.home`, `.corp`, `.intranet`, `.priv`, `.arpa`).
+  - Verified parameterized SQL queries across all repositories.
+
 ## [3.7.32] - 2026-09-04
 
 ### Added

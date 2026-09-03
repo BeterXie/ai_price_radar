@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -65,6 +66,22 @@ def _insert_outbox_row(db: Session, values: dict[str, object]) -> None:
     db.flush()
 
 
+def sanitize_header_value(value: str, max_length: int = 200) -> str:
+    """Strip CRLF and control characters to prevent email header injection."""
+    cleaned = re.sub(r"[\r\n\t\x00-\x1f\x7f]+", " ", str(value or "")).strip()
+    return re.sub(r" +", " ", cleaned)[:max_length]
+
+
+def sanitize_recipient_email(value: str) -> str:
+    """Validate and sanitize recipient email to prevent header injection or open relay."""
+    cleaned = str(value or "").strip()
+    if any(ch in cleaned for ch in ("\r", "\n", "\t", "\0", " ", ",", ";", '"', "'", "<", ">")):
+        raise ValueError(f"Invalid email recipient: {cleaned!r}")
+    if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", cleaned):
+        raise ValueError(f"Invalid email recipient format: {cleaned!r}")
+    return cleaned
+
+
 def enqueue_outbox(
     db: Session,
     *,
@@ -74,18 +91,21 @@ def enqueue_outbox(
     text_body: str,
     dedupe_key: str,
 ) -> None:
+    safe_recipient = sanitize_recipient_email(recipient)
+    safe_subject = sanitize_header_value(subject)
+    safe_dedupe_key = sanitize_header_value(dedupe_key, max_length=255)
     _insert_outbox_row(
         db,
         {
             "event_type": event_type,
-            "recipient": recipient,
-            "subject": subject,
+            "recipient": safe_recipient,
+            "subject": safe_subject,
             "text_body": text_body,
             "status": "pending",
             "attempt_count": 0,
             "next_attempt_at": utcnow(),
             "last_error": "",
-            "dedupe_key": dedupe_key,
+            "dedupe_key": safe_dedupe_key,
         },
     )
 

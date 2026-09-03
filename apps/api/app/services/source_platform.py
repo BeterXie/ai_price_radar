@@ -86,20 +86,37 @@ class SourceDetection:
     shop_token: str
 
 
+FORBIDDEN_HOSTS = {"localhost", "0.0.0.0", "127.0.0.1", "::1"}
+FORBIDDEN_HOST_SUFFIXES = (
+    ".local",
+    ".internal",
+    ".lan",
+    ".home",
+    ".corp",
+    ".intranet",
+    ".priv",
+    ".arpa",
+)
+
+
 def normalize_public_https_url(value: object) -> str:
     """Normalize a URL without DNS resolution or outbound network access."""
-    parsed = urllib.parse.urlsplit(str(value))
+    url_str = str(value or "").strip()
+    if any(ch in url_str for ch in ("\r", "\n", "\t", "\0", " ")):
+        raise ValueError("来源地址包含非法控制字符或空格")
+    parsed = urllib.parse.urlsplit(url_str)
     host = (parsed.hostname or "").casefold().rstrip(".")
     if parsed.scheme.casefold() != "https" or not host or parsed.username or parsed.password:
         raise ValueError("来源地址必须是公开 HTTPS URL")
-    if host == "localhost" or host.endswith((".local", ".internal")):
+    if host in FORBIDDEN_HOSTS or host.endswith(FORBIDDEN_HOST_SUFFIXES):
         raise ValueError("来源地址不能指向本地或内部主机")
     try:
         literal_ip = ipaddress.ip_address(host)
     except ValueError:
         literal_ip = None
-    if literal_ip is not None and not literal_ip.is_global:
-        raise ValueError("来源地址不能使用私有或保留 IP")
+    if literal_ip is not None:
+        if not literal_ip.is_global or literal_ip.is_loopback or literal_ip.is_private or literal_ip.is_link_local:
+            raise ValueError("来源地址不能使用私有或保留 IP")
     try:
         port = parsed.port
     except ValueError as exc:
@@ -107,6 +124,7 @@ def normalize_public_https_url(value: object) -> str:
     rendered_host = f"[{host}]" if ":" in host else host
     netloc = f"{rendered_host}:{port}" if port and port != 443 else rendered_host
     return urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
+
 
 
 _normalized_https_url = normalize_public_https_url

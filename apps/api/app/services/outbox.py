@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
 from ..models import NotificationOutbox
+from .source_intake import sanitize_header_value, sanitize_recipient_email
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,9 @@ def send_resend_message(row: NotificationOutbox, settings: Settings | None = Non
         raise RuntimeError("Resend is not configured")
     resend.api_key = settings.resend_api_key
     resend.Emails.send({
-        "from": settings.resend_from,
-        "to": row.recipient,
-        "subject": row.subject,
+        "from": sanitize_header_value(settings.resend_from),
+        "to": sanitize_recipient_email(row.recipient),
+        "subject": sanitize_header_value(row.subject),
         "text": row.text_body,
     })
 
@@ -59,9 +60,9 @@ def send_smtp_message(row: NotificationOutbox, settings: Settings | None = None)
     if not smtp_is_configured(settings):
         raise RuntimeError("SMTP is not configured")
     message = EmailMessage()
-    message["From"] = settings.smtp_from
-    message["To"] = row.recipient
-    message["Subject"] = row.subject
+    message["From"] = sanitize_header_value(settings.smtp_from)
+    message["To"] = sanitize_recipient_email(row.recipient)
+    message["Subject"] = sanitize_header_value(row.subject)
     message.set_content(row.text_body)
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout_seconds) as client:
         if settings.smtp_starttls:
@@ -69,6 +70,7 @@ def send_smtp_message(row: NotificationOutbox, settings: Settings | None = None)
         if settings.smtp_username:
             client.login(settings.smtp_username, settings.smtp_password)
         client.send_message(message)
+
 
 
 def send_notification_message(row: NotificationOutbox, settings: Settings | None = None) -> None:

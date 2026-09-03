@@ -956,3 +956,77 @@ def test_shop_intake_auto_approve_ignores_other(api_client, monkeypatch):
     assert detected.json()["status"] == "pending_review"
 
 
+def test_injection_crlf_in_shop_name_is_sanitized(api_client, monkeypatch):
+    client, engine = api_client
+    settings = get_settings()
+    monkeypatch.setattr(settings, "shop_intake_auto_approve", True)
+    monkeypatch.setattr(settings, "shop_intake_admin_emails", "admin@example.com")
+
+    # Attempt header injection via shop_name
+    malicious_name = "EvilStore\r\nBcc: evil@attacker.com\r\nSubject: InjectedHeader"
+    res = client.post(
+        "/api/v1/shop-requests",
+        json=_payload("INJECT1", shop_name=malicious_name),
+    )
+    assert res.status_code == 201
+    intake_id = res.json()["request_id"]
+
+    _detect(client, intake_id, platform="ldxp")
+
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert "\r" not in intake.shop_name
+        assert "\n" not in intake.shop_name
+
+        # Verify all outbox messages have safe headers without any CRLF
+        for row in db.scalars(select(NotificationOutbox)).all():
+            assert "\r" not in row.subject
+            assert "\n" not in row.subject
+            assert "\r" not in row.recipient
+            assert "\n" not in row.recipient
+
+
+def test_injection_crlf_in_contact_is_rejected(api_client):
+    client, _ = api_client
+    # Attempt CRLF in contact email
+    res = client.post(
+        "/api/v1/shop-requests",
+        json=_payload("INJECT2", contact="victim@example.com\r\nBcc: evil@attacker.com"),
+    )
+    assert res.status_code == 422
+
+    # Attempt comma-separated multiple recipients
+    res2 = client.post(
+        "/api/v1/shop-requests",
+        json=_payload("INJECT3", contact="victim@example.com, evil@attacker.com"),
+    )
+    assert res2.status_code == 422
+
+    # Attempt angle brackets / XSS
+    res3 = client.post(
+        "/api/v1/shop-requests",
+        json=_payload("INJECT4", contact="<script>alert(1)</script>@example.com"),
+    )
+    assert res3.status_code == 422
+
+
+def test_injection_ssrf_urls_rejected(api_client):
+    client, _ = api_client
+    ssrf_urls = [
+        "https://127.0.0.1/shop",
+        "https://localhost:8000/shop",
+        "https://169.254.169.254/latest/meta-data",
+        "https://internal.lan/shop",
+        "https://router.local/shop",
+        "https://192.168.1.1/shop",
+        "https://10.0.0.1/shop",
+    ]
+    for url in ssrf_urls:
+        res = client.post(
+            "/api/v1/shop-requests",
+            json=_payload("SSRF", shop_url=url),
+        )
+        assert res.status_code == 422, f"Expected 422 for {url}, got {res.status_code}"
+
+
+

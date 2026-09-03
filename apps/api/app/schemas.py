@@ -290,9 +290,27 @@ class ShopRequestCreate(BaseModel):
     @classmethod
     def validate_contact_email(cls, value: str) -> str:
         value = value.strip()
-        if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) is None:
+        if any(ch in value for ch in ("\r", "\n", "\t", "\0", " ", ",", ";", '"', "'", "<", ">")):
+            raise ValueError("contact cannot contain newlines, spaces, or control characters")
+        if re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", value) is None:
             raise ValueError("contact must be a valid email address")
         return value
+
+    @field_validator("shop_name")
+    @classmethod
+    def validate_shop_name(cls, value: str) -> str:
+        cleaned = re.sub(r"[\r\n\t\x00-\x1f\x7f]+", " ", str(value or "")).strip()
+        cleaned = cleaned.replace("<", "").replace(">", "").strip()
+        cleaned = re.sub(r" +", " ", cleaned)
+        return cleaned[:100]
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value: str) -> str:
+        cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+", "", str(value or "")).strip()
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned[:500]
+
 
 
 class ShopRequestOut(BaseModel):
