@@ -12,6 +12,19 @@ def test_detection_recognizes_ldxp_without_fetching():
     )
     assert result.platform == "ldxp"
     assert result.source_key == "abc123"
+    assert result.source_url == "https://pay.ldxp.cn/shop/ABC123"
+    assert result.shop_token == "ABC123"
+
+
+def test_detection_recognizes_wzyp_as_ldxp_without_fetching():
+    result = detect_source_platform(
+        "https://wzyp.cn/shop/KFLA",
+        fetch_json=lambda _url: (_ for _ in ()).throw(AssertionError("LDXP should not be fetched")),
+    )
+    assert result.platform == "ldxp"
+    assert result.source_key == "kfla"
+    assert result.source_url == "https://wzyp.cn/shop/KFLA"
+    assert result.shop_token == "KFLA"
 
 
 def test_detection_recognizes_16688_without_fetching_and_scopes_token():

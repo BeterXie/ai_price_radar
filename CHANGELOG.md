@@ -2,6 +2,24 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.28] - 2026-09-03
+
+### Added
+
+- Added support for `wzyp.cn` and `www.wzyp.cn` storefront hostnames in the `ldxp` platform detector and crawler normalization.
+- Added `https://wzyp.cn/shop/KFLA` to public source discovery seeds and crawler candidate database.
+- Added `wzyp.cn` guidance to source intake copy in the web application.
+
+### Safety and data scope
+
+- Preserves `token.casefold()` as `source_key` and `token` as `shop_token` under the `ldxp` platform namespace.
+- No database migration is required.
+
+### Deployment
+
+- Follow `docs/QUICK_DEPLOY.md` and deploy only tag `v3.7.28` after CI passes.
+- Rebuild `api`, `source-detector`, `web`, `importer`, and `crawler`.
+
 ## [3.7.24] - 2026-08-28
 
 ### Fixed

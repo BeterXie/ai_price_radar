@@ -10,11 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-ALLOWED_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
+ALLOWED_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 PRICE_RE = re.compile(r"(?:[¥￥]\s*)?(\d+(?:\.\d{1,2})?)")
 SHOP_PATH_RE = re.compile(r"/shop/([^/?#]+)", re.I)
 SHOP_URL_RE = re.compile(
-    r"(?:(?:https?:)?//)?(?:pay\.|www\.)?ldxp\.cn/shop/[A-Za-z0-9._~-]+",
+    r"(?:(?:https?:)?//)?(?:(?:pay\.|www\.)?ldxp\.cn|(?:www\.)?wzyp\.cn)/shop/[A-Za-z0-9._~-]+",
     re.I,
 )
 CLOSED_RE = re.compile(r"店铺已打烊|店铺打烊|已打烊|暂停营业|停止营业|暂不营业|closed", re.I)
@@ -74,7 +74,7 @@ def normalize_input_url(value: str) -> str:
     value = value.replace("\\u002F", "/").replace("\\u003A", ":")
     if value.startswith("//"):
         return "https:" + value
-    if re.match(r"^(?:pay\.|www\.)?ldxp\.cn/", value, re.I):
+    if re.match(r"^(?:(?:pay\.|www\.)?ldxp\.cn|(?:www\.)?wzyp\.cn)/", value, re.I):
         return "https://" + value
     return value
 

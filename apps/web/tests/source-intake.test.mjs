@@ -18,6 +18,7 @@ test("source intake defaults to auto and exposes source-specific examples", () =
 test("client validation accepts a public HTTPS URL regardless of declared type", () => {
   assert.equal(isValidPublicSourceUrl("https://shop.example.com"), true);
   assert.equal(isValidPublicSourceUrl("https://pay.ldxp.cn/shop/example"), true);
+  assert.equal(isValidPublicSourceUrl("https://wzyp.cn/shop/KFLA"), true);
   assert.equal(isValidPublicSourceUrl("http://shop.example.com"), false);
   assert.equal(isValidPublicSourceUrl("https://localhost/feed.json"), false);
 });

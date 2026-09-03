@@ -18,7 +18,7 @@ export const SOURCE_INTAKE_COPY = {
   ldxp: {
     fieldLabel: "公开店铺地址",
     placeholder: "https://pay.ldxp.cn/shop/xxxxx",
-    hint: "例如 https://pay.ldxp.cn/shop/xxxxx。系统仍会核对实际来源类型。",
+    hint: "例如 https://wzyp.cn/shop/xxxxx 或 https://pay.ldxp.cn/shop/xxxxx。系统仍会核对实际来源类型。",
   },
   16688: {
     fieldLabel: "16688 店铺地址",

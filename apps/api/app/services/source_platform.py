@@ -44,7 +44,7 @@ PLATFORM_ALIASES = {
     "merchant_feed": "merchant_json",
 }
 
-LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
+LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 MAX_DETECTION_BYTES = 1024 * 1024
@@ -120,7 +120,9 @@ def _ldxp_detection(url: str) -> SourceDetection | None:
     token = parts[1].strip()
     if not token or len(token) > 128 or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-" for character in token):
         return None
-    source_url = f"https://pay.ldxp.cn/shop/{urllib.parse.quote(token, safe='._~-')}"
+    host = (parsed.hostname or "").casefold()
+    canonical_host = "wzyp.cn" if host in {"wzyp.cn", "www.wzyp.cn"} else "pay.ldxp.cn"
+    source_url = f"https://{canonical_host}/shop/{urllib.parse.quote(token, safe='._~-')}"
     return SourceDetection("ldxp", source_url, token.casefold(), token)
 
 

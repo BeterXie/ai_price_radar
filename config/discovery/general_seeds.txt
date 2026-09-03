@@ -1,3 +1,4 @@
 # General public source seeds (LDXP and future multi-source candidates).
 # Comments and blank lines are ignored; URLs are normalized before entering the candidate pool.
 https://pay.ldxp.cn/shop/IRPBFS50
+https://wzyp.cn/shop/KFLA
