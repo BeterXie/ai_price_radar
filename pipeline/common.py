@@ -159,7 +159,7 @@ CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
 IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
 NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
 PLATFORM_16688 = "16688"
-RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率"]
+RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率", "分组"]
 SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池"]
 TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
@@ -297,9 +297,18 @@ def chatgpt_tier(text: str) -> str | None:
         return "chatgpt-pro-20x"
     if multiplier == 5:
         return "chatgpt-pro-5x"
+    if contains(text, ["(cx", "分组", "不限时"]):
+        return None
     if contains(text, CHATGPT_PRO_MARKERS):
         return "chatgpt-pro"
     if contains(text, CHATGPT_PLUS_MARKERS):
+        if contains(text, ["(cx", "分组", "不限时"]):
+            return None
+        if re.search(r"(?<!\d)(?:1|2|3|4|5|6|7|8|9|10|15|25|30|50|100|200|300|500|1000)\s*[刀$]", text):
+            if not re.search(r"(?<!\d)20\s*[刀$]", text):
+                return None
+        if re.search(r"\bapi\b", text, re.IGNORECASE) and not contains(text, ["代充", "直充", "充值", "月卡", "30天", "成品"]):
+            return None
         return "chatgpt-plus"
     return None
 
@@ -403,6 +412,8 @@ def classify_identity(
 ) -> tuple[str | None, bool]:
     identity_text = norm(" ".join([title_text, category_text]))
     tier_text = norm(" ".join([identity_text, description_text]))
+    if contains(identity_text, ["(cx", "分组", "中转站"]):
+        return None, False
     if contains(identity_text, RELAY_MARKERS) and contains(identity_text, ["api", "key", "token", "额度"]):
         return None, False
     brand = first_title_brand(title_text)
@@ -422,6 +433,8 @@ def classify_identity(
                 return alias_slug, True
         return None, False
     if brand == "codex":
+        if contains(identity_text, ["(cx", "分组", "中转站"]):
+            return None, False
         return "codex-access", True
     if brand == "claude":
         if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):

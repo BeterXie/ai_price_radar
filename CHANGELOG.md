@@ -2,6 +2,29 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.29] - 2026-09-03
+
+### Added
+
+- Added admin console tabs for reviewing restricted (`status=restricted`) and unclassified (`status=unclassified`) offers, with live count badges on the stats bar.
+- Added admin search and target product filter to the offer management table.
+- Added support for manual reclassification (including unclassifying back to `None`) and single-offer auto-reclassification via `POST /api/v1/admin/offers/{id}/reclassify`.
+- Added visual display of merchant original category and restriction / hidden reasons in the admin offer view.
+
+### Fixed
+
+- Strengthened classifier and pipeline normalization to reject API relay groups (e.g. `plus分组`), relay model channels (e.g. `(cx,5,4)`), and non-20 dollar credit quotas from being falsely classified as `chatgpt-plus`, `chatgpt-pro`, or `codex-access`.
+
+### Safety and data scope
+
+- No schema migrations required.
+- Existing restricted offers can now be inspected, audited, and reclassified directly from `/admin`.
+
+### Deployment
+
+- Follow `docs/QUICK_DEPLOY.md` and deploy only tag `v3.7.29` after CI passes.
+- Rebuild `api`, `web`, and `importer`.
+
 ## [3.7.28] - 2026-09-03
 
 ### Added

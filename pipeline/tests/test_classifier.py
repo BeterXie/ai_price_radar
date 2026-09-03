@@ -197,3 +197,26 @@ def test_title_period_wins_over_fulfillment_time_in_description():
 def test_title_warranty_wins_over_narrower_description_exclusions():
     result = classify("X Premium 3个月全程质保订阅", "Grok", {"description": "封号无质保，其他情况质保到期"})
     assert result.warranty == "subscription_term"
+
+
+@pytest.mark.parametrize(
+    ("title", "category"),
+    [
+        ("Nume API 10$ plus分组 0.07", "GPT-plus半成品号"),
+        ("纯plus-G(cx,5,4)—100刀", "GPT-plus半成品号"),
+        ("纯plus-G(cx,5,4)—10刀", "GPT-plus半成品号"),
+        ("纯plus-G(cx,5,4)—200刀", "GPT-plus半成品号"),
+        ("纯plus-G(cx,5,4)—10刀", "codex中转站"),
+        ("纯plus-G(cx,5,4)—100刀", "codex中转站"),
+        ("纯plus-G(cx,5,4)—200刀", "codex中转站"),
+        ("GPTplus中转300刀", "GPT-plus半成品号"),
+        ("GPTplus50刀", "GPT-plus半成品号"),
+        ("plus10刀不限时，看好说明再买", "GPT-plus半成品号"),
+        ("plus20刀不限时，看好说明再购买", "GPT-plus半成品号"),
+        ("10刀不限时 PLUS/PRO号池", "GPT-plus半成品号"),
+    ],
+)
+def test_relay_groups_and_non_20_dollar_quotas_rejected_from_plus(title: str, category: str):
+    result = classify(title, category)
+    assert result.slug is None, f"{title} in {category} should not classify into {result.slug}"
+

@@ -118,3 +118,77 @@ def test_reclassify_does_not_restore_a_manually_hidden_16688_offer():
         assert offer.approved is False
         assert offer.active is False
         assert offer.hidden_reason == "manual moderation"
+
+
+def test_update_offer_manual_reclassify_and_unclassify():
+    from app.routers.admin import update_offer
+    from app.schemas import AdminOfferUpdate
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        plus = Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus")
+        pro = Product(slug="chatgpt-pro", platform="OpenAI", display_name="ChatGPT Pro")
+        shop = Shop(token="S1", name="Shop1", source_url="https://example.com")
+        db.add_all([plus, pro, shop])
+        db.flush()
+        raw = RawProduct(shop_id=shop.id, source_product_key="P1", original_name="Plus", original_category="Category")
+        db.add(raw)
+        db.flush()
+        offer = Offer(raw_product_id=raw.id, product_id=plus.id, shop_id=shop.id, active=True)
+        db.add(offer)
+        db.commit()
+
+        # Reclassify to pro
+        update_offer(offer.id, AdminOfferUpdate(product_slug="chatgpt-pro"), db)
+        db.refresh(offer)
+        assert offer.product_id == pro.id
+
+        # Unclassify
+        update_offer(offer.id, AdminOfferUpdate(product_slug=""), db)
+        db.refresh(offer)
+        assert offer.product_id is None
+
+
+def test_reclassify_single_offer_and_status_filtering():
+    from app.routers.admin import offers, reclassify_offer
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        plus = Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus")
+        shop = Shop(token="TEST", name="TestShop", source_url="https://example.com")
+        db.add_all([plus, shop])
+        db.flush()
+        raw1 = RawProduct(shop_id=shop.id, source_product_key="K1", original_name="ChatGPT Plus 成品", original_category="GPT")
+        raw2 = RawProduct(shop_id=shop.id, source_product_key="K2", original_name="Nume API 10$ plus分组", original_category="API")
+        db.add_all([raw1, raw2])
+        db.flush()
+        offer1 = Offer(raw_product_id=raw1.id, product_id=None, shop_id=shop.id, active=True, approved=True)
+        offer2 = Offer(raw_product_id=raw2.id, product_id=None, shop_id=shop.id, active=False, hidden_reason="不属于 OpenAI Plus 账号")
+        db.add_all([offer1, offer2])
+        db.commit()
+
+        # Single offer reclassify
+        res = reclassify_offer(offer1.id, db)
+        assert res["ok"] is True
+        assert res["product_slug"] == "chatgpt-plus"
+        db.refresh(offer1)
+        assert offer1.product_id == plus.id
+
+        # Status filtering: restricted
+        restricted = offers(status="restricted", db=db)
+        assert len(restricted) == 1
+        assert restricted[0]["id"] == offer2.id
+        assert "不属于 OpenAI Plus 账号" in restricted[0]["hidden_reason"]
+
+        # Status filtering: unclassified
+        unclassified = offers(status="unclassified", db=db)
+        assert len(unclassified) == 1
+        assert unclassified[0]["id"] == offer2.id
+
+        # Search filtering by title
+        searched = offers(q="Nume", db=db)
+        assert len(searched) == 1
+        assert searched[0]["id"] == offer2.id
+

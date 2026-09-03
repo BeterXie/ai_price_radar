@@ -580,8 +580,11 @@ class AdminStats(BaseModel):
     products: int
     offers: int
     public_offers: int
+    restricted_offers: int = 0
+    unclassified_offers: int = 0
     open_corrections: int
     pending_source_intakes: int
     # Backward-compatible alias; the UI uses the explicit fields above.
     open_reports: int
     last_scan_at: datetime | None
+

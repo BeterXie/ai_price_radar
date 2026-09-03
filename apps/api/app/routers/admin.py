@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -11,6 +11,7 @@ from ..models import (
     NotificationOutbox,
     Offer,
     Product,
+    RawProduct,
     Report,
     ScanRun,
     Shop,
@@ -57,11 +58,31 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
             SourceIntake.status == "pending_review"
         )
     ) or 0
+    restricted_offers = db.scalar(
+        select(func.count()).select_from(Offer).where(
+            or_(
+                Offer.active.is_(False),
+                and_(Offer.hidden_reason.is_not(None), func.trim(Offer.hidden_reason) != ""),
+            )
+        )
+    ) or 0
+    unclassified_offers = db.scalar(
+        select(func.count()).select_from(Offer).where(Offer.product_id.is_(None))
+    ) or 0
     return AdminStats(
         shops=db.scalar(select(func.count()).select_from(Shop)) or 0,
         products=db.scalar(select(func.count()).select_from(Product)) or 0,
         offers=db.scalar(select(func.count()).select_from(Offer)) or 0,
-        public_offers=db.scalar(select(func.count()).select_from(Offer).where(Offer.active.is_(True), Offer.approved.is_(True))) or 0,
+        public_offers=db.scalar(
+            select(func.count()).select_from(Offer).where(
+                Offer.active.is_(True),
+                Offer.approved.is_(True),
+                Offer.product_id.is_not(None),
+                or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
+            )
+        ) or 0,
+        restricted_offers=restricted_offers,
+        unclassified_offers=unclassified_offers,
         open_corrections=open_corrections,
         pending_source_intakes=pending_source_intakes,
         open_reports=open_corrections,
@@ -73,25 +94,65 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
 def offers(
     approved: bool | None = None,
     active: bool | None = None,
+    status: str | None = None,
+    q: str | None = None,
+    product_slug: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[dict]:
     stmt = (
         select(Offer)
+        .join(Offer.shop)
+        .join(Offer.raw_product)
+        .outerjoin(Offer.product)
         .options(joinedload(Offer.shop), joinedload(Offer.product), joinedload(Offer.raw_product))
-        .order_by(Offer.updated_at.desc())
-        .limit(limit)
     )
+    if status in ("restricted", "hidden"):
+        stmt = stmt.where(
+            or_(
+                Offer.active.is_(False),
+                and_(Offer.hidden_reason.is_not(None), func.trim(Offer.hidden_reason) != ""),
+            )
+        )
+    elif status == "unclassified":
+        stmt = stmt.where(Offer.product_id.is_(None))
+    elif status == "pending":
+        stmt = stmt.where(Offer.approved.is_(False))
+    elif status == "active":
+        stmt = stmt.where(
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            Offer.product_id.is_not(None),
+            or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
+        )
+
     if approved is not None:
         stmt = stmt.where(Offer.approved == approved)
     if active is not None:
         stmt = stmt.where(Offer.active == active)
+    if product_slug:
+        stmt = stmt.where(Product.slug == product_slug)
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                RawProduct.original_name.ilike(term),
+                Shop.name.ilike(term),
+                Shop.token.ilike(term),
+                Offer.hidden_reason.ilike(term),
+            )
+        )
+    limit_val = int(limit.default if hasattr(limit, "default") else limit)
+    offset_val = int(offset.default if hasattr(offset, "default") else offset)
+    stmt = stmt.order_by(Offer.updated_at.desc()).offset(offset_val).limit(limit_val)
     rows = list(db.scalars(stmt).unique())
     return [{
         "id": x.id,
         "shop": x.shop.name or x.shop.token,
         "shop_token": x.shop.token,
         "title": x.raw_product.original_name,
+        "original_category": x.raw_product.original_category,
         "product_slug": x.product.slug if x.product else None,
         "price": str(x.price) if x.price is not None else None,
         "currency": x.currency,
@@ -100,6 +161,7 @@ def offers(
         "active": x.active,
         "hidden_reason": x.hidden_reason,
         "observed_at": x.observed_at,
+        "updated_at": x.updated_at,
     } for x in rows]
 
 
@@ -109,16 +171,73 @@ def update_offer(offer_id: int, payload: AdminOfferUpdate, db: Session = Depends
     if offer is None:
         raise HTTPException(status_code=404, detail="offer not found")
     data = payload.model_dump(exclude_unset=True)
-    product_slug = data.pop("product_slug", None)
-    if product_slug is not None:
-        product = db.scalar(select(Product).where(Product.slug == product_slug))
-        if product is None:
-            raise HTTPException(status_code=404, detail="product not found")
-        offer.product_id = product.id
+    if "product_slug" in data:
+        product_slug = data.pop("product_slug")
+        if not product_slug or str(product_slug).strip() == "":
+            offer.product_id = None
+        else:
+            product = db.scalar(select(Product).where(Product.slug == str(product_slug).strip()))
+            if product is None:
+                raise HTTPException(status_code=404, detail="product not found")
+            offer.product_id = product.id
     for key, value in data.items():
         setattr(offer, key, value)
     db.commit()
     return {"ok": True, "id": offer.id}
+
+
+@router.post("/offers/{offer_id}/reclassify")
+def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
+    offer = db.scalar(
+        select(Offer)
+        .options(joinedload(Offer.raw_product), joinedload(Offer.shop))
+        .where(Offer.id == offer_id)
+    )
+    if offer is None:
+        raise HTTPException(status_code=404, detail="offer not found")
+    source_platform = str(offer.shop.platform or "")
+    raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
+    category_values = [offer.raw_product.original_category]
+    if source_platform.strip().casefold() == "16688":
+        source_category = raw_json.get("sourceCategory") or raw_json.get("source_category")
+        if isinstance(source_category, dict):
+            category_values.append(source_category.get("name", ""))
+        elif source_category:
+            category_values.append(str(source_category))
+    description_values = [raw_json.get("description", "")]
+    if source_platform.strip().casefold() == "16688":
+        description_values.extend(raw_json.get(key, "") for key in ("content", "instruction", "remark"))
+    category = " ".join(str(value or "") for value in category_values)
+    description = " ".join(str(value or "") for value in description_values)
+    result = classify_product(
+        offer.raw_product.original_name,
+        category,
+        description,
+        source_platform=source_platform,
+    )
+    target_product = (
+        db.scalar(select(Product).where(Product.slug == result.slug))
+        if result.slug
+        else None
+    )
+    offer.tags = result.tags
+    offer.risk_flags = result.risk_flags
+    offer.classification_confidence = result.confidence
+    offer.delivery_type = result.delivery_type
+    offer.is_comparable = result.is_comparable
+    offer.service_period = result.service_period
+    offer.warranty = result.warranty
+    offer.use_scenarios = result.use_scenarios
+    offer.item_fingerprint = result.item_fingerprint
+    offer.product_id = target_product.id if target_product else None
+    db.commit()
+    return {
+        "ok": True,
+        "id": offer.id,
+        "product_slug": result.slug,
+        "confidence": result.confidence,
+        "delivery_type": result.delivery_type,
+    }
 
 
 @router.post("/reclassify")

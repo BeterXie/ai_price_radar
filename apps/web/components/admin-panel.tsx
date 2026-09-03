@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowClockwise, Check, Eye, EyeSlash, Key, X } from "@phosphor-icons/react";
+import { ArrowClockwise, Check, Eye, EyeSlash, Key, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { money } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 
@@ -36,6 +36,8 @@ type Stats = {
   products: number;
   offers: number;
   public_offers: number;
+  restricted_offers?: number;
+  unclassified_offers?: number;
   open_corrections: number;
   pending_source_intakes: number;
   open_reports: number;
@@ -45,13 +47,18 @@ type Stats = {
 type AdminOffer = {
   id: number;
   shop: string;
+  shop_token?: string;
   title: string;
+  original_category?: string | null;
   product_slug: string | null;
   price: string | null;
   currency: string;
   stock_status: string;
   approved: boolean;
   active: boolean;
+  hidden_reason?: string | null;
+  observed_at?: string | null;
+  updated_at?: string | null;
 };
 
 type Report = {
@@ -102,6 +109,11 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
+  const [offerTab, setOfferTab] = useState<"all" | "restricted" | "unclassified" | "pending" | "active">("all");
+  const [offerSearch, setOfferSearch] = useState("");
+  const [offerProductFilter, setOfferProductFilter] = useState("");
+  const [reclassifyingOfferId, setReclassifyingOfferId] = useState<number | null>(null);
+  const [actionToast, setActionToast] = useState<string>("");
   const [reports, setReports] = useState<Report[]>([]);
   const [intakes, setIntakes] = useState<SourceIntake[]>([]);
   const [targetIntakeId, setTargetIntakeId] = useState<number | null>(null);
@@ -120,13 +132,35 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     document.getElementById(`source-intake-${targetIntakeId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [intakes, targetIntakeId]);
 
+  async function loadOffers(
+    tab: "all" | "restricted" | "unclassified" | "pending" | "active" = offerTab,
+    search: string = offerSearch,
+    productSlug: string = offerProductFilter
+  ) {
+    const params = new URLSearchParams();
+    params.set("limit", "100");
+    if (tab !== "all") params.set("status", tab);
+    if (search.trim()) params.set("q", search.trim());
+    if (productSlug.trim()) params.set("product_slug", productSlug.trim());
+    const response = await fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers });
+    if (response.ok) {
+      setOffers(await response.json());
+    }
+  }
+
   async function load() {
     setError("");
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      params.set("limit", "100");
+      if (offerTab !== "all") params.set("status", offerTab);
+      if (offerSearch.trim()) params.set("q", offerSearch.trim());
+      if (offerProductFilter.trim()) params.set("product_slug", offerProductFilter.trim());
+
       const [statsResponse, offersResponse, reportsResponse, intakesResponse] = await Promise.all([
         fetch(`${API}/api/v1/admin/stats`, { headers }),
-        fetch(`${API}/api/v1/admin/offers?limit=50`, { headers }),
+        fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers }),
         fetch(`${API}/api/v1/admin/reports?status=open`, { headers }),
         fetch(`${API}/api/v1/admin/source-intakes`, { headers }),
       ]);
@@ -155,7 +189,38 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
-    if (response.ok) await load();
+    if (response.ok) {
+      await loadOffers();
+      const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
+      if (statsRes.ok) setStats(await statsRes.json());
+    }
+  }
+
+  async function reclassifySingleOffer(offerId: number) {
+    setReclassifyingOfferId(offerId);
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/offers/${offerId}/reclassify`, {
+        method: "POST",
+        headers,
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const msg = data.product_slug
+          ? `已成功归类为 ${data.product_slug}（置信度 ${data.confidence}%）`
+          : "分类器判定该商品未命中任何标准产品（保持未归类）";
+        setActionToast(`报价 #${offerId} 自动分类完成：${msg}`);
+        await loadOffers();
+        const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
+        if (statsRes.ok) setStats(await statsRes.json());
+      } else {
+        setError(`报价 #${offerId} 自动分类失败`);
+      }
+    } catch {
+      setError(`报价 #${offerId} 自动分类请求失败`);
+    } finally {
+      setReclassifyingOfferId(null);
+    }
   }
 
   async function reclassify() {
@@ -163,7 +228,11 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       method: "POST",
       headers,
     });
-    if (response.ok) await load();
+    if (response.ok) {
+      const data = await response.json();
+      setActionToast(`全量重新分类完成：变更 ${data.changed} 条，未分类 ${data.unclassified} 条`);
+      await load();
+    }
   }
 
   async function resolveReport(reportId: number, status: "resolved" | "rejected") {
@@ -263,14 +332,16 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       {!stats && !error && <section className="surface-subtle p-5" role="status"><p className="section-kicker">尚未连接</p><p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">输入管理密钥后加载当前统计、收录申请、纠错队列和最近报价。</p></section>}
 
       {stats && (
-        <section className="data-strip sm:grid-cols-2 lg:grid-cols-6">
+        <section className="data-strip sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           {[
             ["店铺", stats.shops],
             ["标准产品", stats.products],
             ["全部报价", stats.offers],
             ["公开报价", stats.public_offers],
+            ["受限报价", stats.restricted_offers ?? 0],
+            ["未分类商品", stats.unclassified_offers ?? 0],
             ["待处理纠错", stats.open_corrections],
-            ["待初审收录申请", stats.pending_source_intakes],
+            ["待初审收录", stats.pending_source_intakes],
           ].map(([label, value]) => (
             <div key={String(label)} className="data-cell">
               <p className="data-label">{label}</p>
@@ -341,46 +412,214 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
         </section>
       )}
 
-      {offers.length > 0 && (
+      {stats && (
         <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold">最近报价</div>
-          <div className="divide-y divide-[color:var(--line)]">
-            {offers.map((offer) => (
-              <div key={offer.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_210px_100px_190px] xl:items-center">
-                <div>
-                  <p className="font-medium">{offer.shop}</p>
-                  <p className="mt-1 text-sm text-black/55">{offer.title}</p>
-                </div>
-                <select
-                  value={offer.product_slug || ""}
-                  onChange={(event) => patchOffer(offer.id, { product_slug: event.target.value, approved: true })}
-                  className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm"
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
+            <div>
+              <h2 className="text-base font-semibold">报价与分类管理</h2>
+              <p className="mt-0.5 text-xs text-black/55">查看全部商品报价、受限及隐藏商品，支持手动重新分类或调用算法重新检测。</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1 rounded-[10px] border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs font-medium">
+              {(
+                [
+                  ["all", "全部报价", stats.offers],
+                  ["restricted", "受限/已隐藏", stats.restricted_offers ?? 0],
+                  ["unclassified", "未分类", stats.unclassified_offers ?? 0],
+                  ["pending", "待审核", null],
+                  ["active", "公开中", stats.public_offers],
+                ] as const
+              ).map(([tabKey, tabLabel, tabCount]) => (
+                <button
+                  key={tabKey}
+                  type="button"
+                  onClick={() => {
+                    setOfferTab(tabKey);
+                    loadOffers(tabKey, offerSearch, offerProductFilter);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 transition-colors ${
+                    offerTab === tabKey
+                      ? "bg-[color:var(--ink)] text-white shadow-sm"
+                      : "text-black/60 hover:text-black hover:bg-[color:var(--subtle)]"
+                  }`}
                 >
-                  <option value="" disabled>未分类</option>
-                  {PRODUCT_OPTIONS.map((slug) => <option key={slug} value={slug}>{slug}</option>)}
-                </select>
-                <div className="text-sm">
-                  {money(offer.price, offer.currency)}<br />
-                  <span className="text-black/40">{offer.stock_status}</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className={`status-pill ${offer.approved ? "status-success" : "status-info"}`}>{offer.approved ? "已公开" : "待审核"}</span>
-                  <button
-                    onClick={() => patchOffer(offer.id, { approved: !offer.approved })}
-                    className={`tactile rounded-[10px] px-3 py-2 text-sm ${offer.approved ? "bg-[color:var(--accent)]" : "border hairline"}`}
-                  >
-                    {offer.approved ? "撤回公开" : "批准公开"}
-                  </button>
-                  <button
-                    onClick={() => patchOffer(offer.id, { active: !offer.active, hidden_reason: offer.active ? "管理员隐藏" : "" })}
-                    className="tactile flex items-center justify-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"
-                  >
-                    {offer.active ? <EyeSlash size={16} /> : <Eye size={16} />}{offer.active ? "隐藏" : "恢复"}
-                  </button>
-                </div>
-              </div>
-            ))}
+                  <span>{tabLabel}</span>
+                  {tabCount !== null && tabCount > 0 && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.2 mono text-[10px] ${
+                        offerTab === tabKey
+                          ? "bg-white/20 text-white"
+                          : tabKey === "restricted"
+                          ? "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
+                          : "bg-black/5 text-black/60"
+                      }`}
+                    >
+                      {tabCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
+
+          <div className="grid gap-3 border-b border-[color:var(--line)] bg-[color:var(--panel)] p-4 sm:grid-cols-[1fr_220px_auto]">
+            <div className="relative">
+              <input
+                value={offerSearch}
+                onChange={(e) => setOfferSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    loadOffers(offerTab, offerSearch, offerProductFilter);
+                  }
+                }}
+                placeholder="按标题、店铺名称或受限原因搜索..."
+                className="w-full rounded-[9px] border border-[color:var(--line-strong)] bg-transparent py-2 pl-9 pr-3 text-sm outline-none focus:border-[color:var(--focus)]"
+              />
+              <MagnifyingGlass size={16} className="absolute left-3 top-3 text-black/40" />
+            </div>
+            <select
+              value={offerProductFilter}
+              onChange={(e) => {
+                setOfferProductFilter(e.target.value);
+                loadOffers(offerTab, offerSearch, e.target.value);
+              }}
+              className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
+            >
+              <option value="">全部目标产品</option>
+              {PRODUCT_OPTIONS.map((slug) => (
+                <option key={slug} value={slug}>
+                  {slug}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => loadOffers(offerTab, offerSearch, offerProductFilter)}
+              className="button-secondary tactile"
+            >
+              筛选
+            </button>
+          </div>
+
+          {actionToast && (
+            <div className="flex items-center justify-between border-b border-[color:var(--line)] bg-[color:var(--brand-soft)] px-5 py-2.5 text-xs text-[color:var(--ink)]">
+              <span>{actionToast}</span>
+              <button type="button" onClick={() => setActionToast("")} className="text-black/40 hover:text-black">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {offers.length === 0 ? (
+            <div className="p-8 text-center text-sm text-black/45">
+              当前筛选条件（{offerTab === "restricted" ? "受限/隐藏" : offerTab === "unclassified" ? "未分类" : offerTab}）下暂无商品报价。
+            </div>
+          ) : (
+            <div className="divide-y divide-[color:var(--line)]">
+              {offers.map((offer) => (
+                <div key={offer.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_220px_100px_auto] xl:items-center">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="mono text-xs text-black/40">#{offer.id} · {offer.shop}</span>
+                      {!offer.active && <span className="status-pill status-danger">已隐藏/受限</span>}
+                      {!offer.approved && <span className="status-pill status-info">未公开</span>}
+                      {!offer.product_slug && <span className="status-pill status-warning">未归类</span>}
+                      {offer.approved && offer.active && offer.product_slug && (
+                        <span className="status-pill status-success">公开中</span>
+                      )}
+                    </div>
+                    <p className="mt-1.5 font-medium text-sm text-[color:var(--ink)]">{offer.title}</p>
+                    {offer.original_category && (
+                      <p className="mt-1 text-xs text-black/50">商家原始分类：{offer.original_category}</p>
+                    )}
+                    {offer.hidden_reason && (
+                      <div className="mt-2 rounded-[8px] border border-[color:var(--danger)]/25 bg-[color:var(--danger-soft)] px-2.5 py-1.5 text-xs text-[color:var(--danger)]">
+                        <strong>受限原因：</strong>{offer.hidden_reason}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-black/50">重新分类目标：</label>
+                    <select
+                      value={offer.product_slug || ""}
+                      onChange={(event) =>
+                        patchOffer(offer.id, {
+                          product_slug: event.target.value,
+                          approved: Boolean(event.target.value),
+                        })
+                      }
+                      className="w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm"
+                    >
+                      <option value="">未分类 / 暂不归类</option>
+                      {PRODUCT_OPTIONS.map((slug) => (
+                        <option key={slug} value={slug}>
+                          {slug}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="text-sm">
+                    {money(offer.price, offer.currency)}
+                    <br />
+                    <span className="text-xs text-black/40">{offer.stock_status}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={reclassifyingOfferId === offer.id}
+                      onClick={() => reclassifySingleOffer(offer.id)}
+                      className="tactile flex items-center gap-1.5 rounded-[10px] border hairline px-3 py-2 text-xs text-black/75 hover:bg-[color:var(--subtle)] disabled:opacity-50"
+                      title="使用最新分类器规则对该单品重新检测"
+                    >
+                      <ArrowClockwise size={14} className={reclassifyingOfferId === offer.id ? "animate-spin" : ""} />
+                      自动分类
+                    </button>
+                    {!offer.active || Boolean(offer.hidden_reason) ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patchOffer(offer.id, {
+                            active: true,
+                            approved: true,
+                            hidden_reason: "",
+                          })
+                        }
+                        className="tactile flex items-center gap-1.5 rounded-[10px] border border-[color:var(--brand)] bg-[color:var(--brand-soft)] px-3 py-2 text-xs font-medium text-[color:var(--brand)] hover:opacity-90"
+                      >
+                        <Eye size={14} />
+                        恢复公开
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patchOffer(offer.id, {
+                            active: false,
+                            hidden_reason: "管理员限制",
+                          })
+                        }
+                        className="tactile flex items-center gap-1.5 rounded-[10px] border hairline px-3 py-2 text-xs text-black/60 hover:text-[color:var(--danger)]"
+                      >
+                        <EyeSlash size={14} />
+                        隐藏/限制
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => patchOffer(offer.id, { approved: !offer.approved })}
+                      className={`tactile rounded-[10px] px-3 py-2 text-xs ${
+                        offer.approved ? "bg-[color:var(--accent)] text-black/70" : "border hairline text-black/80 font-medium"
+                      }`}
+                    >
+                      {offer.approved ? "撤回公开" : "批准公开"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>
