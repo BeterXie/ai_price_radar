@@ -268,3 +268,12 @@ def test_detector_stops_reading_as_soon_as_streamed_body_exceeds_limit():
         client.get("https://example.com", accept="text/plain")
     assert body_stream is not None
     assert body_stream.body_bytes_read == 9
+
+
+def test_detector_recognizes_wzyp_shop_url():
+    client = StubClient([])
+    result = probe_source("https://wzyp.cn/shop/5FEQFLQO", client=client)
+    assert result.detected_platform == "ldxp"
+    assert result.source_url == "https://wzyp.cn/shop/5FEQFLQO"
+    assert result.source_key == "5feqflqo"
+

@@ -249,7 +249,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     if (response.ok) await load();
   }
 
-  async function updateIntake(intakeId: number, action: "approve" | "reject" | "retry") {
+  async function updateIntake(intakeId: number, action: "approve" | "reject" | "retry" | "redetect") {
     const body = action === "reject" ? { reason: (intakeReasons[intakeId] || "").trim() } : undefined;
     if (action === "reject" && !body?.reason) {
       setError("驳回收录申请前，请填写原因。");
@@ -260,9 +260,28 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (response.ok) await load();
-    else setError("收录申请状态更新失败，请刷新后重试。");
+    if (response.ok) {
+      await load();
+    } else {
+      const data = await response.json().catch(() => null);
+      setError(data?.detail || "收录申请状态更新失败，请刷新后重试。");
+    }
   }
+
+  async function updateIntakePlatform(intakeId: number, platform: string) {
+    const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/platform`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ platform }),
+    });
+    if (response.ok) {
+      await load();
+    } else {
+      const data = await response.json().catch(() => null);
+      setError(data?.detail || "平台类型修改失败，请刷新后重试。");
+    }
+  }
+
 
   async function retryFailedIntakeNotifications(intakeId: number) {
     const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/notifications/retry`, {
@@ -359,21 +378,53 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--brand-soft)]" : ""}`}>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="mono text-xs text-black/40">#{intake.id} · {sourceTypeLabels[intake.source_type] || intake.source_type}</p>
+                    <p className="mono text-xs text-black/40">#{intake.id}</p>
                     <span className="status-pill status-info">{intakeStatusLabels[intake.status] || intake.status}</span>
+                    <div className="flex items-center gap-1.5 ml-1">
+                      <span className="text-xs text-black/50">平台:</span>
+                      <select
+                        value={intake.source_type}
+                        onChange={(e) => updateIntakePlatform(intake.id, e.target.value)}
+                        className="rounded-[6px] border hairline bg-[color:var(--panel)] px-2 py-0.5 text-xs text-[color:var(--ink)]"
+                      >
+                        <option value="ldxp">链动小铺 (ldxp)</option>
+                        <option value="dujiao_next">独角数卡 (dujiao_next)</option>
+                        <option value="16688">16688发卡 (16688)</option>
+                        <option value="woocommerce">WooCommerce</option>
+                        <option value="merchant_json">商家 JSON Feed</option>
+                        <option value="schema_org">Schema.org</option>
+                        <option value="other">其他独立站</option>
+                        <option value="unknown">未知来源</option>
+                      </select>
+                    </div>
                   </div>
                   <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
                   <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
                   <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                   {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
-                  {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">其他独立站仅支持管理员人工接入，不会进入自动验证或发布队列。</p>}
+                  {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">提示：如该店铺为链动小铺、独角数卡等支持的平台，可在上方切换类型或点击“重新检测”；点击批准将自动按检测平台接入。</p>}
                   {["merchant_json", "woocommerce", "16688", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
                   {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
                   {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {intake.status === "pending_review" && <>{intake.source_type !== "other" && <button onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile"><Check size={16} />{intake.source_type === "ldxp" ? "批准并验证" : "批准并加入发布队列"}</button>}<button onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile"><X size={16} />驳回</button></>}
+                  {intake.status === "pending_review" && (
+                    <>
+                      <button onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile">
+                        <Check size={16} />
+                        {intake.source_type === "ldxp" ? "批准并验证" : intake.source_type === "other" ? "批准接入" : "批准并加入发布队列"}
+                      </button>
+                      <button onClick={() => updateIntake(intake.id, "redetect")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm" title="根据最新探测规则重新识别平台">
+                        <ArrowClockwise size={16} className="mr-1 inline" />
+                        重新检测
+                      </button>
+                      <button onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile">
+                        <X size={16} />
+                        驳回
+                      </button>
+                    </>
+                  )}
                   {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
                   {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>

@@ -15,7 +15,7 @@ from sitemap import product_page_urls, sitemap_locations
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_TASK_BYTES = 2 * 1024 * 1024
 MAX_TASK_SECONDS = 15.0
-LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn"}
+LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
@@ -175,7 +175,8 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
     match = LDXP_PATH.fullmatch(parsed.path.rstrip("/"))
     if host in LDXP_HOSTS and match:
         token = urllib.parse.unquote(match.group(1)).strip()
-        source_url = f"https://pay.ldxp.cn/shop/{urllib.parse.quote(token, safe='._~-')}"
+        canonical_host = "wzyp.cn" if host in {"wzyp.cn", "www.wzyp.cn"} else "pay.ldxp.cn"
+        source_url = f"https://{canonical_host}/shop/{urllib.parse.quote(token, safe='._~-')}"
         return ProbeResult("ldxp", source_url, token.casefold())
 
     match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))

@@ -347,6 +347,15 @@ class SourceIntakeReject(BaseModel):
         return value
 
 
+class SourceIntakeUpdatePlatform(BaseModel):
+    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "other"]
+
+
+class SourceIntakeApprove(BaseModel):
+    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "other"] | None = None
+
+
+
 class SourceIntakeClaimRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)

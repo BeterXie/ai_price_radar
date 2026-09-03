@@ -2,6 +2,28 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.31] - 2026-09-04
+
+### Added
+
+- **Admin Shop Intake Platform Modification & Manual Approval**: Added platform selection dropdown to the admin console shop intake view (`POST /api/v1/admin/source-intakes/{id}/platform`), allowing administrators to switch an intake's platform type directly (e.g. from `other` to `ldxp`, `dujiao_next`, `16688`, `woocommerce`, `merchant_json`, `schema_org`).
+- **On-Demand Platform Re-Detection**: Added `POST /api/v1/admin/source-intakes/{id}/redetect` to re-trigger automatic platform detection for an intake using the latest detection rules.
+- **Intelligent Platform Auto-Upgrade on Approval**: Enhanced `POST /api/v1/admin/source-intakes/{id}/approve` to automatically recognize supported platform URLs (such as `wzyp.cn` -> `ldxp`) and approve them directly without throwing 409 errors.
+
+### Fixed
+
+- **Source Detector LDXP Domain Coverage**: Updated `detector/probe.py` to include `wzyp.cn` and `www.wzyp.cn` in `LDXP_HOSTS`, preventing new store applications on `wzyp.cn` (like shop `#37`) from being misclassified as `其他独立站` (`other`).
+
+### Safety and data scope
+
+- No database schema migrations required.
+- Existing and future `wzyp.cn` shop intakes can be approved and validated seamlessly.
+
+### Deployment
+
+- Follow `docs/QUICK_DEPLOY.md` and deploy only tag `v3.7.31` after CI passes.
+- Rebuild `api`, `web`, and `source-detector`.
+
 ## [3.7.30] - 2026-09-03
 
 ### Fixed

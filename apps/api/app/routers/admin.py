@@ -28,8 +28,10 @@ from ..schemas import (
     SourceCandidateAction,
     SourceCandidateOut,
     SourceDiscoveryRunOut,
+    SourceIntakeApprove,
     SourceIntakeOut,
     SourceIntakeReject,
+    SourceIntakeUpdatePlatform,
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
@@ -40,7 +42,7 @@ from ..services.source_discovery import (
     recover_unpromoted_candidates,
 )
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
-from ..services.source_platform import workflow_status
+from ..services.source_platform import _16688_detection, _ldxp_detection, prepare_source_submission, workflow_status
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -355,11 +357,37 @@ def source_intakes(status: str | None = None, db: Session = Depends(get_db)) -> 
 
 
 @router.post("/source-intakes/{intake_id}/approve", response_model=SourceIntakeOut)
-def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> SourceIntakeOut:
+def approve_source_intake(
+    intake_id: int,
+    payload: SourceIntakeApprove | None = None,
+    db: Session = Depends(get_db),
+) -> SourceIntakeOut:
     intake = _locked_source_intake(db, intake_id)
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status == "pending_review":
+        target_platform = payload.platform if payload else None
+        if target_platform:
+            intake.source_type = target_platform
+            intake.detected_platform = target_platform
+            if target_platform == "ldxp" and (ldxp := _ldxp_detection(intake.source_url)):
+                intake.source_url = ldxp.source_url
+                intake.source_key = ldxp.source_key
+            elif target_platform == "16688" and (p16688 := _16688_detection(intake.source_url)):
+                intake.source_url = p16688.source_url
+                intake.source_key = p16688.source_key
+        elif intake.source_type == "other":
+            if ldxp := _ldxp_detection(intake.source_url):
+                intake.source_type = "ldxp"
+                intake.detected_platform = "ldxp"
+                intake.source_url = ldxp.source_url
+                intake.source_key = ldxp.source_key
+            elif p16688 := _16688_detection(intake.source_url):
+                intake.source_type = "16688"
+                intake.detected_platform = "16688"
+                intake.source_url = p16688.source_url
+                intake.source_key = p16688.source_key
+
         if intake.source_type == "ldxp":
             intake.status = "queued"
             next_step = "等待链动小铺 Worker 验证"
@@ -367,7 +395,10 @@ def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Sour
             intake.status = "approved"
             next_step = "等待下一次完整目录发布"
         elif intake.source_type == "other":
-            raise HTTPException(status_code=409, detail="其他独立站仅支持人工接入，不能进入自动队列")
+            raise HTTPException(
+                status_code=409,
+                detail="其他独立站请先指定具体平台类型（如链动小铺、独角数卡等）后再批准",
+            )
         else:
             raise HTTPException(status_code=409, detail="来源尚未完成安全检测")
         intake.approved_at = utcnow()
@@ -385,6 +416,47 @@ def approve_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Sour
         db.commit()
     elif intake.status not in {"approved", "queued", "validating", "validated", "published", "onboarded"}:
         raise HTTPException(status_code=409, detail=f"cannot approve intake in status {intake.status}")
+    return _source_intake_response(db, intake)
+
+
+@router.post("/source-intakes/{intake_id}/platform", response_model=SourceIntakeOut)
+def update_source_intake_platform(
+    intake_id: int,
+    payload: SourceIntakeUpdatePlatform,
+    db: Session = Depends(get_db),
+) -> SourceIntakeOut:
+    intake = _locked_source_intake(db, intake_id)
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    platform = payload.platform
+    intake.source_type = platform
+    intake.detected_platform = platform
+    if platform == "ldxp" and (ldxp := _ldxp_detection(intake.source_url)):
+        intake.source_url = ldxp.source_url
+        intake.source_key = ldxp.source_key
+    elif platform == "16688" and (p16688 := _16688_detection(intake.source_url)):
+        intake.source_url = p16688.source_url
+        intake.source_key = p16688.source_key
+    intake.decision_note = f"管理员修改平台类型为 {platform}"
+    db.commit()
+    return _source_intake_response(db, intake)
+
+
+@router.post("/source-intakes/{intake_id}/redetect", response_model=SourceIntakeOut)
+def redetect_source_intake(
+    intake_id: int,
+    db: Session = Depends(get_db),
+) -> SourceIntakeOut:
+    intake = _locked_source_intake(db, intake_id)
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    intake.status = "submitted"
+    intake.source_type = "unknown"
+    intake.lease_expires_at = None
+    intake.attempt_count += 1
+    intake.decision_note = "管理员触发重新识别平台"
+    intake.failure_reason = ""
+    db.commit()
     return _source_intake_response(db, intake)
 
 

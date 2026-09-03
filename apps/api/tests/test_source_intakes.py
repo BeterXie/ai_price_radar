@@ -834,3 +834,52 @@ def test_resend_api_is_preferred_when_configured(monkeypatch):
         "subject": "Resend test",
         "text": "message body",
     }]
+
+
+def test_admin_approve_other_intake_auto_upgrades_to_ldxp(api_client):
+    client, engine = api_client
+    intake_id = client.post("/api/v1/shop-requests", json=_payload("5FEQFLQO", shop_url="https://wzyp.cn/shop/5FEQFLQO")).json()["request_id"]
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        intake.status = "pending_review"
+        intake.source_type = "other"
+        intake.detected_platform = "other"
+        db.commit()
+
+    res = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/approve",
+        headers={"X-Admin-Key": "admin-test"},
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["source_type"] == "ldxp"
+    assert data["status"] == "queued"
+    assert data["source_url"] == "https://wzyp.cn/shop/5FEQFLQO"
+    assert data["source_key"] == "5feqflqo"
+
+
+def test_admin_change_platform_and_redetect(api_client):
+    client, engine = api_client
+    intake_id = client.post("/api/v1/shop-requests", json=_payload("5FEQFLQO", shop_url="https://wzyp.cn/shop/5FEQFLQO")).json()["request_id"]
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        intake.status = "pending_review"
+        intake.source_type = "other"
+        db.commit()
+
+    res = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/platform",
+        headers={"X-Admin-Key": "admin-test"},
+        json={"platform": "dujiao_next"},
+    )
+    assert res.status_code == 200
+    assert res.json()["source_type"] == "dujiao_next"
+
+    res = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/redetect",
+        headers={"X-Admin-Key": "admin-test"},
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "submitted"
+    assert res.json()["source_type"] == "unknown"
+
