@@ -40,7 +40,7 @@ IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
 NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
 PLATFORM_16688 = "16688"
 RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率", "分组"]
-SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池"]
+SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池", "拼车", "共享账号", "多人共享", "车位", "车号"]
 TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
 CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登"]
@@ -88,7 +88,7 @@ COMPARABLE_DELIVERY_TYPES = {
 
 
 def normalize_title(value: str) -> str:
-    value = value.casefold()
+    value = str(value or "").casefold()
     value = re.sub(r"[\s_\-—|/\\]+", " ", value)
     return re.sub(r"\s+", " ", value).strip()
 
@@ -102,7 +102,36 @@ def _extract(mapping: dict[str, list[str]], text: str) -> list[str]:
 
 
 def _contains(text: str, needles: list[str]) -> bool:
-    return any(normalize_title(needle) in text for needle in needles)
+    norm = normalize_title(text)
+    return any(normalize_title(needle) in norm for needle in needles)
+
+
+def _is_non_product(title_text: str, category_text: str = "", description_text: str = "") -> bool:
+    t_l = normalize_title(title_text)
+    c_l = normalize_title(category_text)
+    d_l = normalize_title(description_text)
+
+    # If title has "附教程" or "带教程" with real product, do not reject
+    if not any(w in t_l for w in ["附教程", "带教程", "附使用教程", "内附教程", "内附登录教程"]):
+        if any(m in t_l for m in ["保姆教程", "图文教程", "反代教程", "保姆级教程", "教程持续更新", "使用指南", "购买指南"]):
+            return True
+        if re.search(r"(?:^|\s)教程(?:\s|$)", t_l) and not any(w in t_l for w in ["成品", "账号", "直充", "代充", "月卡", "cdk"]):
+            return True
+
+    direct_title_rejects = [
+        "不要拍", "不要购买", "不可拍", "测试商品", "测试号", "非商品", "买了不发", "防失联", "补差价", "专拍",
+        "接码渠道", "接码平台", "接码服务", "接码专区", "代接码", "接码注册", "接码地址", "号码验证", "手把手",
+        "邀请返利", "推广返利", "邀请推广", "邀请额度", "额度增加", "邀请资格",
+        "虚拟卡", "0刀卡", "一刀卡",
+        "优惠链接", "提取链接",
+    ]
+    if any(m in t_l for m in direct_title_rejects):
+        return True
+    if any(m in c_l for m in ["教程", "接码专区", "虚拟卡", "0刀卡和一刀卡", "反代教程"]):
+        return True
+    if any(m in d_l for m in ["【测试商品】", "仅图文教程", "本商品为教程", "不会发货，不要购买"]):
+        return True
+    return False
 
 
 def _pro_multiplier(text: str) -> int | None:
@@ -116,16 +145,20 @@ def _pro_multiplier(text: str) -> int | None:
 
 def _delivery_type(text: str) -> str:
     account_markers = ["成品", "半成品", "账号", "首登", "已接码", "未接码", "账号密码", "独享"]
-    if _contains(text, CHATGPT_SERVICE_MARKERS) and not _contains(text, account_markers):
-        return "verification_service"
+    if _contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代"]):
+        return "session_token"
+    if _contains(text, ["团队邀请", "team seat", "自动拉", "拉入团队", "子号", "team"]):
+        return "team_seat"
+    if any(w in text for w in ["拼车", "共享账号", "多人共享", "号池", "共享池", "共享号", "拼车池"]):
+        return "shared_pool"
     if _contains(text, SHARED_POOL_MARKERS):
         return "shared_pool"
+    if _contains(text, CHATGPT_SERVICE_MARKERS) and not _contains(text, account_markers):
+        return "verification_service"
     if _contains(text, RELAY_MARKERS) and not _contains(text, account_markers):
         return "relay_api"
     if _contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度"]):
         return "api_credit"
-    if _contains(text, ["团队邀请", "team seat", "车位", "自动拉", "拉入团队", "子号"]):
-        return "team_seat"
     if _contains(text, TRIAL_MARKERS):
         return "trial_account"
     if _contains(text, ["卡密", "cdk", "兑换码"]):
@@ -206,19 +239,38 @@ def _item_fingerprint(title: str, description: str, slug: str | None, delivery_t
 
 
 def _chatgpt_tier(text: str) -> str | None:
-    if _contains(text, CHATGPT_K12_MARKERS):
-        return "chatgpt-k12"
-    multiplier = _pro_multiplier(text)
-    if multiplier == 20:
-        return "chatgpt-pro-20x"
-    if multiplier == 5:
-        return "chatgpt-pro-5x"
-    if _contains(text, ["(cx", "分组", "不限时"]):
+    if _contains(text, ["(cx", "中转站", "不限时"]):
         return None
-    if _contains(text, CHATGPT_PRO_MARKERS):
+    if _contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用"]):
+        return None
+    if "plus分组" in text or "api分组" in text or "中转分组" in text:
+        return None
+
+    # Quotas (10刀, 50刀, 100刀, etc. combined with quota/api/token terms)
+    if any(re.search(rf"(?<!\d){q}\s*(?:刀|美金|\$)(?!\d)", text) for q in [5, 10, 15, 25, 30, 50, 100, 120, 150, 200, 300, 500, 1000]):
+        if any(w in text for w in ["额度", "余额", "api", "key", "token", "sol", "image"]):
+            return None
+
+    if _contains(text, CHATGPT_K12_MARKERS) or any(w in text for w in ["team", "周额", "子号", "母号", "团队邀请"]):
+        if any(w in text for w in ["k12", "edu", "教育", "学生", "高校"]):
+            return "chatgpt-k12"
+        return "chatgpt-k12"
+
+    multiplier = _pro_multiplier(text)
+    if multiplier in (5, 20):
+        if any(w in text for w in ["额度", "美金", "team", "子号", "中转", "号池", "api"]):
+            return None
+        return "chatgpt-pro-20x" if multiplier == 20 else "chatgpt-pro-5x"
+
+    if _contains(text, ["chatgpt pro", "gpt pro", "chatgpt-pro", "gpt-pro"]):
+        if any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "sub2api", "api"]):
+            return None
         return "chatgpt-pro"
+    if "200刀" in text and not any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "sub2api", "api"]):
+        return "chatgpt-pro"
+
     if _contains(text, CHATGPT_PLUS_MARKERS):
-        if _contains(text, ["(cx", "分组", "不限时"]):
+        if any(w in text for w in ["team", "周额", "子号", "额度", "中转", "sub2api"]):
             return None
         if re.search(r"(?<!\d)(?:1|2|3|4|5|6|7|8|9|10|15|25|30|50|100|200|300|500|1000)\s*[刀$]", text):
             if not re.search(r"(?<!\d)20\s*[刀$]", text):
@@ -226,6 +278,7 @@ def _chatgpt_tier(text: str) -> str | None:
         if re.search(r"\bapi\b", text, re.IGNORECASE) and not _contains(text, ["代充", "直充", "充值", "月卡", "30天", "成品"]):
             return None
         return "chatgpt-plus"
+
     return None
 
 
@@ -245,13 +298,17 @@ def _first_title_brand(text: str) -> str | None:
     return min(positions)[1] if positions else None
 
 
-def _detect_brand(title_text: str, category_text: str) -> str | None:
+def _detect_brand(title_text: str, category_text: str, description_text: str = "") -> str | None:
     title_brand = _first_title_brand(title_text)
     if title_brand:
         return title_brand
 
     if "plus" in title_text and _contains(title_text, IMPLICIT_CHATGPT_MARKERS) and not _contains(title_text, NON_TARGET_PLUS_MARKERS):
         return "chatgpt"
+
+    if _contains(title_text, ["plus", "puls", "plsu"]) and _contains(title_text, ["成品", "半成品", "账号", "已接码", "未接码", "会员", "直充", "代充", "月卡", "反代", "json", "rt", "首登"]):
+        if not any(other in title_text for other in ["google", "gemini", "claude", "twitter", "baidu", "百度"]):
+            return "chatgpt"
 
     category_brands = _explicit_brands(category_text)
     if len(category_brands) == 1:
@@ -261,6 +318,22 @@ def _detect_brand(title_text: str, category_text: str) -> str | None:
             return category_brands[0]
     if len(category_brands) > 1:
         return None
+
+    if description_text:
+        desc_norm = normalize_title(description_text)
+        if any(m in desc_norm for m in ["chatgpt plus", "chatgpt pro", "gpt-plus", "gpt plus", "gpt-pro", "gpt pro", "openai plus"]):
+            return "chatgpt"
+        if any(m in desc_norm for m in ["claude pro", "claude-pro", "claude 会员", "claude 个人账号"]):
+            return "claude"
+        if any(m in desc_norm for m in ["gemini advanced", "google one ai", "gemini pro会员"]):
+            return "gemini"
+        if any(m in desc_norm for m in ["super grok", "supergrok", "grok super"]):
+            return "grok"
+        if any(m in desc_norm for m in ["x premium", "twitter blue", "推特会员"]):
+            return "x"
+        if any(m in desc_norm for m in ["codex", "cc switch", "codex++"]):
+            return "codex"
+
     return None
 
 
@@ -351,11 +424,18 @@ def _classify_identity(
 ) -> tuple[str | None, bool]:
     identity_text = normalize_title(" ".join([title_text, category_text]))
     tier_text = normalize_title(" ".join([identity_text, description_text]))
-    if _contains(identity_text, ["(cx", "分组", "中转站"]):
+
+    if _is_non_product(title_text, category_text, description_text):
+        return None, False
+
+    if _contains(identity_text, ["(cx", "中转站"]):
+        return None, False
+    if _contains(title_text, ["分组"]) or _contains(category_text, ["plus分组", "api分组", "中转分组", "token分组"]):
         return None, False
     if _contains(identity_text, RELAY_MARKERS) and _contains(identity_text, ["api", "key", "token", "额度"]):
         return None, False
-    brand = _detect_brand(title_text, category_text)
+
+    brand = _detect_brand(title_text, category_text, description_text)
     if brand is None:
         if str(source_platform or "").strip().casefold() == PLATFORM_16688:
             alias_slug = _classify_16688_alias(title_text, category_text, description_text)
@@ -363,28 +443,41 @@ def _classify_identity(
                 return alias_slug, True
         return None, False
 
+    is_sub2api_only = any(w in tier_text for w in [
+        "只能反代", "仅支持反代", "无账号和密码", "无账号密码", "没有账号密码",
+        "没有邮箱账密", "只可反代", "反代专用", "没有账密"
+    ])
+
     if brand == "codex":
-        if _contains(identity_text, ["(cx", "分组", "中转站"]):
+        if _contains(identity_text, ["(cx", "中转站"]):
+            return None, False
+        if _contains(title_text, ["api 100刀", "网站余额", "中转站余额"]):
             return None, False
         return "codex-access", True
+
     if brand == "claude":
         if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
             return "claude-api-access", True
-        if _contains(identity_text, ["claude pro", "claude会员", "claude 会员"]):
+        if _contains(identity_text, ["claude pro", "claude会员", "claude 会员"]) or _contains(tier_text, ["claude pro"]):
             return "claude-pro", True
         return "claude-account", False
+
     if brand == "gemini":
         if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
             return "gemini-api-access", True
-        if _contains(identity_text, ["gemini advanced", "gemini pro会员", "google one ai"]):
+        if _contains(identity_text, ["gemini advanced", "gemini pro会员", "google one ai"]) or _contains(tier_text, ["gemini advanced"]):
             return "gemini-advanced", True
         return "gemini-account", False
+
     if brand == "grok":
         if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
             return "grok-api-access", True
-        if _contains(identity_text, ["supergrok", "super grok", "grok super"]):
+        if _contains(tier_text, ["中转站", "周限", "速刷"]):
+            return None, False
+        if _contains(identity_text, ["supergrok", "super grok", "grok super", "groksuper"]) or _contains(tier_text, ["supergrok", "super grok", "grok super", "groksuper"]):
             return "grok-super", True
         return "grok-account", False
+
     if brand == "x":
         if _contains(identity_text, ["premium business", "premium organization", "premium organisation", "企业认证", "金标", "灰标"]):
             return None, False
@@ -396,33 +489,45 @@ def _classify_identity(
             return "x-premium", True
         return None, False
 
+    if is_sub2api_only:
+        return "codex-access", True
+
     if _contains(identity_text, CHATGPT_API_MARKERS):
         if _contains(identity_text, ["中转", "倍率"]):
             return None, False
         return "openai-api-credit", True
+
     if (
         _contains(title_text, CHATGPT_NON_PRODUCT_MARKERS)
         and not _contains(title_text, CHATGPT_EXPLICIT_PRODUCT_MARKERS)
     ):
         return None, False
+
     if (_contains(title_text, CHATGPT_SERVICE_MARKERS) and not _contains(title_text, CHATGPT_PRODUCT_MARKERS)) or (
         _contains(title_text, GENERIC_EMAIL_MARKERS) and not _contains(title_text, CHATGPT_PRODUCT_MARKERS)
     ):
         return "chatgpt-access-service", True
+
     if _contains(title_text, CHATGPT_FREE_MARKERS):
         return "chatgpt-account", True
+
     if _contains(title_text, CHATGPT_GO_MARKERS):
         return "chatgpt-go", True
+
     title_tier = _chatgpt_tier(title_text)
     if title_tier:
         return title_tier, True
+
     refined_tier = _chatgpt_tier(tier_text)
-    if refined_tier and refined_tier != "chatgpt-plus":
+    if refined_tier:
         return refined_tier, True
+
     if _contains(title_text, CHATGPT_AMBIGUOUS_CREDIT_MARKERS):
         return None, False
+
     if _contains(title_text, CHATGPT_PRODUCT_MARKERS):
         return "chatgpt-account", False
+
     return None, False
 
 
@@ -462,7 +567,7 @@ def classify_product(
         risk_flags=risks,
         confidence=confidence,
         delivery_type=delivery_type,
-        is_comparable=delivery_type in COMPARABLE_DELIVERY_TYPES,
+        is_comparable=bool(slug) and (delivery_type in COMPARABLE_DELIVERY_TYPES),
         service_period=period,
         warranty=warranty,
         use_scenarios=_use_scenarios(detail_text),

@@ -262,3 +262,43 @@ def test_relay_groups_and_non_20_dollar_quotas_rejected_from_plus(title: str, ca
     result = classify_product(title, category)
     assert result.slug is None, f"{title} in {category} should not classify into {result.slug}"
 
+
+@pytest.mark.parametrize(
+    ("title", "category", "description", "expected_slug", "expected_delivery", "expected_comparable"),
+    [
+        ("支付宝原价订阅ChatGPT Plus，保姆教程持续更新....", "Gpt", "", None, "unknown", False),
+        ("内部教程_Gemini3.1Pro如何开启家庭组？（仅图文教程，不含其他使用指导）", "教程", "", None, "unknown", False),
+        ("低价GPT接码渠道Plus接码渠道Codex接码渠道Plus成品号接码渠道", "GPT-plus半成品号", "", None, "unknown", False),
+        ("plus pro邀请额度增加 自行使用卖出无售后", "OpenAI 额度充值", "", None, "unknown", False),
+        ("【测试商品】不是 GPT PLUS RT号，不要购买", "Gemini", "", None, "unknown", False),
+        ("VISA 0刀虚拟卡 485954(Gemini KIRO GPT PAYPAL用不了拍错不退） 有效期两小时", "0刀卡和一刀卡", "", None, "unknown", False),
+        ("plus已接码有rt，无账号和密码，仅支持反代！不会用反代软件的切勿下单！", "gpt", "", "codex-access", "session_token", False),
+        ("自营2- Plus 成品号 已接码 只能反代 json发货 没有账号密码那些", "全部", "只可反代，没有账号密码", "codex-access", "session_token", False),
+        ("OpenAI Pro 20X 额度｜50美金｜OpenAI 5.6-sol｜ OpenAI image2", "20X(无质保)", "", None, "api_credit", False),
+        ("G Team bug 子号 最低200刀（无质保，拿着卡密去兑换地址下载JSON文件）", "OpenAI Team/Go", "", "chatgpt-k12", "team_seat", True),
+        ("长效 周额team", "ChatGPT福利号", "", "chatgpt-k12", "team_seat", True),
+        ("plus成品号30天10人拼车】plus订阅拼车30天 全程质保🔥", "GPT Plus", "", "chatgpt-plus", "shared_pool", False),
+        ("G plus会员拼车号【随机1-4人用】", "GPT Plus", "", "chatgpt-plus", "shared_pool", False),
+        ("【质保稳定30天，3人共享账号】", "GPT Plus", "", "chatgpt-plus", "shared_pool", False),
+        ("Super Grok官方正规充值1个月（质保30天订阅）", "Grok分组", "", "grok-super", "subscription_recharge", True),
+        ("GrokSuper代充值（1个月）", "Grok分组", "", "grok-super", "subscription_recharge", True),
+        ("【特惠秒发】独享个人月度会员 官方正规实卡开通", "通用AI", "本商品为 ChatGPT Plus 官方正规独享号，带完整邮箱密码和2FA", "chatgpt-plus", "finished_account", True),
+        ("【直充秒发】独立个人订阅 月付质保", "海外会员", "本商品为 Claude Pro 个人会员代充，正规信用卡开通", "claude-pro", "subscription_recharge", True),
+        ("【年付特惠】高级版会员 质保一年", "热门AI", "Google Gemini Advanced 1年会员直充，享受2TB空间及最新AI模型", "gemini-advanced", "subscription_recharge", True),
+    ],
+)
+def test_detail_description_and_robust_exclusions(
+    title: str,
+    category: str,
+    description: str,
+    expected_slug: str | None,
+    expected_delivery: str,
+    expected_comparable: bool,
+):
+    result = classify_product(title, category, description)
+    assert result.slug == expected_slug, f"Slug mismatch for '{title}': got {result.slug}"
+    assert result.is_comparable is expected_comparable, f"Comparable mismatch for '{title}'"
+    if expected_slug is not None:
+        assert result.delivery_type == expected_delivery, f"Delivery mismatch for '{title}': got {result.delivery_type}"
+
+

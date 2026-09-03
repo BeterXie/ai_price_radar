@@ -2,6 +2,27 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.30] - 2026-09-03
+
+### Fixed
+
+- **Detail-Driven Classification & Brand Detection**: Enabled brand and tier recognition fallback to product detail page descriptions (`raw_products.raw_json->>'description'`) when storefront titles are cryptic or non-standard.
+- **Universal Non-Product Exclusion**: Systematically rejected pure tutorials (`教程`, `保姆教程`, `图文教程`, `反代教程`), test items (`测试商品`, `不要拍`, `不可拍`), SMS verification ad services (`接码渠道`), virtual cards (`虚拟卡`, `0刀卡`), and referral boost links from being classified into subscription products.
+- **Reverse Proxy / Sub2API Token Isolation**: Offers offering only Sub2API/RT JSON tokens without login credentials (`只能反代`, `无账号密码`) are now correctly classified as `codex-access` (`session_token`) rather than `chatgpt-plus`.
+- **ChatGPT Pro Integrity**: Filtered out team bug sub-accounts (`Team bug 子号`) and API quota credits (`20X 额度｜50美金`) from `chatgpt-pro` and `chatgpt-pro-20x`.
+- **Multi-User Carpool Isolation**: Expanded `SHARED_POOL_MARKERS` to catch `拼车`, `共享账号`, `多人共享`, and `车位`, ensuring carpool offers are tagged `shared_pool` and `is_comparable = false`, preventing them from distorting individual account comparison prices.
+- **Category Group False Positives**: Preserved genuine subscriptions in merchant storefront categories ending in `分组` (e.g. `Grok分组`).
+
+### Safety and data scope
+
+- Synchronized `apps/api/app/services/classifier.py` and `pipeline/common.py`.
+- No database schema migrations required.
+
+### Deployment
+
+- Follow `docs/QUICK_DEPLOY.md` and deploy only tag `v3.7.30` after CI passes.
+- Rebuild `api`, `web`, and `importer`.
+
 ## [3.7.29] - 2026-09-03
 
 ### Added
