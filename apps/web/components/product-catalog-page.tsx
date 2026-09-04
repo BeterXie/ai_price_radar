@@ -23,9 +23,8 @@ const PRODUCT_TABS: Record<string, { label: string; slug: string }[]> = {
     { label: "K12 / Team", slug: "chatgpt-k12" },
     { label: "Pro 5x", slug: "chatgpt-pro-5x" },
     { label: "Pro 20x", slug: "chatgpt-pro-20x" },
-    { label: "Codex", slug: "codex-access" },
     { label: "OpenAI API", slug: "openai-api-credit" },
-    { label: "辅助服务", slug: "chatgpt-access-service" },
+    { label: "手机接码", slug: "chatgpt-access-service" },
   ],
   Claude: [
     { label: "Claude Pro", slug: "claude-pro" },

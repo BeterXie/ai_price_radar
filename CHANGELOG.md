@@ -2,6 +2,19 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.34] - 2026-09-04
+
+### Changed
+
+- **Codex Classification Merged into ChatGPT Plus & Respective Tiers**:
+  - Eliminated the top-level `brand == "codex"` prefix hijacking that forced all Codex-tagged items into `codex-access`.
+  - Reclassified Codex accounts into their true underlying tiers: `chatgpt-plus` (for Plus/Sub2API/RT/CPA), `chatgpt-go` (for Codex Go), `chatgpt-k12` (for Team), and `chatgpt-account` (for Free).
+  - Preserved `Codex`, `Sub2API`, `带RT` as scenario tags.
+- **Dedicated SMS Verification ("手机接码") Category**:
+  - Differentiated account attribute markers (`已接码`, `已接马`, `已绑手机`) from independent verification services (`代接码`, `手机接码`, `实卡接码`, `接码卡密`).
+  - Allowed SMS verification services through classifier and renamed public frontend tab `辅助服务` to `手机接码`.
+  - Removed `Codex` standalone tab from OpenAI navigation header.
+
 ## [3.7.33] - 2026-09-04
 
 ### Security

@@ -141,8 +141,7 @@ class OfferHistory(Base):
 
 
 BRAND_MARKERS = {
-    "chatgpt": ["chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus"],
-    "codex": ["codex"],
+    "chatgpt": ["chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus", "codex"],
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
@@ -151,8 +150,11 @@ BRAND_MARKERS = {
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
 CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
 CHATGPT_PRO_MARKERS = ["chatgpt pro", "gpt pro", "200刀"]
-CHATGPT_PLUS_MARKERS = ["chatgpt plus", "gpt plus", "chat plus", "plus", "puls", "plsu"]
-CHATGPT_GO_MARKERS = ["chatgpt go", "gpt go", "go会员", "go订阅"]
+CHATGPT_PLUS_MARKERS = [
+    "chatgpt plus", "gpt plus", "chat plus", "plus", "puls", "plsu",
+    "codex plus", "codexplus", "codex plus账号", "codexplus账号", "codex 账号", "codex账号", "codex成品", "codex 成品"
+]
+CHATGPT_GO_MARKERS = ["chatgpt go", "gpt go", "go会员", "go订阅", "codex go", "go菲区", "go cdk"]
 CHATGPT_FREE_MARKERS = ["chatgpt free", "gpt free", "free账号", "free号", "免费账号", "普通账号", "普通号", "普号", "不含plus", "不含 plus", "不是plus", "不是 plus", "非plus", "非 plus", "无plus", "无 plus"]
 CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指南", "攻略", "授权神器", "自动化授权"]
 CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
@@ -163,14 +165,22 @@ RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率", "分组"]
 SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池", "拼车", "共享账号", "多人共享", "车位", "车号"]
 TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
-CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登"]
-CHATGPT_SERVICE_MARKERS = ["接码", "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"]
-CHATGPT_PRODUCT_MARKERS = ["成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值"]
+CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "接马", "api", "key", "token", "额度", "成品", "账号", "首登"]
+CHATGPT_SERVICE_MARKERS = [
+    "接码", "接马", "代接码", "代接马", "手机接码", "实卡接码", "一次性接码", "接码服务", "接码卡密",
+    "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"
+]
+CHATGPT_PRODUCT_MARKERS = ["成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值", "白号", "普号", "邮箱直登"]
 CHATGPT_EXPLICIT_PRODUCT_MARKERS = ["成品", "半成品", "账号", "已注册", "会员", "充值", "代充", "直充", "卡密", "cdk", "兑换码"]
 TAG_RULES = {
     "Team": ["team", "团队", "车位"], "Business": ["business"], "K12": ["k12"],
     "邀请": ["邀请", "自动拉", "拉入"], "母号": ["母号"], "子号": ["子号"],
-    "成品号": ["成品号", "账号密码", "普号", "白号"], "代充": ["代充"],
+    "成品号": ["成品号", "账号密码", "普号", "白号"],
+    "已接码": ["已接码", "已接马", "已绑手机", "已绑定手机"],
+    "带RT": ["带rt", "含rt", "有rt", "带 rt"],
+    "Sub2API": ["sub2api", "sub2", "cpa格式", "cpa"],
+    "Codex": ["codex"],
+    "代充": ["代充"],
     "直充": ["直充"], "卡密": ["卡密", "cdk", "兑换码"], "API": ["api", "apikey", "api key"],
     "自动发货": ["自动发货", "秒发"], "月付": ["月卡", "一个月", "1个月", "30天"],
 }
@@ -222,14 +232,14 @@ def is_non_product(title_text: str, category_text: str = "", description_text: s
 
     direct_title_rejects = [
         "不要拍", "不要购买", "不可拍", "测试商品", "测试号", "非商品", "买了不发", "防失联", "补差价", "专拍",
-        "接码渠道", "接码平台", "接码服务", "接码专区", "代接码", "接码注册", "接码地址", "号码验证", "手把手",
+        "接码渠道", "接码平台", "接码地址", "手把手",
         "邀请返利", "推广返利", "邀请推广", "邀请额度", "额度增加", "邀请资格",
         "虚拟卡", "0刀卡", "一刀卡",
         "优惠链接", "提取链接",
     ]
     if any(m in t_l for m in direct_title_rejects):
         return True
-    if any(m in c_l for m in ["教程", "接码专区", "虚拟卡", "0刀卡和一刀卡", "反代教程"]):
+    if any(m in c_l for m in ["教程", "虚拟卡", "0刀卡和一刀卡", "反代教程"]):
         return True
     if any(m in d_l for m in ["【测试商品】", "仅图文教程", "本商品为教程", "不会发货，不要购买"]):
         return True
@@ -246,7 +256,7 @@ def pro_multiplier(text: str) -> int | None:
 
 
 def delivery_form(text: str) -> str:
-    account_markers = ["成品", "半成品", "账号", "首登", "已接码", "未接码", "账号密码", "独享"]
+    account_markers = ["成品", "半成品", "账号", "首登", "已接码", "已接马", "未接码", "免接码", "账号密码", "独享"]
     if contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代"]):
         return "session_token"
     if contains(text, ["团队邀请", "team seat", "自动拉", "拉入团队", "子号", "team"]):
@@ -267,9 +277,9 @@ def delivery_form(text: str) -> str:
         return "card_code"
     if contains(text, ["半成品", "首登号", "未接码"]):
         return "semi_finished_account"
-    if contains(text, ["成品", "账号密码", "邮箱密码", "已接码", "独享账号", "账号"]):
+    if contains(text, ["成品", "账号密码", "邮箱密码", "已接码", "已接马", "独享账号", "账号"]):
         return "finished_account"
-    if contains(text, ["官方充值", "官方直充", "直充", "代充", "充值", "订阅"]):
+    if contains(text, ["官方充值", "官方直充", "直充", "代充", "充值", "订阅", "卡充"]):
         return "subscription_recharge"
     if contains(text, RELAY_MARKERS):
         return "relay_api"
@@ -300,10 +310,11 @@ def warranty_type(text: str) -> str:
 def usage_scenarios(text: str) -> list[str]:
     rules = [
         ("web", ["网页", "web"]), ("desktop", ["客户端", "app", "桌面端"]),
-        ("codex", ["codex"]), ("api", ["api", "apikey", "api key"]),
+        ("codex", ["codex", "sub2api", "sub2", "cpa", "带rt"]), ("api", ["api", "apikey", "api key"]),
         ("relay", ["中转", "反代"]),
     ]
     return [label for label, markers in rules if contains(text, markers)]
+
 
 
 def fingerprint_component(value: str) -> str:
@@ -324,8 +335,6 @@ def item_fingerprint(title: str, description: str, slug: str | None, delivery_ty
 def chatgpt_tier(text: str) -> str | None:
     if contains(text, ["(cx", "中转站", "不限时"]):
         return None
-    if contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用"]):
-        return None
     if "plus分组" in text or "api分组" in text or "中转分组" in text:
         return None
 
@@ -345,19 +354,19 @@ def chatgpt_tier(text: str) -> str | None:
         return "chatgpt-pro-20x" if multiplier == 20 else "chatgpt-pro-5x"
 
     if contains(text, ["chatgpt pro", "gpt pro", "chatgpt-pro", "gpt-pro"]):
-        if any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "sub2api", "api"]):
+        if any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "api"]):
             return None
         return "chatgpt-pro"
-    if "200刀" in text and not any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "sub2api", "api"]):
+    if "200刀" in text and not any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "api"]):
         return "chatgpt-pro"
 
     if contains(text, CHATGPT_PLUS_MARKERS):
-        if any(w in text for w in ["team", "周额", "子号", "额度", "中转", "sub2api"]):
+        if any(w in text for w in ["team", "周额", "子号", "额度", "中转"]):
             return None
         if re.search(r"(?<!\d)(?:1|2|3|4|5|6|7|8|9|10|15|25|30|50|100|200|300|500|1000)\s*[刀$]", text):
             if not re.search(r"(?<!\d)20\s*[刀$]", text):
                 return None
-        if re.search(r"\bapi\b", text, re.IGNORECASE) and not contains(text, ["代充", "直充", "充值", "月卡", "30天", "成品"]):
+        if re.search(r"\bapi\b", text, re.IGNORECASE) and not contains(text, ["代充", "直充", "充值", "月卡", "30天", "成品", "sub2"]):
             return None
         return "chatgpt-plus"
 
@@ -369,8 +378,6 @@ def explicit_brands(text: str) -> list[str]:
 
 
 def first_title_brand(text: str) -> str | None:
-    if contains(text, ["openai codex", "open ai codex"]):
-        return "codex"
     positions: list[tuple[int, str]] = []
     for brand, markers in BRAND_MARKERS.items():
         for marker in markers:
@@ -514,12 +521,6 @@ def classify_identity(
         "没有邮箱账密", "只可反代", "反代专用", "没有账密"
     ])
 
-    if brand == "codex":
-        if contains(identity_text, ["(cx", "中转站"]):
-            return None, False
-        if contains(title_text, ["api 100刀", "网站余额", "中转站余额"]):
-            return None, False
-        return "codex-access", True
     if brand == "claude":
         if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
             return "claude-api-access", True
@@ -551,9 +552,6 @@ def classify_identity(
             return "x-premium", True
         return None, False
 
-    if is_sub2api_only:
-        return "codex-access", True
-
     if contains(identity_text, CHATGPT_API_MARKERS):
         if contains(identity_text, ["中转", "倍率"]):
             return None, False
@@ -577,6 +575,8 @@ def classify_identity(
     refined_tier = chatgpt_tier(tier_text)
     if refined_tier:
         return refined_tier, True
+    if is_sub2api_only or contains(title_text, ["codex plus", "codex plus账号", "codexplus", "codex账号", "codex 账号", "codex成品", "codex 成品", "codex独享", "codex 独享"]):
+        return "chatgpt-plus", True
     if contains(title_text, CHATGPT_AMBIGUOUS_CREDIT_MARKERS):
         return None, False
     if contains(title_text, CHATGPT_PRODUCT_MARKERS):
@@ -683,8 +683,8 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x", "Pro 20x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 20x 的公开报价。"),
         ("chatgpt-pro", "OpenAI", "ChatGPT Pro", "未注明 5x 或 20x 的 Pro", "subscription", "聚合未明确标注 5x 或 20x 倍率的 ChatGPT Pro 公开报价。"),
         ("openai-api-credit", "OpenAI", "OpenAI API 额度", "API Key 与额度商品", "api", "聚合 OpenAI API 额度、余额和 Key 类商品。"),
-        ("chatgpt-access-service", "OpenAI", "ChatGPT / Codex 周边服务", "接码、验证与开通辅助商品", "service", "聚合明确用于 ChatGPT 或 Codex 的接码、验证与开通辅助商品。"),
-        ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "聚合 Codex 账号、订阅和访问类公开报价。"),
+        ("chatgpt-access-service", "OpenAI", "ChatGPT 手机接码", "接码、验证与开通服务", "service", "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。"),
+        ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "已合并至 ChatGPT Plus。"),
         ("claude-pro", "Claude", "Claude Pro", "个人会员订阅", "subscription", "聚合 Claude Pro 公开报价。"),
         ("claude-account", "Claude", "Claude 账号", "基础账号与访问类商品", "account", "聚合 Claude 基础账号与访问类公开报价。"),
         ("claude-api-access", "Claude", "Claude API", "API Key、Token 与额度商品", "api", "聚合 Claude API Key、Token 与额度类公开报价。"),
