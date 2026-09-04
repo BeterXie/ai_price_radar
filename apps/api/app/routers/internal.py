@@ -311,6 +311,8 @@ def _apply_intake_approval_and_notifications(
             subject="店铺收录申请已自动通过初审",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）已通过安全检测并自动通过初审。\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"店铺地址：{intake.source_url}\n"
                 f"来源类型：{intake.source_type}\n"
                 f"当前状态：{next_step}；商品成功进入完整快照后才会正式收录。"
             ),
@@ -426,8 +428,10 @@ def report_source_intake_result(
             subject="店铺已正式收录",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）已完成验证并发布。\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"店铺地址：{intake.source_url}\n"
                 f"已发布商品数：{intake.product_count}。\n"
-                f"店铺页面：{site_url(f'/shops/{shop_token}')}"
+                f"本站收录页面：{site_url(f'/shops/{shop_token}')}"
             ),
         )
         db.commit()
@@ -467,6 +471,8 @@ def report_source_intake_result(
             subject="店铺验证完成，但暂未发现目标商品",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）已完成读取，但暂未发现目录范围内商品。\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"店铺地址：{intake.source_url}\n"
                 "管理员可以重新验证，或补充公开商品后再次提交。"
             ),
             attempt=intake.attempt_count,
@@ -480,6 +486,8 @@ def report_source_intake_result(
             subject="店铺验证未完成",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）本次验证未完成。\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"店铺地址：{intake.source_url}\n"
                 f"原因：{reason}\n"
                 "管理员可以重新验证。"
             ),

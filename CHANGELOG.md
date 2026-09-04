@@ -2,6 +2,19 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.38] - 2026-09-04
+
+### Changed
+
+- **Include Shop Address and Name in Intake Notification Emails**:
+  - Added merchant's original shop URL (`店铺地址：{source_url}`) and shop name (`店铺名称：{shop_name}`) to all applicant notification emails:
+    - Auto-approval notifications (`shop_request.approved`)
+    - Manual approval notifications (`shop_request.approved`)
+    - Shop onboarding & publish notifications (`shop_intake.onboarded`), clearly distinguishing the merchant's `店铺地址` and `本站收录页面`
+    - Rejection notifications (`shop_request.rejected`)
+    - Scan completion with no products (`shop_intake.no_products`) and validation failures (`shop_intake.validation_failed`)
+  - Ensures merchants can immediately identify which shop request has been processed and follow the links directly.
+
 ## [3.7.37] - 2026-09-04
 
 ### Fixed

@@ -376,8 +376,10 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
     assert repeated.status_code == 200
 
     with Session(engine) as db:
-        assert db.scalar(select(NotificationOutbox).where(NotificationOutbox.event_type == "shop_request.approved")) is not None
-        assert db.scalar(select(NotificationOutbox.id).where(NotificationOutbox.event_type == "shop_request.approved")) is not None
+        approved_mail = db.scalar(select(NotificationOutbox).where(NotificationOutbox.event_type == "shop_request.approved"))
+        assert approved_mail is not None
+        assert "店铺地址：https://pay.ldxp.cn/shop/APPROVE1" in approved_mail.text_body
+        assert "店铺名称：测试店铺" in approved_mail.text_body
 
     claimed = client.post(
         "/api/v1/internal/source-intakes/claim",
@@ -425,13 +427,14 @@ def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_
         json={"status": "onboarded", "attempt_count": claim_attempt + 1, "product_count": 2, "published": True},
     )
     assert stale_onboard.status_code == 409
-
     with Session(engine) as db:
         events = list(db.scalars(select(NotificationOutbox)))
         assert len(events) == 4
         assert sum(row.event_type == "shop_intake.onboarded" for row in events) == 1
         onboarded_mail = next(row for row in events if row.event_type == "shop_intake.onboarded")
-        assert "https://ai.pricememo.cn/shops/APPROVE1" in onboarded_mail.text_body
+        assert "店铺地址：https://pay.ldxp.cn/shop/APPROVE1" in onboarded_mail.text_body
+        assert "店铺名称：测试店铺" in onboarded_mail.text_body
+        assert "本站收录页面：https://ai.pricememo.cn/shops/APPROVE1" in onboarded_mail.text_body
 
 
 def test_closed_intake_attempt_ignores_retried_scan_result(api_client):
@@ -594,6 +597,9 @@ def test_reject_retry_and_lease_generation_are_idempotent(api_client):
     with Session(engine) as db:
         assert sum(row.event_type == "shop_request.rejected" for row in db.scalars(select(NotificationOutbox))) == 1
         assert sum(row.event_type == "shop_intake.no_products" for row in db.scalars(select(NotificationOutbox))) == 1
+        rejected_mail = next(row for row in db.scalars(select(NotificationOutbox)) if row.event_type == "shop_request.rejected")
+        assert "店铺地址：https://pay.ldxp.cn/shop/REJECT1" in rejected_mail.text_body
+        assert "店铺名称：测试店铺" in rejected_mail.text_body
 
 
 def test_worker_key_is_separate_and_pending_result_is_rejected(api_client):
@@ -920,6 +926,8 @@ def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
         )
         assert applicant_notice is not None
         assert "已自动通过初审" in applicant_notice.subject
+        assert f"店铺地址：{intake.source_url}" in applicant_notice.text_body
+        assert f"店铺名称：{intake.shop_name}" in applicant_notice.text_body
 
     # 2. dujiao_next auto-approves to approved
     intake_id_dj = client.post(

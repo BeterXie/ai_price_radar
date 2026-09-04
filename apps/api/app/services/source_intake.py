@@ -141,7 +141,8 @@ def enqueue_submission_notifications(db: Session, intake: SourceIntake) -> None:
         subject="店铺收录申请已提交",
         text_body=(
             f"你的店铺收录申请（#{intake.id}）已提交。\n"
-            f"来源地址：{intake.source_url}\n"
+            f"店铺名称：{intake.shop_name or '未填写'}\n"
+            f"店铺地址：{intake.source_url}\n"
             "当前状态：等待管理员初审。状态变化会通过邮件通知。"
         ),
         dedupe_key=f"source-intake:{intake.id}:shop_request.submitted.applicant",

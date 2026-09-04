@@ -410,6 +410,8 @@ def approve_source_intake(
             subject="店铺收录申请已通过初审",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）已通过初审。\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"店铺地址：{intake.source_url}\n"
                 f"当前状态：{next_step}；商品成功进入完整快照后才会正式收录。"
             ),
         )
@@ -481,6 +483,8 @@ def reject_source_intake(
             subject="店铺收录申请未通过",
             text_body=(
                 f"你的店铺收录申请（#{intake.id}）未通过初审。\n"
+                f"店铺名称：{intake.shop_name or '未填写'}\n"
+                f"店铺地址：{intake.source_url}\n"
                 f"原因：{payload.reason}"
             ),
         )
