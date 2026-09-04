@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.36] - 2026-09-04
+
+### Changed
+
+- **Reverse-Proxy Tokens Included in Benchmark Pricing**:
+  - Included `session_token` delivery type (`只能反代`, `仅反代`, `无账号密码`, `发CDK不可网页`) into `COMPARABLE_DELIVERY_TYPES`.
+  - Reverse-proxy token accounts now participate in comparable pricing calculations (`is_comparable=True`) as a recognized account delivery mode.
+
 ## [3.7.35] - 2026-09-04
 
 ### Fixed

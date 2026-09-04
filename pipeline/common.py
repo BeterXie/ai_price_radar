@@ -228,7 +228,7 @@ RISK_RULES = {
 }
 COMPARABLE_DELIVERY_TYPES = {
     "subscription_recharge", "finished_account", "semi_finished_account",
-    "team_seat", "card_code", "api_credit",
+    "session_token", "team_seat", "card_code", "api_credit",
 }
 
 
@@ -255,15 +255,36 @@ def contains(text: str, needles: list[str]) -> bool:
     return any(norm(needle) in target for needle in needles)
 
 
+TUTORIAL_ATTACHMENT_RE = re.compile(
+    r"(?:附|带|内附|附带|赠|送|含|带有|包括|配合|看|参考)\s*(?:完整|详细|图文|保姆|小白|登录|使用|中文|操作|激活|配置|新手)?\s*(?:视频|图文)?\s*(?:教程|指南|方法)"
+)
+
+TUTORIAL_STANDALONE_MARKERS = [
+    "保姆教程", "保姆级教程", "图文教程", "文字教程", "视频教程", "使用指南", "购买指南",
+    "注册教程", "开通教程", "订阅教程", "修改教程", "搭建教程", "配置教程", "破甲教程",
+    "接马教程", "接码教程", "手把手", "使用教程", "操作教程", "激活教程", "使用方法",
+    "教程持续更新", "指南教程", "完整教程", "详细教程", "焚诀教程", "手搓"
+]
+
+
 def is_non_product(title_text: str, category_text: str = "", description_text: str = "") -> bool:
     t_l = norm(title_text)
     c_l = norm(category_text)
     d_l = norm(description_text)
 
-    if not any(w in t_l for w in ["附教程", "带教程", "附使用教程", "内附教程", "内附登录教程"]):
-        if any(m in t_l for m in ["保姆教程", "图文教程", "反代教程", "保姆级教程", "教程持续更新", "使用指南", "购买指南"]):
+    if any(m in c_l for m in ["教程", "虚拟卡", "0刀卡和一刀卡", "反代教程"]):
+        return True
+    if any(m in d_l for m in ["【测试商品】", "仅图文教程", "本商品为教程", "不会发货，不要购买"]):
+        return True
+
+    if t_l.startswith("【教程】") or t_l.startswith("[教程]") or t_l.startswith("教程"):
+        return True
+
+    if any(k in t_l for k in ["教程", "指南", "攻略"]):
+        t_without_attachment = TUTORIAL_ATTACHMENT_RE.sub(" ", t_l)
+        if any(m in t_without_attachment for m in TUTORIAL_STANDALONE_MARKERS):
             return True
-        if re.search(r"(?:^|\s)教程(?:\s|$)", t_l) and not any(w in t_l for w in ["成品", "账号", "直充", "代充", "月卡", "cdk"]):
+        if re.search(r"(?:教程|指南|攻略)\s*(?:[！!。.\-_【】\[\]()（）]|\b|$)", t_without_attachment):
             return True
 
     direct_title_rejects = [
@@ -274,10 +295,6 @@ def is_non_product(title_text: str, category_text: str = "", description_text: s
         "优惠链接", "提取链接",
     ]
     if any(m in t_l for m in direct_title_rejects):
-        return True
-    if any(m in c_l for m in ["教程", "虚拟卡", "0刀卡和一刀卡", "反代教程"]):
-        return True
-    if any(m in d_l for m in ["【测试商品】", "仅图文教程", "本商品为教程", "不会发货，不要购买"]):
         return True
     return False
 
