@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.37] - 2026-09-04
+
+### Fixed
+
+- **Phone Verification Services Included in Benchmark Comparable Pricing**:
+  - Added `verification_service` (`手机接码`, `实卡接码`, `短信验证`) to `COMPARABLE_DELIVERY_TYPES` (`is_comparable=True`).
+  - Fixes issue where the dedicated `ChatGPT 手机接码` (`chatgpt-access-service`) product page displayed 0 offers and "暂无有货价" by default because `offerQuery` filters for `comparable=true`.
+
 ## [3.7.36] - 2026-09-04
 
 ### Changed

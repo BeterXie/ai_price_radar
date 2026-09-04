@@ -296,6 +296,7 @@ def test_relay_groups_and_non_20_dollar_quotas_rejected_from_plus(title: str, ca
         ("VISA 0刀虚拟卡 485954(Gemini KIRO GPT PAYPAL用不了拍错不退） 有效期两小时", "0刀卡和一刀卡", "", None, "unknown", False),
         ("plus已接码有rt，无账号和密码，仅支持反代！不会用反代软件的切勿下单！", "gpt", "", "chatgpt-plus", "session_token", True),
         ("自营2- Plus 成品号 已接码 只能反代 json发货 没有账号密码那些", "全部", "只可反代，没有账号密码", "chatgpt-plus", "session_token", True),
+        ("ChatGPT / Codex｜美国实体卡接码【30天可续租】", "接码", "", "chatgpt-access-service", "verification_service", True),
         ("OpenAI Pro 20X 额度｜50美金｜OpenAI 5.6-sol｜ OpenAI image2", "20X(无质保)", "", None, "api_credit", False),
         ("G Team bug 子号 最低200刀（无质保，拿着卡密去兑换地址下载JSON文件）", "OpenAI Team/Go", "", "chatgpt-k12", "team_seat", True),
         ("长效 周额team", "ChatGPT福利号", "", "chatgpt-k12", "team_seat", True),

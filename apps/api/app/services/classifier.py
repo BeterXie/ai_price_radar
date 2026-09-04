@@ -129,6 +129,7 @@ COMPARABLE_DELIVERY_TYPES = {
     "team_seat",
     "card_code",
     "api_credit",
+    "verification_service",
 }
 
 

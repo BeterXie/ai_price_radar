@@ -229,6 +229,7 @@ RISK_RULES = {
 COMPARABLE_DELIVERY_TYPES = {
     "subscription_recharge", "finished_account", "semi_finished_account",
     "session_token", "team_seat", "card_code", "api_credit",
+    "verification_service",
 }
 
 
