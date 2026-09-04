@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.35] - 2026-09-04
+
+### Fixed
+
+- **Plus Account & SMS Service Precision Classification**:
+  - Eliminated false routing into `chatgpt-access-service` caused by substring matching of `接马` inside account status markers (`未接马`, `需自行接马`, `自行接马`, `免接马`).
+  - Removed legacy `GENERIC_EMAIL_MARKERS` (Gmail, iCloud) fallback from `chatgpt-access-service`, ensuring accounts with iCloud/Gmail emails (e.g. `韩国-PLUS-icloud邮箱`, `GP Plus gmail越南渠道`) correctly classify as `chatgpt-plus`.
+  - Added support for `team` / `周限额` in implicit brand detection so `长效周限额team` routes accurately to `chatgpt-k12`.
+  - Enhanced delivery type detection: `未接码`/`未接马` recognized as `semi_finished_account` (半成品/首登号), `icloud` and `保首登` recognized as `finished_account` (成品号).
+
 ## [3.7.34] - 2026-09-04
 
 ### Changed

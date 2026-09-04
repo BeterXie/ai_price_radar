@@ -167,16 +167,52 @@ TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
 CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "接马", "api", "key", "token", "额度", "成品", "账号", "首登"]
 CHATGPT_SERVICE_MARKERS = [
-    "接码", "接马", "代接码", "代接马", "手机接码", "实卡接码", "一次性接码", "接码服务", "接码卡密",
-    "验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成", "cyber认证", "persona认证"
+    "代接码", "代接马", "手机接码", "实卡接码", "一次性接码", "接码服务", "接码卡密", "纯接码", "接马服务",
+    "短信代接", "代接短信", "接验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成",
+    "cyber认证", "persona认证"
 ]
-CHATGPT_PRODUCT_MARKERS = ["成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值", "白号", "普号", "邮箱直登"]
-CHATGPT_EXPLICIT_PRODUCT_MARKERS = ["成品", "半成品", "账号", "已注册", "会员", "充值", "代充", "直充", "卡密", "cdk", "兑换码"]
+CHATGPT_PRODUCT_MARKERS = [
+    "成品", "半成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值", "白号", "普号",
+    "邮箱直登", "重置号", "反代", "已接码", "已接马", "已接🐎",
+    "未接码", "未接马", "未接🐎", "免接码", "免接马", "账密", "发货格式", "直登", "原生支付",
+    "独享", "自用", "直卡", "新号", "首登"
+]
+CHATGPT_EXPLICIT_PRODUCT_MARKERS = [
+    "成品", "半成品", "账号", "已注册", "会员", "充值", "代充", "直充", "卡密", "cdk", "兑换码",
+    "重置号", "已接码", "已接马", "已接🐎", "未接码", "未接马"
+]
+
+
+def is_chatgpt_service(text: str) -> bool:
+    if contains(text, CHATGPT_SERVICE_MARKERS):
+        return True
+    if "接码" in text or "接马" in text or "接🐎" in text:
+        without_status = (
+            text.replace("已接码", "")
+            .replace("已接马", "")
+            .replace("已接🐎", "")
+            .replace("未接码", "")
+            .replace("未接马", "")
+            .replace("未接🐎", "")
+            .replace("免接码", "")
+            .replace("免接马", "")
+            .replace("需自行接码", "")
+            .replace("需自行接马", "")
+            .replace("自行接码", "")
+            .replace("自行接马", "")
+            .replace("不接码", "")
+            .replace("不接马", "")
+        )
+        if "接码" in without_status or "接马" in without_status or "接🐎" in without_status:
+            return True
+    return False
+
+
 TAG_RULES = {
     "Team": ["team", "团队", "车位"], "Business": ["business"], "K12": ["k12"],
     "邀请": ["邀请", "自动拉", "拉入"], "母号": ["母号"], "子号": ["子号"],
     "成品号": ["成品号", "账号密码", "普号", "白号"],
-    "已接码": ["已接码", "已接马", "已绑手机", "已绑定手机"],
+    "已接码": ["已接码", "已接马", "已接🐎", "已绑手机", "已绑定手机"],
     "带RT": ["带rt", "含rt", "有rt", "带 rt"],
     "Sub2API": ["sub2api", "sub2", "cpa格式", "cpa"],
     "Codex": ["codex"],
@@ -256,8 +292,11 @@ def pro_multiplier(text: str) -> int | None:
 
 
 def delivery_form(text: str) -> str:
-    account_markers = ["成品", "半成品", "账号", "首登", "已接码", "已接马", "未接码", "免接码", "账号密码", "独享"]
-    if contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代"]):
+    account_markers = [
+        "成品", "半成品", "账号", "首登", "已接码", "已接马", "已接🐎", "未接码", "未接马", "未接🐎", "免接码", "免接马",
+        "账号密码", "独享", "重置号", "邮箱直登", "原生支付", "gmail", "outlook", "icloud", "自用", "质保首登", "直卡", "新号"
+    ]
+    if contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代", "仅反代"]):
         return "session_token"
     if contains(text, ["团队邀请", "team seat", "自动拉", "拉入团队", "子号", "team"]):
         return "team_seat"
@@ -265,7 +304,7 @@ def delivery_form(text: str) -> str:
         return "shared_pool"
     if contains(text, SHARED_POOL_MARKERS):
         return "shared_pool"
-    if contains(text, CHATGPT_SERVICE_MARKERS) and not contains(text, account_markers):
+    if is_chatgpt_service(text) and not contains(text, ["成品", "账号密码", "账密", "发货格式", "邮箱直登", "无账号密码", "反代", "重置号"]):
         return "verification_service"
     if contains(text, RELAY_MARKERS) and not contains(text, account_markers):
         return "relay_api"
@@ -273,14 +312,14 @@ def delivery_form(text: str) -> str:
         return "api_credit"
     if contains(text, TRIAL_MARKERS):
         return "trial_account"
-    if contains(text, ["卡密", "cdk", "兑换码"]):
-        return "card_code"
-    if contains(text, ["半成品", "首登号", "未接码"]):
-        return "semi_finished_account"
-    if contains(text, ["成品", "账号密码", "邮箱密码", "已接码", "已接马", "独享账号", "账号"]):
-        return "finished_account"
     if contains(text, ["官方充值", "官方直充", "直充", "代充", "充值", "订阅", "卡充"]):
         return "subscription_recharge"
+    if contains(text, ["卡密", "cdk", "兑换码"]):
+        return "card_code"
+    if contains(text, ["半成品", "首登号", "未接码", "未接马", "需自行接马", "需自行接码"]):
+        return "semi_finished_account"
+    if contains(text, ["成品", "账号密码", "邮箱密码", "已接码", "已接马", "已接🐎", "独享账号", "账号", "重置号", "邮箱直登", "原生支付", "独享", "自用", "gmail", "outlook", "icloud", "保首登", "质保首登"]):
+        return "finished_account"
     if contains(text, RELAY_MARKERS):
         return "relay_api"
     return "unknown"
@@ -290,7 +329,7 @@ def service_period(text: str) -> str:
     if contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]): return "one_year"
     if contains(text, ["六个月", "6个月", "半年", "半年卡"]): return "six_months"
     if contains(text, ["三个月", "3个月", "季度", "季卡"]): return "three_months"
-    if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]): return "one_month"
+    if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]) or re.search(r"(?:2[0-9]|3[0-1])\s*天", text): return "one_month"
     if contains(text, ["周卡", "一周", "1周", "7天"]): return "one_week"
     if contains(text, ["日抛", "一天", "1天", "24小时", "24h"]): return "one_day"
     return "unknown"
@@ -299,6 +338,7 @@ def service_period(text: str) -> str:
 def warranty_type(text: str) -> str:
     if contains(text, ["无质保", "不质保"]): return "none"
     if contains(text, ["质保首登", "仅首登", "首登售后", "首登质保"]): return "first_login"
+    if re.search(r"质保.{0,4}(?:2[0-9]|3[0-1])\s*天|(?:2[0-9]|3[0-1])\s*天.{0,4}质保|质保.{0,4}(?:月|30天)|(?:月|30天).{0,4}质保", text): return "subscription_term"
     if re.search(r"质保.{0,4}(1\s*小时|一\s*小时)|(?:1\s*小时|一\s*小时).{0,4}质保", text): return "one_hour"
     if re.search(r"质保.{0,4}(24\s*小时|1\s*天|一\s*天)|(?:24\s*小时|1\s*天|一\s*天).{0,4}质保", text): return "one_day"
     if re.search(r"质保.{0,4}(3\s*天|三\s*天)|(?:3\s*天|三\s*天).{0,4}质保", text): return "three_days"
@@ -342,7 +382,7 @@ def chatgpt_tier(text: str) -> str | None:
         if any(w in text for w in ["额度", "余额", "api", "key", "token", "sol", "image"]):
             return None
 
-    if contains(text, CHATGPT_K12_MARKERS) or any(w in text for w in ["team", "周额", "子号", "母号", "团队邀请"]):
+    if contains(text, CHATGPT_K12_MARKERS) or any(w in text for w in ["team", "周额", "周限额", "子号", "母号", "团队邀请"]):
         if any(w in text for w in ["k12", "edu", "教育", "学生", "高校"]):
             return "chatgpt-k12"
         return "chatgpt-k12"
@@ -354,14 +394,14 @@ def chatgpt_tier(text: str) -> str | None:
         return "chatgpt-pro-20x" if multiplier == 20 else "chatgpt-pro-5x"
 
     if contains(text, ["chatgpt pro", "gpt pro", "chatgpt-pro", "gpt-pro"]):
-        if any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "api"]):
+        if any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "美金", "号池", "中转", "api"]):
             return None
         return "chatgpt-pro"
-    if "200刀" in text and not any(w in text for w in ["team", "周额", "子号", "额度", "美金", "号池", "中转", "api"]):
+    if "200刀" in text and not any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "美金", "号池", "中转", "api"]):
         return "chatgpt-pro"
 
     if contains(text, CHATGPT_PLUS_MARKERS):
-        if any(w in text for w in ["team", "周额", "子号", "额度", "中转"]):
+        if any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "中转"]):
             return None
         if re.search(r"(?<!\d)(?:1|2|3|4|5|6|7|8|9|10|15|25|30|50|100|200|300|500|1000)\s*[刀$]", text):
             if not re.search(r"(?<!\d)20\s*[刀$]", text):
@@ -486,8 +526,8 @@ def classify_identity(
         if "plus" in title_text and contains(title_text, IMPLICIT_CHATGPT_MARKERS) and not contains(title_text, NON_TARGET_PLUS_MARKERS):
             brand = "chatgpt"
     if brand is None:
-        if contains(title_text, ["plus", "puls", "plsu"]) and contains(title_text, ["成品", "半成品", "账号", "已接码", "未接码", "会员", "直充", "代充", "月卡", "反代", "json", "rt", "首登"]):
-            if not any(other in title_text for other in ["google", "gemini", "claude", "twitter", "baidu", "百度"]):
+        if contains(title_text, ["plus", "puls", "plsu", "team", "k12"]) and contains(title_text, ["成品", "半成品", "账号", "已接码", "已接马", "已接🐎", "未接码", "未接马", "会员", "直充", "代充", "月卡", "反代", "json", "rt", "首登", "周限额", "团队邀请"]):
+            if not any(other in title_text for other in ["google", "gemini", "claude", "twitter", "baidu", "百度", "microsoft"]):
                 brand = "chatgpt"
     if brand is None:
         category_brands = explicit_brands(category_text)
@@ -561,9 +601,7 @@ def classify_identity(
         and not contains(title_text, CHATGPT_EXPLICIT_PRODUCT_MARKERS)
     ):
         return None, False
-    if (contains(title_text, CHATGPT_SERVICE_MARKERS) and not contains(title_text, CHATGPT_PRODUCT_MARKERS)) or (
-        contains(title_text, GENERIC_EMAIL_MARKERS) and not contains(title_text, CHATGPT_PRODUCT_MARKERS)
-    ):
+    if is_chatgpt_service(title_text) and not contains(title_text, CHATGPT_PRODUCT_MARKERS):
         return "chatgpt-access-service", True
     if contains(title_text, CHATGPT_FREE_MARKERS):
         return "chatgpt-account", True
