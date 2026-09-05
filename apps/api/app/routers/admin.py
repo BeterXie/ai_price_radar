@@ -123,6 +123,7 @@ def offers(
     approved: bool | None = None,
     active: bool | None = None,
     status: str | None = None,
+    stock_status: str | None = None,
     q: str | None = None,
     brand: str | None = None,
     product_slug: str | None = None,
@@ -162,6 +163,8 @@ def offers(
         stmt = stmt.where(Offer.approved == approved)
     if active is not None:
         stmt = stmt.where(Offer.active == active)
+    if stock_status and stock_status.strip():
+        stmt = stmt.where(Offer.stock_status == stock_status.strip())
     if brand:
         stmt = stmt.where(Product.platform == brand)
     if product_slug:
@@ -216,6 +219,7 @@ def offers(
         "brand": x.product.platform if x.product else None,
         "price": str(x.price) if x.price is not None else None,
         "currency": x.currency,
+        "stock_count": x.stock_count,
         "stock_status": x.stock_status,
         "approved": x.approved,
         "active": x.active,

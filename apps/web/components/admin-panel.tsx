@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, MagnifyingGlass, X } from "@phosphor-icons/react";
-import { money } from "@/lib/format";
+import { money, stockLabel } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
 type StatusFilter = "all" | "active" | "pending";
+type StockFilter = "all" | "in_stock" | "out_of_stock";
 type OfferSort = "frontend" | "updated_desc" | "price_asc" | "price_desc";
 
 type Stats = {
@@ -37,6 +38,7 @@ type AdminOffer = {
   brand?: string | null;
   price: string | null;
   currency: string;
+  stock_count?: number | null;
   stock_status: string;
   approved: boolean;
   active: boolean;
@@ -99,6 +101,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [selectedCategory, setSelectedCategory] = useState<CategoryMode>("all");
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [offerSearch, setOfferSearch] = useState("");
   const [reclassifyingOfferId, setReclassifyingOfferId] = useState<number | null>(null);
   const [actionToast, setActionToast] = useState<string>("");
@@ -118,18 +121,17 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
 
   useEffect(() => {
     if (hasScrolledToIntakeRef.current || targetIntakeId === null || !intakes.some((intake) => intake.id === targetIntakeId)) return;
-    hasScrolledToIntakeRef.current = true;
-    document.getElementById(`source-intake-${targetIntakeId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const element = document.getElementById(`intake-row-${targetIntakeId}`);
+    if (element) {
+      hasScrolledToIntakeRef.current = true;
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }, [intakes, targetIntakeId]);
 
-  // Helper to run any async operation while preserving scroll position exactly
-  async function preserveScroll(action: () => Promise<void>) {
+  async function preserveScroll<T>(action: () => Promise<T>): Promise<T> {
     const currentScrollY = typeof window !== "undefined" ? window.scrollY : 0;
-    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
     try {
-      await action();
+      return await action();
     } finally {
       if (typeof window !== "undefined") {
         window.scrollTo({ top: currentScrollY, behavior: "instant" as ScrollBehavior });
@@ -147,12 +149,16 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     search: string = offerSearch,
     sort: OfferSort = offerSort,
     offset = 0,
-    append = false
+    append = false,
+    stock: StockFilter = stockFilter
   ) {
     const params = new URLSearchParams();
     params.set("limit", "100");
     params.set("offset", String(offset));
     params.set("sort", sort);
+    if (stock !== "all") {
+      params.set("stock_status", stock);
+    }
     if (category === "restricted") {
       params.set("status", "restricted");
     } else if (category === "unclassified") {
@@ -190,7 +196,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
           offerSearch,
           offerSort,
           offers.length,
-          true
+          true,
+          stockFilter
         );
       });
     } finally {
@@ -205,6 +212,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       const params = new URLSearchParams();
       params.set("limit", "100");
       params.set("sort", offerSort);
+      if (stockFilter !== "all") params.set("stock_status", stockFilter);
       if (selectedCategory === "restricted") {
         params.set("status", "restricted");
       } else if (selectedCategory === "unclassified") {
@@ -821,6 +829,22 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   <option value="pending">仅看未公开/待审</option>
                 </select>
               )}
+
+              <select
+                value={stockFilter}
+                onChange={(e) => {
+                  const nextStock = e.target.value as StockFilter;
+                  setStockFilter(nextStock);
+                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort, 0, false, nextStock);
+                }}
+                className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
+                title="按库存状态筛选"
+              >
+                <option value="all">全部库存状态</option>
+                <option value="in_stock">仅看有货</option>
+                <option value="out_of_stock">仅看缺货</option>
+              </select>
+
               <button
                 type="button"
                 onClick={() => loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort)}
@@ -881,6 +905,28 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                           {offer.brand ? `${offer.brand} / ` : ""}{offer.product_name || offer.product_slug}
                         </span>
                       )}
+                      {offer.stock_status === "in_stock" ? (
+                        <span
+                          className="status-pill status-success"
+                          title={offer.stock_count !== null && offer.stock_count !== undefined ? `当前在售库存 ${offer.stock_count} 件` : "在售有货"}
+                        >
+                          {offer.stock_count !== null && offer.stock_count !== undefined
+                            ? `库存 ${offer.stock_count} 件`
+                            : "有货"}
+                        </span>
+                      ) : offer.stock_status === "out_of_stock" ? (
+                        <span className="status-pill status-danger" title="当前无货缺货中">
+                          缺货{offer.stock_count !== null && offer.stock_count !== undefined ? ` (0件)` : ""}
+                        </span>
+                      ) : offer.stock_status === "unavailable" ? (
+                        <span className="status-pill status-danger" title="商品已下架或不可用">
+                          不可用
+                        </span>
+                      ) : (
+                        <span className="status-pill" title="库存状态未知">
+                          {stockLabel(offer.stock_status)}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1.5 font-medium text-sm text-[color:var(--ink)]">{offer.title}</p>
                     {offer.original_category && (
@@ -919,9 +965,22 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   </div>
 
                   <div className="text-sm">
-                    {money(offer.price, offer.currency)}
+                    <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
                     <br />
-                    <span className="text-xs text-black/40">{offer.stock_status}</span>
+                    <span
+                      className={`text-xs ${
+                        offer.stock_status === "in_stock"
+                          ? "font-medium text-[color:var(--success)]"
+                          : offer.stock_status === "out_of_stock"
+                          ? "text-[color:var(--danger)]"
+                          : "text-black/40"
+                      }`}
+                    >
+                      {stockLabel(offer.stock_status)}
+                      {offer.stock_count !== null && offer.stock_count !== undefined
+                        ? ` · ${offer.stock_count}件`
+                        : ""}
+                    </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
