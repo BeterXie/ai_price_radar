@@ -35,6 +35,7 @@ from ..schemas import (
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
+from ..services.catalog import get_current_snapshot
 from ..services.source_discovery import (
     admin_promote_candidate,
     admin_reject_candidate,
@@ -71,7 +72,15 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
     unclassified_offers = db.scalar(
         select(func.count()).select_from(Offer).where(Offer.product_id.is_(None))
     ) or 0
-    product_counts_raw = db.execute(
+
+    current_snapshot = get_current_snapshot(db)
+    public_offers_stmt = select(func.count()).select_from(Offer).where(
+        Offer.active.is_(True),
+        Offer.approved.is_(True),
+        Offer.product_id.is_not(None),
+        or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
+    )
+    product_stmt = (
         select(Product.slug, func.count(Offer.id))
         .join(Offer, Offer.product_id == Product.id)
         .where(
@@ -79,11 +88,8 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
             Offer.approved.is_(True),
             or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         )
-        .group_by(Product.slug)
-    ).all()
-    product_counts = {slug: count for slug, count in product_counts_raw if slug}
-
-    brand_counts_raw = db.execute(
+    )
+    brand_stmt = (
         select(Product.platform, func.count(Offer.id))
         .join(Offer, Offer.product_id == Product.id)
         .where(
@@ -91,22 +97,23 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
             Offer.approved.is_(True),
             or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         )
-        .group_by(Product.platform)
-    ).all()
+    )
+    if current_snapshot is not None:
+        public_offers_stmt = public_offers_stmt.where(Offer.snapshot_id == current_snapshot.id)
+        product_stmt = product_stmt.where(Offer.snapshot_id == current_snapshot.id)
+        brand_stmt = brand_stmt.where(Offer.snapshot_id == current_snapshot.id)
+
+    product_counts_raw = db.execute(product_stmt.group_by(Product.slug)).all()
+    product_counts = {slug: count for slug, count in product_counts_raw if slug}
+
+    brand_counts_raw = db.execute(brand_stmt.group_by(Product.platform)).all()
     brand_counts = {brand: count for brand, count in brand_counts_raw if brand}
 
     return AdminStats(
         shops=db.scalar(select(func.count()).select_from(Shop)) or 0,
         products=db.scalar(select(func.count()).select_from(Product)) or 0,
         offers=db.scalar(select(func.count()).select_from(Offer)) or 0,
-        public_offers=db.scalar(
-            select(func.count()).select_from(Offer).where(
-                Offer.active.is_(True),
-                Offer.approved.is_(True),
-                Offer.product_id.is_not(None),
-                or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
-            )
-        ) or 0,
+        public_offers=db.scalar(public_offers_stmt) or 0,
         restricted_offers=restricted_offers,
         unclassified_offers=unclassified_offers,
         open_corrections=open_corrections,
@@ -124,6 +131,7 @@ def offers(
     active: bool | None = None,
     status: str | None = None,
     stock_status: str | None = None,
+    scope: str = Query(default="current", pattern="^(current|all)$"),
     q: str | None = None,
     brand: str | None = None,
     product_slug: str | None = None,
@@ -140,6 +148,18 @@ def offers(
         .outerjoin(Offer.product)
         .options(joinedload(Offer.shop), joinedload(Offer.product), joinedload(Offer.raw_product))
     )
+
+    current_snapshot = get_current_snapshot(db)
+    is_explicit_id_search = False
+    if q and q.strip():
+        cleaned = q.strip()
+        num_str = cleaned.lstrip("#")
+        if num_str.isdigit() and (cleaned.startswith("#") or cleaned.isdigit()):
+            is_explicit_id_search = True
+
+    if scope == "current" and current_snapshot is not None and not is_explicit_id_search:
+        stmt = stmt.where(Offer.snapshot_id == current_snapshot.id)
+
     if status in ("restricted", "hidden"):
         stmt = stmt.where(
             or_(
@@ -170,15 +190,21 @@ def offers(
     if product_slug:
         stmt = stmt.where(Product.slug == product_slug)
     if q and q.strip():
-        term = f"%{q.strip()}%"
-        stmt = stmt.where(
-            or_(
-                RawProduct.original_name.ilike(term),
-                Shop.name.ilike(term),
-                Shop.token.ilike(term),
-                Offer.hidden_reason.ilike(term),
-            )
-        )
+        cleaned_q = q.strip()
+        term = f"%{cleaned_q}%"
+        or_conditions = [
+            RawProduct.original_name.ilike(term),
+            Shop.name.ilike(term),
+            Shop.token.ilike(term),
+            Offer.hidden_reason.ilike(term),
+        ]
+        num_part = cleaned_q.lstrip("#")
+        if num_part.isdigit():
+            try:
+                or_conditions.append(Offer.id == int(num_part))
+            except ValueError:
+                pass
+        stmt = stmt.where(or_(*or_conditions))
 
     total_count = db.scalar(
         select(func.count()).select_from(stmt.order_by(None).offset(None).limit(None).subquery())

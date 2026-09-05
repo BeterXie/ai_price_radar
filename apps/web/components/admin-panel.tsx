@@ -10,6 +10,7 @@ const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
 type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
+type ScopeFilter = "current" | "all";
 type OfferSort = "frontend" | "updated_desc" | "price_asc" | "price_desc";
 
 type Stats = {
@@ -102,6 +103,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("current");
   const [offerSearch, setOfferSearch] = useState("");
   const [reclassifyingOfferId, setReclassifyingOfferId] = useState<number | null>(null);
   const [actionToast, setActionToast] = useState<string>("");
@@ -150,12 +152,14 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     sort: OfferSort = offerSort,
     offset = 0,
     append = false,
-    stock: StockFilter = stockFilter
+    stock: StockFilter = stockFilter,
+    scope: ScopeFilter = scopeFilter
   ) {
     const params = new URLSearchParams();
     params.set("limit", "100");
     params.set("offset", String(offset));
     params.set("sort", sort);
+    params.set("scope", scope);
     if (stock !== "all") {
       params.set("stock_status", stock);
     }
@@ -197,7 +201,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
           offerSort,
           offers.length,
           true,
-          stockFilter
+          stockFilter,
+          scopeFilter
         );
       });
     } finally {
@@ -212,6 +217,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       const params = new URLSearchParams();
       params.set("limit", "100");
       params.set("sort", offerSort);
+      params.set("scope", scopeFilter);
       if (stockFilter !== "all") params.set("stock_status", stockFilter);
       if (selectedCategory === "restricted") {
         params.set("status", "restricted");
@@ -789,21 +795,35 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 onChange={(e) => setOfferSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort);
+                    loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort, 0, false, stockFilter, scopeFilter);
                   }
                 }}
-                placeholder="按标题、店铺名称或受限拦截原因搜索..."
+                placeholder="按标题、店铺名称、拦截原因或 #报价ID 搜索..."
                 className="w-full rounded-[9px] border border-[color:var(--line-strong)] bg-transparent py-2 pl-9 pr-3 text-sm outline-none focus:border-[color:var(--focus)]"
               />
               <MagnifyingGlass size={16} className="absolute left-3 top-3 text-black/40" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <select
+                value={scopeFilter}
+                onChange={(e) => {
+                  const nextScope = e.target.value as ScopeFilter;
+                  setScopeFilter(nextScope);
+                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort, 0, false, stockFilter, nextScope);
+                }}
+                className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none font-medium"
+                title="按快照数据范围筛选"
+              >
+                <option value="current">范围：当前在售快照 (默认)</option>
+                <option value="all">范围：全部历史记录</option>
+              </select>
+
+              <select
                 value={offerSort}
                 onChange={(e) => {
                   const nextSort = e.target.value as OfferSort;
                   setOfferSort(nextSort);
-                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, nextSort);
+                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, nextSort, 0, false, stockFilter, scopeFilter);
                 }}
                 className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
                 title="选择报价排序方式"
@@ -820,7 +840,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   onChange={(e) => {
                     const nextStatus = e.target.value as StatusFilter;
                     setStatusFilter(nextStatus);
-                    loadOffers(selectedCategory, selectedProductSlug, nextStatus, offerSearch, offerSort);
+                    loadOffers(selectedCategory, selectedProductSlug, nextStatus, offerSearch, offerSort, 0, false, stockFilter, scopeFilter);
                   }}
                   className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
                 >
@@ -835,7 +855,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 onChange={(e) => {
                   const nextStock = e.target.value as StockFilter;
                   setStockFilter(nextStock);
-                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort, 0, false, nextStock);
+                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort, 0, false, nextStock, scopeFilter);
                 }}
                 className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
                 title="按库存状态筛选"
@@ -847,7 +867,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
 
               <button
                 type="button"
-                onClick={() => loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort)}
+                onClick={() => loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort, 0, false, stockFilter, scopeFilter)}
                 className="button-secondary tactile"
               >
                 搜索筛选
