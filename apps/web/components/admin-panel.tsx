@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { money } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
@@ -9,6 +9,7 @@ import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/ca
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
 type StatusFilter = "all" | "active" | "pending";
+type OfferSort = "frontend" | "updated_desc" | "price_asc" | "price_desc";
 
 type Stats = {
   shops: number;
@@ -21,6 +22,8 @@ type Stats = {
   pending_source_intakes: number;
   open_reports: number;
   last_scan_at: string | null;
+  product_counts?: Record<string, number>;
+  brand_counts?: Record<string, number>;
 };
 
 type AdminOffer = {
@@ -90,6 +93,9 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
+  const [offerTotal, setOfferTotal] = useState<number>(0);
+  const [offerSort, setOfferSort] = useState<OfferSort>("frontend");
+  const [loadingMoreOffers, setLoadingMoreOffers] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryMode>("all");
   const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -103,6 +109,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
   const [error, setError] = useState(previewState === "error" ? "管理数据暂时无法加载。输入密钥后可以重新连接。" : "");
   const headers = { "X-Admin-Key": key };
+  const hasScrolledToIntakeRef = useRef(false);
 
   useEffect(() => {
     const intakeId = Number(new URLSearchParams(window.location.search).get("intake"));
@@ -110,18 +117,42 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }, []);
 
   useEffect(() => {
-    if (targetIntakeId === null || !intakes.some((intake) => intake.id === targetIntakeId)) return;
+    if (hasScrolledToIntakeRef.current || targetIntakeId === null || !intakes.some((intake) => intake.id === targetIntakeId)) return;
+    hasScrolledToIntakeRef.current = true;
     document.getElementById(`source-intake-${targetIntakeId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [intakes, targetIntakeId]);
+
+  // Helper to run any async operation while preserving scroll position exactly
+  async function preserveScroll(action: () => Promise<void>) {
+    const currentScrollY = typeof window !== "undefined" ? window.scrollY : 0;
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    try {
+      await action();
+    } finally {
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: currentScrollY, behavior: "instant" as ScrollBehavior });
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: currentScrollY, behavior: "instant" as ScrollBehavior });
+        });
+      }
+    }
+  }
 
   async function loadOffers(
     category: CategoryMode = selectedCategory,
     productSlug: string = selectedProductSlug,
     status: StatusFilter = statusFilter,
-    search: string = offerSearch
+    search: string = offerSearch,
+    sort: OfferSort = offerSort,
+    offset = 0,
+    append = false
   ) {
     const params = new URLSearchParams();
     params.set("limit", "100");
+    params.set("offset", String(offset));
+    params.set("sort", sort);
     if (category === "restricted") {
       params.set("status", "restricted");
     } else if (category === "unclassified") {
@@ -136,7 +167,34 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     if (search.trim()) params.set("q", search.trim());
     const response = await fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers });
     if (response.ok) {
-      setOffers(await response.json());
+      const data = await response.json();
+      const totalHeader = response.headers.get("x-total-count");
+      const total = totalHeader ? parseInt(totalHeader, 10) : data.length;
+      setOfferTotal(total);
+      if (append) {
+        setOffers((prev) => [...prev, ...data]);
+      } else {
+        setOffers(data);
+      }
+    }
+  }
+
+  async function handleLoadMoreOffers() {
+    setLoadingMoreOffers(true);
+    try {
+      await preserveScroll(async () => {
+        await loadOffers(
+          selectedCategory,
+          selectedProductSlug,
+          statusFilter,
+          offerSearch,
+          offerSort,
+          offers.length,
+          true
+        );
+      });
+    } finally {
+      setLoadingMoreOffers(false);
     }
   }
 
@@ -146,6 +204,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     try {
       const params = new URLSearchParams();
       params.set("limit", "100");
+      params.set("sort", offerSort);
       if (selectedCategory === "restricted") {
         params.set("status", "restricted");
       } else if (selectedCategory === "unclassified") {
@@ -170,7 +229,10 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
         return;
       }
       setStats(await statsResponse.json());
-      setOffers(await offersResponse.json());
+      const offersData = await offersResponse.json();
+      const totalHeader = offersResponse.headers.get("x-total-count");
+      setOfferTotal(totalHeader ? parseInt(totalHeader, 10) : offersData.length);
+      setOffers(offersData);
       const loadedReports = await reportsResponse.json() as Report[];
       setReports(loadedReports);
       setReportDrafts(Object.fromEntries(loadedReports.map((report) => [report.id, { public_summary: report.public_summary || "", merchant_response: report.merchant_response || "" }])));
@@ -185,55 +247,88 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function patchOffer(offerId: number, body: Record<string, unknown>) {
-    const response = await fetch(`${API}/api/v1/admin/offers/${offerId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
+    // 1. Optimistic in-place update so DOM doesn't collapse or lose focus
+    setOffers((prev) =>
+      prev.map((o) => {
+        if (o.id !== offerId) return o;
+        const updated = { ...o, ...body };
+        if ("product_slug" in body) {
+          const p = ALL_PRODUCTS.find((item) => item.slug === body.product_slug);
+          updated.product_slug = (body.product_slug as string) || null;
+          updated.product_name = p?.label || (body.product_slug as string) || null;
+          updated.brand = p?.brand || null;
+        }
+        return updated;
+      })
+    );
+
+    // 2. Perform network request while preserving scroll position
+    await preserveScroll(async () => {
+      const response = await fetch(`${API}/api/v1/admin/offers/${offerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+      if (response.ok) {
+        const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
+        if (statsRes.ok) setStats(await statsRes.json());
+      }
     });
-    if (response.ok) {
-      await loadOffers();
-      const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
-      if (statsRes.ok) setStats(await statsRes.json());
-    }
   }
 
   async function reclassifySingleOffer(offerId: number) {
     setReclassifyingOfferId(offerId);
     setActionToast("");
-    try {
-      const response = await fetch(`${API}/api/v1/admin/offers/${offerId}/reclassify`, {
+    await preserveScroll(async () => {
+      try {
+        const response = await fetch(`${API}/api/v1/admin/offers/${offerId}/reclassify`, {
+          method: "POST",
+          headers,
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const msg = data.product_slug
+            ? `已成功归类为 ${data.product_slug}（置信度 ${data.confidence}%）`
+            : "分类器判定该商品未命中任何标准产品（保持未归类）";
+          setActionToast(`报价 #${offerId} 自动分类完成：${msg}`);
+          const p = ALL_PRODUCTS.find((item) => item.slug === data.product_slug);
+          setOffers((prev) =>
+            prev.map((o) =>
+              o.id === offerId
+                ? {
+                    ...o,
+                    product_slug: data.product_slug || null,
+                    product_name: p?.label || data.product_slug || null,
+                    brand: p?.brand || null,
+                  }
+                : o
+            )
+          );
+          const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
+          if (statsRes.ok) setStats(await statsRes.json());
+        } else {
+          setError(`报价 #${offerId} 自动分类失败`);
+        }
+      } catch {
+        setError(`报价 #${offerId} 自动分类请求失败`);
+      } finally {
+        setReclassifyingOfferId(null);
+      }
+    });
+  }
+
+  async function reclassify() {
+    await preserveScroll(async () => {
+      const response = await fetch(`${API}/api/v1/admin/reclassify`, {
         method: "POST",
         headers,
       });
       if (response.ok) {
         const data = await response.json();
-        const msg = data.product_slug
-          ? `已成功归类为 ${data.product_slug}（置信度 ${data.confidence}%）`
-          : "分类器判定该商品未命中任何标准产品（保持未归类）";
-        setActionToast(`报价 #${offerId} 自动分类完成：${msg}`);
-        await loadOffers();
-        const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
-        if (statsRes.ok) setStats(await statsRes.json());
-      } else {
-        setError(`报价 #${offerId} 自动分类失败`);
+        setActionToast(`全量重新分类完成：变更 ${data.changed} 条，未分类 ${data.unclassified} 条`);
+        await load();
       }
-    } catch {
-      setError(`报价 #${offerId} 自动分类请求失败`);
-    } finally {
-      setReclassifyingOfferId(null);
-    }
-  }
-
-  async function reclassify() {
-    const response = await fetch(`${API}/api/v1/admin/reclassify`, {
-      method: "POST",
-      headers,
     });
-    if (response.ok) {
-      const data = await response.json();
-      setActionToast(`全量重新分类完成：变更 ${data.changed} 条，未分类 ${data.unclassified} 条`);
-      await load();
-    }
   }
 
   async function resolveReport(reportId: number, status: "resolved" | "rejected") {
@@ -242,12 +337,14 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setError("发布已处理记录前，请填写不含联系方式和私密内容的公开摘要。");
       return;
     }
-    const response = await fetch(`${API}/api/v1/admin/reports/${reportId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({ status, public_summary: draft.public_summary.trim(), merchant_response: draft.merchant_response.trim() }),
+    await preserveScroll(async () => {
+      const response = await fetch(`${API}/api/v1/admin/reports/${reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ status, public_summary: draft.public_summary.trim(), merchant_response: draft.merchant_response.trim() }),
+      });
+      if (response.ok) await load();
     });
-    if (response.ok) await load();
   }
 
   async function updateIntake(intakeId: number, action: "approve" | "reject" | "retry" | "redetect") {
@@ -256,41 +353,46 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setError("驳回收录申请前，请填写原因。");
       return;
     }
-    const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/${action}`, {
-      method: "POST",
-      headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+    await preserveScroll(async () => {
+      const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/${action}`, {
+        method: "POST",
+        headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      if (response.ok) {
+        await load();
+      } else {
+        const data = await response.json().catch(() => null);
+        setError(data?.detail || "收录申请状态更新失败，请刷新后重试。");
+      }
     });
-    if (response.ok) {
-      await load();
-    } else {
-      const data = await response.json().catch(() => null);
-      setError(data?.detail || "收录申请状态更新失败，请刷新后重试。");
-    }
   }
 
   async function updateIntakePlatform(intakeId: number, platform: string) {
-    const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/platform`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({ platform }),
+    await preserveScroll(async () => {
+      const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/platform`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ platform }),
+      });
+      if (response.ok) {
+        await load();
+      } else {
+        const data = await response.json().catch(() => null);
+        setError(data?.detail || "平台类型修改失败，请刷新后重试。");
+      }
     });
-    if (response.ok) {
-      await load();
-    } else {
-      const data = await response.json().catch(() => null);
-      setError(data?.detail || "平台类型修改失败，请刷新后重试。");
-    }
   }
 
-
   async function retryFailedIntakeNotifications(intakeId: number) {
-    const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/notifications/retry`, {
-      method: "POST",
-      headers,
+    await preserveScroll(async () => {
+      const response = await fetch(`${API}/api/v1/admin/source-intakes/${intakeId}/notifications/retry`, {
+        method: "POST",
+        headers,
+      });
+      if (response.ok) await load();
+      else setError("失败邮件重发排队失败，请刷新后重试。");
     });
-    if (response.ok) await load();
-    else setError("失败邮件重发排队失败，请刷新后重试。");
   }
 
   const intakeStatusLabels: Record<string, string> = {
@@ -412,22 +514,22 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 <div className="flex flex-wrap gap-2 xl:justify-end">
                   {intake.status === "pending_review" && (
                     <>
-                      <button onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile">
+                      <button type="button" onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile">
                         <Check size={16} />
                         {intake.source_type === "ldxp" ? "批准并验证" : intake.source_type === "other" ? "批准接入" : "批准并加入发布队列"}
                       </button>
-                      <button onClick={() => updateIntake(intake.id, "redetect")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm" title="根据最新探测规则重新识别平台">
+                      <button type="button" onClick={() => updateIntake(intake.id, "redetect")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm" title="根据最新探测规则重新识别平台">
                         <ArrowClockwise size={16} className="mr-1 inline" />
                         重新检测
                       </button>
-                      <button onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile">
+                      <button type="button" onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile">
                         <X size={16} />
                         驳回
                       </button>
                     </>
                   )}
-                  {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
-                  {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
+                  {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button type="button" onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
+                  {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button type="button" onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                 </div>
               </div>
             ))}
@@ -455,8 +557,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   </div>
                 </div>
                 <div className="flex gap-2 md:self-end">
-                  <button onClick={() => resolveReport(report.id, "resolved")} className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} />已处理</button>
-                  <button onClick={() => resolveReport(report.id, "rejected")} className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} />驳回</button>
+                  <button type="button" onClick={() => resolveReport(report.id, "resolved")} className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} />已处理</button>
+                  <button type="button" onClick={() => resolveReport(report.id, "rejected")} className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} />驳回</button>
                 </div>
               </div>
             ))}
@@ -483,35 +585,60 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 onClick={() => {
                   setSelectedCategory("all");
                   setSelectedProductSlug("");
-                  loadOffers("all", "", statusFilter, offerSearch);
+                  loadOffers("all", "", statusFilter, offerSearch, offerSort);
                 }}
                 aria-current={selectedCategory === "all" ? "page" : undefined}
                 className="filter-chip"
               >
                 全部品牌
+                {typeof stats?.public_offers === "number" && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 mono text-[10px] ml-1.5 ${
+                      selectedCategory === "all"
+                        ? "bg-white/20 text-white"
+                        : "bg-black/5 text-black/60"
+                    }`}
+                  >
+                    {stats.public_offers}
+                  </span>
+                )}
               </button>
-              {BRAND_TABS.map((brand) => (
-                <button
-                  key={brand}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory(brand);
-                    setSelectedProductSlug("");
-                    loadOffers(brand, "", statusFilter, offerSearch);
-                  }}
-                  aria-current={selectedCategory === brand ? "page" : undefined}
-                  className="filter-chip"
-                >
-                  {brand}
-                </button>
-              ))}
+              {BRAND_TABS.map((brand) => {
+                const count = stats?.brand_counts?.[brand];
+                return (
+                  <button
+                    key={brand}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(brand);
+                      setSelectedProductSlug("");
+                      loadOffers(brand, "", statusFilter, offerSearch, offerSort);
+                    }}
+                    aria-current={selectedCategory === brand ? "page" : undefined}
+                    className="filter-chip"
+                  >
+                    {brand}
+                    {typeof count === "number" && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.2 mono text-[10px] ml-1.5 ${
+                          selectedCategory === brand
+                            ? "bg-white/20 text-white"
+                            : "bg-black/5 text-black/60"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
               <div className="mx-1 h-5 w-px bg-[color:var(--line-strong)] self-center hidden sm:block" />
               <button
                 type="button"
                 onClick={() => {
                   setSelectedCategory("restricted");
                   setSelectedProductSlug("");
-                  loadOffers("restricted", "", "all", offerSearch);
+                  loadOffers("restricted", "", "all", offerSearch, offerSort);
                 }}
                 aria-current={selectedCategory === "restricted" ? "page" : undefined}
                 className={`filter-chip flex items-center gap-1.5 ${
@@ -538,7 +665,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 onClick={() => {
                   setSelectedCategory("unclassified");
                   setSelectedProductSlug("");
-                  loadOffers("unclassified", "", "all", offerSearch);
+                  loadOffers("unclassified", "", "all", offerSearch, offerSort);
                 }}
                 aria-current={selectedCategory === "unclassified" ? "page" : undefined}
                 className={`filter-chip flex items-center gap-1.5 ${
@@ -566,34 +693,64 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
             {selectedCategory !== "restricted" && selectedCategory !== "unclassified" && (
               <nav className="filter-rail border-t border-[color:var(--line)] pt-3 flex-wrap gap-1.5" aria-label="商品类型筛选">
                 <span className="filter-label">商品分类</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedProductSlug("");
-                    loadOffers(selectedCategory, "", statusFilter, offerSearch);
-                  }}
-                  aria-current={selectedProductSlug === "" ? "page" : undefined}
-                  className="filter-chip"
-                >
-                  {selectedCategory === "all" ? "全部商品" : `全部 ${selectedCategory}`}
-                </button>
-                {(selectedCategory === "all" ? ALL_PRODUCTS : PRODUCT_TABS[selectedCategory as BrandName] || []).map((tab) => (
-                  <button
-                    key={tab.slug}
-                    type="button"
-                    onClick={() => {
-                      setSelectedProductSlug(tab.slug);
-                      loadOffers(selectedCategory, tab.slug, statusFilter, offerSearch);
-                    }}
-                    aria-current={selectedProductSlug === tab.slug ? "page" : undefined}
-                    className="filter-chip"
-                  >
-                    {selectedCategory === "all" && "brand" in tab && (
-                      <span className="text-[10px] opacity-60 mr-1">{String(tab.brand)}</span>
-                    )}
-                    {tab.label}
-                  </button>
-                ))}
+                {(() => {
+                  const totalCount = selectedCategory === "all" ? stats?.public_offers : stats?.brand_counts?.[selectedCategory];
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedProductSlug("");
+                        loadOffers(selectedCategory, "", statusFilter, offerSearch, offerSort);
+                      }}
+                      aria-current={selectedProductSlug === "" ? "page" : undefined}
+                      className="filter-chip"
+                    >
+                      {selectedCategory === "all" ? "全部商品" : `全部 ${selectedCategory}`}
+                      {typeof totalCount === "number" && (
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 mono text-[10px] ml-1.5 ${
+                            selectedProductSlug === ""
+                              ? "bg-white/20 text-white"
+                              : "bg-black/5 text-black/60"
+                          }`}
+                        >
+                          {totalCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })()}
+                {(selectedCategory === "all" ? ALL_PRODUCTS : PRODUCT_TABS[selectedCategory as BrandName] || []).map((tab) => {
+                  const pCount = stats?.product_counts?.[tab.slug];
+                  return (
+                    <button
+                      key={tab.slug}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProductSlug(tab.slug);
+                        loadOffers(selectedCategory, tab.slug, statusFilter, offerSearch, offerSort);
+                      }}
+                      aria-current={selectedProductSlug === tab.slug ? "page" : undefined}
+                      className="filter-chip"
+                    >
+                      {selectedCategory === "all" && "brand" in tab && (
+                        <span className="text-[10px] opacity-60 mr-1">{String(tab.brand)}</span>
+                      )}
+                      {tab.label}
+                      {typeof pCount === "number" && (
+                        <span
+                          className={`rounded-full px-1.5 py-0.2 mono text-[10px] ml-1.5 ${
+                            selectedProductSlug === tab.slug
+                              ? "bg-white/20 text-white"
+                              : "bg-black/5 text-black/60"
+                          }`}
+                        >
+                          {pCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
             )}
 
@@ -616,7 +773,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
             )}
           </div>
 
-          {/* Search & Status Sub-Filter */}
+          {/* Search & Status / Sort Sub-Filter */}
           <div className="grid gap-3 border-b border-[color:var(--line)] bg-[color:var(--panel)] p-4 sm:grid-cols-[1fr_auto]">
             <div className="relative">
               <input
@@ -624,7 +781,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 onChange={(e) => setOfferSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch);
+                    loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort);
                   }
                 }}
                 placeholder="按标题、店铺名称或受限拦截原因搜索..."
@@ -632,14 +789,30 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               />
               <MagnifyingGlass size={16} className="absolute left-3 top-3 text-black/40" />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={offerSort}
+                onChange={(e) => {
+                  const nextSort = e.target.value as OfferSort;
+                  setOfferSort(nextSort);
+                  loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, nextSort);
+                }}
+                className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
+                title="选择报价排序方式"
+              >
+                <option value="frontend">前台默认（在售优先·低价优先）</option>
+                <option value="updated_desc">最新更新时间优先</option>
+                <option value="price_asc">价格从低到高</option>
+                <option value="price_desc">价格从高到低</option>
+              </select>
+
               {selectedCategory !== "restricted" && selectedCategory !== "unclassified" && (
                 <select
                   value={statusFilter}
                   onChange={(e) => {
                     const nextStatus = e.target.value as StatusFilter;
                     setStatusFilter(nextStatus);
-                    loadOffers(selectedCategory, selectedProductSlug, nextStatus, offerSearch);
+                    loadOffers(selectedCategory, selectedProductSlug, nextStatus, offerSearch, offerSort);
                   }}
                   className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
                 >
@@ -650,7 +823,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               )}
               <button
                 type="button"
-                onClick={() => loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch)}
+                onClick={() => loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch, offerSort)}
                 className="button-secondary tactile"
               >
                 搜索筛选
@@ -666,6 +839,25 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               </button>
             </div>
           )}
+
+          {/* Offer Summary & Sort Info Header */}
+          <div className="flex flex-wrap items-center justify-between border-b border-[color:var(--line)] bg-[color:var(--subtle)]/40 px-5 py-2.5 text-xs text-black/60">
+            <div>
+              共 <strong className="text-[color:var(--ink)] mono">{offerTotal}</strong> 条报价
+              {offers.length < offerTotal ? (
+                <span>（已载入前 <span className="mono text-[color:var(--ink)]">{offers.length}</span> 条）</span>
+              ) : (
+                <span>（已载入全部）</span>
+              )}
+            </div>
+            <div className="text-[11px] text-black/45">
+              当前排序：
+              {offerSort === "frontend" && "前台默认（在售优先 · 低价优先 · 最新采集）"}
+              {offerSort === "updated_desc" && "按最新采集更新时间"}
+              {offerSort === "price_asc" && "按价格从低到高"}
+              {offerSort === "price_desc" && "按价格从高到低"}
+            </div>
+          </div>
 
           {offers.length === 0 ? (
             <div className="p-8 text-center text-sm text-black/45">
@@ -785,6 +977,26 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {offers.length < offerTotal && (
+            <div className="border-t border-[color:var(--line)] bg-[color:var(--subtle)]/30 p-4 text-center">
+              <button
+                type="button"
+                disabled={loadingMoreOffers}
+                onClick={handleLoadMoreOffers}
+                className="button-secondary tactile inline-flex items-center gap-2 px-6 py-2 text-sm disabled:opacity-50"
+              >
+                {loadingMoreOffers ? (
+                  <>
+                    <ArrowClockwise size={15} className="animate-spin" />
+                    正在载入更多报价...
+                  </>
+                ) : (
+                  `加载更多报价（还剩 ${offerTotal - offers.length} 条未载入）`
+                )}
+              </button>
             </div>
           )}
         </section>

@@ -199,3 +199,16 @@ def test_reclassify_single_offer_and_status_filtering():
         assert openai_offers[0]["brand"] == "OpenAI"
         assert openai_offers[0]["product_name"] == "ChatGPT Plus"
 
+        # Total count header & sorting
+        from fastapi import Response
+        from app.routers.admin import stats
+        resp = Response()
+        sorted_offers = offers(sort="frontend", response=resp, db=db)
+        assert len(sorted_offers) == 2
+        assert resp.headers["X-Total-Count"] == "2"
+
+        # Stats returns product_counts & brand_counts
+        current_stats = stats(db=db)
+        assert current_stats.product_counts.get("chatgpt-plus") == 1
+        assert current_stats.brand_counts.get("OpenAI") == 1
+

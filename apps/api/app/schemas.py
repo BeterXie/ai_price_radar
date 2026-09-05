@@ -614,4 +614,6 @@ class AdminStats(BaseModel):
     # Backward-compatible alias; the UI uses the explicit fields above.
     open_reports: int
     last_scan_at: datetime | None
+    product_counts: dict[str, int] = Field(default_factory=dict)
+    brand_counts: dict[str, int] = Field(default_factory=dict)
 

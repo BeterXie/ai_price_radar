@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import and_, case, func, nullslast, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -71,6 +71,30 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
     unclassified_offers = db.scalar(
         select(func.count()).select_from(Offer).where(Offer.product_id.is_(None))
     ) or 0
+    product_counts_raw = db.execute(
+        select(Product.slug, func.count(Offer.id))
+        .join(Offer, Offer.product_id == Product.id)
+        .where(
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
+        )
+        .group_by(Product.slug)
+    ).all()
+    product_counts = {slug: count for slug, count in product_counts_raw if slug}
+
+    brand_counts_raw = db.execute(
+        select(Product.platform, func.count(Offer.id))
+        .join(Offer, Offer.product_id == Product.id)
+        .where(
+            Offer.active.is_(True),
+            Offer.approved.is_(True),
+            or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
+        )
+        .group_by(Product.platform)
+    ).all()
+    brand_counts = {brand: count for brand, count in brand_counts_raw if brand}
+
     return AdminStats(
         shops=db.scalar(select(func.count()).select_from(Shop)) or 0,
         products=db.scalar(select(func.count()).select_from(Product)) or 0,
@@ -89,6 +113,8 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
         pending_source_intakes=pending_source_intakes,
         open_reports=open_corrections,
         last_scan_at=last_scan,
+        product_counts=product_counts,
+        brand_counts=brand_counts,
     )
 
 
@@ -100,8 +126,10 @@ def offers(
     q: str | None = None,
     brand: str | None = None,
     product_slug: str | None = None,
+    sort: str = Query(default="frontend", pattern="^(frontend|updated_desc|updated_asc|price_asc|price_desc)$"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    response: Response = Response(),
     db: Session = Depends(get_db),
 ) -> list[dict]:
     stmt = (
@@ -148,9 +176,34 @@ def offers(
                 Offer.hidden_reason.ilike(term),
             )
         )
+
+    total_count = db.scalar(
+        select(func.count()).select_from(stmt.order_by(None).offset(None).limit(None).subquery())
+    ) or 0
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total_count)
+
+    sort_val = sort.default if hasattr(sort, "default") else str(sort or "frontend")
+    if sort_val == "frontend":
+        order_clauses = [
+            case((Offer.stock_status == "in_stock", 0), else_=1),
+            case((Offer.currency == "CNY", 0), else_=1),
+            nullslast(Offer.price.asc()),
+            Offer.observed_at.desc(),
+            Offer.id.asc(),
+        ]
+    elif sort_val == "price_asc":
+        order_clauses = [nullslast(Offer.price.asc()), Offer.id.asc()]
+    elif sort_val == "price_desc":
+        order_clauses = [nullslast(Offer.price.desc()), Offer.id.asc()]
+    elif sort_val == "updated_asc":
+        order_clauses = [Offer.updated_at.asc(), Offer.id.asc()]
+    else:  # updated_desc
+        order_clauses = [Offer.updated_at.desc(), Offer.id.asc()]
+
     limit_val = int(limit.default if hasattr(limit, "default") else limit)
     offset_val = int(offset.default if hasattr(offset, "default") else offset)
-    stmt = stmt.order_by(Offer.updated_at.desc()).offset(offset_val).limit(limit_val)
+    stmt = stmt.order_by(*order_clauses).offset(offset_val).limit(limit_val)
     rows = list(db.scalars(stmt).unique())
     return [{
         "id": x.id,

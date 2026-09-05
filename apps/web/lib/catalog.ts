@@ -48,6 +48,7 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> 
   OpenAI: [
     { label: "Free", slug: "chatgpt-account" },
     { label: "Plus", slug: "chatgpt-plus" },
+    { label: "Pro", slug: "chatgpt-pro" },
     { label: "Go", slug: "chatgpt-go" },
     { label: "K12 / Team", slug: "chatgpt-k12" },
     { label: "Pro 5x", slug: "chatgpt-pro-5x" },

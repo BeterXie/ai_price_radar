@@ -2,6 +2,28 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.40] - 2026-09-05
+
+### Added
+
+- **Admin Offer Sorting Aligned with Frontend**:
+  - `GET /api/v1/admin/offers` defaults to `sort="frontend"`, matching the public site ranking (`in_stock desc`, `cny_first`, `price asc`, `observed_at desc`).
+  - Added sort selector in the admin search & filter bar with options for frontend default, latest updated (`updated_desc`), price low-to-high (`price_asc`), and price high-to-low (`price_desc`).
+- **Admin Real-time Brand and Product Offer Counts**:
+  - `GET /api/v1/admin/stats` now calculates and returns `product_counts` (by product slug) and `brand_counts` (by brand platform) across all active, public offers.
+  - Added real-time count badges to each Brand Chip and Product Chip in the admin navigation rails.
+  - Returns `X-Total-Count` header in `GET /api/v1/admin/offers` to report exact matching offer count.
+  - Displayed `共 {offerTotal} 条报价（已载入前 {offers.length} 条）` summary header and added bottom pagination ("加载更多报价") so large product sets can be fully explored.
+- **Catalog Alignment**:
+  - Added `chatgpt-pro` (ChatGPT Pro) to `PRODUCT_TABS.OpenAI` in `apps/web/lib/catalog.ts`.
+
+### Fixed
+
+- **Prevent Scroll-to-Top on Admin Approval and Status Actions**:
+  - Implemented optimistic in-place state updates for offer actions (`patchOffer`, `reclassifySingleOffer`) to prevent DOM node unmounting and focus loss.
+  - Added `preserveScroll` helper to lock and restore window scroll coordinates (`window.scrollY`) across all administrative updates (offers, shop intakes, user reports).
+  - Explicitly marked all action buttons with `type="button"` and blurred active elements prior to asynchronous state updates.
+
 ## [3.7.39] - 2026-09-05
 
 ### Added
