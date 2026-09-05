@@ -321,30 +321,44 @@ def test_dry_run_does_not_publish_or_change_current_snapshot(monkeypatch: pytest
         db.close()
 
 
-def test_approved_dujiao_intake_publishes_atomically_and_becomes_published(monkeypatch: pytest.MonkeyPatch):
+def test_approved_woocommerce_intake_publishes_atomically_and_becomes_published(monkeypatch: pytest.MonkeyPatch):
     def loader(source: str | Path):
-        item = record("approved-dujiao")
-        item["source_platform"] = "dujiao_next"
+        item = record("approved-woo")
+        item["source_platform"] = "woocommerce"
         item["shop_url"] = str(source)
         yield item
 
-    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    monkeypatch.setitem(CONNECTORS, "woocommerce-store", loader)
     db = session_for("sqlite://")
     try:
         create_source_intakes(db)
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
-            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://approved.example', 'approved')"
+            "VALUES (1, 'woocommerce', 'woocommerce', 'https://approved.example', 'approved')"
         ))
         db.commit()
 
         sources = approved_intake_sources(db)
-        assert sources == [SourceSpec("dujiao-next", "https://approved.example", (1,))]
+        assert sources == [SourceSpec("woocommerce-store", "https://approved.example", (1,))]
         result = publish_sources(db, sources)
 
         row = db.execute(text("SELECT status, product_count FROM source_intakes WHERE id=1")).one()
         assert row == ("published", 1)
         assert db.query(Offer).filter(Offer.snapshot_id == result.snapshot_id).count() == 1
+    finally:
+        db.close()
+
+
+def test_disabled_dujiao_next_intake_is_excluded_from_approved_sources():
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://dujiao.example', 'approved')"
+        ))
+        db.commit()
+        assert approved_intake_sources(db) == []
     finally:
         db.close()
 
@@ -409,19 +423,19 @@ def test_direct_sitemap_intake_keeps_exact_path_through_atomic_publish(
 
 def test_published_intake_remains_in_later_snapshots_until_disabled(monkeypatch: pytest.MonkeyPatch):
     def loader(source: str | Path):
-        label = "replacement" if "replacement" in str(source) else "persistent-dujiao"
+        label = "replacement" if "replacement" in str(source) else "persistent-woo"
         item = record(label)
-        item["source_platform"] = "dujiao_next"
+        item["source_platform"] = "woocommerce"
         item["shop_url"] = str(source)
         yield item
 
-    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    monkeypatch.setitem(CONNECTORS, "woocommerce-store", loader)
     db = session_for("sqlite://")
     try:
         create_source_intakes(db)
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
-            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://persistent.example', 'approved')"
+            "VALUES (1, 'woocommerce', 'woocommerce', 'https://persistent.example', 'approved')"
         ))
         db.commit()
 
@@ -429,7 +443,7 @@ def test_published_intake_remains_in_later_snapshots_until_disabled(monkeypatch:
         assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == "published"
 
         second_sources = approved_intake_sources(db)
-        assert second_sources == [SourceSpec("dujiao-next", "https://persistent.example", (1,))]
+        assert second_sources == [SourceSpec("woocommerce-store", "https://persistent.example", (1,))]
         second = publish_sources(db, second_sources)
         assert second.snapshot_id != first.snapshot_id
         assert db.query(Offer).filter(Offer.snapshot_id == second.snapshot_id).count() == 1
@@ -437,7 +451,7 @@ def test_published_intake_remains_in_later_snapshots_until_disabled(monkeypatch:
         db.execute(text("UPDATE source_intakes SET status='disabled' WHERE id=1"))
         db.commit()
         assert approved_intake_sources(db) == []
-        third = publish_sources(db, [SourceSpec("dujiao-next", "https://replacement.example")])
+        third = publish_sources(db, [SourceSpec("woocommerce-store", "https://replacement.example")])
         current_tokens = {
             token for (token,) in db.execute(text(
                 "SELECT shops.token FROM offers JOIN shops ON shops.id=offers.shop_id "
@@ -508,18 +522,18 @@ def test_public_offer_count_is_scoped_to_the_intake_import(monkeypatch: pytest.M
         db.close()
 
 
-def test_approved_dujiao_intake_requires_a_successful_live_import(monkeypatch: pytest.MonkeyPatch):
+def test_approved_woocommerce_intake_requires_a_successful_live_import(monkeypatch: pytest.MonkeyPatch):
     def unavailable_loader(_source: str | Path):
-        raise ValueError("Dujiao public API validation failed")
+        raise ValueError("WooCommerce public API validation failed")
         yield
 
-    monkeypatch.setitem(CONNECTORS, "dujiao-next", unavailable_loader)
+    monkeypatch.setitem(CONNECTORS, "woocommerce-store", unavailable_loader)
     db = session_for("sqlite://")
     try:
         create_source_intakes(db)
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
-            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://approved.example', 'approved')"
+            "VALUES (1, 'woocommerce', 'woocommerce', 'https://approved.example', 'approved')"
         ))
         db.commit()
 

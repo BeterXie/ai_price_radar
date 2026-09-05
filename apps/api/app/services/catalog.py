@@ -27,7 +27,13 @@ from ..schemas import (
 from .official_pricing import official_reference_for
 from .pricing import is_trusted_price, low_price_warning, price_median
 from .source_health import source_health
-from .source_platform import source_kind, source_kind_label, source_platform_label
+from .source_platform import (
+    DISABLED_SOURCE_PLATFORMS,
+    get_disabled_source_platforms,
+    source_kind,
+    source_kind_label,
+    source_platform_label,
+)
 
 
 DEFAULT_OFFER_PAGE_SIZE = 30
@@ -131,17 +137,21 @@ def _base_public_offer_query(
     snapshot: CatalogSnapshot | None = None,
 ):
     snapshot = snapshot or get_current_snapshot(db)
+    disabled_platforms = get_disabled_source_platforms()
+    conditions = [
+        Offer.active.is_(True),
+        Offer.approved.is_(True),
+        Offer.product_id.is_not(None),
+        Shop.is_visible.is_(True),
+        Offer.observed_at >= _fresh_cutoff(),
+    ]
+    if disabled_platforms:
+        conditions.append(Shop.platform.notin_(disabled_platforms))
     stmt = (
         select(Offer)
         .join(Shop, Offer.shop_id == Shop.id)
         .join(RawProduct, Offer.raw_product_id == RawProduct.id)
-        .where(
-            Offer.active.is_(True),
-            Offer.approved.is_(True),
-            Offer.product_id.is_not(None),
-            Shop.is_visible.is_(True),
-            Offer.observed_at >= _fresh_cutoff(),
-        )
+        .where(*conditions)
     )
     if snapshot is not None:
         stmt = stmt.where(Offer.snapshot_id == snapshot.id)
@@ -817,7 +827,11 @@ def get_offer_description(db: Session, offer_id: int) -> str | None:
 
 
 def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
-    shop = db.scalar(select(Shop).where(Shop.token == token, Shop.is_visible.is_(True)))
+    disabled_platforms = get_disabled_source_platforms()
+    shop_conditions = [Shop.token == token, Shop.is_visible.is_(True)]
+    if disabled_platforms:
+        shop_conditions.append(Shop.platform.notin_(disabled_platforms))
+    shop = db.scalar(select(Shop).where(*shop_conditions))
     if shop is None:
         return None
     snapshot = get_current_snapshot(db)
@@ -828,6 +842,16 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         .order_by(*_offer_ordering())
     ).unique())
     medians = _median_prices(offers, comparable_only=True)
+    product_conditions = [
+        Offer.shop_id == shop.id,
+        Offer.active.is_(True),
+        Offer.approved.is_(True),
+        Offer.product_id.is_not(None),
+        Product.is_visible.is_(True),
+        Offer.observed_at >= _fresh_cutoff(),
+    ]
+    if disabled_platforms:
+        product_conditions.append(Shop.platform.notin_(disabled_platforms))
     product_stmt = (
         select(
             Product.slug,
@@ -838,14 +862,8 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
             ).label("in_stock_count"),
         )
         .join(Offer, Offer.product_id == Product.id)
-        .where(
-            Offer.shop_id == shop.id,
-            Offer.active.is_(True),
-            Offer.approved.is_(True),
-            Offer.product_id.is_not(None),
-            Product.is_visible.is_(True),
-            Offer.observed_at >= _fresh_cutoff(),
-        )
+        .join(Shop, Offer.shop_id == Shop.id)
+        .where(*product_conditions)
         .group_by(Product.id)
         .order_by(Product.display_name.asc(), Product.slug.asc())
     )
@@ -884,17 +902,21 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
 def list_public_shop_tokens(db: Session) -> list[str]:
     """Return shop tokens that have at least one currently public offer."""
     snapshot = get_current_snapshot(db)
+    disabled_platforms = get_disabled_source_platforms()
+    conditions = [
+        Shop.is_visible.is_(True),
+        Product.is_visible.is_(True),
+        Offer.active.is_(True),
+        Offer.approved.is_(True),
+        Offer.observed_at >= _fresh_cutoff(),
+    ]
+    if disabled_platforms:
+        conditions.append(Shop.platform.notin_(disabled_platforms))
     stmt = (
         select(Shop.token)
         .join(Offer, Offer.shop_id == Shop.id)
         .join(Product, Offer.product_id == Product.id)
-        .where(
-            Shop.is_visible.is_(True),
-            Product.is_visible.is_(True),
-            Offer.active.is_(True),
-            Offer.approved.is_(True),
-            Offer.observed_at >= _fresh_cutoff(),
-        )
+        .where(*conditions)
         .distinct()
         .order_by(Shop.token.asc())
     )
@@ -925,6 +947,17 @@ def list_public_shops(
     snapshot = get_current_snapshot(db)
     cutoff = _fresh_cutoff()
     platform_filter = canonical_source_platform(source_platform) if source_platform else ""
+    disabled_platforms = get_disabled_source_platforms()
+
+    conditions = [
+        Shop.is_visible.is_(True),
+        Product.is_visible.is_(True),
+        Offer.active.is_(True),
+        Offer.approved.is_(True),
+        Offer.observed_at >= cutoff,
+    ]
+    if disabled_platforms:
+        conditions.append(Shop.platform.notin_(disabled_platforms))
 
     base = (
         select(
@@ -937,13 +970,7 @@ def list_public_shops(
         )
         .join(Offer, Offer.shop_id == Shop.id)
         .join(Product, Offer.product_id == Product.id)
-        .where(
-            Shop.is_visible.is_(True),
-            Product.is_visible.is_(True),
-            Offer.active.is_(True),
-            Offer.approved.is_(True),
-            Offer.observed_at >= cutoff,
-        )
+        .where(*conditions)
         .group_by(Shop.id)
     )
 

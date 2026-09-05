@@ -7,6 +7,7 @@ import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 export const dynamic = "force-dynamic";
 
 const SITE_URL = "https://ai.pricememo.cn";
+const DISABLED_SOURCES = new Set(["dujiao_next"]);
 
 export const metadata: Metadata = {
   title: "来源平台",
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 
 export default async function SourcesPage() {
   const meta = await getMeta();
-  const platforms = meta.source_platforms;
+  const platforms = meta.source_platforms.filter((p) => !DISABLED_SOURCES.has(p.id));
   const canonical = `${SITE_URL}/sources`;
   const structuredData = [
     breadcrumbJsonLd([

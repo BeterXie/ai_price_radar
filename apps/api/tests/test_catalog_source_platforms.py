@@ -66,6 +66,7 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         _offer(db, snapshot=current, product=openai, shop=ldxp, key="openai-ldxp")
         _offer(db, snapshot=current, product=openai, shop=dujiao, key="openai-dujiao")
         _offer(db, snapshot=current, product=claude, shop=dujiao, key="claude-dujiao")
+        _offer(db, snapshot=current, product=claude, shop=woo, key="claude-woo")
         _offer(db, snapshot=current, product=openai, shop=woo, key="openai-woo")
         _offer(db, snapshot=current, product=openai, shop=structured, key="openai-structured")
         _offer(db, snapshot=old, product=openai, shop=old_feed, key="old-feed")
@@ -79,11 +80,11 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
     app.dependency_overrides[get_db] = override_db
     try:
         client = TestClient(app)
+        # dujiao_next is disabled and must yield 0 public offers
         legacy = client.get("/api/v1/products", params={"platform": "OpenAI", "source_platform": "dujiao_next"})
         assert legacy.status_code == 200
-        assert legacy.json()["offer_count"] == 1
-        assert legacy.json()["items"][0]["platform"] == "OpenAI"
-        assert legacy.json()["items"][0]["brand"] == "OpenAI"
+        assert legacy.json()["offer_count"] == 0
+        assert len(legacy.json()["items"]) == 0
 
         woo = client.get("/api/v1/products", params={"platform": "OpenAI", "source_platform": "woocommerce"})
         assert woo.status_code == 200
@@ -102,60 +103,58 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
 
         meta = client.get("/api/v1/meta").json()
         assert meta["platforms"] == meta["brands"] == ["Claude", "OpenAI"]
+        # dujiao_next must be excluded from public source platforms
         assert meta["source_platforms"] == [
-            {"id": "dujiao_next", "label": "Dujiao-Next"},
             {"id": "ldxp", "label": "链动小铺"},
             {"id": "schema_org", "label": "独立站"},
             {"id": "woocommerce", "label": "WooCommerce"},
         ]
 
-        # The legacy endpoint remains a flat token list.
+        # The legacy endpoint remains a flat token list (excluding disabled dujiao).
         legacy_shop_tokens = client.get("/api/v1/shops")
         assert legacy_shop_tokens.status_code == 200
-        assert legacy_shop_tokens.json() == sorted(["dujiao-shop", "ldxp-shop", "structured-shop", "woo-shop"])
+        assert legacy_shop_tokens.json() == sorted(["ldxp-shop", "structured-shop", "woo-shop"])
 
         # The directory endpoint returns paginated shop cards.
         shops_res = client.get("/api/v1/shops/cards")
         assert shops_res.status_code == 200
         shops_data = shops_res.json()
-        assert shops_data["total"] == 4  # ldxp, dujiao, woo, structured (feed-shop was on old snapshot)
+        assert shops_data["total"] == 3  # ldxp, woo, structured (dujiao disabled, feed on old snapshot)
         tokens = [s["token"] for s in shops_data["items"]]
-        assert "dujiao-shop" in tokens
+        assert "dujiao-shop" not in tokens
         assert "feed-shop" not in tokens
-        dujiao_card = next(item for item in shops_data["items"] if item["token"] == "dujiao-shop")
-        assert dujiao_card["in_stock_count"] == dujiao_card["offer_count"] == 2
 
-        # Shop detail exposes stable standard-product links for crawl discovery.
+        # Shop detail for a disabled platform shop returns 404
         dujiao_detail = client.get("/api/v1/shops/dujiao-shop")
-        assert dujiao_detail.status_code == 200
+        assert dujiao_detail.status_code == 404
+
+        # Active shop detail exposes stable standard-product links
+        woo_detail = client.get("/api/v1/shops/woo-shop")
+        assert woo_detail.status_code == 200
         assert {
             (product["slug"], product["display_name"], product["offer_count"], product["in_stock_count"])
-            for product in dujiao_detail.json()["products"]
+            for product in woo_detail.json()["products"]
         } == {
             ("chatgpt-plus", "ChatGPT Plus", 1, 1),
             ("claude-pro", "Claude Pro", 1, 1),
         }
 
-        # Test filter by source_platform
+        # Test filter by source_platform for disabled platform returns empty
         dujiao_shops = client.get("/api/v1/shops/cards", params={"source_platform": "dujiao_next"}).json()
-        assert dujiao_shops["total"] == 1
-        assert dujiao_shops["items"][0]["token"] == "dujiao-shop"
-        assert dujiao_shops["items"][0]["offer_count"] == 2
-        assert "chatgpt-plus" in dujiao_shops["items"][0]["product_slugs"]
-        assert "claude-pro" in dujiao_shops["items"][0]["product_slugs"]
+        assert dujiao_shops["total"] == 0
+        assert dujiao_shops["items"] == []
+
         aliased_filter = client.get("/api/v1/shops/cards", params={"source_platform": "dujiao-next"}).json()
-        assert aliased_filter["total"] == 1
-        assert aliased_filter["items"][0]["source_platform"] == "dujiao_next"
+        assert aliased_filter["total"] == 0
 
         paged = client.get("/api/v1/shops/cards", params={"offset": 1, "limit": 2, "sort": "name"})
         assert paged.status_code == 200
-        assert paged.json()["total"] == 4
+        assert paged.json()["total"] == 3
         assert len(paged.json()["items"]) == 2
-        assert [item["token"] for item in paged.json()["items"]] == ["ldxp-shop", "structured-shop"]
+        assert [item["token"] for item in paged.json()["items"]] == ["structured-shop", "woo-shop"]
 
         meta_without_hidden_only_source = client.get("/api/v1/meta").json()
         assert {item["id"] for item in meta_without_hidden_only_source["source_platforms"]} == {
-            "dujiao_next",
             "ldxp",
             "schema_org",
             "woocommerce",
@@ -164,6 +163,6 @@ def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
         # Test tokens-only legacy endpoint
         tokens_res = client.get("/api/v1/shops/tokens")
         assert tokens_res.status_code == 200
-        assert tokens_res.json() == sorted(["dujiao-shop", "ldxp-shop", "structured-shop", "woo-shop"])
+        assert tokens_res.json() == sorted(["ldxp-shop", "structured-shop", "woo-shop"])
     finally:
         app.dependency_overrides.clear()

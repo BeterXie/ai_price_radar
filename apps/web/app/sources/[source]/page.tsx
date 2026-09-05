@@ -10,6 +10,7 @@ import { relativeTime } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 const SITE_URL = "https://ai.pricememo.cn";
+const DISABLED_SOURCES = new Set(["dujiao_next"]);
 
 // SEO metadata per source platform
 const SOURCE_META: Record<string, { title: string; description: string; h1: string; intro: string }> = {
@@ -44,6 +45,7 @@ export async function generateMetadata({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const [{ source }, rawParams] = await Promise.all([params, searchParams]);
+  if (DISABLED_SOURCES.has(source)) notFound();
   const meta = getMeta_for(source);
   const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}`;
   return {
@@ -72,6 +74,7 @@ export default async function SourcePage({
   searchParams: Promise<{ page?: string }>;
 }) {
   const { source } = await params;
+  if (DISABLED_SOURCES.has(source)) notFound();
   const { page: rawPage = "1" } = await searchParams;
   const page = parsePage(rawPage);
 

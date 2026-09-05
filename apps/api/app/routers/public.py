@@ -53,8 +53,10 @@ from ..services.catalog import (
     list_product_cards,
 )
 from ..services.source_platform import (
+    DISABLED_SOURCE_PLATFORMS,
     SOURCE_PLATFORM_LABELS,
     canonical_source_platform,
+    get_disabled_source_platforms,
     prepare_source_submission,
     source_platform_label,
     workflow_status,
@@ -497,17 +499,21 @@ def shop_detail(token: str, db: Session = Depends(get_db)) -> ShopDetail:
 def meta(db: Session = Depends(get_db)) -> MetaResponse:
     products = list(db.scalars(select(Product).where(Product.is_visible.is_(True))))
     current = get_current_snapshot(db)
+    disabled_platforms = get_disabled_source_platforms()
+    offer_conditions = [
+        Offer.active.is_(True),
+        Offer.approved.is_(True),
+        Shop.is_visible.is_(True),
+        Product.is_visible.is_(True),
+        Offer.observed_at >= datetime.now(timezone.utc) - timedelta(hours=settings.stale_offer_hours),
+    ]
+    if disabled_platforms:
+        offer_conditions.append(Shop.platform.notin_(disabled_platforms))
     offer_stmt = (
         select(Offer)
         .join(Shop, Offer.shop_id == Shop.id)
         .join(Product, Offer.product_id == Product.id)
-        .where(
-            Offer.active.is_(True),
-            Offer.approved.is_(True),
-            Shop.is_visible.is_(True),
-            Product.is_visible.is_(True),
-            Offer.observed_at >= datetime.now(timezone.utc) - timedelta(hours=settings.stale_offer_hours),
-        )
+        .where(*offer_conditions)
     )
     if current is not None:
         offer_stmt = offer_stmt.where(Offer.snapshot_id == current.id)
@@ -520,7 +526,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         source_platforms=[
             {"id": platform_id, "label": source_platform_label(platform_id)}
             for platform_id in source_platform_ids
-            if platform_id in SOURCE_PLATFORM_LABELS
+            if platform_id in SOURCE_PLATFORM_LABELS and platform_id not in disabled_platforms
         ],
         product_types=sorted({x.product_type for x in products}),
         tags=sorted({tag for offer in offers for tag in (offer.tags or [])}),

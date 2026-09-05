@@ -12,6 +12,7 @@ import { getProductGuide } from "@/lib/guides/registry";
 export const dynamic = "force-dynamic";
 
 const SITE_URL = "https://ai.pricememo.cn";
+const DISABLED_SOURCES = new Set(["dujiao_next"]);
 
 // Human-readable overrides per source+slug combination
 const PAGE_META: Record<string, Record<string, { title: string; description: string; h1: string }>> = {
@@ -67,6 +68,7 @@ export async function generateMetadata({
   params: Promise<{ source: string; slug: string }>;
 }): Promise<Metadata> {
   const { source, slug } = await params;
+  if (DISABLED_SOURCES.has(source)) notFound();
   const product = await getProduct(slug, `source_platform=${encodeURIComponent(source)}`);
   const pageMeta = getPageMeta(source, slug, product?.display_name ?? slug);
   const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}/products/${encodeURIComponent(slug)}`;
@@ -92,6 +94,7 @@ export default async function SourceProductPage({
   params: Promise<{ source: string; slug: string }>;
 }) {
   const { source, slug } = await params;
+  if (DISABLED_SOURCES.has(source)) notFound();
 
   // Validate source platform exists
   const apiMeta = await getMeta();

@@ -44,6 +44,18 @@ PLATFORM_ALIASES = {
     "merchant_feed": "merchant_json",
 }
 
+DISABLED_SOURCE_PLATFORMS: set[str] = {
+    "dujiao_next",
+}
+
+
+def get_disabled_source_platforms() -> set[str]:
+    return set(DISABLED_SOURCE_PLATFORMS)
+
+
+def is_source_platform_disabled(value: str) -> bool:
+    return canonical_source_platform(value) in DISABLED_SOURCE_PLATFORMS
+
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
