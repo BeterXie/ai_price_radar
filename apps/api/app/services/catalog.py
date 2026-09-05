@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 from statistics import median
 from typing import Any
 
-from sqlalchemy import case, func, not_, or_, select
+from sqlalchemy import and_, case, false, func, not_, or_, select
 from sqlalchemy.orm import Session, contains_eager
 
 from ..core.config import get_settings
@@ -97,7 +97,7 @@ def _raw_decimal(value: Any) -> Decimal | None:
         result = Decimal(str(value)).quantize(Decimal("0.01"))
     except (InvalidOperation, ValueError):
         return None
-    return result if result > 0 else None
+    return result if result.is_finite() and result > 0 else None
 
 
 def _fresh_cutoff() -> datetime:
@@ -135,15 +135,17 @@ def _base_public_offer_query(
     *,
     include_details: bool = True,
     snapshot: CatalogSnapshot | None = None,
+    cutoff: datetime | None = None,
 ):
     snapshot = snapshot or get_current_snapshot(db)
     disabled_platforms = get_disabled_source_platforms()
     conditions = [
         Offer.active.is_(True),
         Offer.approved.is_(True),
+        or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         Offer.product_id.is_not(None),
         Shop.is_visible.is_(True),
-        Offer.observed_at >= _fresh_cutoff(),
+        Offer.observed_at >= (cutoff or _fresh_cutoff()),
     ]
     if disabled_platforms:
         conditions.append(Shop.platform.notin_(disabled_platforms))
@@ -153,8 +155,7 @@ def _base_public_offer_query(
         .join(RawProduct, Offer.raw_product_id == RawProduct.id)
         .where(*conditions)
     )
-    if snapshot is not None:
-        stmt = stmt.where(Offer.snapshot_id == snapshot.id)
+    stmt = stmt.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
     if include_details:
         stmt = stmt.options(contains_eager(Offer.shop), contains_eager(Offer.raw_product))
     return stmt
@@ -268,12 +269,12 @@ def _offer_public(
     )
 
 
-def _median_key(offer: Offer) -> tuple[str, str]:
-    return offer.delivery_type or "unknown", offer.currency or PRICE_CURRENCY
+def _median_key(offer: Offer) -> tuple[int | None, str, str]:
+    return offer.product_id, offer.delivery_type or "unknown", offer.currency or PRICE_CURRENCY
 
 
-def _median_prices(offers: list[Offer], *, comparable_only: bool = False) -> dict[tuple[str, str], Decimal]:
-    grouped: dict[tuple[str, str], list[Decimal]] = defaultdict(list)
+def _median_prices(offers: list[Offer], *, comparable_only: bool = False) -> dict[tuple[int | None, str, str], Decimal]:
+    grouped: dict[tuple[int | None, str, str], list[Decimal]] = defaultdict(list)
     for offer in offers:
         if comparable_only and not offer.is_comparable:
             continue
@@ -286,7 +287,7 @@ def _median_prices(offers: list[Offer], *, comparable_only: bool = False) -> dic
     }
 
 
-def _is_trusted_offer(offer: Offer, medians: dict[tuple[str, str], Decimal]) -> bool:
+def _is_trusted_offer(offer: Offer, medians: dict[tuple[int | None, str, str], Decimal]) -> bool:
     return (
         offer.stock_status == "in_stock"
         and bool(offer.is_comparable)
@@ -294,13 +295,13 @@ def _is_trusted_offer(offer: Offer, medians: dict[tuple[str, str], Decimal]) -> 
     )
 
 
-def _trusted_offer_sort_key(offer: Offer, medians: dict[tuple[str, str], Decimal] | None = None):
+def _trusted_offer_sort_key(offer: Offer, medians: dict[tuple[int | None, str, str], Decimal] | None = None):
     return _offer_sort_key(offer)
 
 
 def _group_offers(
     offers: list[Offer],
-    medians: dict[tuple[str, str], Decimal] | None = None,
+    medians: dict[tuple[int | None, str, str], Decimal] | None = None,
 ) -> list[tuple[str, list[Offer]]]:
     grouped: dict[str, list[Offer]] = defaultdict(list)
     for offer in offers:
@@ -344,10 +345,13 @@ def _price_trend(
         select(OfferHistory, Offer)
         .join(Offer, OfferHistory.offer_id == Offer.id)
         .join(Shop, Offer.shop_id == Shop.id)
+        .join(CatalogSnapshot, Offer.snapshot_id == CatalogSnapshot.id)
         .where(
             Offer.product_id == product_id,
             Offer.approved.is_(True),
+            or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
             Shop.is_visible.is_(True),
+            CatalogSnapshot.published_at.is_not(None),
             OfferHistory.currency == currency,
             OfferHistory.observed_at >= cutoff,
         )
@@ -355,6 +359,9 @@ def _price_trend(
     )
     if source_platform:
         stmt = stmt.where(Shop.platform == source_platform)
+    disabled_platforms = get_disabled_source_platforms()
+    if disabled_platforms:
+        stmt = stmt.where(Shop.platform.notin_(disabled_platforms))
     rows = db.execute(stmt).all()
     grouped: dict[datetime, list[tuple[OfferHistory, Offer]]] = defaultdict(list)
     for history, offer in rows:
@@ -404,8 +411,9 @@ def get_product_group_page(
     if product is None:
         return [], 0, 0
     snapshot = snapshot or get_current_snapshot(db)
+    cutoff = _fresh_cutoff()
     stmt = _apply_offer_filters(
-        _base_public_offer_query(db, include_details=False, snapshot=snapshot)
+        _base_public_offer_query(db, include_details=False, snapshot=snapshot, cutoff=cutoff)
         .where(Offer.product_id == product_id),
         filters,
     )
@@ -416,13 +424,15 @@ def get_product_group_page(
     representative_ids = [group[0].id for _, group in selected]
     representatives: dict[int, Offer] = {}
     if representative_ids:
-        detail_stmt = _base_public_offer_query(db, snapshot=snapshot).where(Offer.id.in_(representative_ids))
+        detail_stmt = _base_public_offer_query(db, snapshot=snapshot, cutoff=cutoff).where(Offer.id.in_(representative_ids))
         representatives = {offer.id: offer for offer in db.scalars(detail_stmt).unique()}
     medians = _median_prices(offers, comparable_only=True)
 
     items: list[OfferGroupPublic] = []
     for fingerprint, group in selected:
-        representative = representatives[group[0].id]
+        representative = representatives.get(group[0].id)
+        if representative is None:
+            continue
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
         trusted = [offer for offer in group if _is_trusted_offer(offer, medians)]
         prices = [offer.price for offer in trusted if offer.currency == PRICE_CURRENCY and offer.price is not None]
@@ -467,8 +477,9 @@ def get_catalog_group_page(
     snapshot: CatalogSnapshot | None = None,
 ) -> tuple[list[OfferGroupPublic], int, int, int, int, int, datetime | None]:
     snapshot = snapshot or get_current_snapshot(db)
+    cutoff = _fresh_cutoff()
     stmt = (
-        _base_public_offer_query(db, include_details=False, snapshot=snapshot)
+        _base_public_offer_query(db, include_details=False, snapshot=snapshot, cutoff=cutoff)
         .join(Product, Offer.product_id == Product.id)
         .where(Product.is_visible.is_(True))
     )
@@ -517,7 +528,7 @@ def get_catalog_group_page(
     representative_ids = [group[0].id for _, _, group in selected]
     representatives: dict[int, Offer] = {}
     if representative_ids:
-        detail_stmt = _base_public_offer_query(db, snapshot=snapshot).where(Offer.id.in_(representative_ids))
+        detail_stmt = _base_public_offer_query(db, snapshot=snapshot, cutoff=cutoff).where(Offer.id.in_(representative_ids))
         representatives = {offer.id: offer for offer in db.scalars(detail_stmt).unique()}
     product_ids = {product_id for product_id, _, _ in selected}
     products = {
@@ -823,11 +834,17 @@ def get_group_offers(
     if product_id is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
+    fingerprint_condition = Offer.item_fingerprint == fingerprint
+    if fingerprint.startswith("offer-") and fingerprint[6:].isdigit():
+        fingerprint_condition = or_(
+            fingerprint_condition,
+            and_(Offer.item_fingerprint == "", Offer.id == int(fingerprint[6:])),
+        )
     stmt = _apply_offer_filters(
         _base_public_offer_query(db, snapshot=snapshot)
         .where(
             Offer.product_id == product_id,
-            Offer.item_fingerprint == fingerprint,
+            fingerprint_condition,
         ),
         filters,
     )
@@ -839,7 +856,11 @@ def get_group_offers(
 
 
 def get_offer_description(db: Session, offer_id: int) -> str | None:
-    offer = db.scalar(_base_public_offer_query(db).where(Offer.id == offer_id))
+    offer = db.scalar(
+        _base_public_offer_query(db)
+        .join(Product, Offer.product_id == Product.id)
+        .where(Offer.id == offer_id, Product.is_visible.is_(True))
+    )
     if offer is None:
         return None
     raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
@@ -866,6 +887,7 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         Offer.shop_id == shop.id,
         Offer.active.is_(True),
         Offer.approved.is_(True),
+        or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         Offer.product_id.is_not(None),
         Product.is_visible.is_(True),
         Offer.observed_at >= _fresh_cutoff(),
@@ -887,8 +909,7 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         .group_by(Product.id)
         .order_by(Product.display_name.asc(), Product.slug.asc())
     )
-    if snapshot is not None:
-        product_stmt = product_stmt.where(Offer.snapshot_id == snapshot.id)
+    product_stmt = product_stmt.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
     products = [
         ShopProduct(
             slug=slug,
@@ -928,6 +949,7 @@ def list_public_shop_tokens(db: Session) -> list[str]:
         Product.is_visible.is_(True),
         Offer.active.is_(True),
         Offer.approved.is_(True),
+        or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         Offer.observed_at >= _fresh_cutoff(),
     ]
     if disabled_platforms:
@@ -940,8 +962,7 @@ def list_public_shop_tokens(db: Session) -> list[str]:
         .distinct()
         .order_by(Shop.token.asc())
     )
-    if snapshot is not None:
-        stmt = stmt.where(Offer.snapshot_id == snapshot.id)
+    stmt = stmt.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
     return list(db.scalars(stmt))
 
 
@@ -974,6 +995,7 @@ def list_public_shops(
         Product.is_visible.is_(True),
         Offer.active.is_(True),
         Offer.approved.is_(True),
+        or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         Offer.observed_at >= cutoff,
     ]
     if disabled_platforms:
@@ -994,8 +1016,7 @@ def list_public_shops(
         .group_by(Shop.id)
     )
 
-    if snapshot is not None:
-        base = base.where(Offer.snapshot_id == snapshot.id)
+    base = base.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
 
     if platform_filter:
         base = base.where(Shop.platform == platform_filter)
@@ -1029,6 +1050,7 @@ def list_public_shops(
                 Offer.shop_id.in_(shop_ids),
                 Offer.active.is_(True),
                 Offer.approved.is_(True),
+                or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
                 Offer.observed_at >= cutoff,
                 Product.is_visible.is_(True),
             )

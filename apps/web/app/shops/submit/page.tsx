@@ -13,12 +13,7 @@ export const metadata: Metadata = {
   },
 };
 
-type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
-export default async function ShopSubmitPage({ searchParams }: { searchParams: SearchParams }) {
-  const params = await searchParams;
-  const rawState = Array.isArray(params.state) ? params.state.at(-1) : params.state;
-  const previewState = rawState === "success" ? "submitted" : rawState === "error" ? "error" : undefined;
+export default function ShopSubmitPage() {
   return (
     <main id="main-content" className="shell py-12 md:py-16" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="task-orientation eligibility-check structured-form explicit-feedback">
       <section className="shop-submit-layout">
@@ -48,7 +43,7 @@ export default async function ShopSubmitPage({ searchParams }: { searchParams: S
           <p className="mt-6 max-w-xl text-sm leading-6 text-[color:var(--muted)]">申请会先经过审核和读取验证。公开可访问、包含目标商品并能稳定核验的来源才会进入报价目录。</p>
         </div>
 
-        <ShopRequestForm previewState={previewState} />
+        <ShopRequestForm />
       </section>
     </main>
   );

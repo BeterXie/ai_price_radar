@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import urllib.parse
+from collections import deque
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -83,34 +84,33 @@ class GitHubAdapter(DiscoveryAdapter):
         if candidate_limit == 0:
             return
         submitted_origins: set[str] = set()
+        queue = deque((query, 1) for query in GITHUB_HOMEPAGE_QUERIES)
         pages_remaining = page_limit
-        for query in GITHUB_HOMEPAGE_QUERIES:
-            if pages_remaining <= 0:
-                break
-            stopped = False
-            for page in range(1, min(pages_remaining, page_limit) + 1):
-                params = {
-                    "q": query,
-                    "sort": "updated",
-                    "order": "desc",
-                    "per_page": per_page,
-                    "page": page,
-                }
-                url = GITHUB_API_ORIGIN + "/search/repositories?" + urllib.parse.urlencode(params)
-                headers = {
-                    "Accept": "application/vnd.github+json",
-                    "X-GitHub-Api-Version": "2022-11-28",
-                }
-                if budget.github_token:
-                    headers["Authorization"] = f"Bearer {budget.github_token}"
-                try:
-                    response = self.session.get(
-                        url,
-                        headers=headers,
-                        timeout=self.timeout,
-                        allow_redirects=False,
-                        stream=True,
-                    )
+        while queue and pages_remaining > 0:
+            query, page = queue.popleft()
+            pages_remaining -= 1
+            params = {
+                "q": query,
+                "sort": "updated",
+                "order": "desc",
+                "per_page": per_page,
+                "page": page,
+            }
+            url = GITHUB_API_ORIGIN + "/search/repositories?" + urllib.parse.urlencode(params)
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            }
+            if budget.github_token:
+                headers["Authorization"] = f"Bearer {budget.github_token}"
+            try:
+                with self.session.get(
+                    url,
+                    headers=headers,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                    stream=True,
+                ) as response:
                     chunks: list[bytes] = []
                     total = 0
                     for chunk in response.iter_content(chunk_size=64 * 1024):
@@ -120,44 +120,35 @@ class GitHubAdapter(DiscoveryAdapter):
                         if total > GITHUB_MAX_RESPONSE_BYTES:
                             raise ValueError("GitHub API response exceeds size limit")
                         chunks.append(chunk)
-                    response.close()
-                except (requests.RequestException, OSError, ValueError):
-                    stopped = True
-                    break
-                pages_remaining -= 1
-                if response.status_code in {403, 429}:
-                    stopped = True
-                    break
-                if response.status_code != 200:
-                    stopped = True
-                    break
-                try:
-                    document = json.loads(b"".join(chunks).decode("utf-8"))
-                    items = document.get("items")
-                except (UnicodeError, json.JSONDecodeError, AttributeError):
-                    stopped = True
-                    break
-                if not isinstance(items, list):
-                    stopped = True
-                    break
-                for item in items:
-                    if not isinstance(item, dict) or item.get("private") is True:
-                        continue
-                    homepage = normalize_github_homepage(item.get("homepage"))
-                    if homepage is None:
-                        continue
-                    origin = normalize_origin(homepage)
-                    if origin in submitted_origins:
-                        continue
-                    submitted_origins.add(origin)
-                    if len(submitted_origins) > candidate_limit:
-                        return
-                    repository = str(item.get("full_name") or "").strip()[:100]
-                    yield DiscoveredCandidate(
-                        url=homepage,
-                        discovered_by=f"github:{repository}" if repository else "github:homepage",
-                        platform_hint="unknown",
-                        matched_query=query,
-                    )
-            if stopped:
-                break
+            except (requests.RequestException, OSError, ValueError):
+                return
+            if response.status_code != 200:
+                return
+            try:
+                document = json.loads(b"".join(chunks).decode("utf-8"))
+                items = document.get("items")
+            except (UnicodeError, json.JSONDecodeError, AttributeError):
+                return
+            if not isinstance(items, list):
+                return
+            for item in items:
+                if not isinstance(item, dict) or item.get("private") is True:
+                    continue
+                homepage = normalize_github_homepage(item.get("homepage"))
+                if homepage is None:
+                    continue
+                origin = normalize_origin(homepage)
+                if origin in submitted_origins:
+                    continue
+                submitted_origins.add(origin)
+                repository = str(item.get("full_name") or "").strip()[:100]
+                yield DiscoveredCandidate(
+                    url=homepage,
+                    discovered_by=f"github:{repository}" if repository else "github:homepage",
+                    platform_hint="unknown",
+                    matched_query=query,
+                )
+                if len(submitted_origins) >= candidate_limit:
+                    return
+            if len(items) >= per_page:
+                queue.append((query, page + 1))

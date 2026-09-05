@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, case, func, nullslast, or_, select
+from sqlalchemy import and_, case, cast, func, nullslast, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -523,6 +523,8 @@ def update_source_intake_platform(
     intake = _locked_source_intake(db, intake_id)
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
+    if intake.status not in {"pending_review", "validation_failed", "no_products"}:
+        raise HTTPException(status_code=409, detail=f"cannot change platform in status {intake.status}")
     platform = payload.platform
     intake.source_type = platform
     intake.detected_platform = platform
@@ -654,17 +656,18 @@ def retry_failed_intake_notifications(intake_id: int, db: Session = Depends(get_
 
 @router.post("/notification-outbox/{outbox_id}/retry", response_model=NotificationOutboxOut)
 def retry_notification(outbox_id: int, db: Session = Depends(get_db)) -> NotificationOutbox:
-    row = db.get(NotificationOutbox, outbox_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="notification not found")
-    if row.status != "sent":
-        row.status = "pending"
-        row.attempt_count = 0
-        row.next_attempt_at = utcnow()
-        row.last_error = ""
-        row.sent_at = None
-        db.commit()
-    return row
+    result = db.execute(
+        update(NotificationOutbox)
+        .where(NotificationOutbox.id == outbox_id, NotificationOutbox.status == "failed")
+        .values(status="pending", attempt_count=0, next_attempt_at=utcnow(), last_error="", sent_at=None)
+    )
+    if result.rowcount == 0:
+        row = db.get(NotificationOutbox, outbox_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="notification not found")
+        raise HTTPException(status_code=409, detail=f"cannot retry notification in status {row.status}")
+    db.commit()
+    return db.get(NotificationOutbox, outbox_id)
 
 
 @router.get("/source-discovery/runs", response_model=list[SourceDiscoveryRunOut])
@@ -710,7 +713,13 @@ def source_candidates(
     if detected_platform:
         conditions.append(SourceCandidate.detected_platform == detected_platform)
     if discovered_by:
-        conditions.append(SourceCandidate.discovery_sources.contains([discovered_by]))
+        if db.get_bind().dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import JSONB
+
+            conditions.append(cast(SourceCandidate.discovery_sources, JSONB).contains([discovered_by]))
+        else:
+            members = func.json_each(SourceCandidate.discovery_sources).table_valued("value")
+            conditions.append(select(1).select_from(members).where(members.c.value == discovered_by).exists())
     if ai_hit is not None:
         conditions.append(
             SourceCandidate.ai_product_count > 0 if ai_hit else SourceCandidate.ai_product_count == 0

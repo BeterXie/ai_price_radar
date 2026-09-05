@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -25,6 +25,15 @@ from app.services.catalog import (
 )
 
 
+def _publish_offers(db: Session) -> None:
+    snapshot = CatalogSnapshot(source="test", published_at=datetime.now(timezone.utc))
+    db.add(snapshot)
+    db.flush()
+    for offer in db.scalars(select(Offer)):
+        offer.snapshot_id = snapshot.id
+    db.commit()
+
+
 def test_original_description_is_converted_to_safe_plain_text():
     source = '<p>第一行<br>第二行 &amp; 说明</p><script>alert("x")</script><style>hidden</style>'
     assert _plain_text(source) == "第一行\n第二行 & 说明"
@@ -33,6 +42,7 @@ def test_original_description_is_converted_to_safe_plain_text():
 def test_invalid_market_price_is_not_exposed():
     assert _raw_decimal("199") == Decimal("199.00")
     assert _raw_decimal("联系店主") is None
+    assert _raw_decimal("NaN") is None
 
 
 def test_product_offers_are_returned_in_pages():
@@ -68,7 +78,7 @@ def test_product_offers_are_returned_in_pages():
                 source_url="https://example.com/offer",
                 observed_at=now,
             ))
-        db.commit()
+        _publish_offers(db)
 
         detail = get_product_detail(db, product.slug)
         assert detail is not None
@@ -120,7 +130,7 @@ def test_public_shop_tokens_only_include_visible_fresh_approved_offers():
         add_shop("hidden", visible=False)
         add_shop("unapproved", approved=False)
         add_shop("stale", observed_at=now - timedelta(days=30))
-        db.commit()
+        _publish_offers(db)
 
         assert list_public_shop_tokens(db) == ["public-a", "public-b"]
 
@@ -249,7 +259,7 @@ def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
             db.add(offer)
             db.flush()
             offer_ids.append(offer.id)
-        db.commit()
+        _publish_offers(db)
 
         detail = get_product_detail(db, product.slug)
         assert detail is not None
@@ -301,7 +311,7 @@ def test_warranty_scope_filters_groups_and_expanded_offers():
                 source_url=shop.source_url,
                 observed_at=now,
             ))
-        db.commit()
+        _publish_offers(db)
 
         covered_groups, covered_total, _ = get_product_group_page(
             db,
@@ -386,7 +396,7 @@ def test_catalog_groups_keep_products_separate_and_filter_platforms():
             source_url=extra_shop.source_url,
             observed_at=now,
         ))
-        db.commit()
+        _publish_offers(db)
 
         groups, total, offer_total, in_stock_count, comparable_count, trusted_count, _ = get_catalog_group_page(
             db,
@@ -456,7 +466,7 @@ def test_trusted_price_excludes_extreme_comparable_outlier():
                 source_url=shop.source_url,
                 observed_at=now,
             ))
-        db.commit()
+        _publish_offers(db)
 
         cards = list_product_cards(db, product_slug=product.slug)
         assert len(cards) == 1
@@ -520,7 +530,7 @@ def test_catalog_aggregates_and_filters_do_not_mix_currencies():
                 stock_status="in_stock",
                 observed_at=now,
             ))
-        db.commit()
+        _publish_offers(db)
 
         card = list_product_cards(db, product_slug=product.slug)[0]
         assert card.price_currency == "CNY"
@@ -564,7 +574,7 @@ def test_in_stock_low_price_offers_sorted_at_front_before_higher_prices():
         db.flush()
 
         # Create shops and offers: one expensive (80), one normal (50), one discount/short-term (27.60)
-        for index, price in enumerate((Decimal("80.00"), Decimal("50.00"), Decimal("27.60"))):
+        for index, price in enumerate((Decimal("100.00"), Decimal("80.00"), Decimal("27.60"))):
             shop = Shop(token=f"shop-{index}", name=f"Shop {index}", source_url=f"https://example.com/{index}")
             db.add(shop)
             db.flush()
@@ -589,14 +599,14 @@ def test_in_stock_low_price_offers_sorted_at_front_before_higher_prices():
                 source_url=shop.source_url,
                 observed_at=now,
             ))
-        db.commit()
+        _publish_offers(db)
 
         detail = get_product_detail(db, product.slug)
         assert detail is not None
         assert len(detail.offer_groups) == 3
-        # Lowest price (27.60) must be first, followed by 50.00, then 80.00
+        # The low-price warning must not move a valid in-stock offer behind higher prices.
         assert detail.offer_groups[0].lowest_price == Decimal("27.60")
         assert detail.offer_groups[0].representative.price == Decimal("27.60")
-        assert detail.offer_groups[1].representative.price == Decimal("50.00")
-        assert detail.offer_groups[2].representative.price == Decimal("80.00")
-
+        assert detail.offer_groups[0].representative.is_trusted_price is False
+        assert detail.offer_groups[1].representative.price == Decimal("80.00")
+        assert detail.offer_groups[2].representative.price == Decimal("100.00")

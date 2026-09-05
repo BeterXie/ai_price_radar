@@ -26,7 +26,7 @@ class DiscoveryBudget:
     max_cc_indexes: int = 2
     max_cc_urls: int = 500
     max_16688_source_pages: int = 10
-    github_token: str = ""
+    github_token: str = field(default="", repr=False)
 
 
 @dataclass(slots=True)

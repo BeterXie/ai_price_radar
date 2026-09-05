@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import urllib.parse
-import xml.etree.ElementTree as ElementTree
 from collections import deque
+
+from defusedxml import ElementTree
 
 from price_radar_http import PinnedHTTPSClient
 
@@ -14,20 +15,19 @@ DEFAULT_MAX_PAGES = 8
 
 def sitemap_locations(body: bytes) -> tuple[str, list[str]]:
     """Parse a sitemap body; rejects DTD/entity declarations and non-sitemap XML."""
-    lowered = body.lower()
-    if b"<!doctype" in lowered or b"<!entity" in lowered:
-        raise ValueError("sitemap must not contain DTD or entity declarations")
     try:
-        root = ElementTree.fromstring(body)
+        root = ElementTree.fromstring(body, forbid_dtd=True)
     except ElementTree.ParseError as exc:
         raise ValueError("sitemap is invalid XML") from exc
     kind = root.tag.rsplit("}", 1)[-1].casefold()
     if kind not in {"urlset", "sitemapindex"}:
         raise ValueError("source is not a sitemap or sitemap index")
+    namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+    child = "url" if kind == "urlset" else "sitemap"
     locations = [
         str(node.text or "").strip()
-        for node in root.iter()
-        if node.tag.rsplit("}", 1)[-1].casefold() == "loc" and str(node.text or "").strip()
+        for node in root.findall(f"{namespace}{child}/{namespace}loc")
+        if str(node.text or "").strip()
     ]
     return kind, locations
 
@@ -66,6 +66,8 @@ def product_page_urls(
             preloaded = None
         else:
             response = client.get(current_url, accept="application/xml,text/xml;q=0.9,*/*;q=0.1")
+        if response.status != 200:
+            raise ValueError(f"sitemap returned HTTP {response.status}")
         kind, locations = sitemap_locations(response.body)
         if kind == "sitemapindex":
             if depth >= max_depth and locations:

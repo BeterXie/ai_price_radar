@@ -130,6 +130,21 @@ def test_upsert_normalizes_and_deduplicates_candidates(client):
     assert duplicate.json()["candidate_id"] == first.json()["candidate_id"]
 
 
+@pytest.mark.parametrize(
+    ("hint", "first_url", "second_url"),
+    [
+        ("ldxp", "https://pay.ldxp.cn/shop/A", "https://pay.ldxp.cn/shop/B"),
+        ("woocommerce", "https://shop.example:8443/products/a", "https://shop.example:9443/products/a"),
+    ],
+)
+def test_distinct_shop_paths_and_origin_ports_do_not_deduplicate(client, hint, first_url, second_url):
+    first = upsert(client, first_url, hint=hint)
+    second = upsert(client, second_url, hint=hint)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["is_new"] is second.json()["is_new"] is True
+    assert first.json()["candidate_id"] != second.json()["candidate_id"]
+
+
 def test_schema_org_candidate_keeps_exact_entry_url(client):
     url = "https://shop.example.com/product-sitemap.xml"
     response = upsert(client, url, hint="schema_org")
@@ -405,6 +420,25 @@ def test_invalid_result_payloads_are_rejected(client):
     ).status_code == 422
 
 
+@pytest.mark.parametrize("platform", ["woocommerce", "dujiao_next"])
+def test_origin_platform_rejects_non_url_source_key(client, engine, platform):
+    upsert(client, "https://origin-key.example.com", hint=platform)
+    task = claim(client)[0]
+    response = report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        detected_platform=platform,
+        detected_source_url="https://origin-key.example.com",
+        detected_source_key="merchant-token",
+    )
+    assert response.status_code == 422
+    with Session(engine) as db:
+        candidate = db.get(SourceCandidate, task["candidate_id"])
+        assert candidate.status == "detecting"
+        assert candidate.lease_expires_at is not None
+
+
 def test_promote_is_idempotent_and_does_not_duplicate_intakes(client, engine):
     upsert(client, "https://idem.example.com", hint="woocommerce")
     task = claim(client)[0]
@@ -424,6 +458,7 @@ def test_promote_is_idempotent_and_does_not_duplicate_intakes(client, engine):
 
 def test_admin_candidate_actions_and_filters(client):
     upsert(client, "https://admin-one.example.com", hint="dujiao_next", source="bing")
+    upsert(client, "https://admin-one.example.com/other", hint="dujiao_next", source="github:owner/repo")
     upsert(client, "https://admin-two.example.com", hint="schema_org", source="seed")
     rows = client.get(
         "/api/v1/admin/source-candidates",
@@ -433,6 +468,12 @@ def test_admin_candidate_actions_and_filters(client):
     assert len(rows) == 1
     assert rows[0]["canonical_url"] == "https://admin-one.example.com/"
     candidate_id = rows[0]["id"]
+    github_rows = client.get(
+        "/api/v1/admin/source-candidates",
+        headers=ADMIN_HEADERS,
+        params={"discovered_by": "github:owner/repo"},
+    ).json()
+    assert [row["id"] for row in github_rows] == [candidate_id]
     detail = client.get(f"/api/v1/admin/source-candidates/{candidate_id}", headers=ADMIN_HEADERS)
     assert detail.status_code == 200
     retried = client.post(
@@ -525,23 +566,51 @@ def test_discovery_run_accepts_16688_adapter(client):
     assert created.status_code == 200
 
 
-def test_discovery_run_funnel_counts_follow_candidate_results(client, engine):
+@pytest.mark.parametrize("reuse_pending", [False, True])
+def test_discovery_run_funnel_counts_follow_actual_intake_approval(client, engine, reuse_pending):
+    source_url = "https://funnel-one.example.com"
+    existing_id = None
+    if reuse_pending:
+        with Session(engine) as db:
+            intake = SourceIntake(
+                source_type="woocommerce",
+                source_key=source_url,
+                source_url=source_url,
+                contact_email="",
+                status="pending_review",
+            )
+            db.add(intake)
+            db.commit()
+            existing_id = intake.id
     run_id = client.post(
         "/api/v1/internal/source-discovery/runs",
         headers=DISCOVERY_HEADERS,
         json={"trigger": "manual", "adapters": ["bing"]},
     ).json()["run_id"]
-    upsert(client, "https://funnel-one.example.com", hint="woocommerce", run_id=run_id)
+    upsert(client, source_url, hint="woocommerce", run_id=run_id)
     task = claim(client)[0]
-    reported = report(client, task["candidate_id"], task["attempt_count"])
+    reported = report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        detected_source_url=source_url,
+        detected_source_key=source_url,
+    )
     assert reported.json()["status"] == "promoted"
     with Session(engine) as db:
         candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == task["candidate_id"]))
         assert candidate.discovery_run_id == run_id
+        intake = db.get(SourceIntake, candidate.promoted_intake_id)
+        assert intake.status == ("pending_review" if reuse_pending else "approved")
+        if reuse_pending:
+            assert intake.id == existing_id
+            assert intake.approved_at is None
+            assert len(list(db.scalars(select(SourceIntake)))) == 1
     run = client.get(f"/api/v1/admin/source-discovery/runs/{run_id}", headers=ADMIN_HEADERS).json()
     assert run["detected_count"] == 1
     assert run["ai_matched_count"] == 1
-    assert run["auto_approved_count"] == 1
+    assert run["auto_approved_count"] == (0 if reuse_pending else 1)
+    assert run["pending_review_count"] == (1 if reuse_pending else 0)
     assert run["promoted_intake_count"] == 1
     assert run["platform_stats"] == {"woocommerce": 1}
 
@@ -567,25 +636,50 @@ def test_discovery_run_validation_failure_is_counted(client, engine):
     assert run["detected_count"] == 0
 
 
-def test_recovery_task_repromotes_orphaned_candidates(client, engine):
+def test_recovery_limit_skips_blocked_candidates_and_reuses_orphaned_intake(client, engine):
+    with Session(engine) as db:
+        db.add(SourceIntake(
+            source_type="woocommerce",
+            source_key="https://blocked.example.com",
+            source_url="https://blocked.example.com",
+            contact_email="",
+            status="rejected",
+        ))
+        for name, platform in [("unsupported", "other"), ("blocked", "woocommerce")]:
+            source_url = f"https://{name}.example.com"
+            db.add(SourceCandidate(
+                candidate_key=name,
+                discovered_url=source_url,
+                canonical_url=source_url,
+                detected_platform=platform,
+                detected_source_key=source_url,
+                detected_source_url=source_url,
+                status="pending_review",
+                ai_product_count=1,
+            ))
+        db.commit()
     upsert(client, "https://orphan.example.com", hint="woocommerce")
     task = claim(client)[0]
     report(client, task["candidate_id"], task["attempt_count"])
     with Session(engine) as db:
         candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == task["candidate_id"]))
+        original_intake_id = candidate.promoted_intake_id
+        original_intake_count = len(list(db.scalars(select(SourceIntake))))
         candidate.status = "auto_approved"
         candidate.promoted_intake_id = None
         db.commit()
     recovered = client.post(
         "/api/v1/admin/source-candidates/recover",
         headers=ADMIN_HEADERS,
+        params={"limit": 1},
     )
     assert recovered.status_code == 200
     assert recovered.json()["recovered"] == 1
     with Session(engine) as db:
         candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == task["candidate_id"]))
         assert candidate.status == "promoted"
-        assert candidate.promoted_intake_id is not None
+        assert candidate.promoted_intake_id == original_intake_id
+        assert len(list(db.scalars(select(SourceIntake)))) == original_intake_count
         intake = db.scalar(select(SourceIntake).where(SourceIntake.id == candidate.promoted_intake_id))
         assert intake.status == "approved"
 

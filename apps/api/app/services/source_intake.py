@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
+from ..core.email import normalize_email
 from ..models import NotificationOutbox, SourceIntake
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,7 @@ def sanitize_header_value(value: str, max_length: int = 200) -> str:
 
 def sanitize_recipient_email(value: str) -> str:
     """Validate and sanitize recipient email to prevent header injection or open relay."""
-    cleaned = str(value or "").strip()
-    if any(ch in cleaned for ch in ("\r", "\n", "\t", "\0", " ", ",", ";", '"', "'", "<", ">")):
-        raise ValueError(f"Invalid email recipient: {cleaned!r}")
-    if not re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", cleaned):
-        raise ValueError(f"Invalid email recipient format: {cleaned!r}")
-    return cleaned
+    return normalize_email(value)
 
 
 def enqueue_outbox(
@@ -93,7 +89,8 @@ def enqueue_outbox(
 ) -> None:
     safe_recipient = sanitize_recipient_email(recipient)
     safe_subject = sanitize_header_value(subject)
-    safe_dedupe_key = sanitize_header_value(dedupe_key, max_length=255)
+    if not dedupe_key or len(dedupe_key) > 300 or re.search(r"[\x00-\x1f\x7f]", dedupe_key):
+        raise ValueError("notification dedupe key must be non-empty and at most 300 characters")
     _insert_outbox_row(
         db,
         {
@@ -105,7 +102,7 @@ def enqueue_outbox(
             "attempt_count": 0,
             "next_attempt_at": utcnow(),
             "last_error": "",
-            "dedupe_key": safe_dedupe_key,
+            "dedupe_key": dedupe_key,
         },
     )
 
@@ -158,6 +155,10 @@ def enqueue_transition_notification(
     text_body: str,
     attempt: int | None = None,
 ) -> None:
+    # Discovery-created intakes have no applicant address; admin notifications
+    # still provide the audit trail, while an empty recipient cannot be queued.
+    if not str(intake.contact_email or "").strip():
+        return
     suffix = f":attempt-{attempt}" if attempt is not None else ""
     enqueue_outbox(
         db,

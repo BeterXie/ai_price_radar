@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.46] - 2026-09-05
+
+### Fixed
+
+- Hardened admin and worker authentication, email delivery, source-intake state transitions, and notification retries.
+- Prevented hidden, stale, unpublished, disabled-platform, non-finite-price, and cross-product data from leaking into public catalog and history responses.
+- Tightened classifier, discovery, JSON-LD/XML parsing, crawler budgets, and pipeline input validation without re-enabling disabled Dujiao-Next publication.
+- Fixed Web API error handling, watchlist bounds, public-source URL checks, mobile navigation, and visible focus states.
+- Guarded PostgreSQL restore database names against identifier truncation.
+
 ## [3.7.41] - 2026-09-05
 
 ### Fixed

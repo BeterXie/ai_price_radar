@@ -5,7 +5,6 @@ import json
 import re
 import time
 import urllib.parse
-import xml.etree.ElementTree as ElementTree
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -13,6 +12,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from currencies import normalize_currency
@@ -167,20 +168,21 @@ def _local_name(tag: str) -> str:
 
 
 def _sitemap_locations(body: bytes) -> tuple[str, list[str]]:
-    lowered = body.lower()
-    if b"<!doctype" in lowered or b"<!entity" in lowered:
-        raise ValueError("Schema.org sitemap must not contain DTD or entity declarations")
     try:
-        root = ElementTree.fromstring(body)
+        root = ElementTree.fromstring(body, forbid_dtd=True)
+    except DefusedXmlException as exc:
+        raise ValueError("Schema.org sitemap must not contain DTD or entity declarations") from exc
     except ElementTree.ParseError as exc:
         raise ValueError("Schema.org sitemap is invalid XML") from exc
     kind = _local_name(root.tag)
     if kind not in {"sitemapindex", "urlset"}:
         raise ValueError("Schema.org source is not a sitemap or sitemap index")
+    namespace = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+    child = "url" if kind == "urlset" else "sitemap"
     locations = [
         str(element.text or "").strip()
-        for element in root.iter()
-        if _local_name(element.tag) == "loc" and str(element.text or "").strip()
+        for element in root.findall(f"{namespace}{child}/{namespace}loc")
+        if str(element.text or "").strip()
     ]
     return kind, locations
 
@@ -324,9 +326,11 @@ def _jsonld_nodes(body: bytes) -> list[dict[str, Any]]:
     for script in parser.documents:
         try:
             document = json.loads(script)
-            nodes.extend(_walk_jsonld(document))
-        except (json.JSONDecodeError, RecursionError, TypeError, ValueError):
+        except (json.JSONDecodeError, TypeError):
             continue
+        except RecursionError as exc:
+            raise ValueError("Schema.org page exceeds JSON-LD nesting limit") from exc
+        nodes.extend(_walk_jsonld(document))
         if len(nodes) > MAX_JSONLD_NODES:
             raise ValueError("Schema.org page exceeds JSON-LD node limit")
     return nodes
@@ -364,6 +368,8 @@ def _amount(value: object) -> tuple[Decimal, str] | None:
     except (InvalidOperation, ValueError):
         return None
     if not amount.is_finite() or amount < 0:
+        return None
+    if amount > Decimal("9999999999.99") or max(1, amount.adjusted() + 1) + max(0, -amount.as_tuple().exponent) > 64:
         return None
     return amount, format(amount, "f")
 
@@ -490,8 +496,14 @@ def _product_key(product: dict[str, Any], product_url: str) -> tuple[str, str]:
     for field in ("sku", "productID", "mpn", "gtin", "gtin8", "gtin12", "gtin13", "gtin14"):
         value = _text(product.get(field))
         if value:
-            return f"{field}:{value}"[:300], value if field == "sku" else ""
-    return f"url:{product_url}"[:300], ""
+            key = f"{field}:{value}"
+            if len(key) > 300:
+                raise ValueError("Schema.org product identifier exceeds 300 characters")
+            return key, value if field == "sku" else ""
+    key = f"url:{product_url}"
+    if len(key) > 300:
+        raise ValueError("Schema.org product identifier exceeds 300 characters")
+    return key, ""
 
 
 def _record(

@@ -10,6 +10,7 @@ ENV_FILE = ROOT / ".env"
 PLACEHOLDERS = {
     "change-me-now",
     "replace-with-a-long-random-string",
+    "replace-with-at-least-32-random-bytes",
     "replace-with-a-separate-intake-worker-key",
     "replace-with-a-separate-detector-worker-key",
     "replace-with-a-separate-discovery-worker-key",
@@ -17,7 +18,12 @@ PLACEHOLDERS = {
     "re_xxxxxxxxx",
     "onboarding@resend.dev",
 }
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+EMAIL_RE = re.compile(rf"[A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*@(?:{EMAIL_LABEL}\.)+{EMAIL_LABEL}")
+
+
+def is_email(value: str) -> bool:
+    return len(value) <= 200 and len(value.partition("@")[0]) <= 64 and EMAIL_RE.fullmatch(value) is not None
 
 
 def load_env(path: Path) -> Dict[str, str]:
@@ -68,11 +74,11 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
         errors.append(
             "DISCOVERY_WORKER_KEY must be different from ADMIN_API_KEY, INTAKE_WORKER_KEY and DETECTOR_WORKER_KEY"
         )
-    admin_emails = [value.strip() for value in intake_admin_emails.split(",") if value.strip()]
+    admin_emails = [value.strip() for value in intake_admin_emails.replace(";", ",").split(",") if value.strip()]
     if (
         not admin_emails
         or any(value in PLACEHOLDERS for value in admin_emails)
-        or any(EMAIL_RE.fullmatch(value) is None for value in admin_emails)
+        or any(not is_email(value) for value in admin_emails)
     ):
         errors.append("SHOP_INTAKE_ADMIN_EMAILS must contain a real administrator address")
     resend_requested = bool(resend_api_key or resend_from)
@@ -80,12 +86,12 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
     if resend_requested:
         if not resend_api_key or resend_api_key in PLACEHOLDERS or not resend_api_key.startswith("re_"):
             errors.append("RESEND_API_KEY must contain a real Resend API key")
-        if not resend_from or resend_from in PLACEHOLDERS or EMAIL_RE.fullmatch(resend_from) is None:
+        if not resend_from or resend_from in PLACEHOLDERS or not is_email(resend_from):
             errors.append("RESEND_FROM must use a verified sender address")
     elif smtp_requested:
         if not smtp_host or smtp_host in PLACEHOLDERS or any(character.isspace() for character in smtp_host):
             errors.append("SMTP_HOST must be configured for production mail delivery")
-        if not smtp_from or smtp_from in PLACEHOLDERS or EMAIL_RE.fullmatch(smtp_from) is None:
+        if not smtp_from or smtp_from in PLACEHOLDERS or not is_email(smtp_from):
             errors.append("SMTP_FROM must be a real sender address")
     else:
         errors.append("Configure RESEND_API_KEY/RESEND_FROM or SMTP_HOST/SMTP_FROM for production mail delivery")

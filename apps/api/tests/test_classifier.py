@@ -23,6 +23,8 @@ def test_plus_excludes_api():
         ("GTP Pro 5x 菲区充值", "chatgpt-pro-5x"),
         ("PRO 20X 官方充值月卡", "chatgpt-pro-20x"),
         ("G Pro X20 官方充值月卡", "chatgpt-pro-20x"),
+        ("G Pro 5倍官方充值月卡", "chatgpt-pro-5x"),
+        ("G Pro X200 官方充值月卡", "chatgpt-pro"),
         ("G Plus 官方充值", "chatgpt-plus"),
         ("Gro Heavy 速刷成品号", "grok-super"),
         ("Supergro 30刀月卡", "grok-super"),
@@ -72,6 +74,10 @@ def test_16688_alias_can_use_description_context():
         ("ChatGPT Pro x 20 会员", "chatgpt-pro-20x"),
         ("GPT Pro20× 一个月", "chatgpt-pro-20x"),
         ("ChatGPT Pro 200刀会员", "chatgpt-pro"),
+        ("ChatGPT Pro 5天账号", "chatgpt-pro"),
+        ("ChatGPT Pro 20刀账号", "chatgpt-pro"),
+        ("ChatGPT Pro 500x账号", "chatgpt-pro"),
+        ("ChatGPT Pro 5倍成品号", "chatgpt-pro-5x"),
         ("GPT Plus 官方充值", "chatgpt-plus"),
         ("ChatGPT Go 正规充值", "chatgpt-go"),
         ("一个月 GPT Go会员 美区订阅", "chatgpt-go"),
@@ -84,6 +90,11 @@ def test_openai_mainstream_tiers_are_distinct(title: str, slug: str):
 def test_explicit_title_tier_wins_over_a_wrong_source_category():
     result = classify_product("GPT Plus 官方充值", "GPT Pro 20X 充值", "Pro 20x 专区")
     assert result.slug == "chatgpt-plus"
+
+
+@pytest.mark.parametrize("price", [None, 15.00])
+def test_explicit_title_plus_exclusion_wins_without_a_low_price(price):
+    assert classify_product("ChatGPT Plus账号 不含Plus", "GPT Plus", price=price).slug == "chatgpt-account"
 
 
 def test_go_title_is_not_swallowed_by_a_combined_team_category():
@@ -135,6 +146,10 @@ def test_openai_description_can_refine_an_already_identified_product():
         ("小红书自动化工具月卡", "自动化工具"),
         ("StyleMe Chrome插件 API额度", "浏览器插件"),
         ("百度网盘 Plus 成品号", "网盘账号"),
+        ("Netflix Plus账号", ""),
+        ("Netflix Plus账号", "GPT Plus"),
+        ("Spotify Plus会员", ""),
+        ("WPS Plus账号", ""),
         ("多模型 API KEY", "GPT | Gemini | Claude | Grok"),
         ("Codex/Claude 官方中转API 50美元", "ChatGPT"),
         ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free"),
@@ -217,6 +232,23 @@ def test_stock_normalization():
 
 
 @pytest.mark.parametrize(
+    ("value", "count", "expected"),
+    [
+        ("unavailable", 0, "unavailable"),
+        ("not available", 5, "unavailable"),
+        ("not in stock", 5, "out_of_stock"),
+        ("not purchasable", None, "unavailable"),
+        ("没有货", 0, "out_of_stock"),
+        ("available", 0, "in_stock"),
+        ("low stock", 1, "in_stock"),
+        ("unlimited", None, "in_stock"),
+    ],
+)
+def test_stock_status_negations_take_priority(value, count, expected):
+    assert normalize_stock(value, count) == expected
+
+
+@pytest.mark.parametrize(
     ("title", "category", "slug", "delivery_type", "comparable"),
     [
         ("美区成品号，带接码链接，不是Plus", "GPT-plus半成品号", "chatgpt-account", "finished_account", True),
@@ -250,10 +282,37 @@ def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
         ("X Premium 3个月官方直充", "three_months"),
         ("X Premium 六个月全程质保", "six_months"),
         ("X Premium+ 12个月官方直充", "one_year"),
+        ("X Premium 11个月官方直充", "unknown"),
+        ("X Premium 17天官方直充", "unknown"),
+        ("X Premium 124小时官方直充", "unknown"),
+        ("X Premium 1个月官方直充", "one_month"),
+        ("X Premium 7天官方直充", "one_week"),
+        ("X Premium 24小时官方直充", "one_day"),
     ],
 )
 def test_x_premium_service_periods(title: str, period: str):
     assert classify_product(title).service_period == period
+
+
+@pytest.mark.parametrize(
+    ("duration", "expected"),
+    [
+        ("11小时", "unknown"),
+        ("13天", "unknown"),
+        ("17天", "unknown"),
+        ("124小时", "unknown"),
+        ("11个月", "unknown"),
+        ("1小时", "one_hour"),
+        ("24小时", "one_day"),
+        ("3天", "three_days"),
+        ("7天", "seven_days"),
+        ("30天", "subscription_term"),
+        ("1个月", "subscription_term"),
+    ],
+)
+def test_warranty_quantity_boundaries(duration, expected):
+    assert classify_product(f"ChatGPT Plus 账号 质保{duration}").warranty == expected
+    assert classify_product(f"ChatGPT Plus 账号 {duration}质保").warranty == expected
 
 
 def test_title_period_wins_over_fulfillment_time_in_description():
@@ -370,6 +429,4 @@ def test_chatgpt_plus_low_price_safeguard():
         price=1.20,
     )
     assert res7.slug != "chatgpt-plus"
-
-
 

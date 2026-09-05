@@ -38,9 +38,18 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
   const max = Math.max(...priceValues);
   const width = 760;
   const height = 190;
-  const lowest = recent.map((point) => point.trusted_lowest_price === null ? null : Number(point.trusted_lowest_price));
-  const medians = recent.map((point) => point.median_price === null ? null : Number(point.median_price));
-  const stockMax = Math.max(1, ...recent.map((point) => point.in_stock_count));
+  const lowest = recent.map((point) => {
+    if (point.trusted_lowest_price === null) return null;
+    const value = Number(point.trusted_lowest_price);
+    return Number.isFinite(value) ? value : null;
+  });
+  const medians = recent.map((point) => {
+    if (point.median_price === null) return null;
+    const value = Number(point.median_price);
+    return Number.isFinite(value) ? value : null;
+  });
+  const stockValues = recent.map((point) => Number.isFinite(point.in_stock_count) && point.in_stock_count >= 0 ? Math.floor(point.in_stock_count) : 0);
+  const stockMax = Math.max(1, ...stockValues);
   const firstDate = new Date(recent[0].bucket_at).toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
   const lastDate = new Date(recent.at(-1)!.bucket_at).toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
   const lastLowest = [...lowest].reverse().find((value): value is number => value !== null);
@@ -62,7 +71,7 @@ export function PriceHistory({ points }: { points: PriceTrendPoint[] }) {
           {recent.map((point, index) => {
             const barWidth = Math.max(2, width / recent.length - 2);
             const x = recent.length > 1 ? index * (width / (recent.length - 1)) - barWidth / 2 : 0;
-            const barHeight = Math.max(2, (point.in_stock_count / stockMax) * 34);
+            const barHeight = Math.max(2, (stockValues[index] / stockMax) * 34);
             return <rect key={`${point.bucket_at}-stock`} x={Math.max(0, x)} y={height + 36 - barHeight} width={barWidth} height={barHeight} fill="var(--accent)" opacity="0.9" />;
           })}
           <path d={linePath(medians, min, max, width, height)} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="7 6" opacity="0.45" vectorEffect="non-scaling-stroke" />

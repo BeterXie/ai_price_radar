@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -94,11 +94,12 @@ def upsert_source_candidate(
             matched_query=payload.matched_query,
             run_id=payload.run_id,
         )
+        db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except IntegrityError:
+        db.rollback()
         raise HTTPException(status_code=409, detail="concurrent candidate upsert conflict") from None
-    db.commit()
     return result
 
 
@@ -108,14 +109,14 @@ def batch_upsert_source_candidates(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     items: list[dict[str, object]] = []
-    for item in payload.items:
-        if item.run_id is not None:
-            run = db.get(SourceDiscoveryRun, item.run_id)
-            if run is None:
-                raise HTTPException(status_code=404, detail=f"discovery run {item.run_id} not found")
-            if run.status != "running":
-                raise HTTPException(status_code=409, detail=f"discovery run {item.run_id} is not running")
-        try:
+    try:
+        for item in payload.items:
+            if item.run_id is not None:
+                run = db.get(SourceDiscoveryRun, item.run_id)
+                if run is None:
+                    raise HTTPException(status_code=404, detail=f"discovery run {item.run_id} not found")
+                if run.status != "running":
+                    raise HTTPException(status_code=409, detail=f"discovery run {item.run_id} is not running")
             result = upsert_candidate(
                 db,
                 discovered_url=item.discovered_url,
@@ -124,10 +125,14 @@ def batch_upsert_source_candidates(
                 matched_query=item.matched_query,
                 run_id=item.run_id,
             )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        items.append(result)
-    db.commit()
+            items.append(result)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="concurrent candidate upsert conflict") from None
     return {"items": items}
 
 
@@ -205,19 +210,15 @@ def finish_discovery_run(
     payload: DiscoveryRunFinish,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    run = db.get(SourceDiscoveryRun, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="discovery run not found")
-    if run.status != "running":
+    result = db.execute(
+        update(SourceDiscoveryRun)
+        .where(SourceDiscoveryRun.id == run_id, SourceDiscoveryRun.status == "running")
+        .values(**payload.model_dump(), finished_at=utcnow())
+    )
+    if result.rowcount == 0:
+        run = db.get(SourceDiscoveryRun, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="discovery run not found")
         raise HTTPException(status_code=409, detail=f"discovery run is already {run.status}")
-    run.status = payload.status
-    run.finished_at = utcnow()
-    run.discovered_raw_count = payload.discovered_raw_count
-    run.normalized_count = payload.normalized_count
-    run.duplicate_count = payload.duplicate_count
-    run.new_candidate_count = payload.new_candidate_count
-    run.reverified_count = payload.reverified_count
-    run.adapter_stats = payload.adapter_stats
-    run.note = payload.note
     db.commit()
-    return {"run_id": run.id, "status": run.status}
+    return {"run_id": run_id, "status": payload.status}

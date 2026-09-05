@@ -223,7 +223,8 @@ def _pro_multiplier(text: str) -> int | None:
     compact = re.sub(r"\s+", "", text).replace("×", "x").replace("✖", "x").replace("倍", "x").replace("\ufe0f", "")
     for multiplier in (20, 5):
         value = str(multiplier)
-        if re.search(rf"pro.*?x?{value}x?(?!\d)|(?<!\d){value}x?.*?pro", compact):
+        marker = rf"(?<!\d)(?:{value}x|x{value})(?!\d)"
+        if re.search(rf"pro[^a-z0-9]*{marker}|{marker}[^a-z0-9]*pro", compact):
             return multiplier
     return None
 
@@ -264,17 +265,17 @@ def _delivery_type(text: str) -> str:
 
 
 def _service_period(text: str) -> str:
-    if _contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]):
+    if _contains(text, ["年卡", "一年", "年付"]) or re.search(r"(?<!\d)(?:1\s*年|12\s*个月|365\s*天)", text):
         return "one_year"
-    if _contains(text, ["六个月", "6个月", "半年", "半年卡"]):
+    if _contains(text, ["六个月", "半年", "半年卡"]) or re.search(r"(?<!\d)6\s*个月", text):
         return "six_months"
-    if _contains(text, ["三个月", "3个月", "季度", "季卡"]):
+    if _contains(text, ["三个月", "季度", "季卡"]) or re.search(r"(?<!\d)3\s*个月", text):
         return "three_months"
-    if _contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]) or re.search(r"(?:2[0-9]|3[0-1])\s*天", text):
+    if _contains(text, ["月卡", "一个月", "月付"]) or re.search(r"(?<!\d)(?:1\s*个月|(?:2[0-9]|3[0-1])\s*天)", text):
         return "one_month"
-    if _contains(text, ["周卡", "一周", "1周", "7天"]):
+    if _contains(text, ["周卡", "一周"]) or re.search(r"(?<!\d)(?:1\s*周|7\s*天)", text):
         return "one_week"
-    if _contains(text, ["日抛", "一天", "1天", "24小时", "24h"]):
+    if _contains(text, ["日抛", "一天"]) or re.search(r"(?<!\d)(?:1\s*天|24\s*(?:小时|h))", text):
         return "one_day"
     return "unknown"
 
@@ -284,16 +285,16 @@ def _warranty(text: str) -> str:
         return "none"
     if _contains(text, ["质保首登", "仅首登", "首登售后", "首登质保"]):
         return "first_login"
-    if re.search(r"质保.{0,4}(?:2[0-9]|3[0-1])\s*天|(?:2[0-9]|3[0-1])\s*天.{0,4}质保|质保.{0,4}(?:月|30天)|(?:月|30天).{0,4}质保", text):
-        return "subscription_term"
-    if re.search(r"质保.{0,4}(1\s*小时|一\s*小时)|(?:1\s*小时|一\s*小时).{0,4}质保", text):
-        return "one_hour"
-    if re.search(r"质保.{0,4}(24\s*小时|1\s*天|一\s*天)|(?:24\s*小时|1\s*天|一\s*天).{0,4}质保", text):
-        return "one_day"
-    if re.search(r"质保.{0,4}(3\s*天|三\s*天)|(?:3\s*天|三\s*天).{0,4}质保", text):
-        return "three_days"
-    if re.search(r"质保.{0,4}(7\s*天|七\s*天)|(?:7\s*天|七\s*天).{0,4}质保", text):
-        return "seven_days"
+    durations = (
+        ("subscription_term", r"(?:(?:2[0-9]|3[0-1])\s*天|1\s*个月|一个月|(?<![\d个])月)"),
+        ("one_hour", r"(?:1|一)\s*小时"),
+        ("one_day", r"(?:24\s*小时|(?:1|一)\s*天)"),
+        ("three_days", r"(?:3|三)\s*天"),
+        ("seven_days", r"(?:7|七)\s*天"),
+    )
+    for warranty, duration in durations:
+        if re.search(rf"质保[^\d]{{0,4}}(?<!\d){duration}|(?<!\d){duration}[^\d]{{0,4}}质保", text):
+            return warranty
     if _contains(text, ["全程质保", "订阅期质保", "质保到期"]):
         return "subscription_term"
     return "unknown"
@@ -402,7 +403,10 @@ def _detect_brand(title_text: str, category_text: str, description_text: str = "
     if title_brand:
         return title_brand
 
-    if "plus" in clean_title and _contains(clean_title, IMPLICIT_CHATGPT_MARKERS) and not _contains(clean_title, NON_TARGET_PLUS_MARKERS):
+    if _contains(clean_title, NON_TARGET_PLUS_MARKERS):
+        return None
+
+    if "plus" in clean_title and _contains(clean_title, IMPLICIT_CHATGPT_MARKERS):
         return "chatgpt"
 
     if _contains(clean_title, ["plus", "puls", "plsu", "team", "k12"]) and _contains(clean_title, [
@@ -446,9 +450,10 @@ def _compact_latin(value: str) -> str:
 
 def _16688_chatgpt_alias_tier(value: str) -> str | None:
     compact = _compact_latin(value)
-    if any(marker in compact for marker in ("pro20x", "20xpro", "prox20", "x20pro")):
+    multiplier = _pro_multiplier(value)
+    if multiplier == 20:
         return "chatgpt-pro-20x"
-    if any(marker in compact for marker in ("pro5x", "5xpro", "prox5", "x5pro")):
+    if multiplier == 5:
         return "chatgpt-pro-5x"
     if any(marker in compact for marker in ("gptpro", "gtppro", "gpro")):
         return "chatgpt-pro"
@@ -612,7 +617,7 @@ def _classify_identity(
     if _contains(title_text, CHATGPT_GO_MARKERS):
         return "chatgpt-go", True
 
-    title_tier = _chatgpt_tier(clean_title)
+    title_tier = _chatgpt_tier(title_text)
     if title_tier:
         return title_tier, True
 
@@ -710,12 +715,12 @@ def classify_product(
 
 def normalize_stock(value: str | None, stock_count: int | None) -> str:
     text = normalize_title(value or "")
-    if any(word in text for word in ["有货", "in stock", "available"]):
-        return "in_stock"
-    if any(word in text for word in ["缺货", "售罄", "out of stock"]):
+    if any(word in text for word in ["缺货", "售罄", "无货", "没货", "没有货"]) or re.search(r"\b(?:out of stock|not in stock)\b", text):
         return "out_of_stock"
-    if any(word in text for word in ["下架", "不可用", "关闭", "暂停"]):
+    if any(word in text for word in ["下架", "不可用", "关闭", "暂停"]) or re.search(r"\b(?:unavailable|not available|not purchasable)\b", text):
         return "unavailable"
+    if "有货" in text or re.search(r"\b(?:in stock|low stock|available|unlimited)\b", text):
+        return "in_stock"
     if stock_count is not None:
         return "in_stock" if stock_count > 0 else "out_of_stock"
     return "unknown"

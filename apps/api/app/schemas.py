@@ -8,6 +8,8 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
+from .core.email import normalize_email
+
 
 class OfficialPriceReferencePublic(BaseModel):
     provider: str
@@ -289,12 +291,7 @@ class ShopRequestCreate(BaseModel):
     @field_validator("contact")
     @classmethod
     def validate_contact_email(cls, value: str) -> str:
-        value = value.strip()
-        if any(ch in value for ch in ("\r", "\n", "\t", "\0", " ", ",", ";", '"', "'", "<", ">")):
-            raise ValueError("contact cannot contain newlines, spaces, or control characters")
-        if re.fullmatch(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", value) is None:
-            raise ValueError("contact must be a valid email address")
-        return value
+        return normalize_email(value)
 
     @field_validator("shop_name")
     @classmethod
@@ -302,14 +299,14 @@ class ShopRequestCreate(BaseModel):
         cleaned = re.sub(r"[\r\n\t\x00-\x1f\x7f]+", " ", str(value or "")).strip()
         cleaned = cleaned.replace("<", "").replace(">", "").strip()
         cleaned = re.sub(r" +", " ", cleaned)
-        return cleaned[:100]
+        return cleaned
 
     @field_validator("note")
     @classmethod
     def validate_note(cls, value: str) -> str:
         cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+", "", str(value or "")).strip()
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-        return cleaned[:500]
+        return cleaned
 
 
 
@@ -595,6 +592,18 @@ class AdminOfferUpdate(BaseModel):
     product_slug: str | None = None
     hidden_reason: str | None = Field(default=None, max_length=500)
 
+    @field_validator("approved", "active")
+    @classmethod
+    def reject_null_flags(cls, value: bool | None) -> bool:
+        if value is None:
+            raise ValueError("offer flags cannot be null")
+        return value
+
+    @field_validator("hidden_reason")
+    @classmethod
+    def clear_hidden_reason(cls, value: str | None) -> str:
+        return value or ""
+
 
 class AdminReportUpdate(BaseModel):
     status: Literal["open", "reviewing", "resolved", "rejected"]
@@ -616,4 +625,3 @@ class AdminStats(BaseModel):
     last_scan_at: datetime | None
     product_counts: dict[str, int] = Field(default_factory=dict)
     brand_counts: dict[str, int] = Field(default_factory=dict)
-

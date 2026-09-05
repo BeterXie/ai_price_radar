@@ -34,6 +34,8 @@ def api_client(monkeypatch):
     monkeypatch.setattr(settings, "detector_worker_key", "detector-test")
     monkeypatch.setattr(settings, "report_rate_limit_count", 100)
     monkeypatch.setattr(settings, "public_site_url", "https://ai.pricememo.cn")
+    monkeypatch.setattr(settings, "shop_intake_auto_approve", False)
+    monkeypatch.setattr(settings, "shop_intake_admin_emails", "admin@example.com")
 
     def override_db():
         with Session(engine) as db:
@@ -95,6 +97,25 @@ def test_shop_request_requires_valid_contact_email(api_client):
     )
     assert missing.status_code == 422
     assert invalid.status_code == 422
+
+
+@pytest.mark.parametrize("contact", ["a@b..com", "a@b.-", "a..b@example.com"])
+def test_shop_request_rejects_invalid_email_labels(api_client, contact):
+    client, _ = api_client
+    response = client.post("/api/v1/shop-requests", json=_payload(contact=contact))
+    assert response.status_code == 422
+
+
+def test_submission_preserves_schema_maximum_name_and_note_lengths(api_client):
+    client, engine = api_client
+    shop_name = "s" * 120
+    note = "n" * 1000
+    response = client.post("/api/v1/shop-requests", json=_payload(shop_name=shop_name, note=note))
+    assert response.status_code == 201
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, response.json()["request_id"])
+        assert intake.shop_name == shop_name
+        assert intake.note == note
 
 
 @pytest.mark.parametrize(
@@ -173,12 +194,8 @@ def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
 def test_public_submission_never_resolves_or_fetches_user_url(api_client, monkeypatch):
     client, engine = api_client
     monkeypatch.setattr(
-        "app.services.source_platform.socket.getaddrinfo",
+        "socket.getaddrinfo",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("public API must not resolve source hosts")),
-    )
-    monkeypatch.setattr(
-        "app.services.source_platform._fetch_json",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("public API must not fetch source URLs")),
     )
     response = client.post(
         "/api/v1/shop-requests",
@@ -358,6 +375,54 @@ def test_detection_merges_resubmission_into_published_source_without_downgrade(a
         assert len(rows) == 1
         assert rows[0].status == "published"
         assert rows[0].product_count == 3
+
+
+@pytest.mark.parametrize("existing_status", ["validating", "validated"])
+def test_detection_merge_preserves_inflight_attempt_and_lease(api_client, existing_status):
+    client, engine = api_client
+    source_url = "https://pay.ldxp.cn/shop/MERGE"
+    with Session(engine) as db:
+        existing = SourceIntake(
+            source_type="ldxp",
+            detected_platform="ldxp",
+            source_key="merge",
+            source_url=source_url,
+            contact_email="owner@example.com",
+            status=existing_status,
+            attempt_count=7,
+            product_count=2,
+            lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5) if existing_status == "validating" else None,
+        )
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        existing_id = existing.id
+        original_lease = existing.lease_expires_at
+    duplicate = client.post(
+        "/api/v1/shop-requests",
+        json=_payload(shop_url="https://alias.example/entry"),
+    )
+    assert duplicate.status_code == 201
+    duplicate_id = duplicate.json()["request_id"]
+    merged = _detect(client, duplicate_id, source_url=source_url, source_key="merge")
+    assert merged.json()["intake_id"] == existing_id
+    with Session(engine) as db:
+        existing = db.get(SourceIntake, existing_id)
+        assert existing.status == existing_status
+        assert existing.attempt_count == 7
+        assert existing.lease_expires_at == original_lease
+        assert db.get(SourceIntake, duplicate_id) is None
+    continued = client.post(
+        f"/api/v1/internal/source-intakes/{existing_id}/result",
+        headers={"X-Intake-Worker-Key": "worker-test"},
+        json={
+            "status": "validated" if existing_status == "validating" else "onboarded",
+            "attempt_count": 7,
+            "product_count": 2,
+            "published": existing_status == "validated",
+        },
+    )
+    assert continued.status_code == 200
 
 
 def test_approve_validate_publish_is_idempotent_and_requires_published_sync(api_client):
@@ -619,7 +684,8 @@ def test_worker_key_is_separate_and_pending_result_is_rejected(api_client):
     assert result.status_code == 409
 
 
-def test_admin_can_requeue_a_failed_notification(api_client):
+@pytest.mark.parametrize("status", ["failed", "sending", "pending"])
+def test_admin_notification_retry_only_reopens_failed_rows(api_client, status):
     client, engine = api_client
     with Session(engine) as db:
         row = NotificationOutbox(
@@ -627,23 +693,29 @@ def test_admin_can_requeue_a_failed_notification(api_client):
             recipient="user@example.com",
             subject="subject",
             text_body="body",
-            status="failed",
+            status=status,
             attempt_count=3,
+            next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=10),
             last_error="RuntimeError: SMTP delivery failed",
             dedupe_key="test-admin-retry",
         )
         db.add(row)
         db.commit()
+        db.refresh(row)
         row_id = row.id
+        original_next_attempt = row.next_attempt_at
     response = client.post(
         f"/api/v1/admin/notification-outbox/{row_id}/retry",
         headers={"X-Admin-Key": "admin-test"},
     )
-    assert response.status_code == 200
+    assert response.status_code == (200 if status == "failed" else 409)
     with Session(engine) as db:
         row = db.get(NotificationOutbox, row_id)
-        assert row.status == "pending"
-        assert row.attempt_count == 0
+        assert row.status == ("pending" if status == "failed" else status)
+        assert row.attempt_count == (0 if status == "failed" else 3)
+        if status != "failed":
+            assert row.next_attempt_at == original_next_attempt
+            assert row.last_error == "RuntimeError: SMTP delivery failed"
 
 
 def test_admin_can_requeue_failed_notifications_by_source_intake(api_client):
@@ -890,6 +962,36 @@ def test_admin_change_platform_and_redetect(api_client):
     assert res.json()["source_type"] == "unknown"
 
 
+@pytest.mark.parametrize(
+    ("status", "platform"),
+    [("detecting", "unknown"), ("validating", "ldxp"), ("validated", "ldxp")],
+)
+def test_admin_cannot_change_platform_during_an_intake_attempt(api_client, status, platform):
+    client, engine = api_client
+    with Session(engine) as db:
+        intake = SourceIntake(
+            source_type=platform,
+            detected_platform=platform,
+            source_key="inflight",
+            source_url="https://pay.ldxp.cn/shop/INFLIGHT",
+            contact_email="merchant@example.com",
+            status=status,
+            attempt_count=3,
+        )
+        db.add(intake)
+        db.commit()
+        intake_id = intake.id
+    response = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/platform",
+        headers={"X-Admin-Key": "admin-test"},
+        json={"platform": "merchant_json"},
+    )
+    assert response.status_code == 409
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert (intake.status, intake.source_type, intake.attempt_count) == (status, platform, 3)
+
+
 def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
     client, engine = api_client
     settings = get_settings()
@@ -1035,6 +1137,4 @@ def test_injection_ssrf_urls_rejected(api_client):
             json=_payload("SSRF", shop_url=url),
         )
         assert res.status_code == 422, f"Expected 422 for {url}, got {res.status_code}"
-
-
 

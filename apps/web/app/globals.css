@@ -411,6 +411,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
   overscroll-behavior-inline: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+  padding-block: 4px;
 }
 .filter-chip {
   display: inline-flex;

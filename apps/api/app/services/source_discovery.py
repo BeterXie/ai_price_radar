@@ -19,7 +19,7 @@ from .source_platform import canonical_source_platform, normalize_public_https_u
 DETECTED_PLATFORMS = frozenset(
     {"unknown", "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other"}
 )
-ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce", "ldxp"})
+ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce"})
 PROMOTABLE_PLATFORMS = frozenset({"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"})
 AUTO_APPROVE_SETTING = {
     "dujiao_next": "discovery_dujiao_auto_approve",
@@ -81,6 +81,8 @@ def candidate_origin(value: str) -> str:
     parsed = urllib.parse.urlsplit(value)
     host = parsed.hostname or ""
     rendered_host = f"[{host}]" if ":" in host else host
+    if parsed.port not in (None, 443):
+        rendered_host = f"{rendered_host}:{parsed.port}"
     return urllib.parse.urlunsplit(("https", rendered_host, "", "", ""))
 
 
@@ -164,11 +166,11 @@ def upsert_candidate(
             next_verify_at=now,
             discovery_run_id=run_id,
         )
-        db.add(candidate)
-        db.flush()
+        with db.begin_nested():
+            db.add(candidate)
+            db.flush()
         return {"candidate_id": candidate.id, "is_new": True, "merged": False}
     except IntegrityError:
-        db.rollback()
         _lock_identity(db, key)
         existing = _existing_candidate(db, key)
         if existing is None:
@@ -517,14 +519,14 @@ def report_candidate_result(
     source_key = str(detected_source_key or source_url).strip()
     if not source_key or len(source_key) > 300:
         raise ValueError("detected_source_key is required and must be at most 300 characters")
-    if source_key.startswith("http"):
+    if platform in ORIGIN_KEY_PLATFORMS:
         canonical_key = normalize_candidate_url(source_key)
-        if platform in ORIGIN_KEY_PLATFORMS:
-            if candidate_origin(canonical_key) != candidate_origin(source_url):
-                raise ValueError("detected_source_key is not canonical for the platform")
-            source_key = candidate_origin(source_url)
-        else:
-            source_key = canonical_key
+        if candidate_origin(canonical_key) != source_url:
+            raise ValueError("detected_source_key is not canonical for the platform")
+        source_key = source_url
+    elif source_key.startswith("http"):
+        canonical_key = normalize_candidate_url(source_key)
+        source_key = canonical_key
 
     candidate.detected_platform = platform
     candidate.detected_source_url = source_url
@@ -591,14 +593,16 @@ def report_candidate_result(
             candidate.decision_note = _trim_note(
                 f"{candidate.decision_note}\n已存在 rejected/disabled 的 Intake，等待管理员处理"
             )
+    promoted_intake = db.get(SourceIntake, promoted_intake_id) if promoted_intake_id is not None else None
+    intake_approved = promoted_intake is not None and promoted_intake.approved_at is not None
     _update_run_stats(
         db,
         candidate,
         first_verification=first_verification,
         detected=True,
         ai_matched=True,
-        auto_approved=strict_auto and promoted_intake_id is not None,
-        pending_review=(not strict_auto) or promoted_intake_id is None,
+        auto_approved=strict_auto and intake_approved,
+        pending_review=not intake_approved,
         validation_failed=False,
         promoted=promoted_intake_id is not None,
         platform=platform,
@@ -674,6 +678,12 @@ def recover_unpromoted_candidates(db: Session, *, limit: int = 100) -> int:
             .where(
                 SourceCandidate.status.in_({"auto_approved", "pending_review"}),
                 SourceCandidate.promoted_intake_id.is_(None),
+                SourceCandidate.detected_platform.in_(PROMOTABLE_PLATFORMS),
+                ~select(SourceIntake.id).where(
+                    SourceIntake.source_type == SourceCandidate.detected_platform,
+                    SourceIntake.source_key == SourceCandidate.detected_source_key,
+                    SourceIntake.status.in_(TERMINAL_MANUAL_STATUSES),
+                ).exists(),
             )
             .order_by(SourceCandidate.id)
             .limit(limit)

@@ -9,13 +9,13 @@ const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 type SubmitState = "idle" | "sending" | "submitted" | "pending" | "known" | "limited" | "invalid" | "error";
 type ShopRequestResponse = { source_type: string; declared_platform: string; detected_platform: string; detection_message: string; workflow_status: string; status: "submitted" | "already_pending" | "already_known"; request_id: number | null; shop_token: string };
 
-export function ShopRequestForm({ previewState }: { previewState?: "submitted" | "error" }) {
+export function ShopRequestForm() {
   const [sourceType, setSourceType] = useState<IntakeSourceType>("auto");
   const [shopUrl, setShopUrl] = useState("");
   const [shopName, setShopName] = useState("");
   const [contact, setContact] = useState("");
   const [note, setNote] = useState("");
-  const [state, setState] = useState<SubmitState>(previewState || "idle");
+  const [state, setState] = useState<SubmitState>("idle");
   const [detectionMessage, setDetectionMessage] = useState("");
 
   function resetSource(type: IntakeSourceType) { setSourceType(type); setShopUrl(""); setState("idle"); setDetectionMessage(""); }

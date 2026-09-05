@@ -55,12 +55,31 @@ export const SOURCE_INTAKE_COPY = {
 export function isValidPublicSourceUrl(value) {
   try {
     const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    const ipv4 = hostname.match(/^\d+(?:\.\d+){3}$/);
+    const isPrivateIpv4 = (address) => {
+      const parts = address.split(".").map(Number);
+      if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+      const [a, b] = parts;
+      return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+    };
+    const privateIpv4 = ipv4 && isPrivateIpv4(ipv4[0]);
+    const mappedIpv4 = hostname.match(/^::ffff:(\d+(?:\.\d+){3})$/);
+    const mappedHex = hostname.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+    const mappedAddress = mappedIpv4?.[1] || (mappedHex
+      ? `${Number.parseInt(mappedHex[1], 16) >> 8}.${Number.parseInt(mappedHex[1], 16) & 255}.${Number.parseInt(mappedHex[2], 16) >> 8}.${Number.parseInt(mappedHex[2], 16) & 255}`
+      : null);
+    const privateIpv6 = hostname.includes(":") && (
+      hostname === "::" || hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd") || hostname.startsWith("fe80:")
+      || (mappedAddress && isPrivateIpv4(mappedAddress))
+    );
     return url.protocol === "https:"
       && !url.username
       && !url.password
       && Boolean(hostname)
       && hostname !== "localhost"
+      && !privateIpv4
+      && !privateIpv6
       && !hostname.endsWith(".local")
       && !hostname.endsWith(".internal");
   } catch {

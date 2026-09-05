@@ -15,8 +15,16 @@ SOURCE_DB="${POSTGRES_DB:-$(docker compose exec -T db printenv POSTGRES_DB | tr 
 TARGET_DB="${2:-${SOURCE_DB}_restore_test}"
 DB_USER="${POSTGRES_USER:-$(docker compose exec -T db printenv POSTGRES_USER | tr -d '\r')}"
 
+if [[ ! "$SOURCE_DB" =~ ^[A-Za-z0-9_]+$ || ${#SOURCE_DB} -gt 63 ]]; then
+  echo "configured source database name must contain only letters, digits, and underscores and be at most 63 characters" >&2
+  exit 2
+fi
 if [[ ! "$TARGET_DB" =~ ^[A-Za-z0-9_]+$ ]]; then
   echo "target database name may only contain letters, digits, and underscores" >&2
+  exit 2
+fi
+if (( ${#TARGET_DB} > 63 )); then
+  echo "target database name must be at most 63 characters" >&2
   exit 2
 fi
 if [[ "$TARGET_DB" != *_restore_test && "${ALLOW_RESTORE_OVERWRITE:-0}" != "1" ]]; then

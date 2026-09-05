@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from itertools import islice
 from typing import Any
 
 from .bridge import DiscoveryBridge
@@ -63,9 +64,16 @@ class DiscoveryRunner:
 
         try:
             for adapter in self.adapters:
+                if self.stats.discovered_raw_count >= self.budget.max_raw_urls:
+                    self.stats.note = "raw URL budget reached"
+                    break
+                if len(self._seen_keys) >= self.budget.max_unique_candidates:
+                    self.stats.note = "unique candidate budget reached"
+                    break
+                adapter_found = 0
                 try:
-                    adapter_found = 0
-                    for candidate in adapter.discover(keywords=self.keywords, budget=self.budget):
+                    candidates = adapter.discover(keywords=self.keywords, budget=self.budget)
+                    for candidate in islice(candidates, self.budget.max_raw_urls - self.stats.discovered_raw_count):
                         self.stats.discovered_raw_count += 1
                         try:
                             normalized = normalize_candidate_url(candidate.url)
@@ -73,9 +81,6 @@ class DiscoveryRunner:
                             self.stats.failure_stats.setdefault("normalize", 0)
                             self.stats.failure_stats["normalize"] += 1
                             continue
-                        if self.stats.discovered_raw_count > self.budget.max_raw_urls:
-                            self.stats.note = "raw URL budget reached"
-                            break
                         key = candidate_key_for(normalized, candidate.platform_hint)
                         if key in self._seen_keys:
                             self.stats.duplicate_count += 1
@@ -83,9 +88,6 @@ class DiscoveryRunner:
                         self._seen_keys.add(key)
                         self.stats.normalized_count += 1
                         adapter_found += 1
-                        if len(self._seen_keys) > self.budget.max_unique_candidates:
-                            self.stats.note = "unique candidate budget reached"
-                            break
                         batch.append({
                             "run_id": run_id,
                             "discovered_url": normalized,
@@ -95,10 +97,14 @@ class DiscoveryRunner:
                         })
                         if len(batch) >= 100:
                             flush()
-                    self.stats.adapter_stats[adapter.name] = adapter_found
+                        if len(self._seen_keys) >= self.budget.max_unique_candidates:
+                            self.stats.note = "unique candidate budget reached"
+                            break
                 except Exception as exc:
                     self.logger.error("Adapter %s 失败：%s", adapter.name, type(exc).__name__)
                     self.stats.failure_stats[adapter.name] = self.stats.failure_stats.get(adapter.name, 0) + 1
+                else:
+                    self.stats.adapter_stats[adapter.name] = adapter_found
             flush()
         finally:
             payload = {
@@ -124,4 +130,5 @@ class DiscoveryRunner:
                     self.bridge.finish_run(run_id, payload)
                 except Exception as exc:
                     self.logger.error("结束发现运行失败：%s", type(exc).__name__)
+                    self.stats.failure_stats["run_finish"] = self.stats.failure_stats.get("run_finish", 0) + 1
         return self.stats

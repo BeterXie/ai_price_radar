@@ -1,6 +1,6 @@
 import pytest
 
-from common import Product, classify, ensure_products, session_for
+from common import Product, RawProduct, Shop, classify, ensure_products, parse_decimal, session_for, stock_status, upsert_offer
 
 
 @pytest.mark.parametrize(
@@ -10,6 +10,10 @@ from common import Product, classify, ensure_products, session_for
         ("小红书自动化工具月卡", "自动化工具", None),
         ("StyleMe Chrome插件 API额度", "浏览器插件", None),
         ("百度网盘 Plus 成品号", "网盘账号", None),
+        ("Netflix Plus账号", "", None),
+        ("Netflix Plus账号", "GPT Plus", None),
+        ("Spotify Plus会员", "", None),
+        ("WPS Plus账号", "", None),
         ("多模型 API KEY", "GPT | Gemini | Claude | Grok", None),
         ("Codex/Claude 官方中转API 50美元", "ChatGPT", None),
         ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free", None),
@@ -23,6 +27,10 @@ from common import Product, classify, ensure_products, session_for
         ("ChatGPT Pro x 20 会员", "", "chatgpt-pro-20x"),
         ("GPT Pro20× 一个月", "", "chatgpt-pro-20x"),
         ("ChatGPT Pro 200刀会员", "", "chatgpt-pro"),
+        ("ChatGPT Pro 5天账号", "", "chatgpt-pro"),
+        ("ChatGPT Pro 20刀账号", "", "chatgpt-pro"),
+        ("ChatGPT Pro 500x账号", "", "chatgpt-pro"),
+        ("ChatGPT Pro 5倍成品号", "", "chatgpt-pro-5x"),
         ("GPT Plus 官方充值", "GPT Pro 20X 充值", "chatgpt-plus"),
         ("ChatGPT Go 正规充值", "GPT Team/Go", "chatgpt-go"),
         ("一个月 GPT Go会员 美区订阅", "GPT Team/Go", "chatgpt-go"),
@@ -107,6 +115,8 @@ def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
 )
     assert result.slug == "chatgpt-plus"
     assert classify("G Pro X20 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
+    assert classify("G Pro 5倍官方充值月卡", source_platform="16688").slug == "chatgpt-pro-5x"
+    assert classify("G Pro X200 官方充值月卡", source_platform="16688").slug == "chatgpt-pro"
     assert classify("GP.T Plus 菲区 CDK").slug is None
     assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-super"
 
@@ -170,6 +180,28 @@ def test_plus_does_not_inherit_k12_tags_from_description():
     assert not ({"Team", "Business", "K12"} & set(result.tags))
 
 
+@pytest.mark.parametrize("price", [None, 15.00])
+def test_explicit_title_plus_exclusion_wins_without_a_low_price(price):
+    assert classify("ChatGPT Plus账号 不含Plus", "GPT Plus", price=price).slug == "chatgpt-account"
+
+
+@pytest.mark.parametrize(
+    ("value", "count", "expected"),
+    [
+        ("unavailable", 0, "unavailable"),
+        ("not available", 5, "unavailable"),
+        ("not in stock", 5, "out_of_stock"),
+        ("not purchasable", None, "unavailable"),
+        ("没有货", 0, "out_of_stock"),
+        ("available", 0, "in_stock"),
+        ("low stock", 1, "in_stock"),
+        ("unlimited", None, "in_stock"),
+    ],
+)
+def test_stock_status_negations_take_priority(value, count, expected):
+    assert stock_status(value, count) == expected
+
+
 @pytest.mark.parametrize(
     ("title", "category", "slug", "delivery_type", "comparable"),
     [
@@ -203,10 +235,37 @@ def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
         ("X Premium 3个月官方直充", "three_months"),
         ("X Premium 六个月全程质保", "six_months"),
         ("X Premium+ 12个月官方直充", "one_year"),
+        ("X Premium 11个月官方直充", "unknown"),
+        ("X Premium 17天官方直充", "unknown"),
+        ("X Premium 124小时官方直充", "unknown"),
+        ("X Premium 1个月官方直充", "one_month"),
+        ("X Premium 7天官方直充", "one_week"),
+        ("X Premium 24小时官方直充", "one_day"),
     ],
 )
 def test_x_premium_service_periods(title: str, period: str):
     assert classify(title).service_period == period
+
+
+@pytest.mark.parametrize(
+    ("duration", "expected"),
+    [
+        ("11小时", "unknown"),
+        ("13天", "unknown"),
+        ("17天", "unknown"),
+        ("124小时", "unknown"),
+        ("11个月", "unknown"),
+        ("1小时", "one_hour"),
+        ("24小时", "one_day"),
+        ("3天", "three_days"),
+        ("7天", "seven_days"),
+        ("30天", "subscription_term"),
+        ("1个月", "subscription_term"),
+    ],
+)
+def test_warranty_quantity_boundaries(duration, expected):
+    assert classify(f"ChatGPT Plus 账号 质保{duration}").warranty == expected
+    assert classify(f"ChatGPT Plus 账号 {duration}质保").warranty == expected
 
 
 def test_title_period_wins_over_fulfillment_time_in_description():
@@ -326,4 +385,37 @@ def test_chatgpt_plus_low_price_safeguard():
     assert res7.slug != "chatgpt-plus"
 
 
+@pytest.mark.parametrize("raw_json", ["[]", "null", "{broken"])
+def test_upsert_rejects_non_object_raw_json_before_writing(raw_json):
+    with session_for("sqlite://") as db:
+        with pytest.raises(ValueError, match="raw_json must be a JSON object"):
+            upsert_offer(db, {"token": "invalid-input", "product_key": "product", "raw_json": raw_json}, {})
+        assert db.query(Shop).count() == 0
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_parse_decimal_rejects_non_finite_values(value):
+    assert parse_decimal(value) is None
+
+
+@pytest.mark.parametrize("product_key", ["", "   ", "x" * 301])
+def test_upsert_rejects_empty_or_oversized_product_key_before_writing(product_key):
+    with session_for("sqlite://") as db:
+        with pytest.raises(ValueError, match="product key"):
+            upsert_offer(db, {"token": "invalid-input", "product_key": product_key}, {})
+        assert db.query(Shop).count() == 0
+
+
+def test_upsert_preserves_full_product_key_and_object_raw_json():
+    with session_for("sqlite://") as db:
+        key = "x" * 300
+        upsert_offer(db, {
+            "token": "valid-input",
+            "product_key": key,
+            "product_name": "ChatGPT Plus 账号",
+            "raw_json": '{"description":"monthly account"}',
+        }, {})
+        raw = db.query(RawProduct).one()
+        assert raw.source_product_key == key
+        assert raw.raw_json == {"description": "monthly account"}
 

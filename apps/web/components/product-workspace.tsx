@@ -99,7 +99,6 @@ export function ProductWorkspace({
     };
   }
   const filters = filterValues(rawParams);
-  const previewState = single(rawParams, "state");
   const guideFaq = productGuide?.faq[0];
 
   return (
@@ -209,8 +208,8 @@ export function ProductWorkspace({
       </section>
 
       <section className="grid gap-10 border-t border-[color:var(--line-strong)] py-12 lg:grid-cols-[1.35fr_.65fr]">
-        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-[color:var(--muted)]">按天显示近期有货观测价、常见观测价和有货数量。</p><ProductHistoryPanel key={`${product.slug}:${single(rawParams, "source_platform")}:${previewState}`} slug={product.slug} sourcePlatform={single(rawParams, "source_platform")} previewEmpty={previewState === "history-empty"} /></div>
-        <aside><ReportForm previewState={previewState === "report-success" ? "sent" : previewState === "report-error" ? "error" : undefined} /></aside>
+        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-[color:var(--muted)]">按天显示近期有货观测价、常见观测价和有货数量。</p><ProductHistoryPanel key={`${product.slug}:${single(rawParams, "source_platform")}`} slug={product.slug} sourcePlatform={single(rawParams, "source_platform")} /></div>
+        <aside><ReportForm /></aside>
       </section>
       <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(product.snapshot_at)}</p>
     </>

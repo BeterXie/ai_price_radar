@@ -60,9 +60,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: shared_http/pyproject.toml
+          cache-dependency-path: |
+            shared_http/pyproject.toml
+            detector/requirements.txt
       - run: python -m pip install --upgrade pip
-      - run: pip install ../shared_http pytest
+      - run: pip install ../shared_http -r requirements.txt pytest
       - run: python -m pytest -q
 
   crawler:

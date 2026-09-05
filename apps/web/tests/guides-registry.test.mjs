@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { guideRegistry } from "../lib/guides/registry.ts";
+import { getBrandGuide, getDeliveryGuide, getGeneralGuide, getProductGuide, getWorkflowGuide, guideRegistry } from "../lib/guides/registry.ts";
 import { PRODUCT_SLUGS, KNOWN_DELIVERY_TYPES, BRAND_SLUGS, GENERAL_GUIDE_SLUGS, WORKFLOW_GUIDE_SLUGS } from "../lib/guides/types.ts";
 import { validateGuideRegistry } from "../lib/guides/validation.ts";
 import { getProductEvidenceSources } from "../lib/product-seo.ts";
@@ -123,6 +123,14 @@ test("content states safety boundaries without offering bypass instructions", ()
   assert.doesNotMatch(content, /(?:如何|教你|步骤如下).{0,8}绕过|绕过.{0,8}(?:方法|配置示例)/);
   assert.doesNotMatch(content, /绝对稳定|永久不封/);
   assert.doesNotMatch(content, /请.{0,8}(提交|发送).{0,8}(密码|验证码|恢复码)/);
+});
+
+test("guide lookups reject prototype properties", () => {
+  assert.equal(getBrandGuide("constructor"), undefined);
+  assert.equal(getProductGuide("toString"), undefined);
+  assert.equal(getDeliveryGuide("__proto__"), undefined);
+  assert.equal(getGeneralGuide("constructor"), undefined);
+  assert.equal(getWorkflowGuide("hasOwnProperty"), undefined);
 });
 
 test("every product has three distinct official evidence anchors", () => {

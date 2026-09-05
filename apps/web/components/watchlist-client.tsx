@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowClockwise, BellRinging, CheckCircle, Copy, Rss, Trash } from "@phosphor-icons/react";
 import type { CatalogResponse, ProductCard } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
-import { readWatchlist, WATCHLIST_EVENT, type WatchItem, writeWatchlist } from "@/components/watch-button";
+import { normalizeWatchThreshold, readWatchlist, WATCHLIST_EVENT, type WatchItem, writeWatchlist } from "@/components/watch-button";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -55,14 +55,15 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   }, [items]);
 
   function updateThreshold(slug: string, threshold: string) {
-    const normalized = threshold.replace(/[^0-9.]/g, "").slice(0, 12);
+    const normalized = normalizeWatchThreshold(threshold);
+    if (normalized === null) return;
     const next = items.map((item) => item.slug === slug ? { ...item, threshold: normalized } : item);
-    setItems(next);
-    writeWatchlist(next);
+    if (writeWatchlist(next)) setItems(next);
   }
 
   function remove(slug: string) {
-    writeWatchlist(items.filter((item) => item.slug !== slug));
+    const next = items.filter((item) => item.slug !== slug);
+    if (writeWatchlist(next)) setItems(next);
   }
 
   async function copyFeed() {

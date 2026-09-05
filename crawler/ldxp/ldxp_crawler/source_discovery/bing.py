@@ -63,6 +63,7 @@ class BingAdapter(DiscoveryAdapter):
             *bing_schema_org_queries(keywords),
             *bing_16688_queries(keywords),
         ]
+        page_count = min(max(budget.max_bing_count, 10), 50)
         seen: set[str] = set()
         for query in queries:
             if query in seen:
@@ -72,8 +73,8 @@ class BingAdapter(DiscoveryAdapter):
                 params = {
                     "q": query,
                     "format": "rss",
-                    "count": min(max(budget.max_bing_count, 10), 50),
-                    "first": 1 + page * budget.max_bing_count,
+                    "count": page_count,
+                    "first": 1 + page * page_count,
                     "setlang": "zh-Hans",
                 }
                 url = "https://www.bing.com/search?" + urllib.parse.urlencode(params)

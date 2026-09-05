@@ -24,10 +24,9 @@ function withQuery(path: string, query: URLSearchParams) {
 export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
   const detailQuery = offerQuery(rawParams);
   const searchQuery = single(rawParams, "q").trim();
-  const previewState = single(rawParams, "state");
   const [product, metaResult] = await Promise.all([
     productSlug ? getProduct(productSlug, detailQuery.toString()) : Promise.resolve(null),
-    previewState === "meta-error" ? Promise.resolve(null) : getMeta().catch(() => null),
+    getMeta().catch(() => null),
   ]);
   const meta = metaResult || EMPTY_META;
   if (productSlug && !product) notFound();
@@ -35,15 +34,18 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const activeBrand = product?.brand || single(rawParams, "brand") || single(rawParams, "platform");
   const activeSourcePlatform = single(rawParams, "source_platform");
   const catalogQuery = new URLSearchParams(detailQuery);
+  catalogQuery.delete("platform");
   if (activeBrand) catalogQuery.set("brand", activeBrand);
   if (searchQuery) catalogQuery.set("q", searchQuery);
-  let catalogLoadFailed = previewState === "catalog-error";
-  const catalog = product || catalogLoadFailed ? null : await getCatalogGroups(catalogQuery.toString()).catch(() => {
+  let catalogLoadFailed = false;
+  const catalog = product ? null : await getCatalogGroups(catalogQuery.toString()).catch(() => {
     catalogLoadFailed = true;
     return null;
   });
-  const productTabBrand = (activeBrand && activeBrand in PRODUCT_TABS ? activeBrand : "OpenAI") as BrandName;
-  const productTabs = PRODUCT_TABS[productTabBrand] || [];
+  const productTabBrand = activeBrand && Object.prototype.hasOwnProperty.call(PRODUCT_TABS, activeBrand)
+    ? activeBrand as BrandName
+    : "OpenAI";
+  const productTabs = PRODUCT_TABS[productTabBrand];
   const scopeQuery = new URLSearchParams(detailQuery);
   if (searchQuery) scopeQuery.set("q", searchQuery);
   const filters = filterValues(rawParams);
@@ -169,7 +171,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             values={filters}
             hiddenFields={hiddenFields}
             resetHref={navigationHref}
-            defaultOpen={previewState === "filter-open"}
+            defaultOpen={false}
           />
 
           <section className="pb-12">
@@ -186,7 +188,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             />
             </div>
           </section>
-          <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm previewState={previewState === "report-success" ? "sent" : previewState === "report-error" ? "error" : undefined} /></div></section>
+          <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm /></div></section>
           <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(catalog.snapshot_at)}</p>
         </>
       ) : catalogLoadFailed ? (

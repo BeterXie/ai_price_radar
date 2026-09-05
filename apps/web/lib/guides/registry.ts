@@ -19,13 +19,17 @@ import type {
 import { validateGuideRegistry } from "./validation";
 
 function indexBy<K extends PropertyKey, V>(items: readonly V[], keyOf: (item: V) => K, label: string): Record<K, V> {
-  const result = {} as Record<K, V>;
+  const result = Object.create(null) as Record<K, V>;
   for (const item of items) {
     const key = keyOf(item);
     if (Object.prototype.hasOwnProperty.call(result, key)) throw new Error(`Duplicate ${label}: ${String(key)}`);
     result[key] = item;
   }
   return result;
+}
+
+function lookup<K extends PropertyKey, V>(record: Readonly<Record<K, V>>, key: string | null | undefined): V | undefined {
+  return key && Object.prototype.hasOwnProperty.call(record, key) ? record[key as K] : undefined;
 }
 
 export const brandGuides: Readonly<Record<BrandSlug, BrandGuide>> = indexBy(brandGuideEntries, (guide) => guide.brand, "brand guide");
@@ -45,23 +49,23 @@ export const guideRegistry: GuideRegistry = {
 validateGuideRegistry(guideRegistry);
 
 export function getBrandGuide(slug?: string | null): BrandGuide | undefined {
-  return slug ? brandGuides[slug as BrandSlug] : undefined;
+  return lookup(brandGuides, slug);
 }
 
 export function getProductGuide(slug?: string | null): ProductGuide | undefined {
-  return slug ? productGuides[slug as ProductSlug] : undefined;
+  return lookup(productGuides, slug);
 }
 
 export function getDeliveryGuide(type?: string | null): DeliveryGuide | undefined {
-  return type ? deliveryGuides[type as KnownDeliveryType] : undefined;
+  return lookup(deliveryGuides, type);
 }
 
 export function getGeneralGuide(slug?: string | null): GeneralGuide | undefined {
-  return slug ? generalGuides[slug as GeneralGuideSlug] : undefined;
+  return lookup(generalGuides, slug);
 }
 
 export function getWorkflowGuide(
   slug?: string | null,
 ): WorkflowGuide | undefined {
-  return slug ? workflowGuides[slug as WorkflowGuideSlug] : undefined;
+  return lookup(workflowGuides, slug);
 }

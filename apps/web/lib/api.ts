@@ -2,10 +2,17 @@ import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, Publi
 
 const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, public readonly path: string) {
+    super(`API ${status}: ${path}`);
+    this.name = "ApiError";
+  }
+}
+
 async function apiFetch<T>(path: string): Promise<T> {
   const response = await fetch(`${internalBase}${path}`, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`API ${response.status}: ${path}`);
+    throw new ApiError(response.status, path);
   }
   return response.json() as Promise<T>;
 }
@@ -21,16 +28,18 @@ export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPag
 export async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {
   try {
     return await apiFetch(`/api/v1/products/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`);
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
 }
 
 export async function getShop(token: string): Promise<ShopDetail | null> {
   try {
     return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}`);
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
 }
 

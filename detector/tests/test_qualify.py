@@ -401,7 +401,7 @@ def test_schema_org_missing_ai_products_is_no_match():
     assert result.ai_product_count == 0
 
 
-@pytest.mark.parametrize("bad_price", ["contact us", "NaN", "Infinity", "-1"])
+@pytest.mark.parametrize("bad_price", ["contact us", "NaN", "Infinity", "-1", "1e1000000", "1e-1000000"])
 def test_schema_org_invalid_prices_are_not_qualified(bad_price):
     origin = "https://structured-price.example.com"
     page = f"{origin}/products/chatgpt"
@@ -591,12 +591,15 @@ def test_schema_org_cross_origin_child_sitemap_is_ignored():
     assert "evil.example" not in " ".join(client.calls)
 
 
-def test_schema_org_dtd_entity_sitemap_fails_validation():
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le", "utf-16-be"])
+def test_schema_org_dtd_entity_sitemap_fails_validation(encoding):
     origin = "https://dtd-schema.example.com"
     entry = f"{origin}/sitemap.xml"
-    body = b"""<?xml version="1.0"?>
+    document = """<?xml version="1.0"?>
     <!DOCTYPE urlset [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>
     <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>&xxe;</loc></url></urlset>"""
+    prefix = {"utf-16-le": b"\xff\xfe", "utf-16-be": b"\xfe\xff"}.get(encoding, b"")
+    body = prefix + document.encode(encoding)
     client = FakeClient({
         **_probe_routes(origin),
         entry: _xml_route(body),

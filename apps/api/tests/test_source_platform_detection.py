@@ -1,62 +1,30 @@
-from app.services.source_platform import detect_source_platform
+from app.services.source_platform import prepare_source_submission
 
 
-def _public_resolver(*_args, **_kwargs):
-    return [(None, None, None, None, ("93.184.216.34", 443))]
-
-
-def test_detection_recognizes_ldxp_without_fetching():
-    result = detect_source_platform(
-        "https://pay.ldxp.cn/shop/ABC123",
-        fetch_json=lambda _url: (_ for _ in ()).throw(AssertionError("LDXP should not be fetched")),
-    )
-    assert result.platform == "ldxp"
+def test_submission_normalizes_ldxp_identity():
+    result = prepare_source_submission("https://pay.ldxp.cn/shop/ABC123")
+    assert result.platform == "unknown"
     assert result.source_key == "abc123"
     assert result.source_url == "https://pay.ldxp.cn/shop/ABC123"
     assert result.shop_token == "ABC123"
 
 
-def test_detection_recognizes_wzyp_as_ldxp_without_fetching():
-    result = detect_source_platform(
-        "https://wzyp.cn/shop/KFLA",
-        fetch_json=lambda _url: (_ for _ in ()).throw(AssertionError("LDXP should not be fetched")),
-    )
-    assert result.platform == "ldxp"
+def test_submission_normalizes_wzyp_identity():
+    result = prepare_source_submission("https://wzyp.cn/shop/KFLA")
+    assert result.platform == "unknown"
     assert result.source_key == "kfla"
     assert result.source_url == "https://wzyp.cn/shop/KFLA"
     assert result.shop_token == "KFLA"
 
 
-def test_detection_recognizes_16688_without_fetching_and_scopes_token():
-    result = detect_source_platform(
-        "https://www.16688.com.cn/shop/HARVEY",
-        fetch_json=lambda _url: (_ for _ in ()).throw(AssertionError("16688 should not be fetched here")),
-        resolver=lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("16688 should not resolve here")),
-    )
-    assert result.platform == "16688"
+def test_submission_scopes_16688_token():
+    result = prepare_source_submission("https://www.16688.com.cn/shop/HARVEY")
+    assert result.platform == "unknown"
     assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/HARVEY"
     assert result.shop_token == "16688-HARVEY"
 
 
-def test_detection_recognizes_dujiao_next_public_contract():
-    def fetch(url: str):
-        if url.endswith("/config"):
-            return {"status_code": 0, "data": {"site_name": "Example"}}
-        if "/products?" in url:
-            return {"status_code": 0, "data": [], "pagination": {"page": 1, "total_page": 0}}
-        raise AssertionError(url)
-
-    result = detect_source_platform("https://shop.example.com/products/example", fetch_json=fetch, resolver=_public_resolver)
-    assert result.platform == "dujiao_next"
-    assert result.source_url == "https://shop.example.com"
-
-
-def test_detection_recognizes_merchant_json_feed():
-    def fetch(url: str):
-        if "/api/v1/public/" in url:
-            raise ValueError("not Dujiao")
-        return {"shop": {"name": "Example"}, "items": [{"name": "ChatGPT Plus", "price": 20}]}
-
-    result = detect_source_platform("https://shop.example.com/ai-price-radar.json", fetch_json=fetch, resolver=_public_resolver)
-    assert result.platform == "merchant_json"
-    assert result.source_url.endswith("/ai-price-radar.json")
+def test_submission_preserves_unverified_source_url():
+    result = prepare_source_submission("https://shop.example.com:8443/ai-price-radar.json")
+    assert result.platform == "unknown"
+    assert result.source_url == result.source_key == "https://shop.example.com:8443/ai-price-radar.json"

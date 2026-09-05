@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import ssl
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -66,7 +67,7 @@ def send_smtp_message(row: NotificationOutbox, settings: Settings | None = None)
     message.set_content(row.text_body)
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout_seconds) as client:
         if settings.smtp_starttls:
-            client.starttls()
+            client.starttls(context=ssl.create_default_context())
         if settings.smtp_username:
             client.login(settings.smtp_username, settings.smtp_password)
         client.send_message(message)

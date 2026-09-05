@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN useradd --create-home --uid 10002 detector
 WORKDIR /app
 COPY shared_http /tmp/shared_http
-RUN pip install --no-cache-dir /tmp/shared_http \
+COPY detector/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir /tmp/shared_http -r requirements.txt \
     && rm -rf /tmp/shared_http
 COPY detector/probe.py detector/qualify.py detector/sitemap.py detector/worker.py ./
 COPY pipeline/currencies.py ./currencies.py

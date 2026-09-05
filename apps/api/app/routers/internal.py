@@ -105,13 +105,12 @@ def _merge_detected_intake(
     )
     existing.failure_reason = _joined_text(existing.failure_reason, duplicate.failure_reason)
     existing.origin = "manual" if "manual" in {existing.origin, duplicate.origin} else existing.origin
-    existing.attempt_count += duplicate.attempt_count
     existing.product_count = max(existing.product_count, duplicate.product_count, product_count)
     existing.created_at = min(existing.created_at, duplicate.created_at)
     existing.updated_at = utcnow()
-    existing.lease_expires_at = None
     if existing.status in {"submitted", "detecting"}:
         existing.status = "pending_review"
+        existing.lease_expires_at = None
         existing.finished_at = utcnow()
     db.delete(duplicate)
     return existing
@@ -254,8 +253,8 @@ def report_source_detection_result(
         intake.shop_name = payload.shop_name.strip()
     intake.product_count = payload.product_count
     intake.failure_reason = ""
-    _apply_intake_approval_and_notifications(db, intake, platform, settings=get_settings())
     try:
+        _apply_intake_approval_and_notifications(db, intake, platform, settings=get_settings())
         db.commit()
         return _response(intake)
     except IntegrityError:
@@ -266,6 +265,13 @@ def report_source_detection_result(
     existing = _canonical_intake(db, intake_id=intake_id, platform=platform, source_key=source_key)
     if duplicate is None or existing is None:
         raise HTTPException(status_code=409, detail="concurrent source normalization conflict; retry detection result")
+    if (
+        duplicate.status != "detecting"
+        or duplicate.source_type != "unknown"
+        or duplicate.attempt_count != payload.attempt_count
+        or _is_expired(duplicate.lease_expires_at, utcnow())
+    ):
+        raise HTTPException(status_code=409, detail="stale detection attempt")
     merged = _merge_detected_intake(
         db,
         existing=existing,

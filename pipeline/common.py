@@ -327,7 +327,8 @@ def pro_multiplier(text: str) -> int | None:
     compact = re.sub(r"\s+", "", text).replace("×", "x").replace("✖", "x").replace("倍", "x").replace("\ufe0f", "")
     for multiplier in (20, 5):
         value = str(multiplier)
-        if re.search(rf"pro.*?x?{value}x?(?!\d)|(?<!\d){value}x?.*?pro", compact):
+        marker = rf"(?<!\d)(?:{value}x|x{value})(?!\d)"
+        if re.search(rf"pro[^a-z0-9]*{marker}|{marker}[^a-z0-9]*pro", compact):
             return multiplier
     return None
 
@@ -367,23 +368,34 @@ def delivery_form(text: str) -> str:
 
 
 def service_period(text: str) -> str:
-    if contains(text, ["年卡", "一年", "1年", "12个月", "365天", "年付"]): return "one_year"
-    if contains(text, ["六个月", "6个月", "半年", "半年卡"]): return "six_months"
-    if contains(text, ["三个月", "3个月", "季度", "季卡"]): return "three_months"
-    if contains(text, ["月卡", "一个月", "1个月", "30天", "月付"]) or re.search(r"(?:2[0-9]|3[0-1])\s*天", text): return "one_month"
-    if contains(text, ["周卡", "一周", "1周", "7天"]): return "one_week"
-    if contains(text, ["日抛", "一天", "1天", "24小时", "24h"]): return "one_day"
+    if contains(text, ["年卡", "一年", "年付"]) or re.search(r"(?<!\d)(?:1\s*年|12\s*个月|365\s*天)", text):
+        return "one_year"
+    if contains(text, ["六个月", "半年", "半年卡"]) or re.search(r"(?<!\d)6\s*个月", text):
+        return "six_months"
+    if contains(text, ["三个月", "季度", "季卡"]) or re.search(r"(?<!\d)3\s*个月", text):
+        return "three_months"
+    if contains(text, ["月卡", "一个月", "月付"]) or re.search(r"(?<!\d)(?:1\s*个月|(?:2[0-9]|3[0-1])\s*天)", text):
+        return "one_month"
+    if contains(text, ["周卡", "一周"]) or re.search(r"(?<!\d)(?:1\s*周|7\s*天)", text):
+        return "one_week"
+    if contains(text, ["日抛", "一天"]) or re.search(r"(?<!\d)(?:1\s*天|24\s*(?:小时|h))", text):
+        return "one_day"
     return "unknown"
 
 
 def warranty_type(text: str) -> str:
     if contains(text, ["无质保", "不质保"]): return "none"
     if contains(text, ["质保首登", "仅首登", "首登售后", "首登质保"]): return "first_login"
-    if re.search(r"质保.{0,4}(?:2[0-9]|3[0-1])\s*天|(?:2[0-9]|3[0-1])\s*天.{0,4}质保|质保.{0,4}(?:月|30天)|(?:月|30天).{0,4}质保", text): return "subscription_term"
-    if re.search(r"质保.{0,4}(1\s*小时|一\s*小时)|(?:1\s*小时|一\s*小时).{0,4}质保", text): return "one_hour"
-    if re.search(r"质保.{0,4}(24\s*小时|1\s*天|一\s*天)|(?:24\s*小时|1\s*天|一\s*天).{0,4}质保", text): return "one_day"
-    if re.search(r"质保.{0,4}(3\s*天|三\s*天)|(?:3\s*天|三\s*天).{0,4}质保", text): return "three_days"
-    if re.search(r"质保.{0,4}(7\s*天|七\s*天)|(?:7\s*天|七\s*天).{0,4}质保", text): return "seven_days"
+    durations = (
+        ("subscription_term", r"(?:(?:2[0-9]|3[0-1])\s*天|1\s*个月|一个月|(?<![\d个])月)"),
+        ("one_hour", r"(?:1|一)\s*小时"),
+        ("one_day", r"(?:24\s*小时|(?:1|一)\s*天)"),
+        ("three_days", r"(?:3|三)\s*天"),
+        ("seven_days", r"(?:7|七)\s*天"),
+    )
+    for warranty, duration in durations:
+        if re.search(rf"质保[^\d]{{0,4}}(?<!\d){duration}|(?<!\d){duration}[^\d]{{0,4}}质保", text):
+            return warranty
     if contains(text, ["全程质保", "订阅期质保", "质保到期"]): return "subscription_term"
     return "unknown"
 
@@ -481,9 +493,10 @@ def compact_latin(value: str) -> str:
 
 def platform_16688_chatgpt_alias_tier(value: str) -> str | None:
     compact = compact_latin(value)
-    if any(marker in compact for marker in ("pro20x", "20xpro", "prox20", "x20pro")):
+    multiplier = pro_multiplier(value)
+    if multiplier == 20:
         return "chatgpt-pro-20x"
-    if any(marker in compact for marker in ("pro5x", "5xpro", "prox5", "x5pro")):
+    if multiplier == 5:
         return "chatgpt-pro-5x"
     if any(marker in compact for marker in ("gptpro", "gtppro", "gpro")):
         return "chatgpt-pro"
@@ -573,8 +586,10 @@ def classify_identity(
         return None, False
 
     brand = first_title_brand(clean_title)
+    if brand is None and contains(clean_title, NON_TARGET_PLUS_MARKERS):
+        return None, False
     if brand is None:
-        if "plus" in clean_title and contains(clean_title, IMPLICIT_CHATGPT_MARKERS) and not contains(clean_title, NON_TARGET_PLUS_MARKERS):
+        if "plus" in clean_title and contains(clean_title, IMPLICIT_CHATGPT_MARKERS):
             brand = "chatgpt"
     if brand is None:
         if contains(clean_title, ["plus", "puls", "plsu", "team", "k12"]) and contains(clean_title, [
@@ -669,7 +684,7 @@ def classify_identity(
     if contains(title_text, CHATGPT_GO_MARKERS):
         return "chatgpt-go", True
 
-    title_tier = chatgpt_tier(clean_title)
+    title_tier = chatgpt_tier(title_text)
     if title_tier:
         return title_tier, True
 
@@ -789,25 +804,36 @@ def parse_decimal(value: Any) -> Decimal | None:
     if value is None or str(value).strip() == "":
         return None
     try:
-        return Decimal(str(value)).quantize(Decimal("0.01"))
+        amount = Decimal(str(value))
+        if not amount.is_finite():
+            return None
+        return amount.quantize(Decimal("0.01"))
     except (InvalidOperation, ValueError):
         return None
 
 
-def parse_json(value: Any, default: Any):
-    if isinstance(value, (dict, list)):
+def parse_json(value: Any) -> dict[str, Any]:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return {}
+    if isinstance(value, dict):
         return value
     try:
-        return json.loads(value or "")
-    except (TypeError, json.JSONDecodeError):
-        return default
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("raw_json must be a JSON object") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("raw_json must be a JSON object")
+    return parsed
 
 
 def stock_status(value: str, count: int | None) -> str:
     text = norm(value)
-    if any(x in text for x in ["有货", "in stock", "low stock", "unlimited"]): return "in_stock"
-    if any(x in text for x in ["缺货", "售罄", "out of stock"]): return "out_of_stock"
-    if any(x in text for x in ["下架", "不可用", "暂停", "关闭", "unavailable", "not purchasable"]): return "unavailable"
+    if any(word in text for word in ["缺货", "售罄", "无货", "没货", "没有货"]) or re.search(r"\b(?:out of stock|not in stock)\b", text):
+        return "out_of_stock"
+    if any(word in text for word in ["下架", "不可用", "关闭", "暂停"]) or re.search(r"\b(?:unavailable|not available|not purchasable)\b", text):
+        return "unavailable"
+    if "有货" in text or re.search(r"\b(?:in stock|low stock|available|unlimited)\b", text):
+        return "in_stock"
     if count is not None: return "in_stock" if count > 0 else "out_of_stock"
     return "unknown"
 
@@ -881,6 +907,12 @@ def upsert_offer(
     token = str(record.get("token") or "").strip()
     if not token:
         raise ValueError("missing shop token")
+    key = str(record.get("product_key") or record.get("source_product_key") or record.get("product_url") or record.get("product_name") or "").strip()
+    if not key:
+        raise ValueError("missing product key")
+    if len(key) > 300:
+        raise ValueError("product key must be at most 300 characters")
+    raw_json = parse_json(record.get("raw_json"))
     shop = db.scalar(select(Shop).where(Shop.token == token))
     observed_at = parse_dt(record.get("observed_at") or record.get("collected_at") or record.get("scanned_at"))
     if shop is None:
@@ -895,10 +927,8 @@ def upsert_offer(
     shop.last_seen_at = observed_at
     shop.last_success_at = parse_dt(record.get("last_success_at")) if record.get("last_success_at") else observed_at
 
-    key = str(record.get("product_key") or record.get("source_product_key") or record.get("product_url") or record.get("product_name") or "")[:300]
     raw = db.scalar(select(RawProduct).where(RawProduct.shop_id == shop.id, RawProduct.source_product_key == key))
     created = raw is None
-    raw_json = parse_json(record.get("raw_json"), {})
     if raw is None:
         raw = RawProduct(shop_id=shop.id, source_product_key=key, original_name=str(record.get("product_name") or ""), first_seen_at=observed_at)
         db.add(raw); db.flush()

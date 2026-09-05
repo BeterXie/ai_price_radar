@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, select, text
+from sqlalchemy import false, func, select, text
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
@@ -419,6 +419,7 @@ def product_group_offers(
     auto_delivery: bool | None = None,
     updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
     comparable: bool | None = None,
+    exclude: str = Query(default="", max_length=200),
     in_stock: bool = False,
     min_price: Decimal | None = Query(default=None, ge=0),
     max_price: Decimal | None = Query(default=None, ge=0),
@@ -438,6 +439,7 @@ def product_group_offers(
             auto_delivery=auto_delivery,
             updated_within_hours=updated_within_hours,
             comparable=comparable,
+            exclude=exclude,
             in_stock=in_stock,
             min_price=min_price,
             max_price=max_price,
@@ -503,6 +505,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     offer_conditions = [
         Offer.active.is_(True),
         Offer.approved.is_(True),
+        (Offer.hidden_reason.is_(None) | (func.trim(Offer.hidden_reason) == "")),
         Shop.is_visible.is_(True),
         Product.is_visible.is_(True),
         Offer.observed_at >= datetime.now(timezone.utc) - timedelta(hours=settings.stale_offer_hours),
@@ -515,8 +518,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         .join(Product, Offer.product_id == Product.id)
         .where(*offer_conditions)
     )
-    if current is not None:
-        offer_stmt = offer_stmt.where(Offer.snapshot_id == current.id)
+    offer_stmt = offer_stmt.where(Offer.snapshot_id == current.id if current is not None else false())
     offers = list(db.scalars(offer_stmt))
     brands = sorted({x.platform for x in products})
     source_platform_ids = sorted({canonical_source_platform(offer.shop.platform) for offer in offers})
@@ -575,7 +577,7 @@ def _watch_targets(value: str) -> list[tuple[str, Decimal | None]]:
                 threshold = Decimal(raw_price).quantize(Decimal("0.01"))
             except Exception:
                 continue
-            if threshold <= 0:
+            if not threshold.is_finite() or threshold <= 0:
                 continue
         targets.append((slug, threshold))
         if len(targets) >= 20:

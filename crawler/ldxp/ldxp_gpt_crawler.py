@@ -608,7 +608,6 @@ def main() -> int:
     try:
         if args.command == "bootstrap":
             # Ensure seed exists in DB before opening the browser.
-            seed_file = Path("seeds.txt")
             discovery = Discovery(
                 db,
                 build_session(args.user_agent),
@@ -616,7 +615,7 @@ def main() -> int:
                 max_discovered=100,
                 logger=logger,
             )
-            discovery.from_seeds([], seed_file)
+            discovery.from_seeds(args.seed, Path(args.seed_file) if args.seed_file else None)
             run_scan(args, db, logger)
             return 0
 

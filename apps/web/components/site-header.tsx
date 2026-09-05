@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRef } from "react";
 import { Bell, GithubLogo, List, Storefront, X } from "@phosphor-icons/react";
 import { PlatformIcon } from "@/components/platform-icon";
 
@@ -20,6 +21,10 @@ function current(pathname: string, href: string) {
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  const closeMenu = () => {
+    if (menuRef.current) menuRef.current.open = false;
+  };
   return (
     <header className="app-header sticky top-0 z-50">
       <div className="shell flex h-[68px] items-center justify-between gap-3">
@@ -56,7 +61,7 @@ export function SiteHeader() {
             <GithubLogo size={20} weight="fill" />
           </a>
 
-          <details className="group relative lg:hidden">
+          <details ref={menuRef} className="group relative lg:hidden">
             <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-[11px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]/86 [&::-webkit-details-marker]:hidden" aria-label="打开站点导航">
               <List className="group-open:hidden" size={21} />
               <X className="hidden group-open:block" size={21} />
@@ -64,18 +69,18 @@ export function SiteHeader() {
             <div className="mobile-nav-panel">
               <nav aria-label="移动端导航" className="grid p-2">
                 {primaryLinks.map((item) => (
-                  <Link key={item.href} href={item.href} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link flex min-h-11">
+                  <Link key={item.href} href={item.href} onClick={closeMenu} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link flex min-h-11">
                     {item.label}
                   </Link>
                 ))}
-                <Link href="/watchlist" aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="nav-link flex min-h-11"><Bell size={17} />关注清单</Link>
-                <Link href="/shops/submit" aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
+                <Link href="/watchlist" onClick={closeMenu} aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="nav-link flex min-h-11"><Bell size={17} />关注清单</Link>
+                <Link href="/shops/submit" onClick={closeMenu} aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
               </nav>
               <div className="border-t border-[color:var(--line)] p-3">
                 <p className="px-2 text-[11px] font-semibold tracking-[.06em] text-[color:var(--muted)]">按品牌查看报价</p>
                 <div className="mt-2 grid grid-cols-2 gap-1">
                   {brandLinks.map((brand) => (
-                    <Link key={brand} href={`/products?platform=${encodeURIComponent(brand)}`} className="nav-link flex min-h-11">
+                    <Link key={brand} href={`/products?platform=${encodeURIComponent(brand)}`} onClick={closeMenu} className="nav-link flex min-h-11">
                       <PlatformIcon platform={brand} size={15} />{brand}
                     </Link>
                   ))}

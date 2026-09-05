@@ -78,10 +78,10 @@ function FilterForm({
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="text-xs font-medium text-black/55">价格下限
-          <span className="mt-1.5 flex min-h-11 w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="min_price" defaultValue={values.min_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
+          <span className="mt-1.5 flex min-h-11 w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="min_price" type="number" min="0" step="0.01" defaultValue={values.min_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
         </label>
         <label className="text-xs font-medium text-black/55">价格上限
-          <span className="mt-1.5 flex min-h-11 w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="max_price" defaultValue={values.max_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
+          <span className="mt-1.5 flex min-h-11 w-32 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>¥</span><input name="max_price" type="number" min="0" step="0.01" defaultValue={values.max_price} inputMode="decimal" className="w-full bg-transparent py-2.5 pl-1 text-sm outline-none" /></span>
         </label>
         <label className="mb-2 flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="in_stock" value="true" defaultChecked={values.in_stock === "true"} className="h-5 w-5 accent-[color:var(--brand-strong)]" />仅看有货</label>
         <button type="submit" className="button-primary tactile ml-auto">应用筛选</button>

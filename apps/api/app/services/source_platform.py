@@ -2,15 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
-import json
 import re
-import socket
 import urllib.parse
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
-
-import httpx
 
 
 SOURCE_PLATFORM_LABELS = {
@@ -59,7 +53,6 @@ def is_source_platform_disabled(value: str) -> bool:
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
-MAX_DETECTION_BYTES = 1024 * 1024
 
 
 def canonical_source_platform(value: str) -> str:
@@ -137,11 +130,6 @@ def normalize_public_https_url(value: object) -> str:
     netloc = f"{rendered_host}:{port}" if port and port != 443 else rendered_host
     return urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
 
-
-
-_normalized_https_url = normalize_public_https_url
-
-
 def _ldxp_detection(url: str) -> SourceDetection | None:
     parsed = urllib.parse.urlsplit(url)
     parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]
@@ -175,107 +163,10 @@ def _16688_detection(url: str) -> SourceDetection | None:
 
 def prepare_source_submission(value: object) -> SourceDetection:
     """Normalize a submission without DNS resolution or outbound network access."""
-    normalized = _normalized_https_url(value)
+    normalized = normalize_public_https_url(value)
     if ldxp := _ldxp_detection(normalized):
         return SourceDetection("unknown", ldxp.source_url, ldxp.source_key, ldxp.shop_token)
     if platform := _16688_detection(normalized):
         return SourceDetection("unknown", platform.source_url, platform.source_key, platform.shop_token)
     token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
     return SourceDetection("unknown", normalized, normalized, token)
-
-
-def _ensure_public_host(url: str, resolver: Callable[..., list[tuple[Any, ...]]]) -> bool:
-    parsed = urllib.parse.urlsplit(url)
-    host = parsed.hostname or ""
-    try:
-        addresses = {item[4][0] for item in resolver(host, parsed.port or 443, type=socket.SOCK_STREAM)}
-    except OSError:
-        return False
-    if not addresses:
-        return False
-    if any(not ipaddress.ip_address(address).is_global for address in addresses):
-        raise ValueError("来源主机必须解析到公网地址")
-    return True
-
-
-def _fetch_json(url: str) -> Any:
-    with httpx.Client(follow_redirects=False, timeout=5.0) as client:
-        with client.stream("GET", url, headers={"Accept": "application/json", "User-Agent": "AI-Price-Radar-Intake/3.4"}) as response:
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").casefold()
-            if content_type and "json" not in content_type:
-                raise ValueError("来源未返回 JSON")
-            chunks: list[bytes] = []
-            size = 0
-            for chunk in response.iter_bytes():
-                size += len(chunk)
-                if size > MAX_DETECTION_BYTES:
-                    raise ValueError("来源检测响应超过 1 MiB")
-                chunks.append(chunk)
-    return json.loads(b"".join(chunks).decode("utf-8"))
-
-
-def _dujiao_contract(fetch_json: Callable[[str], Any], origin: str) -> bool:
-    try:
-        config = fetch_json(f"{origin}/api/v1/public/config")
-        products = fetch_json(f"{origin}/api/v1/public/products?page=1&page_size=1")
-    except Exception:
-        return False
-    return (
-        isinstance(config, dict)
-        and config.get("status_code") == 0
-        and isinstance(config.get("data"), dict)
-        and isinstance(products, dict)
-        and products.get("status_code") == 0
-        and isinstance(products.get("data"), list)
-        and isinstance(products.get("pagination"), dict)
-    )
-
-
-def _merchant_contract(fetch_json: Callable[[str], Any], url: str) -> bool:
-    try:
-        document = fetch_json(url)
-    except Exception:
-        return False
-    if isinstance(document, list):
-        return all(isinstance(item, dict) for item in document)
-    return isinstance(document, dict) and isinstance(document.get("items"), list) and all(
-        isinstance(item, dict) for item in document["items"]
-    )
-
-
-def detect_source_platform(
-    value: object,
-    *,
-    fetch_json: Callable[[str], Any] = _fetch_json,
-    resolver: Callable[..., list[tuple[Any, ...]]] = socket.getaddrinfo,
-) -> SourceDetection:
-    raw = urllib.parse.urlsplit(str(value))
-    if (
-        raw.scheme.casefold() in {"http", "https"}
-        and not raw.username
-        and not raw.password
-        and (raw.hostname or "").casefold().rstrip(".") in LDXP_HOSTS
-    ):
-        ldxp_url = urllib.parse.urlunsplit(("https", raw.netloc, raw.path, raw.query, ""))
-        if ldxp := _ldxp_detection(ldxp_url):
-            return ldxp
-    normalized = _normalized_https_url(value)
-    if ldxp := _ldxp_detection(normalized):
-        return ldxp
-    if platform := _16688_detection(normalized):
-        return platform
-
-    if not _ensure_public_host(normalized, resolver):
-        token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
-        return SourceDetection("other", normalized, normalized, token)
-    parsed = urllib.parse.urlsplit(normalized)
-    origin = urllib.parse.urlunsplit(("https", parsed.netloc, "", "", ""))
-    if _dujiao_contract(fetch_json, origin):
-        token = "dujiao-next-" + hashlib.sha256(origin.encode()).hexdigest()[:20]
-        return SourceDetection("dujiao_next", origin, origin, token)
-    if _merchant_contract(fetch_json, normalized):
-        token = "feed-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
-        return SourceDetection("merchant_json", normalized, normalized, token)
-    token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
-    return SourceDetection("other", normalized, normalized, token)

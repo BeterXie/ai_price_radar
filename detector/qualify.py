@@ -354,6 +354,8 @@ class _JsonLdParser(HTMLParser):
         self._capturing = False
         try:
             self.documents.append(json.loads("".join(self._chunks)))
+        except RecursionError as exc:
+            raise ValueError("page exceeds JSON-LD nesting limit") from exc
         except (TypeError, ValueError, json.JSONDecodeError):
             pass
         self._chunks = []
@@ -365,30 +367,21 @@ def _jsonld_product_nodes(body: bytes) -> list[dict[str, Any]]:
     nodes: list[dict[str, Any]] = []
     visited = 0
 
-    def walk(value: Any) -> Iterable[dict[str, Any]]:
-        nonlocal visited
-        if isinstance(value, list):
-            for item in value:
-                yield from walk(item)
-        elif isinstance(value, dict):
+    stack = list(reversed(parser.documents))
+    while stack:
+        value = stack.pop()
+        if isinstance(value, (dict, list)):
             visited += 1
             if visited > MAX_JSONLD_NODES:
                 raise ValueError("page exceeds JSON-LD node limit")
+        if isinstance(value, list):
+            stack.extend(reversed(value))
+        elif isinstance(value, dict):
             raw_types = value.get("@type")
             types = raw_types if isinstance(raw_types, list) else [raw_types]
             if any(str(item).rsplit("/", 1)[-1].rstrip("#").casefold() == "product" for item in types):
-                yield value
-            for child in value.values():
-                if isinstance(child, (dict, list)):
-                    yield from walk(child)
-
-    for document in parser.documents:
-        try:
-            nodes.extend(walk(document))
-        except ValueError:
-            raise
-        if len(nodes) > MAX_JSONLD_NODES:
-            raise ValueError("page exceeds JSON-LD product limit")
+                nodes.append(value)
+            stack.extend(reversed(list(value.values())))
     return nodes
 
 
@@ -439,6 +432,8 @@ def _valid_amount(value: Any) -> Decimal | None:
         return None
     if not amount.is_finite() or amount < 0:
         return None
+    if amount > Decimal("9999999999.99") or max(1, amount.adjusted() + 1) + max(0, -amount.as_tuple().exponent) > 64:
+        return None
     return amount
 
 
@@ -450,7 +445,9 @@ def _price_of_product(product: dict[str, Any]) -> tuple[str | None, str | None]:
     for offer in values:
         if not isinstance(offer, dict):
             continue
-        amount = offer.get("lowPrice") or offer.get("price")
+        amount = offer.get("lowPrice")
+        if amount in (None, ""):
+            amount = offer.get("price")
         currency = offer.get("priceCurrency") or product.get("priceCurrency")
         if currency in (None, ""):
             continue

@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake
+from app.models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake
 from app.services.catalog import get_product_detail, get_product_history, list_product_cards
 from app.services.source_health import source_health
 
@@ -24,7 +24,8 @@ def _engine():
 def _seed_product(db: Session, *, slug: str = "chatgpt-plus") -> Product:
     now = datetime.now(timezone.utc)
     product = Product(slug=slug, platform="OpenAI", display_name="ChatGPT Plus")
-    db.add(product)
+    snapshot = CatalogSnapshot(source="test", published_at=now)
+    db.add_all([product, snapshot])
     db.flush()
     for index, price in enumerate((Decimal("0.01"), Decimal("15"), Decimal("20"))):
         shop = Shop(
@@ -46,6 +47,7 @@ def _seed_product(db: Session, *, slug: str = "chatgpt-plus") -> Product:
         db.add(raw)
         db.flush()
         offer = Offer(
+            snapshot_id=snapshot.id,
             raw_product_id=raw.id,
             product_id=product.id,
             shop_id=shop.id,

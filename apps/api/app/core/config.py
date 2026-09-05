@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .email import normalize_email
 
 
 class Settings(BaseSettings):
@@ -11,7 +13,7 @@ class Settings(BaseSettings):
 
     app_name: str = "AI Price Radar API"
     database_url: str = "sqlite:///./price_radar.db"
-    admin_api_key: str = "replace-with-a-long-random-string"
+    admin_api_key: str = ""
     web_origin: str = "http://localhost:3000"
     public_site_url: str = "http://localhost:3000"
     seed_demo_data: bool = False
@@ -54,6 +56,11 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_starttls: bool = True
     smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
+
+    @field_validator("shop_intake_admin_emails")
+    @classmethod
+    def validate_admin_emails(cls, value: str) -> str:
+        return ",".join(normalize_email(item) for item in value.replace(";", ",").split(",") if item.strip())
 
 
 @lru_cache

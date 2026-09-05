@@ -343,13 +343,36 @@ def test_schema_org_connector_rejects_oversized_compressed_and_redirected_respon
         list(schema_org.load_records("https://shop.example/sitemap.xml"))
 
 
-def test_schema_org_connector_rejects_entity_expansion(monkeypatch):
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le", "utf-16-be"])
+def test_schema_org_connector_rejects_entity_expansion(monkeypatch, encoding):
     sitemap = "https://shop.example/sitemap.xml"
-    malicious = b'<!DOCTYPE x [<!ENTITY boom "expanded">]><urlset><url><loc>&boom;</loc></url></urlset>'
+    prefix = {"utf-16-le": b"\xff\xfe", "utf-16-be": b"\xfe\xff"}.get(encoding, b"")
+    malicious = prefix + '<!DOCTYPE x [<!ENTITY boom "expanded">]><urlset><url><loc>&boom;</loc></url></urlset>'.encode(encoding)
     _install_fake_client(monkeypatch, {sitemap: _response(malicious)})
 
     with pytest.raises(ValueError, match="DTD or entity"):
         list(schema_org.load_records(sitemap))
+
+
+def test_schema_org_sitemap_ignores_image_locations():
+    body = b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"><url><loc>https://shop.example/product</loc><image:image><image:loc>https://shop.example/photo.jpg</image:loc></image:image></url></urlset>'
+    assert schema_org._sitemap_locations(body) == ("urlset", ["https://shop.example/product"])
+
+
+@pytest.mark.parametrize("documents", [([{}] * 2001,), ([{}] * 1001, [{}] * 1001)])
+def test_schema_org_jsonld_node_budget_is_not_swallowed(documents):
+    with pytest.raises(ValueError, match="node limit"):
+        schema_org._jsonld_nodes(_html(*documents).encode())
+
+
+@pytest.mark.parametrize("value", ["1e1000000", "1e-1000000", "10000000000"])
+def test_schema_org_rejects_unrepresentable_prices(value):
+    assert schema_org._amount(value) is None
+
+
+def test_schema_org_rejects_overlong_product_identifiers():
+    with pytest.raises(ValueError, match="identifier exceeds"):
+        schema_org._product_key({"sku": "x" * 300}, "https://shop.example/product")
 
 
 def test_schema_org_connector_enforces_total_byte_budget(monkeypatch):
