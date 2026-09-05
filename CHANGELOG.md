@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.48] - 2026-09-05
+
+### Fixed
+
+- Made the production Importer image use the configured Python package mirror so dependency installation is reproducible during deployment.
+
 ## [3.7.47] - 2026-09-05
 
 ### Fixed

@@ -33,6 +33,13 @@ services:
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
 
+  importer:
+    build:
+      context: .
+      dockerfile: pipeline/Dockerfile
+      args:
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+
   crawler:
     profiles: ["crawler"]
     build:
