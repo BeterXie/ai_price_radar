@@ -20,7 +20,11 @@ class Classification:
 
 
 BRAND_MARKERS = {
-    "chatgpt": ["chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus", "codex"],
+    "chatgpt": [
+        "chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus", "codex",
+        "g free", "g-free", "gfree",
+        "g-p-t", "g-pt", "g-p·t", "g·p·t", "chat g", "chatg"
+    ],
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
@@ -32,10 +36,19 @@ CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", 
 CHATGPT_PRO_MARKERS = ["chatgpt pro", "gpt pro", "200刀"]
 CHATGPT_PLUS_MARKERS = [
     "chatgpt plus", "gpt plus", "chat plus", "plus", "puls", "plsu",
-    "codex plus", "codexplus", "codex plus账号", "codexplus账号", "codex 账号", "codex账号", "codex成品", "codex 成品"
+    "codex plus", "codexplus", "codex plus账号", "codexplus账号", "codex独享", "codex 独享"
 ]
 CHATGPT_GO_MARKERS = ["chatgpt go", "gpt go", "go会员", "go订阅", "codex go", "go菲区", "go cdk"]
-CHATGPT_FREE_MARKERS = ["chatgpt free", "gpt free", "free账号", "free号", "免费账号", "普通账号", "普通号", "普号", "不含plus", "不含 plus", "不是plus", "不是 plus", "非plus", "非 plus", "无plus", "无 plus"]
+CHATGPT_FREE_MARKERS = [
+    "chatgpt free", "gpt free", "g free", "g-free", "gfree",
+    "codex free", "codex-free", "codexfree", "codex【free", "codex 【free",
+    "free账号", "free号", "free 账号", "free 号", "免费账号", "普通账号", "普通号", "普号", "白号",
+    "free账密", "free-账密", "free 账密", "free成品", "free 成品", "free底号", "free 底号",
+    "outlook free", "icloud free", "gmail free", "yahoo free",
+    "福利号", "资格号", "体验号",
+    "可升级plus", "可升plus", "升级plus", "可开plus", "开plus专用", "开通plus专用", "开通plus必备", "升级专用", "plus底号", "好底号", "未绑卡",
+    "不含plus", "不含 plus", "不是plus", "不是 plus", "非plus", "非 plus", "无plus", "无 plus"
+]
 CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指南", "攻略", "授权神器", "自动化授权"]
 CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
 IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
@@ -45,11 +58,17 @@ RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率", "分组"]
 SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池", "拼车", "共享账号", "多人共享", "车位", "车号"]
 TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
-CATEGORY_COMMERCE_MARKERS = ["plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "接马", "api", "key", "token", "额度", "成品", "账号", "首登"]
+CATEGORY_COMMERCE_MARKERS = [
+    "plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy",
+    "会员", "订阅", "代充", "直充", "充值", "接码", "接马", "实卡号码", "实卡", "号码",
+    "提链", "提炼", "支付链接", "底号", "api", "key", "token", "额度", "成品", "账号", "首登"
+]
 CHATGPT_SERVICE_MARKERS = [
     "代接码", "代接马", "手机接码", "实卡接码", "一次性接码", "接码服务", "接码卡密", "纯接码", "接马服务",
     "短信代接", "代接短信", "接验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成",
-    "cyber认证", "persona认证"
+    "cyber认证", "persona认证",
+    "提炼", "代提链", "直卡支付链接", "支付链接", "卡头开通plus必备", "开通plus必备", "提炼cdk",
+    "实卡号码", "无限接马", "无限接码", "一次性接马"
 ]
 CHATGPT_PRODUCT_MARKERS = [
     "成品", "半成品", "账号", "已注册", "会员", "订阅", "代充", "直充", "充值", "白号", "普号",
@@ -150,6 +169,10 @@ def _extract(mapping: dict[str, list[str]], text: str) -> list[str]:
 def _contains(text: str, needles: list[str]) -> bool:
     norm = normalize_title(text)
     return any(normalize_title(needle) in norm for needle in needles)
+
+
+def _strip_exclusions(text: str) -> str:
+    return re.sub(r"(?:除|不可|不支持|排除|不含|非|无)\s*(?:codex|plus|puls|plsu)", "", text, flags=re.IGNORECASE)
 
 
 TUTORIAL_ATTACHMENT_RE = re.compile(
@@ -313,6 +336,13 @@ def _chatgpt_tier(text: str) -> str | None:
     if "plus分组" in text or "api分组" in text or "中转分组" in text:
         return None
 
+    # Free accounts or upgrade helper底号 or link tools must not be classified into Plus/Pro
+    if _contains(text, CHATGPT_FREE_MARKERS) or _contains(text, [
+        "可升级", "开plus专用", "开通plus专用", "开通plus必备", "提链", "提炼", "支付链接", "直卡支付链接",
+        "自行开通plus", "开通plus"
+    ]):
+        return None
+
     # Quotas (10刀, 50刀, 100刀, etc. combined with quota/api/token terms)
     if any(re.search(rf"(?<!\d){q}\s*(?:刀|美金|\$)(?!\d)", text) for q in [5, 10, 15, 25, 30, 50, 100, 120, 150, 200, 300, 500, 1000]):
         if any(w in text for w in ["额度", "余额", "api", "key", "token", "sol", "image"]):
@@ -365,22 +395,29 @@ def _first_title_brand(text: str) -> str | None:
 
 
 def _detect_brand(title_text: str, category_text: str, description_text: str = "") -> str | None:
-    title_brand = _first_title_brand(title_text)
+    clean_title = _strip_exclusions(title_text)
+    clean_category = _strip_exclusions(category_text)
+
+    title_brand = _first_title_brand(clean_title)
     if title_brand:
         return title_brand
 
-    if "plus" in title_text and _contains(title_text, IMPLICIT_CHATGPT_MARKERS) and not _contains(title_text, NON_TARGET_PLUS_MARKERS):
+    if "plus" in clean_title and _contains(clean_title, IMPLICIT_CHATGPT_MARKERS) and not _contains(clean_title, NON_TARGET_PLUS_MARKERS):
         return "chatgpt"
 
-    if _contains(title_text, ["plus", "puls", "plsu", "team", "k12"]) and _contains(title_text, ["成品", "半成品", "账号", "已接码", "已接马", "已接🐎", "未接码", "未接马", "会员", "直充", "代充", "月卡", "反代", "json", "rt", "首登", "周限额", "团队邀请"]):
-        if not any(other in title_text for other in ["google", "gemini", "claude", "twitter", "baidu", "百度", "microsoft"]):
+    if _contains(clean_title, ["plus", "puls", "plsu", "team", "k12"]) and _contains(clean_title, [
+        "成品", "半成品", "账号", "已接码", "已接马", "已接🐎", "未接码", "未接马", "会员", "直充", "代充",
+        "月卡", "反代", "json", "rt", "首登", "周限额", "团队邀请",
+        "提链", "提炼", "支付链接", "开通plus", "底号", "可升级"
+    ]):
+        if not any(other in clean_title for other in ["google", "gemini", "claude", "twitter", "baidu", "百度", "microsoft"]):
             return "chatgpt"
 
-    category_brands = _explicit_brands(category_text)
+    category_brands = _explicit_brands(clean_category)
     if len(category_brands) == 1:
-        if _contains(title_text, GENERIC_EMAIL_MARKERS):
+        if _contains(clean_title, GENERIC_EMAIL_MARKERS):
             return None
-        if _contains(title_text, CATEGORY_COMMERCE_MARKERS):
+        if _contains(clean_title, CATEGORY_COMMERCE_MARKERS):
             return category_brands[0]
     if len(category_brands) > 1:
         return None
@@ -553,37 +590,58 @@ def _classify_identity(
             return None, False
         return "openai-api-credit", True
 
+    clean_title = _strip_exclusions(title_text)
+    clean_category = _strip_exclusions(category_text)
+    clean_identity = f"{clean_title} {clean_category}"
+
     if (
         _contains(title_text, CHATGPT_NON_PRODUCT_MARKERS)
         and not _contains(title_text, CHATGPT_EXPLICIT_PRODUCT_MARKERS)
     ):
         return None, False
 
-    if _is_chatgpt_service(title_text) and not _contains(title_text, CHATGPT_PRODUCT_MARKERS):
+    is_service = (
+        _is_chatgpt_service(title_text)
+        or _is_chatgpt_service(category_text)
+        or _contains(title_text, ["提链", "提炼", "支付链接", "实卡号码", "无限接马", "卡头开通plus必备"])
+        or _contains(category_text, ["提链", "提炼", "接码", "接马"])
+    )
+    if is_service and not _contains(title_text, ["成品号", "独享成品", "独享账号"]):
         return "chatgpt-access-service", True
-
-    if _contains(title_text, CHATGPT_FREE_MARKERS):
-        return "chatgpt-account", True
 
     if _contains(title_text, CHATGPT_GO_MARKERS):
         return "chatgpt-go", True
 
-    title_tier = _chatgpt_tier(title_text)
+    title_tier = _chatgpt_tier(clean_title)
     if title_tier:
         return title_tier, True
 
-    refined_tier = _chatgpt_tier(tier_text)
+    is_free = (
+        _contains(title_text, CHATGPT_FREE_MARKERS)
+        or _contains(category_text, ["g free", "codex free", "free", "普号", "白号", "福利号"])
+        or _contains(clean_title, ["可升级plus", "开plus专用", "好底号", "未绑卡"])
+    )
+    if is_free:
+        return "chatgpt-account", True
+
+    refined_tier = _chatgpt_tier(f"{clean_identity} {description_text}")
     if refined_tier:
         return refined_tier, True
 
-    if is_sub2api_only or _contains(title_text, ["codex plus", "codex plus账号", "codexplus", "codex账号", "codex 账号", "codex成品", "codex 成品", "codex独享", "codex 独享"]):
+    if is_sub2api_only or _contains(clean_title, [
+        "codex plus", "codex plus账号", "codexplus", "codex账号", "codex 账号",
+        "codex成品", "codex 成品", "codex独享", "codex 独享"
+    ]):
+        if _contains(clean_title, ["中转", "不限时", "额度", "刀"]) or _contains(clean_category, ["中转", "额度"]):
+            return None, False
+        if is_free:
+            return "chatgpt-account", True
         return "chatgpt-plus", True
-
 
     if _contains(title_text, CHATGPT_AMBIGUOUS_CREDIT_MARKERS):
         return None, False
 
-    if _contains(title_text, CHATGPT_PRODUCT_MARKERS):
+    if is_free or _contains(title_text, CHATGPT_PRODUCT_MARKERS):
         return "chatgpt-account", False
 
     return None, False
@@ -595,6 +653,7 @@ def classify_product(
     description: str = "",
     *,
     source_platform: str = "",
+    price: float | str | None = None,
 ) -> Classification:
     detail_text = normalize_title(" ".join([title, category, description]))
     tags = _extract(TAG_RULES, detail_text)
@@ -605,6 +664,22 @@ def classify_product(
         normalize_title(description),
         source_platform,
     )
+    if slug == "chatgpt-plus" and price is not None:
+        try:
+            p_val = float(price)
+            if 0 < p_val < 8.00:
+                if (
+                    _contains(detail_text, CHATGPT_FREE_MARKERS)
+                    or _contains(category, ["free", "普号", "白号"])
+                    or _contains(detail_text, ["底号", "好底号", "未绑卡", "升级", "开plus", "开通plus", "邮箱"])
+                ):
+                    slug = "chatgpt-account"
+                elif _is_chatgpt_service(detail_text) or _contains(detail_text, ["接码", "接马", "提链", "支付链接"]):
+                    slug = "chatgpt-access-service"
+                else:
+                    risks.append("abnormal_low_price")
+        except (ValueError, TypeError):
+            pass
     if slug != "chatgpt-k12":
         tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
     confidence = 88 if specific_match else 68 if slug else 0

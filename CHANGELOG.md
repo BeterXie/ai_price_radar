@@ -2,6 +2,18 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.41] - 2026-09-05
+
+### Fixed
+
+- **Accurate Product Classification for Free Accounts and Tools**:
+  - Cleanly stripped exclusion phrases (`除Codex`, `不可codex`, `除Plus`, etc.) in brand and tier detection, ensuring titles like `(可网页反代，除Codex)` are not misidentified as Codex/Plus.
+  - Expanded `CHATGPT_FREE_MARKERS` to recognize `g free`, `g-free`, `gfree`, `codex free`, `outlook/icloud/gmail free`, `free账密`, `free成品`, `free底号`, `可升级plus`, `开plus专用`, `好底号`, `未绑卡`, and correctly route them to `chatgpt-account` instead of `chatgpt-plus`.
+  - Prevented session relay indicators (`反代专用`) from overriding free account markers.
+  - Added payment link tools and verification CDK markers (`提炼`, `代提链`, `直卡支付链接`, `支付链接`, `卡头开通plus必备`, `提炼cdk`, `实卡号码`, `无限接马`) to classify into `chatgpt-access-service`.
+  - Enforced a price safeguard for `chatgpt-plus` (< 8.00 CNY): demotes free helper accounts to `chatgpt-account`, helper tools/links to `chatgpt-access-service`, and flags abnormal low prices.
+  - Synchronized classifier rules between `apps/api/app/services/classifier.py` and `pipeline/common.py`.
+
 ## [3.7.40] - 2026-09-05
 
 ### Added

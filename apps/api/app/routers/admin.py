@@ -240,6 +240,11 @@ def update_offer(offer_id: int, payload: AdminOfferUpdate, db: Session = Depends
             if product is None:
                 raise HTTPException(status_code=404, detail="product not found")
             offer.product_id = product.id
+            tags = list(offer.tags or [])
+            if "manual_override" not in tags:
+                tags.append("manual_override")
+            offer.tags = tags
+            offer.classification_confidence = 100
     for key, value in data.items():
         setattr(offer, key, value)
     db.commit()

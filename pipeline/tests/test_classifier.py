@@ -58,6 +58,11 @@ from common import Product, classify, ensure_products, session_for
         ("多国家PLUS-质保首登-icloud邮箱-Codex未接马-不保证可以使用24小时", "", "chatgpt-plus"),
         ("韩国-PLUS-icloud邮箱-保首登", "", "chatgpt-plus"),
         ("GPT PLUS 接码 全球多地区", "接码", "chatgpt-access-service"),
+        ("G Free-账密 RT/AT-长效outlook-适合各类业务(可网页反代，除Codex)", "G free", "chatgpt-account"),
+        ("免接码 G Free -Json 批发 【反代专用】", "全部", "chatgpt-account"),
+        ("Codex Free 100个(雅虎邮箱带rt) 可升级plus 会操作的拍", "Codex Free", "chatgpt-account"),
+        ("菲区提炼CDK 次卡 直卡支付链接 4361 5502 卡头开通plus必备", "代充", "chatgpt-access-service"),
+        ("美区实卡号码 成 功 率99 大概3-5天卡", "OpenAI 接码", "chatgpt-access-service"),
         ("Claude 基础账号", "AI账号", "claude-account"),
         ("Claude注册 实体手机号接码（codex接码另拍）", "Claude", "claude-account"),
         ("Claude-Kiro API KEY 100M Token", "GPT | Gemini | Claude | Grok", "claude-api-access"),
@@ -277,5 +282,48 @@ def test_detail_description_and_robust_exclusions(
     assert result.is_comparable is expected_comparable, f"Comparable mismatch for '{title}'"
     if expected_slug is not None:
         assert result.delivery_type == expected_delivery, f"Delivery mismatch for '{title}': got {result.delivery_type}"
+
+
+def test_chatgpt_plus_low_price_safeguard():
+    # Free helper / base account with plus in title demoted to account if price < 8
+    res1 = classify("Plus底号 可升级", "账号", price=0.30)
+    assert res1.slug == "chatgpt-account"
+
+    # Link CDK / payment helper demoted to access service if price < 8
+    res2 = classify("Plus 提链 支付链接", "服务", price=1.50)
+    assert res2.slug == "chatgpt-access-service"
+
+    # Low price plus with no other signals gets abnormal_low_price risk flag
+    res3 = classify("ChatGPT Plus 官方独享月卡", "GPT", price=4.50)
+    assert res3.slug == "chatgpt-plus"
+    assert "abnormal_low_price" in res3.risks
+
+    # Normal price plus doesn't get abnormal_low_price
+    res4 = classify("ChatGPT Plus 官方独享月卡", "GPT", price=15.00)
+    assert res4.slug == "chatgpt-plus"
+    assert "abnormal_low_price" not in res4.risks
+
+    # Codex 60天-120天无限接马 (even with '质保最少绑定一个账号' and '针对0元试用的plus' in description)
+    res5 = classify(
+        "Codex 60天-120天无限接马（质保最少绑定一个账号)",
+        "接码",
+        {"description": "这个长效的号码就是针对0元试用的plus"},
+        price=3.50,
+    )
+    assert res5.slug == "chatgpt-access-service"
+
+    # Relay / quota token with codexplus in title should not be chatgpt-plus
+    res6 = classify("10刀试用装-CodexPlus-使用时间不限时", "ChatGPT")
+    assert res6.slug != "chatgpt-plus"
+
+    # iCloud email with plus mentioned in description under 8 CNY
+    res7 = classify(
+        "iCloud邮箱 自动发货 质保首登",
+        "邮箱",
+        {"description": "自行开通plus后可永久使用"},
+        price=1.20,
+    )
+    assert res7.slug != "chatgpt-plus"
+
 
 
