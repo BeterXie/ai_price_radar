@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.49] - 2026-09-05
+
+### Fixed
+
+- Kept Dujiao-Next discovery disabled in complete remote refreshes unless explicitly enabled.
+
 ## [3.7.48] - 2026-09-05
 
 ### Fixed

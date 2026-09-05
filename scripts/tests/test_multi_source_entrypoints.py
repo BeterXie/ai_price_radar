@@ -63,6 +63,13 @@ def test_remote_discovery_prioritizes_unified_16688_source_discovery():
     assert "--16688-source-pages" in refresh
 
 
+def test_full_refresh_keeps_dujiao_discovery_disabled_by_default():
+    refresh = (ROOT / "scripts/refresh_remote.sh").read_text(encoding="utf-8")
+    full_block = refresh.split("  full)", 1)[1].split("  inventory)", 1)[0]
+    assert 'if [[ "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]' in full_block
+    assert "dujiao_next discovery is currently disabled" in full_block
+
+
 def test_source_detector_has_no_database_network_or_credentials():
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     detector = compose.split("  source-detector:\n", 1)[1].split("\n  web:\n", 1)[0]

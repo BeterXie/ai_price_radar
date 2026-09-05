@@ -128,7 +128,11 @@ case "$MODE" in
       --request-interval 2.0 \
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
-    run_dujiao_discovery
+    if [[ "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]; then
+      run_dujiao_discovery
+    else
+      echo "dujiao_next discovery is currently disabled (ENABLE_DUJIAO_DISCOVERY=false)"
+    fi
     ;;
   inventory)
     if [[ ! -f "$CRAWLER_DB" ]]; then
