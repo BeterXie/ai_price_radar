@@ -98,6 +98,7 @@ def offers(
     active: bool | None = None,
     status: str | None = None,
     q: str | None = None,
+    brand: str | None = None,
     product_slug: str | None = None,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -133,6 +134,8 @@ def offers(
         stmt = stmt.where(Offer.approved == approved)
     if active is not None:
         stmt = stmt.where(Offer.active == active)
+    if brand:
+        stmt = stmt.where(Product.platform == brand)
     if product_slug:
         stmt = stmt.where(Product.slug == product_slug)
     if q and q.strip():
@@ -156,6 +159,8 @@ def offers(
         "title": x.raw_product.original_name,
         "original_category": x.raw_product.original_category,
         "product_slug": x.product.slug if x.product else None,
+        "product_name": x.product.display_name if x.product else None,
+        "brand": x.product.platform if x.product else None,
         "price": str(x.price) if x.price is not None else None,
         "currency": x.currency,
         "stock_status": x.stock_status,

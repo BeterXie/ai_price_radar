@@ -50,6 +50,8 @@ Merchant JSON Feed submissions share the `source_intakes` review state machine, 
 
 ## Dujiao-Next
 
+> **Notice (v3.7.39)**: Automatic Dujiao-Next candidate discovery has been paused (`ENABLE_DUJIAO_DISCOVERY=false` by default in `scripts/refresh_remote.sh`, and GitHub homepage queries removed). The `/shops/submit` user submission portal also marks Dujiao-Next as disabled/paused by default. Existing published Dujiao-Next shops remain operational in hourly catalog refreshes.
+
 Pass the public shop root URL, without a path, query string or credentials. The connector validates the public HTTPS origin, disables redirects, reads `/api/v1/public/config` and `/categories`, paginates `/products`, and fetches each product detail by slug. Multi-SKU products emit one record per active SKU so that monthly, quarterly and annual variants cannot overwrite each other. Conditional promotion and member prices remain in `raw_json`; the normalized `listed_price` uses the public base price until the common offer model can express price conditions.
 
 Detector, Dujiao-Next, Merchant JSON and Dujiao discovery use the same pinned HTTPS client. It validates every resolved address, rejects the whole set if any address is non-public, selects one numeric IP for the entire source sync, and uses the original hostname for TLS SNI, certificate validation and `Host`. Only HTTPS 443 is allowed; redirects are rejected and per-response plus per-source byte/time limits are enforced. A production egress allow-list or proxy remains recommended as defense in depth against a compromised process.

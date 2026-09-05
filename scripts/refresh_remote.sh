@@ -104,7 +104,12 @@ case "$MODE" in
       --bing-pages 5 \
       --cc-indexes 3 \
       --max-discovered 500
-    run_dujiao_discovery
+    # Dujiao-Next discovery is suspended by default
+    if [[ "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]; then
+      run_dujiao_discovery
+    else
+      echo "dujiao_next discovery is currently disabled (ENABLE_DUJIAO_DISCOVERY=false)"
+    fi
     exit 0
     ;;
   full)

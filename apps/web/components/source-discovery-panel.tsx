@@ -50,7 +50,7 @@ type Candidate = {
 const PLATFORM_LABELS: Record<string, string> = {
   unknown: "未识别",
   ldxp: "链动小铺",
-  dujiao_next: "Dujiao-Next",
+  dujiao_next: "Dujiao-Next（已暂停）",
   merchant_json: "商家 Feed",
   woocommerce: "WooCommerce",
   "16688": "16688",

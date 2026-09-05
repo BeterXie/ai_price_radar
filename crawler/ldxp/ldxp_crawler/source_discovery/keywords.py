@@ -111,6 +111,5 @@ def bing_16688_queries(keywords: Sequence[str] = ()) -> list[str]:
 GITHUB_HOMEPAGE_QUERIES = (
     '"AI price" in:name,description,readme is:public',
     '"ChatGPT Plus" "woocommerce" in:readme is:public',
-    '"dujiao-next" in:name,description,readme is:public',
     '"chatgpt" "auto delivery" in:readme is:public',
 )

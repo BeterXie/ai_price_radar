@@ -2,7 +2,7 @@ export const SOURCE_INTAKE_OPTIONS = [
   { id: "auto", label: "自动识别（推荐）" },
   { id: "ldxp", label: "链动小铺" },
   { id: "16688", label: "16688" },
-  { id: "dujiao_next", label: "Dujiao-Next" },
+  { id: "dujiao_next", label: "Dujiao-Next（暂停收录）", disabled: true },
   { id: "woocommerce", label: "WooCommerce" },
   { id: "schema_org", label: "Schema.org 独立站" },
   { id: "merchant_json", label: "商家 JSON Feed" },

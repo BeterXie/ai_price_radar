@@ -4,32 +4,11 @@ import { useEffect, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { money } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
+import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-const PRODUCT_OPTIONS = [
-  "chatgpt-account",
-  "chatgpt-plus",
-  "chatgpt-go",
-  "chatgpt-k12",
-  "chatgpt-pro-5x",
-  "chatgpt-pro-20x",
-  "chatgpt-pro",
-  "openai-api-credit",
-  "chatgpt-access-service",
-  "codex-access",
-  "claude-pro",
-  "claude-account",
-  "claude-api-access",
-  "gemini-advanced",
-  "gemini-account",
-  "gemini-api-access",
-  "grok-super",
-  "grok-account",
-  "grok-api-access",
-  "x-premium-basic",
-  "x-premium",
-  "x-premium-plus",
-];
+type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
+type StatusFilter = "all" | "active" | "pending";
 
 type Stats = {
   shops: number;
@@ -51,6 +30,8 @@ type AdminOffer = {
   title: string;
   original_category?: string | null;
   product_slug: string | null;
+  product_name?: string | null;
+  brand?: string | null;
   price: string | null;
   currency: string;
   stock_status: string;
@@ -109,9 +90,10 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [offers, setOffers] = useState<AdminOffer[]>([]);
-  const [offerTab, setOfferTab] = useState<"all" | "restricted" | "unclassified" | "pending" | "active">("all");
+  const [selectedCategory, setSelectedCategory] = useState<CategoryMode>("all");
+  const [selectedProductSlug, setSelectedProductSlug] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [offerSearch, setOfferSearch] = useState("");
-  const [offerProductFilter, setOfferProductFilter] = useState("");
   const [reclassifyingOfferId, setReclassifyingOfferId] = useState<number | null>(null);
   const [actionToast, setActionToast] = useState<string>("");
   const [reports, setReports] = useState<Report[]>([]);
@@ -133,15 +115,25 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }, [intakes, targetIntakeId]);
 
   async function loadOffers(
-    tab: "all" | "restricted" | "unclassified" | "pending" | "active" = offerTab,
-    search: string = offerSearch,
-    productSlug: string = offerProductFilter
+    category: CategoryMode = selectedCategory,
+    productSlug: string = selectedProductSlug,
+    status: StatusFilter = statusFilter,
+    search: string = offerSearch
   ) {
     const params = new URLSearchParams();
     params.set("limit", "100");
-    if (tab !== "all") params.set("status", tab);
+    if (category === "restricted") {
+      params.set("status", "restricted");
+    } else if (category === "unclassified") {
+      params.set("status", "unclassified");
+    } else {
+      if (category !== "all") params.set("brand", category);
+      if (status !== "all") params.set("status", status);
+    }
+    if (productSlug.trim() && category !== "restricted" && category !== "unclassified") {
+      params.set("product_slug", productSlug.trim());
+    }
     if (search.trim()) params.set("q", search.trim());
-    if (productSlug.trim()) params.set("product_slug", productSlug.trim());
     const response = await fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers });
     if (response.ok) {
       setOffers(await response.json());
@@ -154,9 +146,18 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     try {
       const params = new URLSearchParams();
       params.set("limit", "100");
-      if (offerTab !== "all") params.set("status", offerTab);
+      if (selectedCategory === "restricted") {
+        params.set("status", "restricted");
+      } else if (selectedCategory === "unclassified") {
+        params.set("status", "unclassified");
+      } else {
+        if (selectedCategory !== "all") params.set("brand", selectedCategory);
+        if (statusFilter !== "all") params.set("status", statusFilter);
+      }
+      if (selectedProductSlug.trim() && selectedCategory !== "restricted" && selectedCategory !== "unclassified") {
+        params.set("product_slug", selectedProductSlug.trim());
+      }
       if (offerSearch.trim()) params.set("q", offerSearch.trim());
-      if (offerProductFilter.trim()) params.set("product_slug", offerProductFilter.trim());
 
       const [statsResponse, offersResponse, reportsResponse, intakesResponse] = await Promise.all([
         fetch(`${API}/api/v1/admin/stats`, { headers }),
@@ -388,7 +389,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                         className="rounded-[6px] border hairline bg-[color:var(--panel)] px-2 py-0.5 text-xs text-[color:var(--ink)]"
                       >
                         <option value="ldxp">链动小铺 (ldxp)</option>
-                        <option value="dujiao_next">独角数卡 (dujiao_next)</option>
+                        <option value="dujiao_next" disabled>独角数卡 (dujiao_next - 已暂停)</option>
                         <option value="16688">16688发卡 (16688)</option>
                         <option value="woocommerce">WooCommerce</option>
                         <option value="merchant_json">商家 JSON Feed</option>
@@ -465,90 +466,196 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
 
       {stats && (
         <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
-            <div>
-              <h2 className="text-base font-semibold">报价与分类管理</h2>
-              <p className="mt-0.5 text-xs text-black/55">查看全部商品报价、受限及隐藏商品，支持手动重新分类或调用算法重新检测。</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-1 rounded-[10px] border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs font-medium">
-              {(
-                [
-                  ["all", "全部报价", stats.offers],
-                  ["restricted", "受限/已隐藏", stats.restricted_offers ?? 0],
-                  ["unclassified", "未分类", stats.unclassified_offers ?? 0],
-                  ["pending", "待审核", null],
-                  ["active", "公开中", stats.public_offers],
-                ] as const
-              ).map(([tabKey, tabLabel, tabCount]) => (
-                <button
-                  key={tabKey}
-                  type="button"
-                  onClick={() => {
-                    setOfferTab(tabKey);
-                    loadOffers(tabKey, offerSearch, offerProductFilter);
-                  }}
-                  className={`flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 transition-colors ${
-                    offerTab === tabKey
-                      ? "bg-[color:var(--ink)] text-white shadow-sm"
-                      : "text-black/60 hover:text-black hover:bg-[color:var(--subtle)]"
-                  }`}
-                >
-                  <span>{tabLabel}</span>
-                  {tabCount !== null && tabCount > 0 && (
-                    <span
-                      className={`rounded-full px-1.5 py-0.2 mono text-[10px] ${
-                        offerTab === tabKey
-                          ? "bg-white/20 text-white"
-                          : tabKey === "restricted"
-                          ? "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
-                          : "bg-black/5 text-black/60"
-                      }`}
-                    >
-                      {tabCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
+            <h2 className="text-base font-semibold">报价与分类管理</h2>
+            <p className="mt-0.5 text-xs text-black/55">
+              前后台分类与展示顺序严格对齐。支持按品牌、产品分类及【受限/已隐藏】专区分类查看，并在每个商品项直接执行公开审批、限制隐藏、自动算法检测及目标归类。
+            </p>
           </div>
 
-          <div className="grid gap-3 border-b border-[color:var(--line)] bg-[color:var(--panel)] p-4 sm:grid-cols-[1fr_220px_auto]">
+          {/* Navigation Rails matching Frontend */}
+          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--panel)] p-4 space-y-3">
+            {/* Level 1: Brand & Special Categories */}
+            <nav className="filter-rail flex-wrap gap-1.5" aria-label="管理分类品牌与视图">
+              <span className="filter-label">品牌/专区</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("all");
+                  setSelectedProductSlug("");
+                  loadOffers("all", "", statusFilter, offerSearch);
+                }}
+                aria-current={selectedCategory === "all" ? "page" : undefined}
+                className="filter-chip"
+              >
+                全部品牌
+              </button>
+              {BRAND_TABS.map((brand) => (
+                <button
+                  key={brand}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(brand);
+                    setSelectedProductSlug("");
+                    loadOffers(brand, "", statusFilter, offerSearch);
+                  }}
+                  aria-current={selectedCategory === brand ? "page" : undefined}
+                  className="filter-chip"
+                >
+                  {brand}
+                </button>
+              ))}
+              <div className="mx-1 h-5 w-px bg-[color:var(--line-strong)] self-center hidden sm:block" />
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("restricted");
+                  setSelectedProductSlug("");
+                  loadOffers("restricted", "", "all", offerSearch);
+                }}
+                aria-current={selectedCategory === "restricted" ? "page" : undefined}
+                className={`filter-chip flex items-center gap-1.5 ${
+                  selectedCategory === "restricted"
+                    ? "!bg-[color:var(--danger)] !text-white !border-[color:var(--danger)]"
+                    : "border-[color:var(--danger)]/40 text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]"
+                }`}
+              >
+                <span>🚫 受限/已隐藏</span>
+                {(stats.restricted_offers ?? 0) > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 mono text-[10px] ${
+                      selectedCategory === "restricted"
+                        ? "bg-white/20 text-white"
+                        : "bg-[color:var(--danger-soft)] text-[color:var(--danger)]"
+                    }`}
+                  >
+                    {stats.restricted_offers}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("unclassified");
+                  setSelectedProductSlug("");
+                  loadOffers("unclassified", "", "all", offerSearch);
+                }}
+                aria-current={selectedCategory === "unclassified" ? "page" : undefined}
+                className={`filter-chip flex items-center gap-1.5 ${
+                  selectedCategory === "unclassified"
+                    ? ""
+                    : "text-black/70 hover:bg-[color:var(--subtle)]"
+                }`}
+              >
+                <span>❓ 未分类商品</span>
+                {(stats.unclassified_offers ?? 0) > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 mono text-[10px] ${
+                      selectedCategory === "unclassified"
+                        ? "bg-white/20 text-white"
+                        : "bg-black/5 text-black/60"
+                    }`}
+                  >
+                    {stats.unclassified_offers}
+                  </span>
+                )}
+              </button>
+            </nav>
+
+            {/* Level 2: Product Types Rail (when Brand is active) */}
+            {selectedCategory !== "restricted" && selectedCategory !== "unclassified" && (
+              <nav className="filter-rail border-t border-[color:var(--line)] pt-3 flex-wrap gap-1.5" aria-label="商品类型筛选">
+                <span className="filter-label">商品分类</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedProductSlug("");
+                    loadOffers(selectedCategory, "", statusFilter, offerSearch);
+                  }}
+                  aria-current={selectedProductSlug === "" ? "page" : undefined}
+                  className="filter-chip"
+                >
+                  {selectedCategory === "all" ? "全部商品" : `全部 ${selectedCategory}`}
+                </button>
+                {(selectedCategory === "all" ? ALL_PRODUCTS : PRODUCT_TABS[selectedCategory as BrandName] || []).map((tab) => (
+                  <button
+                    key={tab.slug}
+                    type="button"
+                    onClick={() => {
+                      setSelectedProductSlug(tab.slug);
+                      loadOffers(selectedCategory, tab.slug, statusFilter, offerSearch);
+                    }}
+                    aria-current={selectedProductSlug === tab.slug ? "page" : undefined}
+                    className="filter-chip"
+                  >
+                    {selectedCategory === "all" && "brand" in tab && (
+                      <span className="text-[10px] opacity-60 mr-1">{String(tab.brand)}</span>
+                    )}
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            )}
+
+            {/* Specialized Information Banner for Restricted / Unclassified */}
+            {selectedCategory === "restricted" && (
+              <div className="rounded-[9px] border border-[color:var(--danger)]/30 bg-[color:var(--danger-soft)] px-4 py-3 text-xs leading-5 text-[color:var(--danger)]">
+                <strong>🚫 当前分类：受限/已隐藏专区（共 {stats.restricted_offers ?? 0} 条）</strong>
+                <p className="mt-1">
+                  展示所有被分类拦截机制判定为教程/非标品、缺乏账号核心凭证，或由管理员手动限制隐藏的商品报价。可在此核查商家原始分类与拦截原因，并支持一键【恢复公开】或手动指定重新归类。
+                </p>
+              </div>
+            )}
+            {selectedCategory === "unclassified" && (
+              <div className="rounded-[9px] border border-[color:var(--warning)]/30 bg-[color:var(--warning-soft)] px-4 py-3 text-xs leading-5 text-[color:var(--ink)]">
+                <strong>❓ 当前分类：未分类商品专区（共 {stats.unclassified_offers ?? 0} 条）</strong>
+                <p className="mt-1">
+                  展示已从各店铺采集入库但暂未归类到任何标准产品的商品。可在此手动选择目标分类或点击【自动分类】调用算法规则重新识别。
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Search & Status Sub-Filter */}
+          <div className="grid gap-3 border-b border-[color:var(--line)] bg-[color:var(--panel)] p-4 sm:grid-cols-[1fr_auto]">
             <div className="relative">
               <input
                 value={offerSearch}
                 onChange={(e) => setOfferSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    loadOffers(offerTab, offerSearch, offerProductFilter);
+                    loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch);
                   }
                 }}
-                placeholder="按标题、店铺名称或受限原因搜索..."
+                placeholder="按标题、店铺名称或受限拦截原因搜索..."
                 className="w-full rounded-[9px] border border-[color:var(--line-strong)] bg-transparent py-2 pl-9 pr-3 text-sm outline-none focus:border-[color:var(--focus)]"
               />
               <MagnifyingGlass size={16} className="absolute left-3 top-3 text-black/40" />
             </div>
-            <select
-              value={offerProductFilter}
-              onChange={(e) => {
-                setOfferProductFilter(e.target.value);
-                loadOffers(offerTab, offerSearch, e.target.value);
-              }}
-              className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
-            >
-              <option value="">全部目标产品</option>
-              {PRODUCT_OPTIONS.map((slug) => (
-                <option key={slug} value={slug}>
-                  {slug}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => loadOffers(offerTab, offerSearch, offerProductFilter)}
-              className="button-secondary tactile"
-            >
-              筛选
-            </button>
+            <div className="flex items-center gap-2">
+              {selectedCategory !== "restricted" && selectedCategory !== "unclassified" && (
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    const nextStatus = e.target.value as StatusFilter;
+                    setStatusFilter(nextStatus);
+                    loadOffers(selectedCategory, selectedProductSlug, nextStatus, offerSearch);
+                  }}
+                  className="rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-sm text-black/75 outline-none"
+                >
+                  <option value="all">全部公开状态</option>
+                  <option value="active">仅看公开中</option>
+                  <option value="pending">仅看未公开/待审</option>
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={() => loadOffers(selectedCategory, selectedProductSlug, statusFilter, offerSearch)}
+                className="button-secondary tactile"
+              >
+                搜索筛选
+              </button>
+            </div>
           </div>
 
           {actionToast && (
@@ -562,12 +669,12 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
 
           {offers.length === 0 ? (
             <div className="p-8 text-center text-sm text-black/45">
-              当前筛选条件（{offerTab === "restricted" ? "受限/隐藏" : offerTab === "unclassified" ? "未分类" : offerTab}）下暂无商品报价。
+              当前分类（{selectedCategory === "restricted" ? "受限/已隐藏" : selectedCategory === "unclassified" ? "未分类" : selectedCategory}）及筛选条件下暂无商品报价。
             </div>
           ) : (
             <div className="divide-y divide-[color:var(--line)]">
               {offers.map((offer) => (
-                <div key={offer.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_220px_100px_auto] xl:items-center">
+                <div key={offer.id} className="grid gap-3 px-5 py-4 xl:grid-cols-[1fr_240px_100px_auto] xl:items-center">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="mono text-xs text-black/40">#{offer.id} · {offer.shop}</span>
@@ -577,6 +684,11 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                       {offer.approved && offer.active && offer.product_slug && (
                         <span className="status-pill status-success">公开中</span>
                       )}
+                      {offer.product_slug && (
+                        <span className="rounded-[6px] bg-[color:var(--brand-soft)] px-2 py-0.5 text-xs font-medium text-[color:var(--brand)]">
+                          {offer.brand ? `${offer.brand} / ` : ""}{offer.product_name || offer.product_slug}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1.5 font-medium text-sm text-[color:var(--ink)]">{offer.title}</p>
                     {offer.original_category && (
@@ -584,7 +696,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                     )}
                     {offer.hidden_reason && (
                       <div className="mt-2 rounded-[8px] border border-[color:var(--danger)]/25 bg-[color:var(--danger-soft)] px-2.5 py-1.5 text-xs text-[color:var(--danger)]">
-                        <strong>受限原因：</strong>{offer.hidden_reason}
+                        <strong>🚫 受限拦截原因：</strong>{offer.hidden_reason}
                       </div>
                     )}
                   </div>
@@ -599,13 +711,17 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                           approved: Boolean(event.target.value),
                         })
                       }
-                      className="w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm"
+                      className="w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-xs"
                     >
                       <option value="">未分类 / 暂不归类</option>
-                      {PRODUCT_OPTIONS.map((slug) => (
-                        <option key={slug} value={slug}>
-                          {slug}
-                        </option>
+                      {BRAND_TABS.map((brand) => (
+                        <optgroup key={brand} label={brand}>
+                          {PRODUCT_TABS[brand].map((p) => (
+                            <option key={p.slug} value={p.slug}>
+                              {p.label} ({p.slug})
+                            </option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </div>

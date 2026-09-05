@@ -40,3 +40,46 @@ export const SCENARIO_LABELS: Record<string, string> = {
   api: "API",
   relay: "中转 / 反代",
 };
+
+export const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"] as const;
+export type BrandName = (typeof BRAND_TABS)[number];
+
+export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> = {
+  OpenAI: [
+    { label: "Free", slug: "chatgpt-account" },
+    { label: "Plus", slug: "chatgpt-plus" },
+    { label: "Go", slug: "chatgpt-go" },
+    { label: "K12 / Team", slug: "chatgpt-k12" },
+    { label: "Pro 5x", slug: "chatgpt-pro-5x" },
+    { label: "Pro 20x", slug: "chatgpt-pro-20x" },
+    { label: "OpenAI API", slug: "openai-api-credit" },
+    { label: "手机接码", slug: "chatgpt-access-service" },
+  ],
+  Claude: [
+    { label: "Claude Pro", slug: "claude-pro" },
+    { label: "Claude 账号", slug: "claude-account" },
+    { label: "Claude API", slug: "claude-api-access" },
+  ],
+  Gemini: [
+    { label: "Gemini Advanced", slug: "gemini-advanced" },
+    { label: "Gemini 账号", slug: "gemini-account" },
+    { label: "Gemini API", slug: "gemini-api-access" },
+  ],
+  Grok: [
+    { label: "SuperGrok", slug: "grok-super" },
+    { label: "Grok 账号", slug: "grok-account" },
+    { label: "Grok API", slug: "grok-api-access" },
+  ],
+  X: [
+    { label: "Basic", slug: "x-premium-basic" },
+    { label: "Premium", slug: "x-premium" },
+    { label: "Premium+", slug: "x-premium-plus" },
+  ],
+};
+
+export const ALL_PRODUCTS = BRAND_TABS.flatMap((brand) =>
+  PRODUCT_TABS[brand].map((product) => ({
+    brand,
+    ...product,
+  }))
+);

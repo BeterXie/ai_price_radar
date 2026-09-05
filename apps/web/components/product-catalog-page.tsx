@@ -12,41 +12,9 @@ import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
 import { getProductSeoContent } from "@/lib/product-seo";
 
-const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
-const EMPTY_META = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
+import { BRAND_TABS, type BrandName, PRODUCT_TABS } from "@/lib/catalog";
 
-const PRODUCT_TABS: Record<string, { label: string; slug: string }[]> = {
-  OpenAI: [
-    { label: "Free", slug: "chatgpt-account" },
-    { label: "Plus", slug: "chatgpt-plus" },
-    { label: "Go", slug: "chatgpt-go" },
-    { label: "K12 / Team", slug: "chatgpt-k12" },
-    { label: "Pro 5x", slug: "chatgpt-pro-5x" },
-    { label: "Pro 20x", slug: "chatgpt-pro-20x" },
-    { label: "OpenAI API", slug: "openai-api-credit" },
-    { label: "手机接码", slug: "chatgpt-access-service" },
-  ],
-  Claude: [
-    { label: "Claude Pro", slug: "claude-pro" },
-    { label: "Claude 账号", slug: "claude-account" },
-    { label: "Claude API", slug: "claude-api-access" },
-  ],
-  Gemini: [
-    { label: "Gemini Advanced", slug: "gemini-advanced" },
-    { label: "Gemini 账号", slug: "gemini-account" },
-    { label: "Gemini API", slug: "gemini-api-access" },
-  ],
-  Grok: [
-    { label: "SuperGrok", slug: "grok-super" },
-    { label: "Grok 账号", slug: "grok-account" },
-    { label: "Grok API", slug: "grok-api-access" },
-  ],
-  X: [
-    { label: "Basic", slug: "x-premium-basic" },
-    { label: "Premium", slug: "x-premium" },
-    { label: "Premium+", slug: "x-premium-plus" },
-  ],
-};
+const EMPTY_META = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
 function withQuery(path: string, query: URLSearchParams) {
   const value = query.toString();
@@ -74,7 +42,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
     catalogLoadFailed = true;
     return null;
   });
-  const productTabBrand = activeBrand || "OpenAI";
+  const productTabBrand = (activeBrand && activeBrand in PRODUCT_TABS ? activeBrand : "OpenAI") as BrandName;
   const productTabs = PRODUCT_TABS[productTabBrand] || [];
   const scopeQuery = new URLSearchParams(detailQuery);
   if (searchQuery) scopeQuery.set("q", searchQuery);
@@ -160,7 +128,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="来源平台筛选">
           <span className="filter-label">来源平台</span>
           <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip">全部来源</Link>
-          {meta.source_platforms.map((source) => (
+          {meta.source_platforms.filter((source) => source.id !== "dujiao_next").map((source) => (
             <Link key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className="filter-chip">{source.label}</Link>
           ))}
           {!metaResult ? <span className="ml-2 text-xs text-[color:var(--muted)]">来源选项暂不可用，可继续浏览当前报价</span> : null}

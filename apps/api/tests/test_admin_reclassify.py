@@ -192,3 +192,10 @@ def test_reclassify_single_offer_and_status_filtering():
         assert len(searched) == 1
         assert searched[0]["id"] == offer2.id
 
+        # Brand filtering
+        openai_offers = offers(brand="OpenAI", db=db)
+        assert len(openai_offers) == 1
+        assert openai_offers[0]["id"] == offer1.id
+        assert openai_offers[0]["brand"] == "OpenAI"
+        assert openai_offers[0]["product_name"] == "ChatGPT Plus"
+

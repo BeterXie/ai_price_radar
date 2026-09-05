@@ -2,6 +2,25 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.39] - 2026-09-05
+
+### Added
+
+- **Admin Category Hierarchy Aligned with Frontend**:
+  - Replaced the admin offers panel's flat product slug list with a brand and product rail matching the public catalog (`apps/web/lib/catalog.ts`).
+  - Added dedicated navigation views for `🚫 受限/已隐藏` and `❓ 未分类商品` with real-time offer count badges.
+  - Added `brand` parameter filtering in `GET /api/v1/admin/offers` and enriched offer responses with `brand` and `product_name`.
+  - Added grouped `<optgroup>` selection by brand hierarchy for offer reclassification.
+  - Clearly highlighted restriction reasons for restricted/hidden offers with one-click restore (`恢复公开`) and hide (`隐藏/限制`) actions.
+
+### Changed
+
+- **Paused Dujiao-Next Candidate Discovery & Web Submission**:
+  - Paused automatic Dujiao-Next discovery in remote refresh scripts (`ENABLE_DUJIAO_DISCOVERY=false`) and removed `dujiao-next` search queries from GitHub discovery.
+  - Disabled the Dujiao-Next option on the public shop submission form (`/shops/submit`) with `(暂停收录)` badge.
+  - Filtered out `dujiao_next` from the frontend catalog source platform filters.
+  - Documented discovery pause and frontend disabled status in `docs/CONNECTORS.md`.
+
 ## [3.7.38] - 2026-09-04
 
 ### Changed
