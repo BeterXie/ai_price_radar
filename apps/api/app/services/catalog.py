@@ -25,7 +25,7 @@ from ..schemas import (
     ShopDetail,
 )
 from .official_pricing import official_reference_for
-from .pricing import is_trusted_price, low_price_warning, price_median
+from .pricing import MIN_TRUSTED_PRICE, is_trusted_price, low_price_warning, price_median
 from .source_health import source_health
 from .source_platform import (
     DISABLED_SOURCE_PLATFORMS,
@@ -206,9 +206,11 @@ def _offer_ordering():
 def _offer_sort_key(offer: Offer):
     return (
         offer.stock_status != "in_stock",
+        not offer.is_comparable,
         offer.currency != PRICE_CURRENCY,
         offer.currency,
         offer.price is None,
+        offer.price is not None and offer.price < MIN_TRUSTED_PRICE,
         offer.price or Decimal("999999"),
         -offer.observed_at.timestamp(),
         offer.id,
@@ -293,9 +295,7 @@ def _is_trusted_offer(offer: Offer, medians: dict[tuple[str, str], Decimal]) -> 
 
 
 def _trusted_offer_sort_key(offer: Offer, medians: dict[tuple[str, str], Decimal] | None = None):
-    if medians is None:
-        return _offer_sort_key(offer)
-    return (not _is_trusted_offer(offer, medians), *_offer_sort_key(offer))
+    return _offer_sort_key(offer)
 
 
 def _group_offers(
@@ -426,6 +426,16 @@ def get_product_group_page(
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
         trusted = [offer for offer in group if _is_trusted_offer(offer, medians)]
         prices = [offer.price for offer in trusted if offer.currency == PRICE_CURRENCY and offer.price is not None]
+        if not prices:
+            prices = [
+                offer.price
+                for offer in in_stock
+                if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
+            ] or [
+                offer.price
+                for offer in group
+                if offer.currency == PRICE_CURRENCY and offer.price is not None
+            ]
         items.append(OfferGroupPublic(
             product_slug=product.slug,
             product_name=product.display_name,
@@ -533,6 +543,16 @@ def get_catalog_group_page(
         product_medians = medians_by_product.get(product_id, {})
         trusted = [offer for offer in group if _is_trusted_offer(offer, product_medians)]
         prices = [offer.price for offer in trusted if offer.currency == PRICE_CURRENCY and offer.price is not None]
+        if not prices:
+            prices = [
+                offer.price
+                for offer in in_stock
+                if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
+            ] or [
+                offer.price
+                for offer in group
+                if offer.currency == PRICE_CURRENCY and offer.price is not None
+            ]
         items.append(OfferGroupPublic(
             product_slug=product.slug,
             product_name=product.display_name,
