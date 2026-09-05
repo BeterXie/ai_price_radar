@@ -524,6 +524,38 @@ def test_runner_submits_batches_deduplicates_and_finishes_run():
     assert bridge.finished[0]["new_candidate_count"] == 2
 
 
+def test_runner_retries_a_failed_batch_without_dropping_candidates():
+    class FlakyBridge(FakeBridge):
+        def __init__(self):
+            super().__init__()
+            self.batch_attempts = 0
+
+        def batch_upsert(self, items: list[dict]) -> list[dict]:
+            self.batch_attempts += 1
+            if self.batch_attempts == 1:
+                raise DiscoveryBridgeError("temporary API failure")
+            return super().batch_upsert(items)
+
+    class Adapter:
+        name = "seed"
+
+        def discover(self, *, keywords, budget):
+            yield __import__("ldxp_crawler.source_discovery.models", fromlist=["DiscoveredCandidate"]).DiscoveredCandidate(
+                "https://shop.example.com/retry", "seed", "unknown", ""
+            )
+
+    bridge = FlakyBridge()
+    stats = DiscoveryRunner(
+        [Adapter()],
+        bridge,
+        logger=logging.getLogger("test-source-discovery"),
+        budget=DiscoveryBudget(request_interval_seconds=0),
+    ).run()
+    assert bridge.batch_attempts == 2
+    assert stats.new_candidate_count == 1
+    assert len(bridge.upserts) == 1
+
+
 def test_runner_survives_run_create_failure():
     class BrokenBridge(FakeBridge):
         def create_run(self, *, trigger, adapters):

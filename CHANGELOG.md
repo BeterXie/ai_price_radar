@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.47] - 2026-09-05
+
+### Fixed
+
+- Preserve failed crawler discovery batches for a retry instead of silently dropping candidates.
+
 ## [3.7.46] - 2026-09-05
 
 ### Fixed

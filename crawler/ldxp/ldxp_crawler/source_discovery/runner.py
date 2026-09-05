@@ -49,18 +49,23 @@ class DiscoveryRunner:
         def flush() -> None:
             if not batch:
                 return
-            try:
-                results = self.bridge.batch_upsert(list(batch))
-                for result in results:
-                    if result.get("is_new") is True:
-                        self.stats.new_candidate_count += 1
-                    else:
-                        self.stats.duplicate_count += 1
-            except Exception as exc:
-                self.logger.error("批量提交候选失败：%s", type(exc).__name__)
-                self.stats.failure_stats["batch_upsert"] = self.stats.failure_stats.get("batch_upsert", 0) + 1
-            finally:
+            for attempt in range(2):
+                try:
+                    results = self.bridge.batch_upsert(list(batch))
+                    for result in results:
+                        if result.get("is_new") is True:
+                            self.stats.new_candidate_count += 1
+                        else:
+                            self.stats.duplicate_count += 1
+                except Exception as exc:
+                    if attempt == 0:
+                        self.logger.warning("批量提交候选失败，准备重试：%s", type(exc).__name__)
+                        continue
+                    self.logger.error("批量提交候选失败：%s", type(exc).__name__)
+                    self.stats.failure_stats["batch_upsert"] = self.stats.failure_stats.get("batch_upsert", 0) + 1
+                    return
                 batch.clear()
+                return
 
         try:
             for adapter in self.adapters:
