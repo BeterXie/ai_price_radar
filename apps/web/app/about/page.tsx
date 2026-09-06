@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FactLedger, InfoPage } from "@/components/page-shell";
+import { getMeta } from "@/lib/api";
 
 export const metadata: Metadata = { title: "关于本站", description: "了解 AI Price Radar 如何整理公开 AI 商品报价。", alternates: { canonical: "/about" } };
 
@@ -10,7 +11,9 @@ const principles = [
   ["如何提交纠错", "价格、库存或分类有误时，可以提交纠错。项目代码和主要分类规则也在 GitHub 上公开维护。"],
 ] as const;
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const meta = await getMeta().catch(() => null);
+
   return (
     <InfoPage
       eyebrow="项目与边界"
@@ -20,6 +23,9 @@ export default function AboutPage() {
       <FactLedger items={principles} />
       <div className="mt-8 flex flex-wrap gap-3 border-t border-[color:var(--line-strong)] pt-8">
         <Link href="/methodology" className="button-primary">查看报价整理方法</Link>
+        {meta?.advertise_enabled ? (
+          <Link href="/advertise" className="button-secondary">商务合作 / 广告投放</Link>
+        ) : null}
         <a href="https://github.com/BeterXie/ai_price_radar" target="_blank" rel="noreferrer" className="button-secondary">查看开源仓库</a>
       </div>
     </InfoPage>

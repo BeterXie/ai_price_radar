@@ -53,6 +53,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages[1].lastModified = snapshotAt;
   }
 
+  if (meta?.advertise_enabled) {
+    staticPages.push({ url: `${SITE_URL}/advertise`, lastModified: snapshotAt });
+  }
+
   const sourceCatalogs = meta
     ? (
         await Promise.all(

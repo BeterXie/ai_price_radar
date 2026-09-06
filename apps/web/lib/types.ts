@@ -199,6 +199,7 @@ export type Meta = {
   source_platforms: { id: string; label: string }[];
   product_types: string[];
   tags: string[];
+  advertise_enabled?: boolean;
 };
 
 export type CatalogResponse = {

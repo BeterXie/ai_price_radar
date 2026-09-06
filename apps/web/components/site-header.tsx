@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef } from "react";
-import { Bell, GithubLogo, List, Storefront, X } from "@phosphor-icons/react";
+import { Bell, GithubLogo, List, Storefront, Tag, X } from "@phosphor-icons/react";
 import { PlatformIcon } from "@/components/platform-icon";
 
 const primaryLinks = [
@@ -19,7 +19,7 @@ function current(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SiteHeader() {
+export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: boolean }) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDetailsElement>(null);
   const closeMenu = () => {
@@ -75,6 +75,9 @@ export function SiteHeader() {
                 ))}
                 <Link href="/watchlist" onClick={closeMenu} aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="nav-link flex min-h-11"><Bell size={17} />关注清单</Link>
                 <Link href="/shops/submit" onClick={closeMenu} aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
+                {advertiseEnabled ? (
+                  <Link href="/advertise" onClick={closeMenu} aria-current={current(pathname, "/advertise") ? "page" : undefined} className="nav-link flex min-h-11"><Tag size={17} />商务合作</Link>
+                ) : null}
               </nav>
               <div className="border-t border-[color:var(--line)] p-3">
                 <p className="px-2 text-[11px] font-semibold tracking-[.06em] text-[color:var(--muted)]">按品牌查看报价</p>

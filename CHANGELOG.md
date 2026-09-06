@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.50] - 2026-09-07
+
+### Added
+
+- Added Business Cooperation & Advertising page (`/advertise`) and official contact email (`info@ai.pricememo.cn`).
+- Added backend `SystemSetting` key-value model and admin API endpoints (`GET /api/v1/admin/settings`, `PATCH /api/v1/admin/settings`).
+- Added admin panel toggle switch for `advertise_enabled` to dynamically control public visibility of commercial cooperation links and gate `/advertise`.
+
 ## [3.7.49] - 2026-09-05
 
 ### Fixed

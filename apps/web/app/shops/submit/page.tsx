@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CheckCircle, Eye, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { ShopRequestForm } from "@/components/shop-request-form";
+import { BUSINESS_EMAIL } from "@/lib/community";
+import { getMeta } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "提交商品来源",
@@ -13,7 +16,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ShopSubmitPage() {
+export default async function ShopSubmitPage() {
+  const meta = await getMeta().catch(() => null);
+
   return (
     <main id="main-content" className="shell py-12 md:py-16" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="task-orientation eligibility-check structured-form explicit-feedback">
       <section className="shop-submit-layout">
@@ -41,6 +46,22 @@ export default function ShopSubmitPage() {
           </div>
 
           <p className="mt-6 max-w-xl text-sm leading-6 text-[color:var(--muted)]">申请会先经过审核和读取验证。公开可访问、包含目标商品并能稳定核验的来源才会进入报价目录。</p>
+          {meta?.advertise_enabled ? (
+            <div className="mt-6 max-w-xl rounded-[12px] border border-[color:var(--line)] bg-[color:var(--surface)] p-4 text-xs leading-6 text-[color:var(--muted)]">
+              <span className="font-semibold text-[color:var(--ink)]">💡 需要更多商业曝光与推广合作？</span>
+              <p className="mt-1">
+                如需开展核心分类置顶推荐、CPS 专属优惠码合作或品牌赞助，请参阅{" "}
+                <Link href="/advertise" className="font-medium underline text-[color:var(--ink)]">
+                  商务合作 / 广告投放
+                </Link>
+                ，或直接发送邮件至{" "}
+                <a href={`mailto:${BUSINESS_EMAIL}`} className="font-medium underline text-[color:var(--ink)]">
+                  {BUSINESS_EMAIL}
+                </a>
+                。
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <ShopRequestForm />

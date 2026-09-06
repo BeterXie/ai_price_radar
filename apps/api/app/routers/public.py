@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..database import get_db
-from ..models import Offer, Product, Report, ReportRateLimit, Shop, SourceIntake
+from ..models import Offer, Product, Report, ReportRateLimit, Shop, SourceIntake, SystemSetting
 from ..schemas import (
     CatalogOfferGroupPageResponse,
     CatalogResponse,
@@ -522,6 +522,8 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     offers = list(db.scalars(offer_stmt))
     brands = sorted({x.platform for x in products})
     source_platform_ids = sorted({canonical_source_platform(offer.shop.platform) for offer in offers})
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "advertise_enabled"))
+    advertise_enabled = bool(setting and setting.value and setting.value.strip().lower() in ("true", "1", "yes", "on"))
     return MetaResponse(
         platforms=brands,
         brands=brands,
@@ -532,6 +534,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         ],
         product_types=sorted({x.product_type for x in products}),
         tags=sorted({tag for offer in offers for tag in (offer.tags or [])}),
+        advertise_enabled=advertise_enabled,
     )
 
 

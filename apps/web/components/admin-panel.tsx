@@ -112,6 +112,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [targetIntakeId, setTargetIntakeId] = useState<number | null>(null);
   const [reportDrafts, setReportDrafts] = useState<Record<number, { public_summary: string; merchant_response: string }>>({});
   const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
+  const [advertiseEnabled, setAdvertiseEnabled] = useState<boolean>(false);
+  const [updatingAdvertise, setUpdatingAdvertise] = useState<boolean>(false);
   const [error, setError] = useState(previewState === "error" ? "管理数据暂时无法加载。输入密钥后可以重新连接。" : "");
   const headers = { "X-Admin-Key": key };
   const hasScrolledToIntakeRef = useRef(false);
@@ -232,17 +234,22 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       }
       if (offerSearch.trim()) params.set("q", offerSearch.trim());
 
-      const [statsResponse, offersResponse, reportsResponse, intakesResponse] = await Promise.all([
+      const [statsResponse, offersResponse, reportsResponse, intakesResponse, settingsResponse] = await Promise.all([
         fetch(`${API}/api/v1/admin/stats`, { headers }),
         fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers }),
         fetch(`${API}/api/v1/admin/reports?status=open`, { headers }),
         fetch(`${API}/api/v1/admin/source-intakes`, { headers }),
+        fetch(`${API}/api/v1/admin/settings`, { headers }).catch(() => null),
       ]);
       if (!statsResponse.ok || !offersResponse.ok || !reportsResponse.ok || !intakesResponse.ok) {
         setError("管理密钥无效，或 API 无法访问。密钥仍保留在当前页面，可以修改后重试。");
         return;
       }
       setStats(await statsResponse.json());
+      if (settingsResponse && settingsResponse.ok) {
+        const settingsData = await settingsResponse.json();
+        setAdvertiseEnabled(Boolean(settingsData.advertise_enabled));
+      }
       const offersData = await offersResponse.json();
       const totalHeader = offersResponse.headers.get("x-total-count");
       setOfferTotal(totalHeader ? parseInt(totalHeader, 10) : offersData.length);
@@ -257,6 +264,33 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setError("管理 API 暂时无法访问。密钥仍保留在当前页面，请稍后重试。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleAdvertise(targetState: boolean) {
+    setUpdatingAdvertise(true);
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ advertise_enabled: targetState }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAdvertiseEnabled(Boolean(data.advertise_enabled));
+        setActionToast(
+          data.advertise_enabled
+            ? "已开启商务合作与广告投放专区（前台已显示入口）"
+            : "已关闭商务合作与广告投放专区（前台已隐藏入口）"
+        );
+      } else {
+        setError("更新商务合作设置失败，请重试。");
+      }
+    } catch {
+      setError("网络请求失败，未能更新商务合作设置。");
+    } finally {
+      setUpdatingAdvertise(false);
     }
   }
 
@@ -484,6 +518,42 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               <p className="data-value">{value}</p>
             </div>
           ))}
+        </section>
+      )}
+
+      {stats && (
+        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
+            <h2 className="text-base font-semibold">功能与运营配置</h2>
+            <p className="mt-0.5 text-xs text-black/55">
+              控制前台公开展示模块与业务开关。修改后实时生效，前台刷新页面即可看到变更。
+            </p>
+          </div>
+          <div className="p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface)] p-4">
+              <div className="max-w-3xl">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-sm font-semibold text-[color:var(--ink)]">商务合作 / 广告投放专区</h3>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${advertiseEnabled ? "bg-[color:var(--success-soft)] text-[color:var(--success)]" : "bg-[color:var(--subtle)] text-[color:var(--muted)]"}`}>
+                    {advertiseEnabled ? "已开启" : "已关闭"}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs leading-5 text-[color:var(--muted)]">
+                  开启后，将在全站页脚（Site Footer）、移动端抽屉导航、商户收录申请页（/shops/submit）及关于页展示「商务合作 / 广告投放」入口与联系邮箱（info@ai.pricememo.cn），且 /advertise 落地页对外公开可访问。关闭后，前台所有入口隐藏，直接访问 /advertise 返回 404。
+                </p>
+              </div>
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  disabled={updatingAdvertise}
+                  onClick={() => toggleAdvertise(!advertiseEnabled)}
+                  className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${advertiseEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  {updatingAdvertise ? "正在保存..." : advertiseEnabled ? "关闭商务合作专区" : "开启商务合作专区"}
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
       )}
 

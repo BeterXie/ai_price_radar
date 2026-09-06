@@ -250,6 +250,7 @@ class MetaResponse(BaseModel):
     source_platforms: list[SourcePlatformMeta]
     product_types: list[str]
     tags: list[str]
+    advertise_enabled: bool = False
 
 
 class ReportCreate(BaseModel):
@@ -625,3 +626,11 @@ class AdminStats(BaseModel):
     last_scan_at: datetime | None
     product_counts: dict[str, int] = Field(default_factory=dict)
     brand_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class AdminSettingsOut(BaseModel):
+    advertise_enabled: bool = False
+
+
+class AdminSettingsUpdate(BaseModel):
+    advertise_enabled: bool | None = None

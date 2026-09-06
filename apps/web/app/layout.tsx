@@ -8,6 +8,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { CommunityPrompts } from "@/components/community-prompts";
 import { SiteStructuredData } from "@/components/structured-data";
 import { GoogleAnalytics } from "@/components/google-analytics";
+import { getMeta } from "@/lib/api";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ai.pricememo.cn"),
@@ -16,17 +17,20 @@ export const metadata: Metadata = {
   openGraph: { siteName: "AI Price Radar", locale: "zh_CN", type: "website" },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const meta = await getMeta().catch(() => null);
+  const advertiseEnabled = Boolean(meta?.advertise_enabled);
+
   return (
     <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SiteStructuredData />
         <GoogleAnalytics />
         <a href="#page-content" className="skip-link">跳到主要内容</a>
-        <SiteHeader />
+        <SiteHeader advertiseEnabled={advertiseEnabled} />
         <div id="page-content" tabIndex={-1}>{children}</div>
         <BackToTop />
-        <SiteFooter />
+        <SiteFooter advertiseEnabled={advertiseEnabled} />
         <CommunityPrompts />
       </body>
     </html>

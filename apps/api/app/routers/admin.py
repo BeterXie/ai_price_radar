@@ -18,10 +18,13 @@ from ..models import (
     SourceCandidate,
     SourceDiscoveryRun,
     SourceIntake,
+    SystemSetting,
 )
 from ..schemas import (
     AdminOfferUpdate,
     AdminReportUpdate,
+    AdminSettingsOut,
+    AdminSettingsUpdate,
     AdminStats,
     NotificationOutboxOut,
     ReportOut,
@@ -46,6 +49,41 @@ from ..services.source_intake import email_statuses, enqueue_transition_notifica
 from ..services.source_platform import _16688_detection, _ldxp_detection, prepare_source_submission, workflow_status
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+
+def get_setting_bool(db: Session, key: str, default: bool = False) -> bool:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting or not setting.value:
+        return default
+    return setting.value.strip().lower() in ("true", "1", "yes", "on")
+
+
+def set_setting_str(db: Session, key: str, value: str) -> None:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if setting:
+        setting.value = value
+    else:
+        db.add(SystemSetting(key=key, value=value))
+    db.commit()
+
+
+@router.get("/settings", response_model=AdminSettingsOut)
+def get_admin_settings(db: Session = Depends(get_db)) -> AdminSettingsOut:
+    return AdminSettingsOut(
+        advertise_enabled=get_setting_bool(db, "advertise_enabled", default=False),
+    )
+
+
+@router.patch("/settings", response_model=AdminSettingsOut)
+def update_admin_settings(
+    payload: AdminSettingsUpdate,
+    db: Session = Depends(get_db),
+) -> AdminSettingsOut:
+    if payload.advertise_enabled is not None:
+        set_setting_str(db, "advertise_enabled", "true" if payload.advertise_enabled else "false")
+    return AdminSettingsOut(
+        advertise_enabled=get_setting_bool(db, "advertise_enabled", default=False),
+    )
 
 
 @router.get("/stats", response_model=AdminStats)

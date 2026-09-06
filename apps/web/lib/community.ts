@@ -1,4 +1,5 @@
 export const GITHUB_REPOSITORY_URL = "https://github.com/BeterXie/ai_price_radar";
+export const BUSINESS_EMAIL = "info@ai.pricememo.cn";
 
 export type SupportMethod = {
   id: "wechat" | "alipay";
