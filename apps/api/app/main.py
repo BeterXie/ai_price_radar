@@ -11,7 +11,7 @@ from .routers import admin, discovery, internal, public
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.52"
+VERSION = "3.7.53"
 
 
 @asynccontextmanager
@@ -19,7 +19,14 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     if settings.seed_demo_data:
         seed()
+    else:
+        from .database import SessionLocal
+        from .services.community_skills import seed_default_community_skills
+
+        with SessionLocal() as db:
+            seed_default_community_skills(db)
     yield
+
 
 
 app = FastAPI(

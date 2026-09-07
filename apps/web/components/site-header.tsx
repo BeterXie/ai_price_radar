@@ -9,9 +9,11 @@ import { PlatformIcon } from "@/components/platform-icon";
 
 const primaryLinks = [
   { href: "/products", label: "报价目录" },
+  { href: "/skills", label: "技能与实验室" },
   { href: "/guides", label: "购买指南" },
   { href: "/methodology", label: "数据方法" },
 ];
+
 
 const brandLinks = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 

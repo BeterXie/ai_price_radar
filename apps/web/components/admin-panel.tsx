@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Check, Eye, EyeSlash, Key, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { money, stockLabel } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
+import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
+
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
@@ -622,8 +624,12 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       )}
 
       {key && (
-        <SourceDiscoveryPanel apiBase={API} headers={headers} />
+        <>
+          <SkillsAdminPanel apiBase={API} headers={headers} />
+          <SourceDiscoveryPanel apiBase={API} headers={headers} />
+        </>
       )}
+
 
       {reports.length > 0 && (
         <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">

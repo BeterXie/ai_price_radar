@@ -1,4 +1,16 @@
-import type { CatalogOfferGroupPage, CatalogResponse, Meta, ProductDetail, PublicCorrectionPage, ShopCard, ShopDetail, ShopListResponse } from "@/lib/types";
+import type {
+  CatalogOfferGroupPage,
+  CatalogResponse,
+  CommunitySkillDetail,
+  CommunitySkillPage,
+  Meta,
+  ProductDetail,
+  PublicCorrectionPage,
+  ShopCard,
+  ShopDetail,
+  ShopListResponse,
+} from "@/lib/types";
+
 
 const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -60,3 +72,32 @@ export async function getMeta(): Promise<Meta> {
 export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {
   return apiFetch(`/api/v1/corrections${query ? `?${query}` : ""}`);
 }
+
+export async function getSkills(query = ""): Promise<CommunitySkillPage | null> {
+  try {
+    return await apiFetch<CommunitySkillPage>(`/api/v1/skills${query ? `?${query}` : ""}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getSkillDetail(slug: string): Promise<CommunitySkillDetail | null> {
+  try {
+    return await apiFetch<CommunitySkillDetail>(`/api/v1/skills/${encodeURIComponent(slug)}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    return null;
+  }
+}
+
+export async function recordSkillCopy(slug: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${internalBase}/api/v1/skills/${encodeURIComponent(slug)}/copy`, {
+      method: "POST",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+

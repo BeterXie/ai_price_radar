@@ -131,6 +131,10 @@ def seed() -> None:
                 ))
         db.commit()
 
+        from .services.community_skills import seed_default_community_skills
+        seed_default_community_skills(db)
+
+
 
 if __name__ == "__main__":
     seed()

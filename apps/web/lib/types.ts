@@ -228,3 +228,80 @@ export type PublicCorrectionPage = {
   items: PublicCorrection[];
   total: number;
 };
+
+export type RelatedProductSummary = {
+  slug: string;
+  platform: string;
+  display_name: string;
+  subtitle: string;
+  product_type: string;
+};
+
+export type CommunitySkillSummary = {
+  id: number;
+  slug: string;
+  kind: "benchmark" | "skill" | "article" | string;
+  title: string;
+  subtitle: string;
+  summary: string;
+  author_name: string;
+  author_url: string;
+  repo_url: string;
+  stars_count: number;
+  install_command: string;
+  prompt_template: string;
+  demo_url: string;
+  demo_type: "none" | "pelican_arena" | "iframe" | string;
+
+  tags: string[];
+  target_models: string[];
+  related_product_slug: string | null;
+  is_pinned: boolean;
+  is_visible: boolean;
+  sort_order: number;
+  view_count: number;
+  copy_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommunitySkillDetail = CommunitySkillSummary & {
+  content_markdown: string;
+  prompt_template: string;
+  related_product: RelatedProductSummary | null;
+};
+
+export type CommunitySkillPage = {
+  items: CommunitySkillSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  kinds: string[];
+  all_tags: string[];
+};
+
+export type AdminCommunitySkillCreate = {
+  slug: string;
+  kind: string;
+  title: string;
+  subtitle?: string;
+  summary?: string;
+  content_markdown?: string;
+  prompt_template?: string;
+  author_name?: string;
+  author_url?: string;
+  repo_url?: string;
+  stars_count?: number;
+  install_command?: string;
+  demo_url?: string;
+  demo_type?: string;
+  tags?: string[];
+  target_models?: string[];
+  related_product_slug?: string | null;
+  is_pinned?: boolean;
+  is_visible?: boolean;
+  sort_order?: number;
+};
+
+export type AdminCommunitySkillUpdate = Partial<AdminCommunitySkillCreate>;
+

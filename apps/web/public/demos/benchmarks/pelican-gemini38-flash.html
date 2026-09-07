@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>鹈鹕骑自行车 2D 矢量动画</title>
+  <style>
+    :root {
+      --sky-top: #7dd3fc;
+      --sky-bottom: #e0f2fe;
+      --mountain-1: #93c5fd;
+      --mountain-2: #60a5fa;
+      --road-color: #334155;
+      --road-line: #facc15;
+      --ground-color: #4ade80;
+      --ground-edge: #22c55e;
+      --bike-color: #ef4444;
+      --bike-accent: #fbbf24;
+      --pelican-white: #f8fafc;
+      --pelican-shadow: #cbd5e1;
+      --pelican-beak: #f59e0b;
+      --pelican-pouch: #fb923c;
+      --pelican-foot: #ea580c;
+      --cycle-duration: 0.8s;
+    }
+
+    /* 主题：黄昏 */
+    body.theme-sunset {
+      --sky-top: #f97316;
+      --sky-bottom: #fed7aa;
+      --mountain-1: #c2410c;
+      --mountain-2: #9a3412;
+      --ground-color: #84cc16;
+      --ground-edge: #65a30d;
+      --road-color: #1e293b;
+    }
+
+    /* 主题：夜晚 */
+    body.theme-night {
+      --sky-top: #0f172a;
+      --sky-bottom: #1e293b;
+      --mountain-1: #1e1b4b;
+      --mountain-2: #0f172a;
+      --ground-color: #166534;
+      --ground-edge: #14532d;
+      --road-color: #090d16;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0f172a;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      overflow-x: hidden;
+      transition: background 0.5s ease;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1080px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .title-bar {
+      text-align: center;
+      color: #f8fafc;
+    }
+
+    .title-bar h1 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    .title-bar p {
+      font-size: 0.95rem;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .canvas-wrapper {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #ffffff;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      position: relative;
+    }
+
+    svg#stage {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* 控制面板 */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(12px);
+      padding: 12px 24px;
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    button {
+      background: #3b82f6;
+      color: #ffffff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 9999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    }
+
+    button:hover {
+      background: #2563eb;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+      box-shadow: none;
+    }
+
+    button.secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #cbd5e1;
+      font-size: 0.85rem;
+      padding: 0 8px;
+    }
+
+    input[type="range"] {
+      accent-color: #3b82f6;
+      cursor: pointer;
+    }
+
+    /* ====================================================
+       SVG 动画关键帧与运动样式
+       ==================================================== */
+
+    /* 车轮自转 */
+    .wheel-spokes {
+      transform-origin: center;
+      animation: spinWheel var(--cycle-duration) linear infinite;
+    }
+
+    @keyframes spinWheel {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* 脚踏曲柄旋转 */
+    .crank-group {
+      transform-origin: 470px 405px;
+      animation: spinCrank var(--cycle-duration) linear infinite;
+    }
+
+    @keyframes spinCrank {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* 脚踏板水平自转抵消 */
+    .pedal-counter {
+      transform-origin: center;
+      animation: counterCrank var(--cycle-duration) linear infinite;
+    }
+
+    @keyframes counterCrank {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(-360deg);
+      }
+    }
+
+    /* 道路虚线平移模拟飞驰 */
+    .road-lines {
+      animation: roadScroll calc(var(--cycle-duration) * 0.5) linear infinite;
+    }
+
+    @keyframes roadScroll {
+      0% {
+        stroke-dashoffset: 0;
+      }
+      100% {
+        stroke-dashoffset: 80;
+      }
+    }
+
+    /* 路面小石子/杂草滚动 */
+    .road-particles {
+      animation: particlesMove calc(var(--cycle-duration) * 0.8) linear infinite;
+    }
+
+    @keyframes particlesMove {
+      0% {
+        transform: translateX(0);
+      }
+      100% {
+        transform: translateX(-160px);
+      }
+    }
+
+    /* 远山背景视差 */
+    .scenery-mountains {
+      animation: mountainScroll calc(var(--cycle-duration) * 20) linear infinite;
+    }
+
+    @keyframes mountainScroll {
+      0% {
+        transform: translateX(0);
+      }
+      100% {
+        transform: translateX(-500px);
+      }
+    }
+
+    /* 白云飘动 */
+    .cloud-fast {
+      animation: cloudDrift calc(var(--cycle-duration) * 12) linear infinite;
+    }
+
+    .cloud-slow {
+      animation: cloudDrift calc(var(--cycle-duration) * 24) linear infinite;
+    }
+
+    @keyframes cloudDrift {
+      0% {
+        transform: translateX(1100px);
+      }
+      100% {
+        transform: translateX(-300px);
+      }
+    }
+
+    /* 鹈鹕身体起伏与轻微前倾 (踩踏力量感) */
+    .pelican-rider {
+      transform-origin: 450px 330px;
+      animation: riderBob var(--cycle-duration) ease-in-out infinite;
+    }
+
+    @keyframes riderBob {
+      0%, 100% {
+        transform: translateY(0px) rotate(0deg);
+      }
+      25% {
+        transform: translateY(-5px) rotate(-1.5deg);
+      }
+      50% {
+        transform: translateY(2px) rotate(0.8deg);
+      }
+      75% {
+        transform: translateY(-4px) rotate(-1deg);
+      }
+    }
+
+    /* 鹈鹕大喉囊弹力果冻颤动 */
+    .pelican-pouch-elastic {
+      transform-origin: 590px 175px;
+      animation: pouchWobble calc(var(--cycle-duration) * 0.5) ease-in-out infinite alternate;
+    }
+
+    @keyframes pouchWobble {
+      0% {
+        transform: scale(1, 1) rotate(0deg);
+      }
+      50% {
+        transform: scale(1.04, 0.95) rotate(2deg);
+      }
+      100% {
+        transform: scale(0.97, 1.05) rotate(-1deg);
+      }
+    }
+
+    /* 鹈鹕俏皮眨眼 */
+    .pelican-eye-pupil {
+      transform-origin: 574px 158px;
+      animation: blinkEye 3.5s infinite;
+    }
+
+    @keyframes blinkEye {
+      0%, 94%, 100% {
+        transform: scaleY(1);
+      }
+      96%, 98% {
+        transform: scaleY(0.08);
+      }
+    }
+
+    /* 嘴兜里探头的小鱼 */
+    .peeking-fish {
+      transform-origin: 645px 190px;
+      animation: fishPeek calc(var(--cycle-duration) * 1.5) ease-in-out infinite alternate;
+    }
+
+    @keyframes fishPeek {
+      0% {
+        transform: translateY(2px) rotate(-8deg);
+      }
+      100% {
+        transform: translateY(-6px) rotate(4deg);
+      }
+    }
+
+    /* 自行车整体微幅颠簸 */
+    .bike-chassis {
+      transform-origin: 470px 405px;
+      animation: bikeJiggle calc(var(--cycle-duration) * 0.5) ease-in-out infinite alternate;
+    }
+
+    @keyframes bikeJiggle {
+      0% {
+        transform: translateY(0px);
+      }
+      100% {
+        transform: translateY(-1.8px);
+      }
+    }
+
+    /* 尾巴羽毛飘动 */
+    .tail-feather {
+      transform-origin: 395px 295px;
+      animation: tailFlutter calc(var(--cycle-duration) * 0.4) ease-in-out infinite alternate;
+    }
+
+    @keyframes tailFlutter {
+      0% {
+        transform: rotate(0deg);
+      }
+      100% {
+        transform: rotate(-6deg);
+      }
+    }
+
+    /* 迎风速度线 */
+    .wind-line {
+      stroke-dasharray: 60 120;
+      animation: windBlow calc(var(--cycle-duration) * 0.7) linear infinite;
+    }
+
+    @keyframes windBlow {
+      0% {
+        stroke-dashoffset: 0;
+        opacity: 0.8;
+      }
+      100% {
+        stroke-dashoffset: 200;
+        opacity: 0.2;
+      }
+    }
+
+    /* 夜间车灯光芒束 */
+    .headlight-beam {
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+
+    body.theme-night .headlight-beam {
+      opacity: 0.6;
+    }
+
+    /* 暂停状态 */
+    .paused * {
+      animation-play-state: paused !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="title-bar">
+      <h1>🚴 鹈鹕骑行日记 🦆</h1>
+      <p>纯 SVG + 矢量动画驱动的 2D 动效场景</p>
+    </div>
+
+    <div class="canvas-wrapper">
+      <svg id="stage" viewBox="0 0 1000 562.5" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- 天空渐变 -->
+          <linearGradient id="skyGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--sky-top)" />
+            <stop offset="100%" stop-color="var(--sky-bottom)" />
+          </linearGradient>
+
+          <!-- 远山渐变 -->
+          <linearGradient id="mountainGradient1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--mountain-1)" stop-opacity="0.8" />
+            <stop offset="100%" stop-color="var(--sky-bottom)" stop-opacity="0.1" />
+          </linearGradient>
+          <linearGradient id="mountainGradient2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--mountain-2)" stop-opacity="0.9" />
+            <stop offset="100%" stop-color="var(--ground-edge)" stop-opacity="0.3" />
+          </linearGradient>
+
+          <!-- 车灯光柱渐变 -->
+          <linearGradient id="lightBeam" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#fef08a" stop-opacity="0.8" />
+            <stop offset="100%" stop-color="#fef08a" stop-opacity="0" />
+          </linearGradient>
+
+          <!-- 太阳/月亮滤镜 -->
+          <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#fff" />
+            <stop offset="40%" stop-color="#fef08a" />
+            <stop offset="100%" stop-color="#fef08a" stop-opacity="0" />
+          </radialGradient>
+
+          <!-- 车轮轮毂模板 -->
+          <g id="wheel-rim">
+            <!-- 外胎 -->
+            <circle cx="0" cy="0" r="70" fill="none" stroke="#1e293b" stroke-width="12" />
+            <!-- 胎纹外边圈 -->
+            <circle cx="0" cy="0" r="76" fill="none" stroke="#0f172a" stroke-width="2" stroke-dasharray="6 4" />
+            <!-- 金属轮圈 -->
+            <circle cx="0" cy="0" r="63" fill="none" stroke="#94a3b8" stroke-width="5" />
+            <!-- 辐条 (12条) -->
+            <g class="wheel-spokes" stroke="#cbd5e1" stroke-width="1.8">
+              <line x1="0" y1="-63" x2="0" y2="63" />
+              <line x1="-63" y1="0" x2="63" y2="0" />
+              <line x1="-44.5" y1="-44.5" x2="44.5" y2="44.5" />
+              <line x1="44.5" y1="-44.5" x2="-44.5" y2="44.5" />
+              <line x1="-22" y1="-59" x2="22" y2="59" />
+              <line x1="22" y1="-59" x2="-22" y2="59" />
+              <line x1="-59" y1="-22" x2="59" y2="22" />
+              <line x1="59" y1="-22" x2="-59" y2="22" />
+            </g>
+            <!-- 轴心 -->
+            <circle cx="0" cy="0" r="12" fill="#475569" stroke="#cbd5e1" stroke-width="2" />
+            <circle cx="0" cy="0" r="5" fill="#f8fafc" />
+          </g>
+        </defs>
+
+        <!-- 1. 背景天空 -->
+        <rect width="1000" height="420" fill="url(#skyGradient)" />
+
+        <!-- 太阳 / 亮光 -->
+        <g id="sun-element" transform="translate(850, 100)">
+          <circle cx="0" cy="0" r="65" fill="url(#sunGlow)" />
+          <circle cx="0" cy="0" r="32" fill="#fffbeb" />
+        </g>
+
+        <!-- 云朵 (视差飘过) -->
+        <g class="cloud-slow" opacity="0.85">
+          <path d="M 0 90 Q 20 60 50 65 Q 75 40 110 50 Q 145 40 170 65 Q 200 70 200 95 Q 200 115 170 115 L 20 115 Q 0 115 0 90 Z" fill="#ffffff" />
+        </g>
+        <g class="cloud-fast" opacity="0.95" style="animation-delay: -5s;">
+          <path d="M 0 140 Q 25 110 60 115 Q 90 90 135 100 Q 170 90 200 115 Q 230 120 230 145 Q 230 165 200 165 L 20 165 Q 0 165 0 140 Z" fill="#ffffff" />
+        </g>
+
+        <!-- 远山轮廓 (视差循环) -->
+        <g class="scenery-mountains">
+          <path d="M -200 370 L 100 230 L 320 370 L 550 210 L 820 370 L 1100 240 L 1400 370 L 1700 220 L 2000 370 L 2000 420 L -200 420 Z" fill="url(#mountainGradient1)" />
+          <path d="M -100 380 L 180 280 L 420 380 L 680 270 L 950 380 L 1250 290 L 1550 380 L 1850 280 L 2100 380 L 2100 420 L -100 420 Z" fill="url(#mountainGradient2)" />
+        </g>
+
+        <!-- 迎风速度线 -->
+        <g stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.5">
+          <line class="wind-line" x1="120" y1="210" x2="20" y2="210" />
+          <line class="wind-line" x1="280" y1="160" x2="160" y2="160" style="animation-delay: -0.3s;" />
+          <line class="wind-line" x1="880" y1="250" x2="720" y2="250" style="animation-delay: -0.5s;" />
+          <line class="wind-line" x1="420" y1="130" x2="330" y2="130" style="animation-delay: -0.2s;" />
+        </g>
+
+        <!-- 2. 地面与道路 -->
+        <!-- 绿化带草坪 -->
+        <rect x="0" y="375" width="1000" height="35" fill="var(--ground-color)" />
+        <rect x="0" y="375" width="1000" height="6" fill="var(--ground-edge)" />
+
+        <!-- 柏油马路 -->
+        <rect x="0" y="405" width="1000" height="157.5" fill="var(--road-color)" />
+        <!-- 路肩石边线 -->
+        <line x1="0" y1="410" x2="1000" y2="410" stroke="#64748b" stroke-width="4" />
+
+        <!-- 道路中心疾驰虚线 -->
+        <line class="road-lines" x1="0" y1="490" x2="1000" y2="490" stroke="var(--road-line)" stroke-width="8" stroke-linecap="round" stroke-dasharray="45 35" />
+
+        <!-- 飞掠的小石子/落叶 -->
+        <g class="road-particles" fill="#94a3b8">
+          <ellipse cx="250" cy="520" rx="6" ry="3" />
+          <ellipse cx="480" cy="450" rx="4" ry="2" />
+          <ellipse cx="690" cy="535" rx="8" ry="3" />
+          <ellipse cx="890" cy="460" rx="5" ry="2.5" />
+          <ellipse cx="1060" cy="515" rx="7" ry="3" />
+        </g>
+
+        <!-- 3. 自行车与车轮投影 -->
+        <ellipse cx="320" cy="475" rx="55" ry="10" fill="#000000" opacity="0.25" />
+        <ellipse cx="650" cy="475" rx="55" ry="10" fill="#000000" opacity="0.25" />
+        <ellipse cx="485" cy="478" rx="85" ry="14" fill="#000000" opacity="0.3" />
+
+        <!-- ============================================
+             自行车车体 (Bike Structure)
+             ============================================ -->
+        <g class="bike-chassis">
+          <!-- 后轮 (位于 320, 405) -->
+          <g transform="translate(320, 405)">
+            <use href="#wheel-rim" />
+          </g>
+
+          <!-- 前轮 (位于 650, 405) -->
+          <g transform="translate(650, 405)">
+            <use href="#wheel-rim" />
+          </g>
+
+          <!-- 车灯向前照射的锥形光斑 (夜间高亮) -->
+          <polygon class="headlight-beam" points="645,290 980,240 1000,440 645,310" fill="url(#lightBeam)" />
+
+          <!-- 自行车车架管件 (厚实复古红管) -->
+          <g stroke="var(--bike-color)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+            <!-- 后下叉 (后轴到中轴) -->
+            <line x1="320" y1="405" x2="470" y2="405" />
+            <!-- 后上叉 (后轴到车座立管顶部) -->
+            <line x1="320" y1="405" x2="425" y2="295" />
+            <!-- 立管 (中轴到车座) -->
+            <line x1="470" y1="405" x2="425" y2="295" />
+            <!-- 下管 (中轴到前头管) -->
+            <line x1="470" y1="405" x2="615" y2="275" />
+            <!-- 上管 (车座到前头管) -->
+            <line x1="425" y1="305" x2="615" y2="280" />
+            <!-- 前叉 (前头管到前轮轴) -->
+            <line x1="615" y1="275" x2="650" y2="405" />
+          </g>
+
+          <!-- 车架高光细线，增加立体管质感 -->
+          <g stroke="#fca5a5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="428" y1="302" x2="613" y2="277" />
+            <line x1="469" y1="400" x2="612" y2="274" />
+          </g>
+
+          <!-- 链条与齿轮盘 -->
+          <!-- 链条圈 -->
+          <polygon points="320,400 470,392 470,418 320,410" fill="none" stroke="#64748b" stroke-width="4" stroke-linejoin="round" />
+          <!-- 牙盘大齿轮 -->
+          <circle cx="470" cy="405" r="28" fill="#475569" stroke="#94a3b8" stroke-width="3" />
+          <circle cx="470" cy="405" r="18" fill="none" stroke="#334155" stroke-width="4" stroke-dasharray="6 4" />
+
+          <!-- 车座总成 -->
+          <!-- 座管 -->
+          <line x1="425" y1="295" x2="420" y2="265" stroke="#94a3b8" stroke-width="8" stroke-linecap="round" />
+          <!-- 复古流线型车座 -->
+          <path d="M 385 265 C 400 255, 435 255, 455 267 C 450 273, 430 274, 400 272 Z" fill="#78350f" stroke="#451a03" stroke-width="2" />
+          <!-- 车座小弹簧 -->
+          <circle cx="398" cy="275" r="4" fill="#cbd5e1" />
+          <circle cx="410" cy="275" r="4" fill="#cbd5e1" />
+
+          <!-- 车把立管与复古弯把 -->
+          <!-- 立管 -->
+          <line x1="615" y1="275" x2="610" y2="225" stroke="#94a3b8" stroke-width="9" stroke-linecap="round" />
+          <!-- 弯把 -->
+          <path d="M 610 225 C 610 205, 575 205, 570 235" fill="none" stroke="#94a3b8" stroke-width="8" stroke-linecap="round" />
+          <!-- 握把胶套 -->
+          <line x1="571" y1="230" x2="569" y2="248" stroke="#1e293b" stroke-width="10" stroke-linecap="round" />
+
+          <!-- 复古车头灯 -->
+          <path d="M 622 265 L 642 258 L 642 282 L 622 275 Z" fill="#e2e8f0" stroke="#475569" stroke-width="2" />
+          <ellipse cx="642" cy="270" rx="3" ry="12" fill="#fef08a" />
+          <!-- 小车铃 -->
+          <ellipse cx="598" cy="210" rx="7" ry="5" fill="#f59e0b" stroke="#b45309" stroke-width="1.5" />
+
+          <!-- 后轮脚踏 (后方曲柄，相位 180 度，深色以区分远近) -->
+          <g class="crank-group" style="transform: rotate(180deg);">
+            <!-- 曲柄杆 -->
+            <line x1="470" y1="405" x2="470" y2="455" stroke="#334155" stroke-width="7" stroke-linecap="round" />
+            <!-- 脚踏板 -->
+            <g transform="translate(470, 455)">
+              <g class="pedal-counter" style="transform: rotate(-180deg);">
+                <rect x="-14" y="-5" width="28" height="10" rx="3" fill="#1e293b" stroke="#0f172a" stroke-width="1.5" />
+              </g>
+            </g>
+          </g>
+
+          <!-- ============================================
+               鹈鹕骑手 (Pelican Rider)
+               ============================================ -->
+          <g class="pelican-rider">
+            <!-- 鹈鹕尾羽 (随风飘逸) -->
+            <g class="tail-feather">
+              <path d="M 390 285 Q 360 285 345 275 Q 370 295 385 305 Z" fill="var(--pelican-shadow)" />
+              <path d="M 395 288 Q 365 295 350 290 Q 375 308 395 312 Z" fill="#ffffff" />
+            </g>
+
+            <!-- 鹈鹕丰满的主躯干 -->
+            <!-- 身体底部阴影 -->
+            <ellipse cx="445" cy="265" rx="55" ry="42" fill="var(--pelican-shadow)" transform="rotate(-15, 445, 265)" />
+            <!-- 身体正面白色羽毛 -->
+            <ellipse cx="445" cy="260" rx="54" ry="40" fill="var(--pelican-white)" transform="rotate(-15, 445, 260)" />
+
+            <!-- 骑行运动衫/可爱的条纹围巾 -->
+            <path d="M 455 240 Q 480 235 495 248 Q 470 265 440 255 Z" fill="#3b82f6" />
+            <path d="M 445 245 L 430 285" stroke="#ef4444" stroke-width="6" stroke-linecap="round" />
+
+            <!-- 优雅前倾的长脖子 -->
+            <path d="M 470 250 C 490 245, 525 210, 528 175 C 532 145, 545 135, 565 135 C 555 160, 535 220, 485 270 Z" fill="var(--pelican-white)" />
+            <!-- 脖子暗面边缘 -->
+            <path d="M 470 250 C 485 245, 515 215, 520 185 C 510 220, 485 260, 470 250 Z" fill="var(--pelican-shadow)" />
+
+            <!-- 鹈鹕头部 -->
+            <circle cx="565" cy="155" r="24" fill="var(--pelican-white)" />
+            <!-- 头顶翘起的小呆毛 -->
+            <path d="M 552 135 Q 545 118 535 120 Q 548 128 555 138 Z" fill="var(--pelican-white)" />
+            <path d="M 558 133 Q 556 112 546 115 Q 556 124 562 135 Z" fill="var(--pelican-shadow)" />
+
+            <!-- 酷酷的骑行小安全头盔 (戴在头上超有活力) -->
+            <path d="M 545 145 C 545 125, 580 125, 585 142 L 595 148 L 545 148 Z" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2" />
+            <ellipse cx="565" cy="132" rx="14" ry="4" fill="#60a5fa" />
+            <!-- 安全头盔带子 -->
+            <path d="M 552 148 L 560 172 L 568 148" fill="none" stroke="#1e293b" stroke-width="2" />
+
+            <!-- 鹈鹕眼睛 -->
+            <ellipse cx="574" cy="156" rx="6" ry="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" />
+            <g class="pelican-eye-pupil">
+              <ellipse cx="575" cy="156" rx="3.5" ry="4.5" fill="#0f172a" />
+              <!-- 眼神光斑 -->
+              <circle cx="573.5" cy="154" r="1.5" fill="#ffffff" />
+            </g>
+
+            <!-- 鹈鹕最具代表性特征：超级大嘴巴与橙色喉囊 (Gular Pouch) -->
+            <!-- 弹性抖动的大喉囊 -->
+            <g class="pelican-pouch-elastic">
+              <!-- 大喉囊袋兜 -->
+              <path d="M 580 170 C 585 200, 620 235, 665 210 C 690 195, 715 178, 735 172 C 675 185, 620 185, 580 170 Z" fill="var(--pelican-pouch)" stroke="#ea580c" stroke-width="2" />
+              <!-- 喉囊上的天然软褶皱细节纹理 -->
+              <path d="M 610 182 Q 625 210 645 208" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" />
+              <path d="M 635 182 Q 648 202 668 198" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" />
+              <path d="M 665 178 Q 675 192 690 188" fill="none" stroke="#f97316" stroke-width="1.8" stroke-linecap="round" />
+
+              <!-- 喉囊里偷吃冒头的小鱼 (超可爱细节！) -->
+              <g class="peeking-fish">
+                <!-- 小鱼身体 -->
+                <ellipse cx="655" cy="184" rx="14" ry="7" fill="#38bdf8" stroke="#0284c7" stroke-width="1.5" />
+                <!-- 鱼尾 -->
+                <polygon points="668,184 677,178 677,190" fill="#38bdf8" />
+                <!-- 鱼眼睛 (惊讶晕晕圈) -->
+                <circle cx="646" cy="183" r="2.5" fill="#ffffff" />
+                <circle cx="645.5" cy="183" r="1.2" fill="#0369a1" />
+                <!-- 鱼鳞纹理 -->
+                <path d="M 654 180 Q 657 184 654 188" fill="none" stroke="#0284c7" stroke-width="1" />
+              </g>
+            </g>
+
+            <!-- 坚硬的长上喙与末端弯钩 -->
+            <path d="M 572 160 L 735 168 Q 745 170 740 176 L 734 176 L 576 172 Z" fill="var(--pelican-beak)" stroke="#d97706" stroke-width="2" stroke-linejoin="round" />
+            <!-- 喙中线与鼻孔 -->
+            <line x1="575" y1="166" x2="733" y2="171" stroke="#b45309" stroke-width="1.5" />
+            <ellipse cx="585" cy="164" rx="2" ry="0.8" fill="#78350f" />
+
+            <!-- 鹈鹕翅膀 (搭在把手上，模拟骑行握把姿态) -->
+            <!-- 大翅膀主体 -->
+            <path d="M 430 240 C 455 220, 500 235, 525 255 C 555 270, 565 255, 568 240 C 545 285, 490 305, 430 270 Z" fill="var(--pelican-white)" stroke="var(--pelican-shadow)" stroke-width="2" />
+            <!-- 羽毛层次刻画 -->
+            <path d="M 460 260 Q 490 280 520 268" fill="none" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" />
+            <path d="M 450 275 Q 480 292 505 280" fill="none" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" />
+            <!-- 翅尖小飞羽握住车把手 -->
+            <path d="M 555 240 Q 572 232 574 246 Q 562 252 555 240 Z" fill="var(--pelican-white)" stroke="#94a3b8" stroke-width="1.5" />
+          </g>
+
+          <!-- 前侧脚踏与大腿/小腿动态联动组 (位于 470, 405) -->
+          <g class="crank-group">
+            <!-- 旋转曲柄杆 -->
+            <line x1="470" y1="405" x2="470" y2="455" stroke="#94a3b8" stroke-width="8" stroke-linecap="round" />
+            <!-- 旋转轴螺帽 -->
+            <circle cx="470" cy="405" r="7" fill="#334155" />
+
+            <!-- 前侧脚踏板与踩在上面的橘色大蹼足 -->
+            <g transform="translate(470, 455)">
+              <g class="pedal-counter">
+                <!-- 脚踏板 -->
+                <rect x="-16" y="-5" width="32" height="10" rx="3" fill="#334155" stroke="#0f172a" stroke-width="2" />
+                <circle cx="0" cy="0" r="3" fill="#facc15" />
+
+                <!-- 鹈鹕鲜艳的大蹼足掌与脚趾 (牢牢踏在脚踏板上) -->
+                <!-- 后脚跟小突起 -->
+                <ellipse cx="-10" cy="-6" rx="4" ry="5" fill="var(--pelican-foot)" />
+                <!-- 大蹼足前掌与3根带蹼脚趾 -->
+                <path d="M -8 -5 Q 6 -12 24 -7 C 20 -2, 18 2, 22 2 C 12 1, 6 -1, -8 -1 Z" fill="var(--pelican-foot)" stroke="#c2410c" stroke-width="1" />
+                <!-- 蹼与脚爪 -->
+                <path d="M 8 -7 L 22 -6 M 9 -5 L 21 -1" stroke="#ea580c" stroke-width="1.5" stroke-linecap="round" />
+                <!-- 细长强劲的鸟腿骨向上伸入羽毛中 -->
+                <line x1="-7" y1="-5" x2="-22" y2="-65" stroke="var(--pelican-foot)" stroke-width="7" stroke-linecap="round" />
+                <!-- 膝关节处羽毛蓬松羽裤 -->
+                <path d="M -30 -60 Q -20 -72 -12 -58 Q -24 -50 -30 -60 Z" fill="var(--pelican-shadow)" />
+              </g>
+            </g>
+          </g>
+
+        </g>
+        <!-- /自行车与鹈鹕整体结束 -->
+
+      </svg>
+    </div>
+
+    <!-- 控制功能栏 -->
+    <div class="controls">
+      <button id="togglePlayBtn">
+        <span id="playIcon">⏸️</span>
+        <span id="playText">暂停动画</span>
+      </button>
+
+      <button id="bellBtn" class="secondary">
+        🔔 按响车铃 (叮叮~)
+      </button>
+
+      <div class="slider-group">
+        <label for="speedSlider">💨 踩车速度:</label>
+        <input type="range" id="speedSlider" min="0.3" max="2.0" step="0.1" value="1.0">
+        <span id="speedVal" style="min-width: 38px;">1.0x</span>
+      </div>
+
+      <button id="themeBtn" class="secondary">
+        🌅 切换昼夜 (白天)
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // 1. 播放与暂停切换
+    const container = document.querySelector('.canvas-wrapper');
+    const toggleBtn = document.getElementById('togglePlayBtn');
+    const playIcon = document.getElementById('playIcon');
+    const playText = document.getElementById('playText');
+    let isPlaying = true;
+
+    toggleBtn.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      if (isPlaying) {
+        container.classList.remove('paused');
+        playIcon.textContent = '⏸️';
+        playText.textContent = '暂停动画';
+      } else {
+        container.classList.add('paused');
+        playIcon.textContent = '▶️';
+        playText.textContent = '继续骑行';
+      }
+    });
+
+    // 2. 踩踏速度调节
+    const speedSlider = document.getElementById('speedSlider');
+    const speedVal = document.getElementById('speedVal');
+    const root = document.documentElement;
+
+    speedSlider.addEventListener('input', (e) => {
+      const speed = parseFloat(e.target.value);
+      speedVal.textContent = speed.toFixed(1) + 'x';
+      // 基础周期 0.8s，速度越快，duration越小
+      const baseDuration = 0.8;
+      const newDuration = (baseDuration / speed).toFixed(3);
+      root.style.setProperty('--cycle-duration', `${newDuration}s`);
+    });
+
+    // 3. 昼夜/黄昏环境主题切换
+    const themeBtn = document.getElementById('themeBtn');
+    const themes = ['day', 'sunset', 'night'];
+    const themeLabels = {
+      'day': '☀️ 阳光白天',
+      'sunset': '🌅 暖阳黄昏',
+      'night': '🌙 静谧星夜'
+    };
+    let currentThemeIdx = 0;
+
+    themeBtn.addEventListener('click', () => {
+      currentThemeIdx = (currentThemeIdx + 1) % themes.length;
+      const activeTheme = themes[currentThemeIdx];
+
+      document.body.classList.remove('theme-sunset', 'theme-night');
+      if (activeTheme === 'sunset') {
+        document.body.classList.add('theme-sunset');
+      } else if (activeTheme === 'night') {
+        document.body.classList.add('theme-night');
+      }
+      themeBtn.textContent = themeLabels[activeTheme];
+    });
+
+    // 4. Web Audio API 纯代码合成自行车清脆铃铛声 (Ding-Ding~)
+    const bellBtn = document.getElementById('bellBtn');
+    let audioCtx = null;
+
+    function playBicycleBell() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const now = audioCtx.currentTime;
+
+        function strikeBell(time, freq) {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, time);
+
+          // 铃声快速上升与自然金属衰减
+          gain.gain.setValueAtTime(0, time);
+          gain.gain.linearRampToValueAtTime(0.3, time + 0.005);
+          gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          osc.start(time);
+          osc.stop(time + 0.36);
+        }
+
+        // 经典的“叮-叮”双响
+        strikeBell(now, 2093);        // 高音 C7
+        strikeBell(now + 0.12, 2349); // 高音 D7
+      } catch (err) {
+        console.warn('AudioContext not allowed without interaction yet.', err);
+      }
+    }
+
+    bellBtn.addEventListener('click', () => {
+      playBicycleBell();
+      // 按钮按压弹性反馈
+      bellBtn.style.transform = 'scale(0.92)';
+      setTimeout(() => bellBtn.style.transform = '', 150);
+    });
+  </script>
+</body>
+</html>

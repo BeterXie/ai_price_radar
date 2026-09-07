@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN" data-vds-schema="v3.1">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pelican on a Bicycle — SVG 2D Animation</title>
+<style>
+  :root{
+    --ink:#183238;
+    --paper:#F3EEDF;
+    --sea:#9CC9C8;
+    --sea-deep:#5F9695;
+    --beak:#F28A47;
+    --beak-deep:#D96731;
+    --bike:#2B7370;
+    --sun:#F2C85D;
+    --white:#FFFDF6;
+    --shadow:#CDBFA8;
+  }
+  *{box-sizing:border-box}
+  html,body{
+    width:100%;
+    height:100%;
+    margin:0;
+    overflow:hidden;
+    background:var(--paper);
+  }
+  body{
+    display:grid;
+    place-items:center;
+    font-family:Arial,Helvetica,sans-serif;
+  }
+  .stage{
+    position:relative;
+    width:min(100vw, 1200px);
+    aspect-ratio:3/2;
+    max-height:100vh;
+    overflow:hidden;
+    background:var(--paper);
+  }
+  svg{
+    display:block;
+    width:100%;
+    height:100%;
+  }
+  .control{
+    position:absolute;
+    right:18px;
+    top:18px;
+    z-index:3;
+    border:2px solid var(--ink);
+    background:rgba(255,253,246,.88);
+    color:var(--ink);
+    font:700 12px/1 Arial,Helvetica,sans-serif;
+    letter-spacing:.08em;
+    padding:10px 12px;
+    border-radius:999px;
+    cursor:pointer;
+    box-shadow:0 3px 0 rgba(24,50,56,.12);
+  }
+  .control:active{transform:translateY(1px)}
+  .wheel-spin{
+    transform-box:fill-box;
+    transform-origin:center;
+    animation:wheel .95s linear infinite;
+  }
+  .road-flow{
+    animation:road 1.55s linear infinite;
+  }
+  .cloud-a{animation:cloud 12s linear infinite}
+  .cloud-b{animation:cloud 18s linear infinite -7s}
+  .wave-flow{animation:wave 4s linear infinite}
+  .tail-flick{
+    transform-box:fill-box;
+    transform-origin:20% 50%;
+    animation:tail .9s ease-in-out infinite alternate;
+  }
+  .head-nod{
+    transform-box:fill-box;
+    transform-origin:45% 82%;
+    animation:nod 1.25s ease-in-out infinite;
+  }
+  .wing-pulse{
+    transform-box:fill-box;
+    transform-origin:20% 30%;
+    animation:wing 1.25s ease-in-out infinite;
+  }
+  .body-bob{
+    animation:bob .625s ease-in-out infinite alternate;
+  }
+  .paused *{animation-play-state:paused !important}
+  @keyframes wheel{to{transform:rotate(360deg)}}
+  @keyframes road{to{transform:translateX(-240px)}}
+  @keyframes cloud{from{transform:translateX(160px)}to{transform:translateX(-1340px)}}
+  @keyframes wave{to{transform:translateX(-120px)}}
+  @keyframes tail{from{transform:rotate(-3deg)}to{transform:rotate(5deg)}}
+  @keyframes nod{0%,100%{transform:rotate(-1.5deg)}50%{transform:rotate(2.5deg)}}
+  @keyframes wing{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(3deg)}}
+  @keyframes bob{from{transform:translateY(-2px)}to{transform:translateY(3px)}}
+  @media (prefers-reduced-motion:reduce){
+    .wheel-spin,.road-flow,.cloud-a,.cloud-b,.wave-flow,
+    .tail-flick,.head-nod,.wing-pulse,.body-bob{animation:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <button class="control" id="toggle" type="button" aria-pressed="false">PAUSE</button>
+
+  <svg id="art" viewBox="0 0 1200 800" role="img"
+       aria-label="一只鹈鹕沿海边道路骑自行车的二维动画"
+       data-vds-layer="field event inscription material furniture"
+       data-vds-action="coastal-field silhouette-emphasis mechanical-rhythm parallax-depth custom-vector-drawing">
+
+    <!-- FIELD: coastal promenade -->
+    <rect width="1200" height="800" fill="var(--paper)" data-vds-layer="field"/>
+    <circle cx="1030" cy="122" r="56" fill="var(--sun)" opacity=".95"
+            data-vds-layer="material" data-vds-action="sun-disc"/>
+
+    <g opacity=".82" data-vds-layer="material" data-vds-action="parallax-clouds">
+      <g class="cloud-a" transform="translate(90 126)">
+        <path d="M0 30c18-2 24-15 24-26 0-17 13-31 31-31 14 0 25 8 29 20 5-4 11-6 18-6 17 0 30 12 31 28 15 0 27 9 30 21H0z"
+              fill="var(--white)" stroke="var(--ink)" stroke-width="4" stroke-linejoin="round"/>
+      </g>
+      <g class="cloud-b" transform="translate(710 190) scale(.72)">
+        <path d="M0 30c18-2 24-15 24-26 0-17 13-31 31-31 14 0 25 8 29 20 5-4 11-6 18-6 17 0 30 12 31 28 15 0 27 9 30 21H0z"
+              fill="var(--white)" stroke="var(--ink)" stroke-width="4" stroke-linejoin="round"/>
+      </g>
+    </g>
+
+    <rect y="500" width="1200" height="132" fill="var(--sea)"/>
+    <g class="wave-flow" opacity=".8" data-vds-layer="material" data-vds-action="wave-repeat">
+      <path d="M-120 536 Q-90 520 -60 536T0 536T60 536T120 536T180 536T240 536T300 536T360 536T420 536T480 536T540 536T600 536T660 536T720 536T780 536T840 536T900 536T960 536T1020 536T1080 536T1140 536T1200 536T1260 536"
+            fill="none" stroke="var(--sea-deep)" stroke-width="8" stroke-linecap="round"/>
+      <path d="M-80 582 Q-50 568 -20 582T40 582T100 582T160 582T220 582T280 582T340 582T400 582T460 582T520 582T580 582T640 582T700 582T760 582T820 582T880 582T940 582T1000 582T1060 582T1120 582T1180 582T1240 582"
+            fill="none" stroke="var(--white)" stroke-width="5" stroke-linecap="round" opacity=".72"/>
+    </g>
+
+    <rect y="632" width="1200" height="168" fill="#D9CFBC"/>
+    <line x1="0" y1="646" x2="1200" y2="646" stroke="var(--ink)" stroke-width="5"
+          data-vds-cause="promenade-edge separates water from riding surface"/>
+    <g class="road-flow" data-vds-layer="furniture" data-vds-action="ground-speed-cues">
+      <g stroke="var(--white)" stroke-width="10" stroke-linecap="round" opacity=".95">
+        <line x1="-220" y1="745" x2="-110" y2="745"/>
+        <line x1="20" y1="745" x2="130" y2="745"/>
+        <line x1="260" y1="745" x2="370" y2="745"/>
+        <line x1="500" y1="745" x2="610" y2="745"/>
+        <line x1="740" y1="745" x2="850" y2="745"/>
+        <line x1="980" y1="745" x2="1090" y2="745"/>
+        <line x1="1220" y1="745" x2="1330" y2="745"/>
+      </g>
+    </g>
+
+    <ellipse cx="598" cy="663" rx="338" ry="28" fill="var(--shadow)" opacity=".42"
+             data-vds-layer="material" data-vds-action="contact-shadow"/>
+
+    <!-- BIKE -->
+    <g id="bike" data-vds-layer="event" data-vds-action="mechanical-geometry">
+
+      <!-- wheels -->
+      <g>
+        <circle cx="382" cy="601" r="114" fill="none" stroke="var(--ink)" stroke-width="12"/>
+        <circle cx="382" cy="601" r="101" fill="none" stroke="var(--white)" stroke-width="3" opacity=".9"/>
+        <g class="wheel-spin" transform="translate(382 601)">
+          <g stroke="var(--ink)" stroke-width="3" opacity=".62">
+            <line x1="-96" y1="0" x2="96" y2="0"/>
+            <line x1="0" y1="-96" x2="0" y2="96"/>
+            <line x1="-68" y1="-68" x2="68" y2="68"/>
+            <line x1="-68" y1="68" x2="68" y2="-68"/>
+            <line x1="-92" y1="-25" x2="92" y2="25"/>
+            <line x1="-92" y1="25" x2="92" y2="-25"/>
+          </g>
+          <circle r="12" fill="var(--beak)" stroke="var(--ink)" stroke-width="5"/>
+        </g>
+      </g>
+
+      <g>
+        <circle cx="812" cy="601" r="114" fill="none" stroke="var(--ink)" stroke-width="12"/>
+        <circle cx="812" cy="601" r="101" fill="none" stroke="var(--white)" stroke-width="3" opacity=".9"/>
+        <g class="wheel-spin" transform="translate(812 601)">
+          <g stroke="var(--ink)" stroke-width="3" opacity=".62">
+            <line x1="-96" y1="0" x2="96" y2="0"/>
+            <line x1="0" y1="-96" x2="0" y2="96"/>
+            <line x1="-68" y1="-68" x2="68" y2="68"/>
+            <line x1="-68" y1="68" x2="68" y2="-68"/>
+            <line x1="-92" y1="-25" x2="92" y2="25"/>
+            <line x1="-92" y1="25" x2="92" y2="-25"/>
+          </g>
+          <circle r="12" fill="var(--beak)" stroke="var(--ink)" stroke-width="5"/>
+        </g>
+      </g>
+
+      <!-- frame -->
+      <g fill="none" stroke="var(--bike)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M382 601 L520 438 L600 601 Z"/>
+        <path d="M520 438 L707 455 L600 601"/>
+        <path d="M707 455 L812 601"/>
+      </g>
+      <path d="M520 438 L494 390" fill="none" stroke="var(--ink)" stroke-width="10" stroke-linecap="round"/>
+      <path d="M460 388 L520 388" fill="none" stroke="var(--ink)" stroke-width="12" stroke-linecap="round"/>
+      <path d="M707 455 L731 383 L760 383" fill="none" stroke="var(--ink)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M734 382 L782 367" fill="none" stroke="var(--ink)" stroke-width="10" stroke-linecap="round"/>
+      <circle cx="600" cy="601" r="26" fill="var(--white)" stroke="var(--ink)" stroke-width="8"/>
+      <g id="crank">
+        <line id="crankArmA" x1="600" y1="601" x2="642" y2="601" stroke="var(--beak-deep)" stroke-width="9" stroke-linecap="round"/>
+        <line id="crankArmB" x1="600" y1="601" x2="558" y2="601" stroke="var(--beak-deep)" stroke-width="9" stroke-linecap="round"/>
+        <circle id="pedalA" cx="642" cy="601" r="8" fill="var(--ink)"/>
+        <circle id="pedalB" cx="558" cy="601" r="8" fill="var(--ink)"/>
+      </g>
+      <path d="M600 601 Q685 618 812 601" fill="none" stroke="var(--ink)" stroke-width="4" stroke-dasharray="7 8" opacity=".55"/>
+    </g>
+
+    <!-- PELICAN legs behind body -->
+    <g id="legs" data-vds-layer="event" data-vds-action="pedal-kinematics">
+      <path id="legA" d="" fill="none" stroke="var(--beak-deep)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="legB" d="" fill="none" stroke="var(--beak)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle id="kneeA" r="9" fill="var(--beak-deep)" stroke="var(--ink)" stroke-width="4"/>
+      <circle id="kneeB" r="9" fill="var(--beak)" stroke="var(--ink)" stroke-width="4"/>
+    </g>
+
+    <!-- PELICAN -->
+    <g id="pelican" class="body-bob" data-vds-layer="event" data-vds-action="pelican-silhouette body-bob">
+      <!-- tail -->
+      <g class="tail-flick">
+        <path d="M496 400 Q441 406 413 371 Q457 370 497 354 Z"
+              fill="var(--white)" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+        <path d="M480 387 Q450 386 430 374" fill="none" stroke="var(--sea-deep)" stroke-width="5" stroke-linecap="round"/>
+      </g>
+
+      <!-- torso -->
+      <path d="M500 308
+               C455 329 446 384 477 421
+               C506 456 572 464 625 443
+               C658 430 675 402 664 369
+               C650 326 592 299 545 298
+               C528 298 513 302 500 308Z"
+            fill="var(--white)" stroke="var(--ink)" stroke-width="8" stroke-linejoin="round"/>
+
+      <!-- neck -->
+      <path d="M610 335
+               C639 317 643 279 626 247
+               C609 216 618 173 658 151
+               C683 137 715 143 735 164
+               C756 188 755 222 738 248
+               C719 278 690 293 677 330
+               C667 359 674 382 658 399"
+            fill="var(--white)" stroke="var(--ink)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- head + beak as the dominant silhouette -->
+      <g class="head-nod" data-vds-action="beak-dominance">
+        <path d="M642 170
+                 C644 132 675 107 715 111
+                 C748 114 770 137 769 169
+                 C767 205 735 225 697 216
+                 C666 209 640 195 642 170Z"
+              fill="var(--white)" stroke="var(--ink)" stroke-width="8"/>
+        <path d="M736 154
+                 C795 138 904 149 978 181
+                 C991 187 987 202 973 204
+                 C886 216 800 213 737 192
+                 C727 188 723 160 736 154Z"
+              fill="var(--beak)" stroke="var(--ink)" stroke-width="8" stroke-linejoin="round"/>
+        <path d="M742 190 C817 193 897 192 968 186
+                 C932 223 835 242 769 224
+                 C751 219 743 208 742 190Z"
+              fill="var(--beak-deep)" stroke="var(--ink)" stroke-width="7" stroke-linejoin="round"/>
+        <circle cx="723" cy="154" r="12" fill="var(--ink)"/>
+        <circle cx="719" cy="150" r="4" fill="var(--white)"/>
+      </g>
+
+      <!-- wing / arm reaching handlebar -->
+      <g class="wing-pulse">
+        <path d="M551 335
+                 C585 337 634 356 668 387
+                 C691 408 705 432 721 453
+                 C730 465 747 466 755 455
+                 C764 443 757 431 747 420
+                 C714 382 671 339 615 320
+                 C589 311 567 314 551 335Z"
+              fill="#E7E5D9" stroke="var(--ink)" stroke-width="8" stroke-linejoin="round"/>
+        <path d="M727 452 Q744 437 762 446" fill="none" stroke="var(--ink)" stroke-width="9" stroke-linecap="round"/>
+      </g>
+
+      <!-- breast contour -->
+      <path d="M511 353 Q542 391 585 406" fill="none" stroke="var(--sea-deep)" stroke-width="6" stroke-linecap="round" opacity=".75"/>
+      <path d="M491 422 Q535 442 593 431" fill="none" stroke="var(--ink)" stroke-width="4" opacity=".28"/>
+
+      <!-- saddle contact -->
+      <ellipse cx="510" cy="422" rx="47" ry="13" fill="var(--ink)" opacity=".18"/>
+    </g>
+
+    <!-- foreground wind marks: caused by speed, not decoration -->
+    <g fill="none" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"
+       opacity=".55" data-vds-layer="furniture" data-vds-action="speed-marks"
+       data-vds-cause="short backward strokes indicate bicycle speed">
+      <path d="M132 354 h120"/>
+      <path d="M86 390 h78"/>
+      <path d="M162 425 h135"/>
+    </g>
+  </svg>
+</div>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const toggle = document.getElementById('toggle');
+  const art = document.getElementById('art');
+
+  const pedalA = document.getElementById('pedalA');
+  const pedalB = document.getElementById('pedalB');
+  const armA = document.getElementById('crankArmA');
+  const armB = document.getElementById('crankArmB');
+  const legA = document.getElementById('legA');
+  const legB = document.getElementById('legB');
+  const kneeA = document.getElementById('kneeA');
+  const kneeB = document.getElementById('kneeB');
+
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let paused = reduced;
+  let pauseStarted = 0;
+  let pausedTotal = 0;
+
+  if (reduced) {
+    stage.classList.add('paused');
+    toggle.textContent = 'PLAY';
+    toggle.setAttribute('aria-pressed','true');
+  }
+
+  function solveKnee(hip, foot, l1, l2, bend){
+    const dx = foot.x - hip.x;
+    const dy = foot.y - hip.y;
+    const d0 = Math.hypot(dx,dy);
+    const d = Math.max(1, Math.min(d0, l1 + l2 - 0.001));
+    const a = (l1*l1 - l2*l2 + d*d) / (2*d);
+    const h = Math.sqrt(Math.max(0, l1*l1 - a*a));
+    const ux = dx / d, uy = dy / d;
+    const px = hip.x + a*ux;
+    const py = hip.y + a*uy;
+    return { x: px - bend*h*uy, y: py + bend*h*ux };
+  }
+
+  function update(t){
+    if (!paused){
+      const ts = (t - pausedTotal) / 1000;
+      const angle = ts * Math.PI * 2 / 0.95;
+      const cx = 600, cy = 601, r = 42;
+
+      const a = {x: cx + Math.cos(angle)*r, y: cy + Math.sin(angle)*r};
+      const b = {x: cx - Math.cos(angle)*r, y: cy - Math.sin(angle)*r};
+
+      pedalA.setAttribute('cx', a.x.toFixed(2));
+      pedalA.setAttribute('cy', a.y.toFixed(2));
+      pedalB.setAttribute('cx', b.x.toFixed(2));
+      pedalB.setAttribute('cy', b.y.toFixed(2));
+
+      armA.setAttribute('x2', a.x.toFixed(2));
+      armA.setAttribute('y2', a.y.toFixed(2));
+      armB.setAttribute('x2', b.x.toFixed(2));
+      armB.setAttribute('y2', b.y.toFixed(2));
+
+      const bob = Math.sin(angle*2) * 2.5;
+      const hipA = {x: 536, y: 419 + bob};
+      const hipB = {x: 566, y: 424 + bob};
+
+      const kA = solveKnee(hipA, a, 100, 105, 1);
+      const kB = solveKnee(hipB, b, 100, 105, 1);
+
+      legA.setAttribute('d', `M${hipA.x} ${hipA.y} L${kA.x.toFixed(2)} ${kA.y.toFixed(2)} L${a.x.toFixed(2)} ${a.y.toFixed(2)}`);
+      legB.setAttribute('d', `M${hipB.x} ${hipB.y} L${kB.x.toFixed(2)} ${kB.y.toFixed(2)} L${b.x.toFixed(2)} ${b.y.toFixed(2)}`);
+
+      kneeA.setAttribute('cx', kA.x.toFixed(2)); kneeA.setAttribute('cy', kA.y.toFixed(2));
+      kneeB.setAttribute('cx', kB.x.toFixed(2)); kneeB.setAttribute('cy', kB.y.toFixed(2));
+    }
+    requestAnimationFrame(update);
+  }
+
+  toggle.addEventListener('click', () => {
+    paused = !paused;
+    if (paused){
+      pauseStarted = performance.now();
+      stage.classList.add('paused');
+      toggle.textContent = 'PLAY';
+      toggle.setAttribute('aria-pressed','true');
+    } else {
+      pausedTotal += performance.now() - pauseStarted;
+      stage.classList.remove('paused');
+      toggle.textContent = 'PAUSE';
+      toggle.setAttribute('aria-pressed','false');
+    }
+  });
+
+  requestAnimationFrame(update);
+})();
+</script>
+</body>
+</html>

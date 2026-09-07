@@ -34,6 +34,13 @@ from ..schemas import (
     ShopListResponse,
     ShopRequestCreate,
     ShopRequestOut,
+    CommunitySkillDetailOut,
+    CommunitySkillPageOut,
+)
+from ..services.community_skills import (
+    get_community_skill_by_slug,
+    list_community_skills,
+    record_community_skill_copy,
 )
 from ..services.source_intake import enqueue_submission_notifications
 from ..services.catalog import (
@@ -775,3 +782,54 @@ def create_shop_request(
     db.refresh(intake)
     response.status_code = status.HTTP_201_CREATED
     return build_response("submitted", "submitted", request_id=intake.id)
+
+
+@router.get("/skills", response_model=CommunitySkillPageOut)
+def public_community_skills(
+    kind: str = Query(default="", max_length=40),
+    tag: str = Query(default="", max_length=50),
+    model: str = Query(default="", max_length=50),
+    q: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> CommunitySkillPageOut:
+    k = kind if isinstance(kind, str) else ""
+    t = tag if isinstance(tag, str) else ""
+    m = model if isinstance(model, str) else ""
+    query_str = q if isinstance(q, str) else ""
+    p = page if isinstance(page, int) else 1
+    ps = page_size if isinstance(page_size, int) else 20
+    return list_community_skills(
+        db,
+        kind=k or None,
+        tag=t or None,
+        model=m or None,
+        search=query_str or None,
+        page=p,
+        page_size=ps,
+        visible_only=True,
+    )
+
+
+
+@router.get("/skills/{slug}", response_model=CommunitySkillDetailOut)
+def public_community_skill_detail(
+    slug: str,
+    db: Session = Depends(get_db),
+) -> CommunitySkillDetailOut:
+    skill = get_community_skill_by_slug(db, slug, visible_only=True, increment_view=True)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return skill
+
+
+@router.post("/skills/{slug}/copy")
+def public_community_skill_copy(
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    if not record_community_skill_copy(db, slug):
+        raise HTTPException(status_code=404, detail="skill not found")
+    return {"status": "ok"}
+

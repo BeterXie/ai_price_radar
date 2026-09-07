@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
-import { getMeta, getProducts, getShopTokens } from "@/lib/api";
+import { getMeta, getProducts, getShopTokens, getSkills } from "@/lib/api";
+
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: SITE_URL },
     { url: `${SITE_URL}/products` },
+    { url: `${SITE_URL}/skills` },
     { url: `${SITE_URL}/shops` },
+
     { url: `${SITE_URL}/sources` },
     { url: `${SITE_URL}/tools/json-to-cockpit`, lastModified: GUIDE_LAST_MODIFIED },
     { url: `${SITE_URL}/shops/submit` },
@@ -41,11 +44,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Keep each upstream request independent. A temporary failure in one catalog
   // should not make the whole dynamic sitemap disappear for this crawl.
-  const [catalog, shopTokens, meta] = await Promise.all([
+  const [catalog, shopTokens, meta, skillsData] = await Promise.all([
     getProducts("sort=quality").catch(() => null),
     getShopTokens().catch(() => [] as string[]),
     getMeta().catch(() => null),
+    getSkills("page_size=100").catch(() => null),
   ]);
+
 
   const snapshotAt = validDate(catalog?.snapshot_at);
   if (snapshotAt) {
@@ -104,6 +109,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       })),
   );
 
+  // Community Skills & Degradation Benchmark Lab pages
+  const skillPages: MetadataRoute.Sitemap = skillsData
+    ? skillsData.items.map((skill) => ({
+        url: `${SITE_URL}/skills/${encodeURIComponent(skill.slug)}`,
+        lastModified: validDate(skill.updated_at) || snapshotAt,
+      }))
+    : [];
+
   return [
     ...staticPages,
     ...guidePages,
@@ -111,5 +124,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...shopPages,
     ...productPages,
     ...sourceProductPages,
+    ...skillPages,
   ];
 }
+

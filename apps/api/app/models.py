@@ -339,3 +339,34 @@ class SystemSetting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class CommunitySkill(Base):
+    __tablename__ = "community_skills"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(40), default="skill", index=True)
+    title: Mapped[str] = mapped_column(Text)
+    subtitle: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    content_markdown: Mapped[str] = mapped_column(Text, default="")
+    prompt_template: Mapped[str] = mapped_column(Text, default="")
+    author_name: Mapped[str] = mapped_column(String(100), default="")
+    author_url: Mapped[str] = mapped_column(Text, default="")
+    repo_url: Mapped[str] = mapped_column(Text, default="")
+    stars_count: Mapped[int] = mapped_column(Integer, default=0)
+    install_command: Mapped[str] = mapped_column(Text, default="")
+    demo_url: Mapped[str] = mapped_column(Text, default="")
+    demo_type: Mapped[str] = mapped_column(String(40), default="none")
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    target_models: Mapped[list[str]] = mapped_column(JSON, default=list)
+    related_product_slug: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_visible: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
+    copy_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+

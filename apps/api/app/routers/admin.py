@@ -19,6 +19,7 @@ from ..models import (
     SourceDiscoveryRun,
     SourceIntake,
     SystemSetting,
+    CommunitySkill,
 )
 from ..schemas import (
     AdminOfferUpdate,
@@ -37,10 +38,22 @@ from ..schemas import (
     SourceIntakeOut,
     SourceIntakeReject,
     SourceIntakeUpdatePlatform,
+    AdminCommunitySkillCreate,
+    AdminCommunitySkillUpdate,
+    CommunitySkillDetailOut,
+    CommunitySkillPageOut,
+    CommunitySkillSummaryOut,
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
 from ..services.catalog import get_current_snapshot
+from ..services.community_skills import (
+    admin_create_community_skill,
+    admin_delete_community_skill,
+    admin_toggle_community_skill_visibility,
+    admin_update_community_skill,
+    list_community_skills,
+)
 from ..services.source_discovery import (
     admin_promote_candidate,
     admin_reject_candidate,
@@ -907,3 +920,84 @@ def update_report(report_id: int, payload: AdminReportUpdate, db: Session = Depe
         "public_summary": report.public_summary,
         "merchant_response": report.merchant_response,
     }
+
+
+@router.get("/skills", response_model=CommunitySkillPageOut)
+def admin_get_skills(
+    kind: str = Query(default="", max_length=40),
+    tag: str = Query(default="", max_length=50),
+    q: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> CommunitySkillPageOut:
+    k = kind if isinstance(kind, str) else ""
+    t = tag if isinstance(tag, str) else ""
+    query_str = q if isinstance(q, str) else ""
+    p = page if isinstance(page, int) else 1
+    ps = page_size if isinstance(page_size, int) else 50
+    return list_community_skills(
+        db,
+        kind=k or None,
+        tag=t or None,
+        search=query_str or None,
+        page=p,
+        page_size=ps,
+        visible_only=False,
+    )
+
+
+
+@router.post("/skills", response_model=CommunitySkillSummaryOut)
+def admin_post_skill(
+    payload: AdminCommunitySkillCreate,
+    db: Session = Depends(get_db),
+) -> CommunitySkill:
+    # Check slug uniqueness
+    existing = db.scalar(select(CommunitySkill).where(CommunitySkill.slug == payload.slug.strip()))
+    if existing:
+        raise HTTPException(status_code=409, detail="slug already exists")
+    return admin_create_community_skill(db, payload)
+
+
+@router.put("/skills/{skill_id}", response_model=CommunitySkillSummaryOut)
+def admin_put_skill(
+    skill_id: int,
+    payload: AdminCommunitySkillUpdate,
+    db: Session = Depends(get_db),
+) -> CommunitySkill:
+    if payload.slug:
+        existing = db.scalar(
+            select(CommunitySkill).where(
+                CommunitySkill.slug == payload.slug.strip(),
+                CommunitySkill.id != skill_id,
+            )
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="slug already exists")
+    skill = admin_update_community_skill(db, skill_id, payload)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return skill
+
+
+@router.delete("/skills/{skill_id}")
+def admin_delete_skill(
+    skill_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    if not admin_delete_community_skill(db, skill_id):
+        raise HTTPException(status_code=404, detail="skill not found")
+    return {"ok": True, "id": skill_id}
+
+
+@router.patch("/skills/{skill_id}/visibility", response_model=CommunitySkillSummaryOut)
+def admin_toggle_skill_visibility(
+    skill_id: int,
+    db: Session = Depends(get_db),
+) -> CommunitySkill:
+    skill = admin_toggle_community_skill_visibility(db, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return skill
+

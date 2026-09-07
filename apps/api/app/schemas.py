@@ -645,3 +645,102 @@ class AdminSettingsOut(BaseModel):
 
 class AdminSettingsUpdate(BaseModel):
     advertise_enabled: bool | None = None
+
+
+class CommunitySkillSummaryOut(BaseModel):
+    id: int
+    slug: str
+    kind: str
+    title: str
+    subtitle: str = ""
+    summary: str = ""
+    author_name: str = ""
+    author_url: str = ""
+    repo_url: str = ""
+    stars_count: int = 0
+    install_command: str = ""
+    prompt_template: str = ""
+    demo_url: str = ""
+    demo_type: str = "none"
+
+    tags: list[str] = Field(default_factory=list)
+    target_models: list[str] = Field(default_factory=list)
+    related_product_slug: str | None = None
+    is_pinned: bool = False
+    is_visible: bool = True
+    sort_order: int = 0
+    view_count: int = 0
+    copy_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class RelatedProductSummary(BaseModel):
+    slug: str
+    platform: str
+    display_name: str
+    subtitle: str = ""
+    product_type: str = "other"
+
+
+class CommunitySkillDetailOut(CommunitySkillSummaryOut):
+    content_markdown: str = ""
+    prompt_template: str = ""
+    related_product: RelatedProductSummary | None = None
+
+
+
+class CommunitySkillPageOut(BaseModel):
+    items: list[CommunitySkillSummaryOut]
+    total: int
+    page: int
+    page_size: int
+    kinds: list[str] = Field(default_factory=list)
+    all_tags: list[str] = Field(default_factory=list)
+
+
+class AdminCommunitySkillCreate(BaseModel):
+    slug: str = Field(min_length=1, max_length=160)
+    kind: str = Field(default="skill", max_length=40)
+    title: str = Field(min_length=1, max_length=200)
+    subtitle: str = Field(default="", max_length=200)
+    summary: str = Field(default="", max_length=1000)
+    content_markdown: str = Field(default="")
+    prompt_template: str = Field(default="")
+    author_name: str = Field(default="", max_length=100)
+    author_url: str = Field(default="", max_length=500)
+    repo_url: str = Field(default="", max_length=500)
+    stars_count: int = Field(default=0, ge=0)
+    install_command: str = Field(default="", max_length=1000)
+    demo_url: str = Field(default="", max_length=500)
+    demo_type: str = Field(default="none", max_length=40)
+    tags: list[str] = Field(default_factory=list)
+    target_models: list[str] = Field(default_factory=list)
+    related_product_slug: str | None = Field(default=None, max_length=160)
+    is_pinned: bool = False
+    is_visible: bool = True
+    sort_order: int = 0
+
+
+class AdminCommunitySkillUpdate(BaseModel):
+    slug: str | None = Field(default=None, min_length=1, max_length=160)
+    kind: str | None = Field(default=None, max_length=40)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    subtitle: str | None = Field(default=None, max_length=200)
+    summary: str | None = Field(default=None, max_length=1000)
+    content_markdown: str | None = None
+    prompt_template: str | None = None
+    author_name: str | None = Field(default=None, max_length=100)
+    author_url: str | None = Field(default=None, max_length=500)
+    repo_url: str | None = Field(default=None, max_length=500)
+    stars_count: int | None = Field(default=None, ge=0)
+    install_command: str | None = Field(default=None, max_length=1000)
+    demo_url: str | None = Field(default=None, max_length=500)
+    demo_type: str | None = Field(default=None, max_length=40)
+    tags: list[str] | None = None
+    target_models: list[str] | None = None
+    related_product_slug: str | None = Field(default=None, max_length=160)
+    is_pinned: bool | None = None
+    is_visible: bool | None = None
+    sort_order: int | None = None
+

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>鹈鹕骑自行车 SVG 动画</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(#9ddcff, #f5f9ff);
+    overflow: hidden;
+  }
+  svg {
+    width: 900px;
+    max-width: 95vw;
+  }
+  .wheel {
+    animation: spin 1.2s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .leg {
+    animation: pedal .6s ease-in-out infinite alternate;
+    transform-box: fill-box;
+    transform-origin: top center;
+  }
+  .body {
+    animation: bounce .8s ease-in-out infinite alternate;
+  }
+  .bike {
+    animation: move 4s ease-in-out infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes pedal {
+    from { transform: rotate(-18deg); }
+    to { transform: rotate(18deg); }
+  }
+  @keyframes bounce {
+    from { transform: translateY(0); }
+    to { transform: translateY(-8px); }
+  }
+  @keyframes move {
+    0%,100% { transform: translateX(-30px); }
+    50% { transform: translateX(30px); }
+  }
+</style>
+</head>
+<body>
+<svg viewBox="0 0 900 500" xmlns="http://www.w3.org/2000/svg">
+  <rect width="900" height="500" fill="none"/>
+  <circle cx="120" cy="90" r="45" fill="#fff3a8"/>
+  <path d="M0 410 Q450 350 900 410 V500 H0Z" fill="#8fd36b"/>
+
+  <g class="bike">
+    <!-- bicycle -->
+    <g stroke="#333" stroke-width="8" fill="none">
+      <circle class="wheel" cx="340" cy="360" r="75"/>
+      <circle class="wheel" cx="610" cy="360" r="75"/>
+      <path d="M340 360 L440 230 L610 360 L500 360 L440 230 L520 230"/>
+      <path d="M500 360 L440 360"/>
+      <path d="M440 230 L420 180"/>
+      <path d="M520 230 L560 200"/>
+    </g>
+
+    <!-- pelican -->
+    <g class="body">
+      <ellipse cx="460" cy="150" rx="90" ry="100" fill="#f4f4f4" stroke="#444" stroke-width="5"/>
+      <ellipse cx="405" cy="90" rx="60" ry="55" fill="#fff" stroke="#444" stroke-width="5"/>
+      <circle cx="385" cy="80" r="8" fill="#222"/>
+      <path d="M350 105 Q240 130 360 165 Q430 155 405 120Z"
+            fill="#f4a23a" stroke="#444" stroke-width="5"/>
+      <path d="M395 145 Q470 210 540 160 Q470 230 385 180Z"
+            fill="#f5b24c" stroke="#444" stroke-width="4"/>
+
+      <!-- wing -->
+      <path d="M490 130 Q600 90 560 220 Q500 190 470 160Z"
+            fill="#ddd" stroke="#444" stroke-width="5"/>
+
+      <!-- legs -->
+      <g class="leg">
+        <path d="M430 230 L420 310 L380 340" stroke="#e59a2e" stroke-width="10" fill="none"/>
+        <path d="M500 230 L520 310 L570 340" stroke="#e59a2e" stroke-width="10" fill="none"/>
+      </g>
+
+      <!-- feet -->
+      <path d="M365 340 Q410 330 430 350" stroke="#e59a2e" stroke-width="8" fill="none"/>
+      <path d="M550 340 Q600 330 620 350" stroke="#e59a2e" stroke-width="8" fill="none"/>
+    </g>
+
+    <!-- handle -->
+    <circle cx="520" cy="230" r="8" fill="#333"/>
+  </g>
+
+  <text x="300" y="70" font-size="34" font-family="sans-serif" fill="#333">
+    Pelican Bicycle Adventure 🚲
+  </text>
+</svg>
+</body>
+</html>

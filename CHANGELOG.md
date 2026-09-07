@@ -2,6 +2,19 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.53] - 2026-09-08
+
+### Added
+
+- **Community Skills & Degradation Benchmark Lab** (`/skills`, `/skills/[slug]`):
+  - Added public interactive community skills and model degradation detection arena.
+  - Hosted 6 real-world benchmark HTML outputs (GPT-6-Astra 满血/降智, GPT-5.6 调教/裸跑, Gemini 3.8 Flash, 猪八戒骑自行车) in sandboxed live preview arena (`PelicanArena`).
+  - Added 11 seeded community skills & benchmarks with original GitHub authors, star counts, install commands, tags, and rich documentation.
+  - Linked each skill to relevant AI products (ChatGPT Plus, Claude Pro, Codex) with real-time price comparison cards for high-intent conversion.
+- **Admin Skills CMS Management**:
+  - Full CRUD management in admin dashboard (`/admin`) for publishing, editing, pinning, and toggling visibility of skills, degradation benchmarks, and community articles.
+  - Added copy prompt tracking and view count analytics.
+
 ## [3.7.52] - 2026-09-07
 
 ### Changed
