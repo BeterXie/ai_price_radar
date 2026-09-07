@@ -6,6 +6,16 @@ ai.pricememo.cn {
         reverse_proxy ai-radar-api:8000
     }
 
+    @demos path /demos/*
+    handle @demos {
+        header {
+            -X-Frame-Options
+            Content-Security-Policy "frame-ancestors 'self'"
+            Cache-Control "no-cache, must-revalidate"
+        }
+        reverse_proxy ai-radar-web:3000
+    }
+
     handle {
         reverse_proxy ai-radar-web:3000
     }

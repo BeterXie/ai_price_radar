@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Check, Copy, Fire, GithubLogo, Sparkle, Star, TerminalWindow } from "@phosphor-icons/react";
 import type { CommunitySkillSummary } from "@/lib/types";
@@ -25,11 +26,20 @@ const KIND_META: Record<string, { label: string; icon: any; badgeClass: string }
 };
 
 export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const meta = KIND_META[skill.kind] || KIND_META.skill;
   const IconComponent = meta.icon;
 
   const copyPayload = skill.install_command || skill.prompt_template;
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    // Don't navigate if user clicked an interactive button or selected text
+    if (target.closest("button") || target.closest("a")) return;
+    if (typeof window !== "undefined" && window.getSelection()?.toString()) return;
+    router.push(`/skills/${encodeURIComponent(skill.slug)}`);
+  };
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -46,7 +56,10 @@ export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
   };
 
   return (
-    <div className="group relative flex flex-col justify-between rounded-2xl border border-[color:var(--line)] bg-[color:var(--panel)] p-5 shadow-sm transition hover:border-[color:var(--line-strong)] hover:shadow-md">
+    <div
+      onClick={handleCardClick}
+      className="group relative flex flex-col justify-between rounded-2xl border border-[color:var(--line)] bg-[color:var(--panel)] p-5 shadow-sm transition hover:border-[color:var(--line-strong)] hover:shadow-md cursor-pointer active:scale-[0.99] touch-manipulation"
+    >
       <div>
         {/* Top Header Row */}
         <div className="flex items-center justify-between gap-2">

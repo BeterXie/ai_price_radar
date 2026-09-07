@@ -203,7 +203,11 @@ def seed_default_community_skills(db: Session) -> int:
             skill = CommunitySkill(**item)
             db.add(skill)
             created_count += 1
-    if created_count > 0:
-        db.commit()
+        else:
+            # Sync target_models and content if updated in seed data
+            for key, val in item.items():
+                if hasattr(existing, key) and key not in ("id", "created_at", "view_count", "copy_count"):
+                    setattr(existing, key, val)
+    db.commit()
     return created_count
 

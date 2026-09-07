@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, CheckCircle, Clock, Database, Package, ShieldCheck } from "@phosphor-icons/react/ssr";
+import { ArrowRight, CheckCircle, Clock, Database, Fire, Package, ShieldCheck, Sparkle } from "@phosphor-icons/react/ssr";
 import { SearchBox } from "@/components/search-box";
 import { ProductCard } from "@/components/product-card";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -51,6 +51,7 @@ export default async function HomePage() {
             <div className="mt-7 max-w-2xl"><SearchBox /></div>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[color:var(--muted)]">
               <span className="font-medium">常用入口</span>
+              <Link href="/skills" className="quick-link font-semibold text-[color:var(--brand-strong)]">🔥 技能与实验室</Link>
               <Link href="/products?platform=OpenAI" className="quick-link">OpenAI</Link>
               <Link href="/products?platform=Claude" className="quick-link">Claude</Link>
               <Link href="/products?in_stock=true" className="quick-link">仅看有货</Link>
@@ -88,6 +89,58 @@ export default async function HomePage() {
           <div><dt>有货报价</dt><dd>{data.in_stock_count} 条</dd></div>
           <div><dt>最近更新</dt><dd>{exactTime(data.snapshot_at)}</dd></div>
         </dl>
+      </section>
+
+      {/* Community Skills & Degradation Benchmark Lab Feature Banner */}
+      <section className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)]/50 py-8 sm:py-10">
+        <div className="shell">
+          <div className="rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 sm:p-8 shadow-sm">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-2xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                  <Fire size={14} weight="fill" />
+                  新板块上线 · 零测试降智评测与精选技能库
+                </div>
+                <h2 className="mt-3 text-xl font-bold tracking-tight text-[color:var(--foreground)] sm:text-2xl lg:text-3xl">
+                  大模型真假满血？先测“鹈鹕骑自行车”再买订阅
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)] sm:text-base">
+                  实测 GPT-6 Astra、GPT-5.6、Gemini 3.8 等前沿模型零测试 2D SVG 动效，内置 6 大模型产物在线沙箱竞技场。收录 Karpathy 审美重塑、Vercel 原生浏览器等 11 款 GitHub 热门开源生产级 Skill。
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
+                    # 鹈鹕骑车降智评测
+                  </span>
+                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
+                    # 猪八戒骑车
+                  </span>
+                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
+                    # taste-skill 前端去模版
+                  </span>
+                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
+                    # agent-browser
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex shrink-0 flex-col sm:flex-row lg:flex-col gap-3">
+                <Link
+                  href="/skills/pelican-bicycle-benchmark"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--foreground)] px-5 py-3 text-sm font-semibold text-[color:var(--panel)] shadow-sm hover:opacity-90 transition active:scale-95"
+                >
+                  <span>进入降智评测竞技场</span>
+                  <ArrowRight size={16} weight="bold" />
+                </Link>
+                <Link
+                  href="/skills"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--card)] px-5 py-3 text-sm font-semibold text-[color:var(--foreground)] hover:bg-[color:var(--hover)] transition"
+                >
+                  <span>浏览全部社区技能与博文</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="shell py-12 sm:py-16" data-vds-layer="evidence">

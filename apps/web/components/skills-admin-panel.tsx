@@ -629,7 +629,7 @@ export function SkillsAdminPanel({
                     type="text"
                     value={formModels}
                     onChange={(e) => setFormModels(e.target.value)}
-                    placeholder="GPT-6, Claude 3.5, Cursor"
+                    placeholder="GPT-6 Astra, Claude 4.5 Sonnet, Gemini 3.8, Codex++"
                     className="mt-1 w-full rounded-lg border hairline bg-[color:var(--card)] p-2 text-[color:var(--foreground)]"
                   />
                 </div>

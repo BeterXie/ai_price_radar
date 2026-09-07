@@ -19,6 +19,7 @@ import type { CommunitySkillDetail } from "@/lib/types";
 import { recordSkillCopy } from "@/lib/api";
 import { PelicanArena } from "@/components/skills/pelican-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
+import { DemoIframe } from "@/components/skills/demo-iframe";
 
 const KIND_META: Record<string, { label: string; icon: any; badgeClass: string }> = {
   benchmark: {
@@ -240,12 +241,10 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
             </a>
           </div>
           <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 shadow-inner">
-            <iframe
+            <DemoIframe
               src={skill.demo_url}
               title={skill.title}
-              sandbox="allow-scripts allow-same-origin"
-              className="h-full w-full border-0"
-              loading="lazy"
+              className="h-full w-full border-0 bg-white"
             />
           </div>
         </div>

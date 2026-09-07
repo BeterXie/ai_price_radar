@@ -2,6 +2,19 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.54] - 2026-09-08
+
+### Changed & Improved
+
+- **Sandboxed Demo Isolation with `srcDoc`**:
+  - Refactored `PelicanArena` and `SkillDetailView` to use `DemoIframe` with `srcDoc` content injection and `sandbox="allow-scripts"`, preventing Chromium iframe security header conflicts (`X-Frame-Options` / cache 304 refusal).
+  - Caddyfile configured with `@demos` path removing `X-Frame-Options` and setting `Content-Security-Policy: frame-ancestors 'self'`.
+- **Frontier Model Standardization**:
+  - Replaced outdated model references (`Claude 3.5`, `GPT-4o`) across skill tags, target models, and benchmarks with contemporary cutting-edge models (`GPT-6 Astra`, `GPT-5.6`, `Claude 4.5 Sonnet`, `Gemini 3.8`, `Codex++`, `o3`).
+- **Non-Intrusive Feature Onboarding Modal**:
+  - Added `NewFeatureModal` that triggers once on first visit after browsing for 30 seconds.
+  - Automatically skipped if the user is already on `/skills` or `/admin`, and permanently dismissed once acknowledged.
+
 ## [3.7.53] - 2026-09-08
 
 ### Added

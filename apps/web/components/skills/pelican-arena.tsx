@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowSquareOut, Check, Copy, Play, Sparkle } from "@phosphor-icons/react";
 import { recordSkillCopy } from "@/lib/api";
+import { DemoIframe } from "./demo-iframe";
 
 export type ArenaModel = {
   id: string;
@@ -187,13 +188,11 @@ export function PelicanArena({ promptText = "", skillSlug = "" }: { promptText?:
 
       {/* Iframe Viewport */}
       <div className="mt-4 relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 shadow-inner">
-        <iframe
+        <DemoIframe
           key={activeModel.id}
           src={activeModel.demoUrl}
           title={activeModel.name}
-          sandbox="allow-scripts allow-same-origin"
-          className="h-full w-full border-0"
-          loading="lazy"
+          className="h-full w-full border-0 bg-white"
         />
       </div>
 

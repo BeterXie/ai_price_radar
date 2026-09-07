@@ -6,6 +6,7 @@ import { BackToTop } from "@/components/back-to-top";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CommunityPrompts } from "@/components/community-prompts";
+import { NewFeatureModal } from "@/components/new-feature-modal";
 import { SiteStructuredData } from "@/components/structured-data";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { getMeta } from "@/lib/api";
@@ -32,6 +33,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <BackToTop />
         <SiteFooter advertiseEnabled={advertiseEnabled} />
         <CommunityPrompts />
+        <NewFeatureModal />
       </body>
     </html>
   );
