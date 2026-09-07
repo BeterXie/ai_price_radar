@@ -204,6 +204,18 @@ def _offer_ordering():
     )
 
 
+def _group_offer_ordering():
+    return (
+        case((Offer.currency == PRICE_CURRENCY, 0), else_=1),
+        Offer.currency.asc(),
+        case((Offer.price.is_(None), 1), else_=0),
+        Offer.price.asc(),
+        case((Offer.stock_status == "in_stock", 0), else_=1),
+        Offer.observed_at.desc(),
+        Offer.id.asc(),
+    )
+
+
 def _offer_sort_key(offer: Offer):
     return (
         offer.stock_status != "in_stock",
@@ -434,18 +446,25 @@ def get_product_group_page(
         if representative is None:
             continue
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
-        trusted = [offer for offer in group if _is_trusted_offer(offer, medians)]
-        prices = [offer.price for offer in trusted if offer.currency == PRICE_CURRENCY and offer.price is not None]
-        if not prices:
-            prices = [
-                offer.price
-                for offer in in_stock
-                if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
-            ] or [
-                offer.price
-                for offer in group
-                if offer.currency == PRICE_CURRENCY and offer.price is not None
-            ]
+        in_stock_prices = [
+            offer.price
+            for offer in in_stock
+            if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
+        ] or [
+            offer.price
+            for offer in in_stock
+            if offer.currency == PRICE_CURRENCY and offer.price is not None
+        ]
+        all_prices = [
+            offer.price
+            for offer in group
+            if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
+        ] or [
+            offer.price
+            for offer in group
+            if offer.currency == PRICE_CURRENCY and offer.price is not None
+        ]
+        prices = in_stock_prices or all_prices
         items.append(OfferGroupPublic(
             product_slug=product.slug,
             product_name=product.display_name,
@@ -551,19 +570,25 @@ def get_catalog_group_page(
         if product is None or representative is None:
             continue
         in_stock = [offer for offer in group if offer.stock_status == "in_stock"]
-        product_medians = medians_by_product.get(product_id, {})
-        trusted = [offer for offer in group if _is_trusted_offer(offer, product_medians)]
-        prices = [offer.price for offer in trusted if offer.currency == PRICE_CURRENCY and offer.price is not None]
-        if not prices:
-            prices = [
-                offer.price
-                for offer in in_stock
-                if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
-            ] or [
-                offer.price
-                for offer in group
-                if offer.currency == PRICE_CURRENCY and offer.price is not None
-            ]
+        in_stock_prices = [
+            offer.price
+            for offer in in_stock
+            if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
+        ] or [
+            offer.price
+            for offer in in_stock
+            if offer.currency == PRICE_CURRENCY and offer.price is not None
+        ]
+        all_prices = [
+            offer.price
+            for offer in group
+            if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
+        ] or [
+            offer.price
+            for offer in group
+            if offer.currency == PRICE_CURRENCY and offer.price is not None
+        ]
+        prices = in_stock_prices or all_prices
         items.append(OfferGroupPublic(
             product_slug=product.slug,
             product_name=product.display_name,
@@ -850,7 +875,7 @@ def get_group_offers(
     )
     if currency:
         stmt = stmt.where(Offer.currency == currency.upper())
-    offers = list(db.scalars(stmt.order_by(*_offer_ordering())).unique())
+    offers = list(db.scalars(stmt.order_by(*_group_offer_ordering())).unique())
     medians = _median_prices(offers, comparable_only=True)
     return [_offer_public(offer, median_price=medians.get(_median_key(offer))) for offer in offers]
 

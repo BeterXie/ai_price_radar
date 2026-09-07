@@ -35,9 +35,18 @@ function DecisionFacts({ offer }: { offer: Offer }) {
 }
 
 function ShopOfferList({ offers }: { offers: Offer[] }) {
+  const sortedOffers = [...offers].sort((a, b) => {
+    const priceA = a.price !== null && a.price !== undefined ? Number(a.price) : Infinity;
+    const priceB = b.price !== null && b.price !== undefined ? Number(b.price) : Infinity;
+    if (priceA !== priceB) return priceA - priceB;
+    const inStockA = a.stock_status === "in_stock" ? 0 : 1;
+    const inStockB = b.stock_status === "in_stock" ? 0 : 1;
+    return inStockA - inStockB;
+  });
+
   return (
     <div className="mt-5 overflow-hidden rounded-[10px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-      {offers.map((offer) => (
+      {sortedOffers.map((offer) => (
         <div key={offer.id} className="grid gap-2 border-b hairline px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_110px_90px_auto] sm:items-center">
           <div><Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link><p className="mt-1 text-[11px] text-black/40"><span className="mono font-semibold text-black/60">#{offer.id}</span> · {offer.source_platform_label} · {offer.source_kind_label}</p></div>
           <span className="text-xs text-black/50">{stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}</span>

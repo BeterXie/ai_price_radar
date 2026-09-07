@@ -610,3 +610,68 @@ def test_in_stock_low_price_offers_sorted_at_front_before_higher_prices():
         assert detail.offer_groups[0].representative.is_trusted_price is False
         assert detail.offer_groups[1].representative.price == Decimal("80.00")
         assert detail.offer_groups[2].representative.price == Decimal("100.00")
+
+
+def test_group_lowest_price_matches_lowest_in_stock_and_group_offers_sorted_by_price_asc():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        product = Product(slug="test-plus", platform="OpenAI", display_name="ChatGPT Plus")
+        db.add(product)
+        db.flush()
+
+        group_fp = "shared-fp-123"
+
+        offers_data = [
+            ("shop-hug", "Hug AI", Decimal("20.00"), "in_stock", 79),
+            ("shop-kaopu", "靠谱 AI", Decimal("30.00"), "in_stock", 79),
+            ("shop-bmcca", "BMCCA小铺", Decimal("22.00"), "out_of_stock", 0),
+            ("shop-aishop", "AI小店", Decimal("23.00"), "out_of_stock", 0),
+            ("shop-wanqu", "玩去了", Decimal("23.50"), "out_of_stock", 0),
+        ]
+
+        for token, name, price, stock_status, stock_count in offers_data:
+            shop = Shop(token=token, name=name, source_url=f"https://example.com/{token}")
+            db.add(shop)
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key=f"raw-{token}",
+                original_name="ChatGPT Plus Account",
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                price=price,
+                stock_status=stock_status,
+                stock_count=stock_count,
+                delivery_type="finished_account",
+                is_comparable=True,
+                item_fingerprint=group_fp,
+                source_url=shop.source_url,
+                observed_at=now,
+            ))
+        _publish_offers(db)
+
+        detail = get_product_detail(db, product.slug)
+        assert detail is not None
+        assert len(detail.offer_groups) == 1
+        group = detail.offer_groups[0]
+        # Outside card: lowest in-stock price (20.00) matches representative (20.00)
+        assert group.lowest_price == Decimal("20.00")
+        assert group.representative.price == Decimal("20.00")
+        assert group.representative.shop_name == "Hug AI"
+
+        # Inside group offers: ordered strictly by price ascending
+        group_offers = get_group_offers(db, product.slug, group_fp)
+        assert group_offers is not None
+        assert len(group_offers) == 5
+        prices = [o.price for o in group_offers]
+        assert prices == [Decimal("20.00"), Decimal("22.00"), Decimal("23.00"), Decimal("23.50"), Decimal("30.00")]
+

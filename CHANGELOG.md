@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.52] - 2026-09-07
+
+### Changed
+
+- Prioritized the lowest in-stock price as the group card's outside display price, aligning with the representative lowest-price offer.
+- Arranged all offers within an offer group in strict ascending order by price (with in-stock preferred on equal prices), both in the API and frontend components.
+
 ## [3.7.51] - 2026-09-07
 
 ### Added
