@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.51] - 2026-09-07
+
+### Added
+
+- Added `POST /api/v1/admin/source-candidates/cleanup` endpoint to purge invalid candidates (`no_match`, `validation_failed`, `disabled`, `rejected`) while strictly protecting promoted candidates and source intakes.
+- Added "清理无效候选" (Batch Cleanup Invalid Candidates) button with confirmation prompt and execution feedback in the admin Source Discovery panel.
+
 ## [3.7.50] - 2026-09-07
 
 ### Added

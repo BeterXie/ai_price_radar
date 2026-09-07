@@ -555,6 +555,17 @@ class SourceCandidateAction(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class SourceCandidateCleanupRequest(BaseModel):
+    statuses: list[str] = Field(
+        default_factory=lambda: ["no_match", "validation_failed", "disabled"]
+    )
+
+
+class SourceCandidateCleanupOut(BaseModel):
+    deleted_count: int
+    statuses: list[str]
+
+
 class NotificationOutboxOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

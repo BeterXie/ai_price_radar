@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, case, cast, func, nullslast, or_, select, update
+from sqlalchemy import and_, case, cast, delete, func, nullslast, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
@@ -29,6 +29,8 @@ from ..schemas import (
     NotificationOutboxOut,
     ReportOut,
     SourceCandidateAction,
+    SourceCandidateCleanupOut,
+    SourceCandidateCleanupRequest,
     SourceCandidateOut,
     SourceDiscoveryRunOut,
     SourceIntakeApprove,
@@ -809,6 +811,34 @@ def _candidate_action(candidate_id: int, payload: SourceCandidateAction, action:
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     raise HTTPException(status_code=400, detail="unknown candidate action")
+
+
+CLEANUP_ALLOWED_STATUSES = frozenset({"no_match", "validation_failed", "disabled", "rejected"})
+
+
+@router.post("/source-candidates/cleanup", response_model=SourceCandidateCleanupOut)
+def cleanup_source_candidates(
+    payload: SourceCandidateCleanupRequest | None = None,
+    db: Session = Depends(get_db),
+) -> SourceCandidateCleanupOut:
+    requested = (
+        payload.statuses
+        if payload and payload.statuses
+        else ["no_match", "validation_failed", "disabled"]
+    )
+    target_statuses = [s for s in requested if s in CLEANUP_ALLOWED_STATUSES]
+    if not target_statuses:
+        raise HTTPException(status_code=400, detail="no valid cleanup statuses specified")
+    stmt = (
+        delete(SourceCandidate)
+        .where(
+            SourceCandidate.status.in_(target_statuses),
+            SourceCandidate.promoted_intake_id.is_(None),
+        )
+    )
+    result = db.execute(stmt)
+    db.commit()
+    return SourceCandidateCleanupOut(deleted_count=result.rowcount or 0, statuses=target_statuses)
 
 
 @router.post("/source-candidates/recover")

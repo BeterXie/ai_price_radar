@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowClockwise, Check, EyeSlash, X } from "@phosphor-icons/react";
-import { candidateQuery, candidateStatusLabel, funnelFromRuns, runStatusLabel } from "@/lib/source-discovery";
+import { ArrowClockwise, Check, EyeSlash, Trash, X } from "@phosphor-icons/react";
+import { CANDIDATE_STATUS_LABELS, candidateQuery, candidateStatusLabel, funnelFromRuns, runStatusLabel } from "@/lib/source-discovery";
 
 type Run = {
   id: number;
@@ -66,6 +66,8 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
   const [platformFilter, setPlatformFilter] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [cleaning, setCleaning] = useState(false);
 
   async function load() {
     setError("");
@@ -105,6 +107,33 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
     else setError("候选状态更新失败，请刷新后重试。");
   }
 
+  async function cleanInvalidCandidates() {
+    if (!window.confirm("确认清理来源候选池中的所有无效记录（无 AI 商品、验证失败、已停用）吗？此操作不会影响已收录商品。")) {
+      return;
+    }
+    setCleaning(true);
+    setError("");
+    setActionMessage("");
+    try {
+      const response = await fetch(`${apiBase}/api/v1/admin/source-candidates/cleanup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ statuses: ["no_match", "validation_failed", "disabled"] }),
+      });
+      if (!response.ok) {
+        setError("清理无效候选失败，请稍后重试。");
+        return;
+      }
+      const data = await response.json();
+      setActionMessage(`已成功清理 ${data.deleted_count} 条无效候选记录。`);
+      await load();
+    } catch {
+      setError("网络请求失败，请检查网络后重试。");
+    } finally {
+      setCleaning(false);
+    }
+  }
+
   const funnel = funnelFromRuns(runs);
   return (
     <section className="space-y-6">
@@ -115,6 +144,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
         </button>
       </div>
       {error && <p className="rounded-[10px] bg-[#f2d8d2] p-4 text-[color:var(--danger)]">{error}</p>}
+      {actionMessage && <p className="rounded-[10px] bg-[#d4edda] p-4 text-[#155724]">{actionMessage}</p>}
 
       <div className="data-table-frame grid gap-px overflow-hidden border hairline bg-[color:var(--line)] sm:grid-cols-3 lg:grid-cols-5">
         {[
@@ -162,10 +192,19 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
       <div className="data-table-frame overflow-hidden border hairline bg-[color:var(--panel)]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b hairline px-5 py-4">
           <div className="font-semibold">来源候选池</div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={cleanInvalidCandidates}
+              disabled={cleaning}
+              className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm text-[color:var(--danger)] hover:bg-[#f2d8d2]/30 disabled:opacity-50"
+              title="清理无 AI 商品、验证失败及已停用的无效候选记录"
+            >
+              <Trash size={15} />
+              {cleaning ? "清理中..." : "清理无效候选"}
+            </button>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
               <option value="">全部状态</option>
-              {Object.entries(candidateStatusLabels()).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(CANDIDATE_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
             <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
               <option value="">全部平台</option>

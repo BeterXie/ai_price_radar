@@ -944,3 +944,80 @@ def test_concurrent_candidate_reports_do_not_lose_run_counts_on_postgres():
             assert run.platform_stats == {"woocommerce": 2}
     finally:
         settings.discovery_woocommerce_auto_approve = previous_woo
+
+
+def test_admin_cleanup_source_candidates(client, engine):
+    with Session(engine) as db:
+        intake = SourceIntake(
+            source_type="woocommerce",
+            source_key="https://promoted.example.com",
+            source_url="https://promoted.example.com",
+            contact_email="",
+            status="approved",
+        )
+        db.add(intake)
+        db.flush()
+        c_promoted = SourceCandidate(
+            candidate_key="promoted-key",
+            discovered_url="https://promoted.example.com",
+            canonical_url="https://promoted.example.com",
+            status="promoted",
+            promoted_intake_id=intake.id,
+        )
+        c_no_match = SourceCandidate(
+            candidate_key="nomatch-key",
+            discovered_url="https://nomatch.example.com",
+            canonical_url="https://nomatch.example.com",
+            status="no_match",
+        )
+        c_failed = SourceCandidate(
+            candidate_key="failed-key",
+            discovered_url="https://failed.example.com",
+            canonical_url="https://failed.example.com",
+            status="validation_failed",
+        )
+        c_disabled = SourceCandidate(
+            candidate_key="disabled-key",
+            discovered_url="https://disabled.example.com",
+            canonical_url="https://disabled.example.com",
+            status="disabled",
+        )
+        c_active = SourceCandidate(
+            candidate_key="active-key",
+            discovered_url="https://active.example.com",
+            canonical_url="https://active.example.com",
+            status="auto_approved",
+        )
+        db.add_all([c_promoted, c_no_match, c_failed, c_disabled, c_active])
+        db.commit()
+
+    # Unauthorized
+    unauth = client.post("/api/v1/admin/source-candidates/cleanup")
+    assert unauth.status_code in (401, 403)
+
+    # Cleanup specific statuses
+    resp = client.post(
+        "/api/v1/admin/source-candidates/cleanup",
+        headers=ADMIN_HEADERS,
+        json={"statuses": ["no_match", "validation_failed"]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["deleted_count"] == 2
+    assert set(data["statuses"]) == {"no_match", "validation_failed"}
+
+    # Default cleanup deletes remaining 'disabled'
+    resp_default = client.post(
+        "/api/v1/admin/source-candidates/cleanup",
+        headers=ADMIN_HEADERS,
+    )
+    assert resp_default.status_code == 200
+    assert resp_default.json()["deleted_count"] == 1
+
+    # Remaining in DB: c_promoted and c_active
+    with Session(engine) as db:
+        remaining = list(db.scalars(select(SourceCandidate)))
+        assert len(remaining) == 2
+        statuses = {r.status for r in remaining}
+        assert statuses == {"promoted", "auto_approved"}
+
