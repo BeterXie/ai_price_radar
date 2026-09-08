@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.56] - 2026-09-08
+
+### Changed & Improved
+
+- **Root Metadata Robots & Googlebot Directives**:
+  - Configured explicit `robots` and `googleBot` directives (`index: true`, `follow: true`, `max-image-preview: large`, `max-snippet: -1`, `max-video-preview: -1`) in `apps/web/app/layout.tsx`.
+  - Clarified crawler instructions for newly discovered catalog, shop, and guide URLs.
+
 ## [3.7.55] - 2026-09-08
 
 ### Added
