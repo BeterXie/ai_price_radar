@@ -86,6 +86,68 @@ INITIAL_SKILLS_DATA: list[dict[str, Any]] = [
 """,
     },
     {
+        "slug": "codex-context-management-experimental-mode",
+        "kind": "article",
+        "title": "Codex 隐藏实验性上下文管理开启指南：告别暴力压缩，省 Token 提表现",
+        "subtitle": "配置 [features.context_management] experimental_mode = true，解锁笔记持久化与长会话防遗忘",
+        "summary": "2026年9月社区核心爆料：在 ~/.codex/config.toml 中启用实验性上下文管理，用“跨窗口笔记+语义检索模式”取代旧版暴力 Compaction 压缩。大幅节省 Token 消耗，显著提升长任务连贯性与代码行级记忆力！",
+        "prompt_template": "",
+        "author_name": "songkeys / 蚁工厂",
+        "author_url": "https://x.com/songkeys",
+        "repo_url": "https://x.com/songkeys",
+        "stars_count": 2700,
+        "install_command": "[features.context_management]\nexperimental_mode = true",
+        "demo_url": "",
+        "demo_type": "none",
+        "tags": ["Codex", "GPT-6 Astra", "配置技巧", "上下文优化", "省Token", "长会话"],
+        "target_models": ["GPT-6 Astra", "GPT-5.6", "Codex++", "All Models"],
+        "related_product_slug": "chatgpt-plus",
+        "is_pinned": True,
+        "sort_order": 92,
+        "content_markdown": """# Codex 隐藏上下文管理秘籍：告别暴力压缩
+
+2026 年 9 月初，海外知名 AI 架构师 @songkeys 在 X（Twitter）爆料了一项 OpenAI Codex 官方正在灰度测试的核心参数，国内技术博主“蚁工厂”等随后实测确认。这项配置预计将在未来几周内成为 GPT-6 Astra 的官方默认行为。
+
+---
+
+## 传统 Compaction 压缩 vs 实验性 Context Management
+
+在日常长时间使用 Codex（尤其是大工程重构、多文件联调或深度排错）时，长上下文往往会遇到瓶颈：
+
+### 1. 传统模式（默认 Compaction）
+- **机制**：当上下文达到临界值时，强制进行单次大段文本压缩摘要（Compaction）。
+- **痛点**：容易丢失早期重要的需求细节、代码精准行号和技术约束边界；后续对话一旦引用旧上下文容易出现“降智”或幻觉，且每次总结都会产生额外的 Token 开销。
+
+### 2. 实验性模式（`experimental_mode = true`）
+- **机制**：开启**跨窗口笔记（Notes）+ 历史上下文语义搜索（Searchable History）+ `new_context` 工具**。
+- **优势**：
+  - **按需索取**：模型在长任务中会自动沉淀重要事实到工作区笔记中，并在需要时像人类工程师一样主动检索历史，而非死板地背诵一段压缩总结；
+  - **大幅省 Token**：减少无谓的大段重述，有效降低每次 Prompt 吞吐成本；
+  - **多模型普适**：不仅适用于 **GPT-6 Astra**，配合 **GPT-5.6**、**Codex++** 等其他接入 Codex 的主力模型同样表现出色。
+
+---
+
+## 如何开启？
+
+### 第一步：定位配置文件
+- **macOS / Linux**：`~/.codex/config.toml`
+- **Windows**：`C:\\Users\\<用户名>\\.codex\\config.toml`
+
+### 第二步：添加配置项
+使用文本编辑器打开 `config.toml`，在文件末尾追加以下配置（注意缩进与段落区分）：
+
+```toml
+[features.context_management]
+experimental_mode = true
+```
+
+### 第三步：重启 Codex 使其生效
+保存文件后，完全退出并重新启动 Codex 客户端或新开一个全新的任务会话即可无缝生效。
+
+> **小贴士**：该特性适用于由 ChatGPT Plus / Pro 授权驱动的官方 Codex 运行环境。如遇偶发异常，只需将 `experimental_mode` 改为 `false` 或删除该小节即可无损恢复默认行为。
+""",
+    },
+    {
         "slug": "taste-skill",
         "kind": "skill",
         "title": "taste-skill：Anti-Slop 前端审美与去模版化设计规范",

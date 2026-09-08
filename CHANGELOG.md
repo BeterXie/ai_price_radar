@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.55] - 2026-09-08
+
+### Added
+
+- **Codex Experimental Context Management Article** (`/skills/codex-context-management-experimental-mode`):
+  - Added verified technical guide on enabling `[features.context_management] experimental_mode = true` in `~/.codex/config.toml`.
+  - Detailed comparison between traditional compaction and note-taking + semantic search context management, helping users conserve tokens and prevent model degradation during long sessions.
+  - Linked to ChatGPT Plus and Codex product price comparisons.
+
 ## [3.7.54] - 2026-09-08
 
 ### Changed & Improved
