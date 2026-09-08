@@ -2,7 +2,7 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
-## [3.7.56] - 2026-09-08
+## [3.7.57] - 2026-09-08
 
 ### Changed & Improved
 
