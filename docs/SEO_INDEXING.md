@@ -1,6 +1,15 @@
 # SEO 收录与 AI 引荐监测
 
-本项目的页面、站点地图和结构化数据由 Web 应用生成；IndexNow、Bing Webmaster Tools 和 GA4 需要站点所有者在部署环境中提供凭据或测量 ID。它们只能发送通知或记录来源，不能保证抓取、收录或 AI 摘要出现的时间。
+本项目的页面、站点地图和结构化数据由 Web 应用生成；Bing Webmaster Tools、IndexNow、百度搜索资源平台和 GA4 需要站点所有者在部署环境中提供验证 token、提交 token 或测量 ID。它们只能发送通知或记录来源，不能保证抓取、收录或 AI 摘要出现的时间。
+
+## 站点验证 token
+
+Web 应用支持通过运行时环境变量输出搜索引擎验证 meta 标签：
+
+- `BING_SITE_VERIFICATION`：Bing Webmaster 的 `msvalidate.01` token；
+- `BAIDU_SITE_VERIFICATION`：百度搜索资源平台的 `baidu-site-verification` token。
+
+把 token 写入生产 Web 容器的 `.env` 后重新启动 Web 服务，再打开首页源代码确认对应的 `<meta>` 标签存在。token 不要提交到 Git，也不要写入客户端构建参数。
 
 ## IndexNow
 
@@ -29,6 +38,26 @@ pwsh -File .\scripts\submit-bing-sitemap.ps1
 ```
 
 脚本只提交站点地图，不会登录、修改站点设置或替代属性验证。
+
+建议顺序：先在 Bing Webmaster Tools 验证 `https://ai.pricememo.cn`，再提交 `https://ai.pricememo.cn/sitemap.xml`；站点验证 token 可以通过 `BING_SITE_VERIFICATION` 自动放入页面。
+
+## 百度搜索资源平台
+
+在百度搜索资源平台添加并验证 `https://ai.pricememo.cn`。验证 token 可以通过 `BAIDU_SITE_VERIFICATION` 自动放入页面；百度的主动推送 token 只保存在本机或 CI 环境，不进入 Web 容器：
+
+如果百度后台要求文件验证，当前文件材料保存在本机 `seo/baidu_verify_codeva-27l7NEdkV0.html`，并已在 `docs/QUICK_DEPLOY.md` 固定为每次发布时单独上传到 Web 镜像的 `public` 根目录。它被 `.gitignore` 排除，不应提交到 GitHub。
+
+```powershell
+$changed = @(
+  "https://ai.pricememo.cn/",
+  "https://ai.pricememo.cn/products/chatgpt-plus",
+  "https://ai.pricememo.cn/sources/16688",
+  "https://ai.pricememo.cn/sitemap.xml"
+)
+pwsh -File .\scripts\submit-baidu-urls.ps1 -Url $changed
+```
+
+脚本只接受本站 HTTPS URL，并把 URL 作为纯文本提交到百度主动推送接口。接口返回“成功”只代表百度接受了推送请求，不代表 URL 已经抓取或收录。
 
 ## GA4 AI 引荐
 

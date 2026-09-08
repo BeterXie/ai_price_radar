@@ -6,9 +6,15 @@ All notable changes to AI Price Radar are documented in this file.
 
 ### Changed & Improved
 
-- **Root Metadata Robots & Googlebot Directives**:
+- **Published Intake Notifications for 16688 & Catalog Sources**:
+  - In `pipeline/publish_catalog.py`, added automatic `shop_intake.onboarded` email notification queueing for published intakes with contact emails upon catalog snapshot release, ensuring 16688, WooCommerce, and custom merchant catalog sources receive their official onboarding confirmation email with active shop link and product count.
+  - Added `shop_intake.no_products` notification when an intake has 0 imported products.
+  - Added `pipeline/backfill_published_intake_emails.py` utility to backfill missing onboarding notifications for active published merchants.
+- **Admin Panel Intake Email Transparency**:
+  - In `apps/web/components/admin-panel.tsx`, clearly distinguish between merchants with contact emails and crawler-discovered sources (`无联系邮箱（系统爬虫自动发现，不发送邮件通知）`), preventing administrative confusion on notification delivery.
+- **Search Engine Verification & Crawling Optimization**:
   - Configured explicit `robots` and `googleBot` directives (`index: true`, `follow: true`, `max-image-preview: large`, `max-snippet: -1`, `max-video-preview: -1`) in `apps/web/app/layout.tsx`.
-  - Clarified crawler instructions for newly discovered catalog, shop, and guide URLs.
+  - Added optional Bing and Baidu webmaster verification meta tag injection.
 
 ## [3.7.55] - 2026-09-08
 

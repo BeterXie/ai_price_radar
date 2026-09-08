@@ -131,6 +131,8 @@ services:
       NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL: ${NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL:-https://ai.pricememo.cn/support/wechat.jpg}
       NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL: ${NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL:-https://ai.pricememo.cn/support/alipay.jpg}
       INDEXNOW_KEY: ${INDEXNOW_KEY:-}
+      BING_SITE_VERIFICATION: ${BING_SITE_VERIFICATION:-}
+      BAIDU_SITE_VERIFICATION: ${BAIDU_SITE_VERIFICATION:-}
     depends_on:
       api:
         condition: service_healthy

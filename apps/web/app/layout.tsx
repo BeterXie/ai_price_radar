@@ -10,24 +10,29 @@ import { NewFeatureModal } from "@/components/new-feature-modal";
 import { SiteStructuredData } from "@/components/structured-data";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { getMeta } from "@/lib/api";
+import { getSearchEngineVerificationMetadata } from "@/lib/search-engine-verification";
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://ai.pricememo.cn"),
-  title: { default: "AI Price Radar · PriceMemo", template: "%s · AI Price Radar · PriceMemo" },
-  description: "聚合公开 AI 订阅商品报价，比较价格、库存、来源和更新时间。",
-  openGraph: { siteName: "AI Price Radar", locale: "zh_CN", type: "website" },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+export async function generateMetadata(): Promise<Metadata> {
+  const verification = getSearchEngineVerificationMetadata();
+  return {
+    metadataBase: new URL("https://ai.pricememo.cn"),
+    title: { default: "AI Price Radar · PriceMemo", template: "%s · AI Price Radar · PriceMemo" },
+    description: "聚合公开 AI 订阅商品报价，比较价格、库存、来源和更新时间。",
+    openGraph: { siteName: "AI Price Radar", locale: "zh_CN", type: "website" },
+    robots: {
       index: true,
       follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-video-preview": -1,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
     },
-  },
-};
+    ...(verification ? { verification } : {}),
+  };
+}
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const meta = await getMeta().catch(() => null);

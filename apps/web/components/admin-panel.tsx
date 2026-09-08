@@ -589,12 +589,18 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   </div>
                   <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
                   <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
-                  <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
+                  <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email ? intake.contact_email : <span className="text-black/40">未填写（公网爬虫发现）</span>} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                   {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
                   {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">提示：如该店铺为链动小铺、独角数卡等支持的平台，可在上方切换类型或点击“重新检测”；点击批准将自动按检测平台接入。</p>}
                   {["merchant_json", "woocommerce", "16688", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
                   {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
-                  {Object.keys(intake.email_status).length > 0 && <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>}
+                  {!intake.contact_email ? (
+                    <p className="mt-3 text-xs text-black/40">无联系邮箱（系统爬虫自动发现，不发送邮件通知）</p>
+                  ) : Object.keys(intake.email_status).length > 0 ? (
+                    <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>
+                  ) : (
+                    <p className="mt-3 text-xs text-black/40">暂无邮件记录</p>
+                  )}
                   {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}
                 </div>
                 <div className="flex flex-wrap gap-2 xl:justify-end">

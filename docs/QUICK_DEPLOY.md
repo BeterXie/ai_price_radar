@@ -95,6 +95,15 @@ $env:NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL = "https://ai.pricememo.cn/support/alipay
 # 可选：替换为真实 ID 后启用 GA4 页面浏览和 AI 引荐事件；不启用时保持为空。
 # $env:NEXT_PUBLIC_GA_MEASUREMENT_ID = "G-XXXXXXXXXX"
 
+# 百度文件验证材料不进入 Git；每次发布都必须从本机单独上传。
+$BaiduVerificationFile = Join-Path (Get-Location) "seo\baidu_verify_codeva-27l7NEdkV0.html"
+if (-not (Test-Path -LiteralPath $BaiduVerificationFile -PathType Leaf)) {
+  throw "Missing Baidu verification file: $BaiduVerificationFile"
+}
+$BaiduVerificationName = Split-Path -Leaf $BaiduVerificationFile
+$BaiduVerificationHash = (Get-FileHash -LiteralPath $BaiduVerificationFile -Algorithm SHA256).Hash
+Write-Output "Baidu verification file: $BaiduVerificationName ($BaiduVerificationHash)"
+
 npm --prefix apps/web run build
 
 if (rg -a -l "http://localhost:8000" apps/web/.next/static) {
@@ -110,6 +119,7 @@ Get-FileHash $Source,$Web -Algorithm SHA256
 
 scp $Source "pricememo-prod:/tmp/"
 scp $Web "pricememo-prod:/tmp/"
+scp $BaiduVerificationFile "pricememo-prod:/tmp/$BaiduVerificationName"
 scp "C:\Users\59908\Pictures\wechat.jpg" "pricememo-prod:/tmp/wechat.jpg"
 scp "C:\Users\59908\Pictures\alipay.jpg" "pricememo-prod:/tmp/alipay.jpg"
 ```
@@ -122,12 +132,26 @@ scp "C:\Users\59908\Pictures\alipay.jpg" "pricememo-prod:/tmp/alipay.jpg"
 1. sha256sum -c 检查两个上传包
 2. 解压源码到 /opt/ai-price-radar-staging-$Stamp
 3. 解压 .next/standalone 和 .next/static
-4. 从当前运行目录复制 .env；确认新增的 `DETECTOR_WORKER_KEY` 至少 32 字节，且不同于 Admin/Intake Worker Key
-5. 如果启用 IndexNow，将同一个 `INDEXNOW_KEY` 写入生产 `.env`；未配置时 `/indexnow-key.txt` 应保持不可用
-6. python3 scripts/production_preflight.py
-7. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
-8. 覆盖 /opt/ai-price-radar-v3，但保留 .env、data/、backups/
-9. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
+4. 将 `/tmp/baidu_verify_codeva-27l7NEdkV0.html` 安装到 `/opt/ai-price-radar-staging-$Stamp/apps/web/public/baidu_verify_codeva-27l7NEdkV0.html`，权限 `644`；确认其 SHA-256 与本机 `$BaiduVerificationHash` 一致。该文件必须位于 Web 镜像的 `public` 根目录，不能放到 `support/` 或只留在源码包外
+5. 从当前运行目录复制 `.env`；确认新增的 `DETECTOR_WORKER_KEY` 至少 32 字节，且不同于 Admin/Intake Worker Key
+6. 如果启用搜索引擎通知或站点验证：将 `INDEXNOW_KEY`、`BING_SITE_VERIFICATION`、`BAIDU_SITE_VERIFICATION` 写入生产 `.env`；`BING_WEBMASTER_API_KEY` 和 `BAIDU_PUSH_TOKEN` 只放在执行提交脚本的本机或 CI，不写入 Web 容器。未配置 `INDEXNOW_KEY` 时 `/indexnow-key.txt` 应保持不可用
+7. python3 scripts/production_preflight.py
+8. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
+9. 覆盖 /opt/ai-price-radar-v3，但保留 `.env`、`data/`、`backups/`
+10. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
+
+百度验证文件的 staging 安装示例（在远端 Linux staging 主机执行；文件名以百度后台当前下载的文件为准）：
+
+```bash
+# 将 STAMP 替换为本次部署记录中的时间戳。
+STAGING="/opt/ai-price-radar-staging-STAMP"
+BAIDU_FILE="baidu_verify_codeva-27l7NEdkV0.html"
+install -D -m 0644 "/tmp/$BAIDU_FILE" "$STAGING/apps/web/public/$BAIDU_FILE"
+test "$(stat -c '%s' "/tmp/$BAIDU_FILE")" = "$(stat -c '%s' "$STAGING/apps/web/public/$BAIDU_FILE")"
+sha256sum "$STAGING/apps/web/public/$BAIDU_FILE"
+```
+
+该文件是生产部署材料，不属于 Git release；不要执行 `git add seo/`，也不要把它放进 `git archive`。如果百度后台生成了新的文件名或内容，先替换本机 `seo/` 下的文件，再同步修改本节和第 3 步中的文件名。
 ```
 
 随后构建并依次切换 API、来源检测 Worker、Web：
@@ -243,6 +267,7 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] Schema.org 候选默认停留在 pending_review，未被自动批准（除非显式开启 DISCOVERY_SCHEMA_AUTO_APPROVE）
 [ ] 已 published 且仍启用的 Dujiao/Merchant/WooCommerce/Schema.org/16688 来源在连续两次完整刷新中都存在；disabled 来源在下一快照移除
 [ ] 首页、报价目录和一个商品详情页可正常访问
+[ ] `https://ai.pricememo.cn/baidu_verify_codeva-27l7NEdkV0.html` 返回 200，响应体与百度提供的验证文件完全一致
 [ ] 真实商品的可信最低价与 related_lowest_price 口径正确
 [ ] API/Web 部署后日志无 traceback、exception、critical
 [ ] 三个 systemd timer 已恢复为 active

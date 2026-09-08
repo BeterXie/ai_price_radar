@@ -564,3 +564,78 @@ def test_approved_intake_stays_approved_when_atomic_publish_fails(monkeypatch: p
         assert db.query(CatalogSnapshot).count() == 0
     finally:
         db.close()
+
+
+def test_published_intake_enqueues_onboarded_notification_when_email_present(monkeypatch: pytest.MonkeyPatch):
+    install_loader(monkeypatch)
+    db = session_for("sqlite://")
+    try:
+        db.execute(text(
+            "CREATE TABLE source_intakes ("
+            "id INTEGER PRIMARY KEY, source_type TEXT, detected_platform TEXT, "
+            "source_url TEXT, source_key TEXT, shop_name TEXT, contact_email TEXT, "
+            "status TEXT, product_count INT DEFAULT 0, finished_at TEXT, updated_at TEXT)"
+        ))
+        db.execute(text(
+            "CREATE TABLE notification_outbox ("
+            "id INTEGER PRIMARY KEY, event_type TEXT, recipient TEXT, subject TEXT, "
+            "text_body TEXT, status TEXT, attempt_count INT, next_attempt_at TEXT, "
+            "last_error TEXT, dedupe_key TEXT UNIQUE, created_at TEXT)"
+        ))
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
+            "VALUES (44, '16688', '16688', 'https://www.16688.com.cn/shop/S230844', 'https://www.16688.com.cn/shop/S230844', '凌越穹顶', '3470570896@qq.com', 'approved')"
+        ))
+        db.commit()
+
+        publish_sources(db, approved_intake_sources(db))
+
+        # Verify status is published
+        assert db.execute(text("SELECT status, product_count FROM source_intakes WHERE id=44")).one() == ("published", 4)
+
+        # Verify outbox entry
+        outbox = db.execute(text("SELECT event_type, recipient, subject, text_body, dedupe_key FROM notification_outbox")).mappings().all()
+        assert len(outbox) == 1
+        assert outbox[0]["event_type"] == "shop_intake.onboarded"
+        assert outbox[0]["recipient"] == "3470570896@qq.com"
+        assert outbox[0]["subject"] == "店铺已正式收录"
+        assert "凌越穹顶" in outbox[0]["text_body"]
+        assert "4" in outbox[0]["text_body"]
+        assert outbox[0]["dedupe_key"] == "source-intake:44:shop_intake.onboarded"
+
+        # Idempotency: publishing again does not duplicate the notification
+        publish_sources(db, approved_intake_sources(db))
+        assert db.execute(text("SELECT count(*) FROM notification_outbox")).scalar_one() == 1
+    finally:
+        db.close()
+
+
+def test_published_intake_skips_notification_when_no_email(monkeypatch: pytest.MonkeyPatch):
+    install_loader(monkeypatch)
+    db = session_for("sqlite://")
+    try:
+        db.execute(text(
+            "CREATE TABLE source_intakes ("
+            "id INTEGER PRIMARY KEY, source_type TEXT, detected_platform TEXT, "
+            "source_url TEXT, source_key TEXT, shop_name TEXT, contact_email TEXT, "
+            "status TEXT, product_count INT DEFAULT 0, finished_at TEXT, updated_at TEXT)"
+        ))
+        db.execute(text(
+            "CREATE TABLE notification_outbox ("
+            "id INTEGER PRIMARY KEY, event_type TEXT, recipient TEXT, subject TEXT, "
+            "text_body TEXT, status TEXT, attempt_count INT, next_attempt_at TEXT, "
+            "last_error TEXT, dedupe_key TEXT UNIQUE, created_at TEXT)"
+        ))
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
+            "VALUES (42, '16688', '16688', 'https://www.16688.com.cn/shop/S269286', 'https://www.16688.com.cn/shop/S269286', 'www.16688.com.cn', '', 'approved')"
+        ))
+        db.commit()
+
+        publish_sources(db, approved_intake_sources(db))
+
+        assert db.execute(text("SELECT status FROM source_intakes WHERE id=42")).scalar_one() == "published"
+        assert db.execute(text("SELECT count(*) FROM notification_outbox")).scalar_one() == 0
+    finally:
+        db.close()
+

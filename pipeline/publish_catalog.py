@@ -309,6 +309,118 @@ def _carry_forward_current_snapshot(db: Session, target_snapshot_id: int) -> Non
         db.execute(update(Offer).where(Offer.snapshot_id == current_id).values(snapshot_id=target_snapshot_id))
 
 
+def enqueue_published_intake_notifications(
+    db: Session,
+    *,
+    intake_id: int,
+    intake_status: str,
+    product_count: int,
+    published_at: datetime,
+) -> None:
+    conn = db.connection()
+    inspector = inspect(conn)
+    if not inspector.has_table("notification_outbox") or not inspector.has_table("source_intakes"):
+        return
+
+    intake_columns = {col["name"] for col in inspector.get_columns("source_intakes")}
+    if "contact_email" not in intake_columns:
+        return
+
+    row = db.execute(text(
+        "SELECT id, shop_name, source_url, source_key, contact_email "
+        "FROM source_intakes WHERE id = :intake_id"
+    ), {"intake_id": intake_id}).mappings().one_or_none()
+
+    if not row:
+        return
+    contact_email = str(row.get("contact_email") or "").strip()
+    if not contact_email:
+        return
+
+    shop_name = str(row.get("shop_name") or "").strip()
+    source_url = str(row.get("source_url") or "").strip()
+    source_key = str(row.get("source_key") or "").strip()
+
+    if intake_status == "published":
+        event_type = "shop_intake.onboarded"
+        dedupe_key = f"source-intake:{intake_id}:shop_intake.onboarded"
+
+        already = db.execute(text(
+            "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"
+        ), {"key": dedupe_key}).scalar_one_or_none()
+        if already:
+            return
+
+        shop_token = None
+        if inspector.has_table("shops"):
+            if source_url:
+                shop_token = db.execute(text(
+                    "SELECT token FROM shops WHERE source_url = :url ORDER BY id LIMIT 1"
+                ), {"url": source_url}).scalar_one_or_none()
+            if not shop_token and source_key:
+                shop_token = db.execute(text(
+                    "SELECT token FROM shops WHERE source_url = :url OR token = :tok ORDER BY id LIMIT 1"
+                ), {"url": source_key, "tok": source_key}).scalar_one_or_none()
+        shop_token = shop_token or source_key or str(intake_id)
+
+        site_base = os.getenv("PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
+        subject = "店铺已正式收录"
+        body = (
+            f"你的店铺收录申请（#{intake_id}）已完成验证并发布。\n"
+            f"店铺名称：{shop_name or '未填写'}\n"
+            f"店铺地址：{source_url}\n"
+            f"已发布商品数：{product_count}。\n"
+            f"本站收录页面：{site_base}/shops/{shop_token}"
+        )
+    elif intake_status == "no_products":
+        event_type = "shop_intake.no_products"
+        dedupe_key = f"source-intake:{intake_id}:shop_intake.no_products"
+
+        already = db.execute(text(
+            "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"
+        ), {"key": dedupe_key}).scalar_one_or_none()
+        if already:
+            return
+
+        subject = "店铺验证完成，但暂未发现目标商品"
+        body = (
+            f"你的店铺收录申请（#{intake_id}）已完成读取，但暂未发现目录范围内商品。\n"
+            f"店铺名称：{shop_name or '未填写'}\n"
+            f"店铺地址：{source_url}\n"
+            "管理员可以重新验证，或补充公开商品后再次提交。"
+        )
+    else:
+        return
+
+    if conn.dialect.name == "postgresql":
+        db.execute(text(
+            "INSERT INTO notification_outbox "
+            "(event_type, recipient, subject, text_body, status, attempt_count, next_attempt_at, last_error, dedupe_key, created_at) "
+            "VALUES (:event_type, :recipient, :subject, :text_body, 'pending', 0, :now, '', :dedupe_key, :now) "
+            "ON CONFLICT (dedupe_key) DO NOTHING"
+        ), {
+            "event_type": event_type,
+            "recipient": contact_email,
+            "subject": subject,
+            "text_body": body,
+            "dedupe_key": dedupe_key,
+            "now": published_at,
+        })
+    else:
+        db.execute(text(
+            "INSERT INTO notification_outbox "
+            "(event_type, recipient, subject, text_body, status, attempt_count, next_attempt_at, last_error, dedupe_key, created_at) "
+            "VALUES (:event_type, :recipient, :subject, :text_body, 'pending', 0, :now, '', :dedupe_key, :now)"
+        ), {
+            "event_type": event_type,
+            "recipient": contact_email,
+            "subject": subject,
+            "text_body": body,
+            "dedupe_key": dedupe_key,
+            "now": published_at,
+        })
+
+
 def publish_sources(
     db: Session,
     sources: Sequence[SourceSpec],
@@ -350,6 +462,13 @@ def publish_sources(
                         "product_count": imported.public_offer_count,
                         "published_at": published_at,
                     })
+                    enqueue_published_intake_notifications(
+                        db,
+                        intake_id=intake_id,
+                        intake_status=intake_status,
+                        product_count=imported.public_offer_count,
+                        published_at=published_at,
+                    )
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0
             )

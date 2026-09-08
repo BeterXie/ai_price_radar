@@ -19,6 +19,8 @@ services:
         ALPINE_REPOSITORY_HOST: mirrors.aliyun.com
     environment:
       INDEXNOW_KEY: ${INDEXNOW_KEY:-}
+      BING_SITE_VERIFICATION: ${BING_SITE_VERIFICATION:-}
+      BAIDU_SITE_VERIFICATION: ${BAIDU_SITE_VERIFICATION:-}
     volumes:
       - ./data/support:/app/public/support:ro
     networks:
