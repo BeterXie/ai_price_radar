@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.60] - 2026-09-09
+
+### Changed & Improved
+
+- **Pelican Benchmark 2-Column Gallery Grid Layout**:
+  - In `apps/web/components/skills/pelican-arena.tsx`, restructured the model arena presentation into a 2-column gallery grid (`grid grid-cols-1 sm:grid-cols-2`) matching modern model evaluation galleries.
+  - Each card features a clean card header (bold model name and badge), a color-coded accent divider line reflecting model tier and status (e.g. rose for Astra full-blood, amber for degraded, purple for skill-enhanced, emerald for flash), an interactive SVG 2D animation viewport, verdict pill, file size / line count metrics, and diagnostic summary.
+  - Added a responsive view mode switcher allowing users to toggle between the default "双列画廊" (2-column gallery) and "单视窗精选" (focused single viewport with model tabs).
+  - Kept all existing benchmark diagnostic copy, prompt citations, and data metrics completely intact.
+
 ## [3.7.59] - 2026-09-09
 
 ### Changed & Improved
