@@ -21,10 +21,10 @@ export default function Image() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 22, fontSize: 30, fontWeight: 700 }}>
-          <div style={{ width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 14, background: "#031b4e" }}>
-            <div style={{ width: 36, height: 36, display: "flex", border: "4px solid #0091ff", borderRadius: 999 }} />
+          <div style={{ width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 14, background: "#0c4a45" }}>
+            <div style={{ width: 36, height: 36, display: "flex", border: "4px solid #00bba9", borderRadius: 999 }} />
           </div>
-          AI Price Radar
+          AI Price Memory
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div style={{ maxWidth: 980, fontSize: 82, lineHeight: 0.98, letterSpacing: "-5px", fontWeight: 750 }}>
@@ -34,7 +34,7 @@ export default function Image() {
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 23 }}>
           <span>ai.pricememo.cn</span>
-          <span style={{ padding: "12px 18px", borderRadius: 10, background: "#0091ff", color: "#ffffff" }}>Verification over promotion</span>
+          <span style={{ padding: "12px 18px", borderRadius: 10, background: "#00bba9", color: "#ffffff" }}>Verification over promotion</span>
         </div>
       </div>
     ),

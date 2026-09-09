@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.63] - 2026-09-10
+
+### Changed & Improved
+
+- **Unified Brand Icon & Tab Bar Favicon**:
+  - Replaced the website top-left main icon (`/brand/logo-icon.png`, `/brand/logo.png`) and the browser tab bar favicon across all formats (`app/icon.png`, `app/apple-icon.png`, `app/icon.svg`, `public/favicon.ico`, `public/icon.png`, `public/icon.svg`) with the unified teal radar "P" emblem squircle.
+  - Kept the header brand title as `AI Price Memory` with subtitle `公开报价记录`.
+  - Harmonized Open Graph preview images in `apps/web/app/opengraph-image.tsx` and `apps/web/app/products/[slug]/opengraph-image.tsx` with the teal brand color scheme (`#00bba9`).
+
 ## [3.7.62] - 2026-09-10
 
 ### Changed & Improved
