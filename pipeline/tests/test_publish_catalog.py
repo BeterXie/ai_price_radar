@@ -44,7 +44,17 @@ def install_loader(monkeypatch: pytest.MonkeyPatch, *, failing_source: str | Non
             raise ValueError("upstream unavailable")
         yield record(value)
 
+    def loader_16688(source: str | Path):
+        value = str(source)
+        if value == failing_source:
+            raise ValueError("upstream unavailable")
+        for i in range(1, 5):
+            r = record(f"{value}-{i}")
+            r["source_platform"] = "16688"
+            yield r
+
     monkeypatch.setitem(CONNECTORS, "merchant-json", loader)
+    monkeypatch.setitem(CONNECTORS, "16688", loader_16688)
 
 
 def create_review_db(path: Path) -> None:
