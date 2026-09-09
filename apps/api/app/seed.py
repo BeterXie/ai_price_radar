@@ -68,6 +68,9 @@ def seed() -> None:
         legacy_team = products.get("chatgpt-team-business")
         if legacy_team is not None:
             legacy_team.is_visible = False
+        legacy_pro = products.get("chatgpt-pro")
+        if legacy_pro is not None:
+            legacy_pro.is_visible = False
         db.flush()
         if db.scalar(select(Offer.id).limit(1)) is not None:
             db.commit()

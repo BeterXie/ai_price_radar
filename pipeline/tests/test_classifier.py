@@ -26,11 +26,24 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("ChatGPT 5✖️Pro 一个月", "", "chatgpt-pro-5x"),
         ("ChatGPT Pro x 20 会员", "", "chatgpt-pro-20x"),
         ("GPT Pro20× 一个月", "", "chatgpt-pro-20x"),
-        ("ChatGPT Pro 200刀会员", "", "chatgpt-pro"),
-        ("ChatGPT Pro 5天账号", "", "chatgpt-pro"),
-        ("ChatGPT Pro 20刀账号", "", "chatgpt-pro"),
-        ("ChatGPT Pro 500x账号", "", "chatgpt-pro"),
+        ("ChatGPT Pro 200刀会员", "", "chatgpt-pro-20x"),
+        ("ChatGPT Pro 5天账号", "", "chatgpt-pro-20x"),
+        ("ChatGPT Pro 20刀账号", "", "chatgpt-pro-20x"),
+        ("ChatGPT Pro 500x账号", "", "chatgpt-pro-20x"),
         ("ChatGPT Pro 5倍成品号", "", "chatgpt-pro-5x"),
+        ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "", "chatgpt-pro-20x"),
+        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "", "chatgpt-pro-20x"),
+        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 100刀PRO", "", "chatgpt-pro-5x"),
+        ("GPT-PRO代充-充自己号《正规充值》 · 100刀PRO", "", "chatgpt-pro-5x"),
+        ("ChatGPT Pro｜续费充值（月卡）【 5x / 100刀】 · 标准版", "", "chatgpt-pro-5x"),
+        ("ChatGPT Pro｜续费充值（月卡）【 20x / 200刀】 · 标准版", "", "chatgpt-pro-20x"),
+        ("PRO200刀有质保20X【正规充值】 可以续费 客服转账免手续费", "OpenAI Pro 20X 充值", "chatgpt-pro-20x"),
+        ("正规G Pro直充【20X-200刀款】 月卡套餐 全程质保订阅，同步官方退款政策", "OpenAI Pro 20X 充值", "chatgpt-pro-20x"),
+        ("【官方代充】G Pro 200刀 20x 1-5分钟到账", "OpenAI Pro 20X 充值", "chatgpt-pro-20x"),
+        ("纯plus+pro—200刀", "codex API", "chatgpt-pro-20x"),
+        ("gpt-200刀", "", "chatgpt-pro-20x"),
+        ("gpt pro一个月100刀的自助卡密质保", "", "chatgpt-pro-5x"),
+        ("gpt pro一个月200刀的自助卡密质保", "", "chatgpt-pro-20x"),
         ("GPT Plus 官方充值", "GPT Pro 20X 充值", "chatgpt-plus"),
         ("ChatGPT Go 正规充值", "GPT Team/Go", "chatgpt-go"),
         ("一个月 GPT Go会员 美区订阅", "GPT Team/Go", "chatgpt-go"),
@@ -116,7 +129,7 @@ def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
     assert result.slug == "chatgpt-plus"
     assert classify("G Pro X20 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
     assert classify("G Pro 5倍官方充值月卡", source_platform="16688").slug == "chatgpt-pro-5x"
-    assert classify("G Pro X200 官方充值月卡", source_platform="16688").slug == "chatgpt-pro"
+    assert classify("G Pro X200 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
     assert classify("GP.T Plus 菲区 CDK").slug is None
     assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-super"
 
@@ -170,6 +183,7 @@ def test_product_catalog_groups_openai_and_retires_legacy_team_product():
         assert products["x-premium-basic"].platform == "X"
         assert products["x-premium-plus"].display_name == "X Premium+"
         assert legacy.is_visible is False
+        assert products["chatgpt-pro"].is_visible is False
     finally:
         db.close()
 

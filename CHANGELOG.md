@@ -2,6 +2,17 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.58] - 2026-09-09
+
+### Changed & Improved
+
+- **Consolidate ChatGPT Pro Categories into Pro 5x and Pro 20x**:
+  - In `apps/web/lib/catalog.ts`, removed generic `chatgpt-pro` tab from `PRODUCT_TABS.OpenAI` and positioned `Pro 5x` (`chatgpt-pro-5x`) and `Pro 20x` (`chatgpt-pro-20x`) side-by-side after Plus.
+  - In `apps/api/app/services/classifier.py` and `pipeline/common.py`, enhanced `_pro_multiplier` and classifier logic to eliminate generic `chatgpt-pro` returns. All ChatGPT Pro merchandise now classifies into either `chatgpt-pro-5x` (100刀 / 5x / 5倍) or `chatgpt-pro-20x` (200刀 / 20x / 20倍 / generic Pro fallback).
+  - Resolved `(?!\d)` regex lookahead issues with composite titles like `20x 200刀` and multi-tier variant selections like `5x/20x ... · 100刀PRO`.
+  - In `apps/api/app/seed.py` and `pipeline/common.py`, legacy `chatgpt-pro` is now automatically marked `is_visible = False`.
+  - Created migration script `scripts/reclassify_pro_offers.py` to reclassify existing production offers from generic Pro to Pro 5x or Pro 20x and hide `chatgpt-pro`.
+
 ## [3.7.57] - 2026-09-08
 
 ### Changed & Improved

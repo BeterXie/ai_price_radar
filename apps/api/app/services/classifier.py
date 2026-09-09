@@ -220,12 +220,31 @@ def _is_non_product(title_text: str, category_text: str = "", description_text: 
 
 
 def _pro_multiplier(text: str) -> int | None:
-    compact = re.sub(r"\s+", "", text).replace("×", "x").replace("✖", "x").replace("倍", "x").replace("\ufe0f", "")
-    for multiplier in (20, 5):
-        value = str(multiplier)
-        marker = rf"(?<!\d)(?:{value}x|x{value})(?!\d)"
-        if re.search(rf"pro[^a-z0-9]*{marker}|{marker}[^a-z0-9]*pro", compact):
-            return multiplier
+    norm = re.sub(r"\s+", " ", text).replace("×", "x").replace("✖", "x").replace("倍", "x").replace("\ufe0f", "").casefold()
+
+    has_100 = bool(re.search(r"(?<!\d)100\s*(?:刀|美金|\$)(?!\d)|(?<!\d)x\s*100(?!\d)", norm))
+    has_200 = bool(re.search(r"(?<!\d)200\s*(?:刀|美金|\$)(?!\d)|(?<!\d)x\s*200(?!\d)", norm))
+    if has_100 and not has_200:
+        return 5
+    if has_200 and not has_100:
+        return 20
+    if has_100 and has_200:
+        pos_100 = max(m.start() for m in re.finditer(r"(?<!\d)100\s*(?:刀|美金|\$)(?!\d)|(?<!\d)x\s*100(?!\d)", norm))
+        pos_200 = max(m.start() for m in re.finditer(r"(?<!\d)200\s*(?:刀|美金|\$)(?!\d)|(?<!\d)x\s*200(?!\d)", norm))
+        return 20 if pos_200 > pos_100 else 5
+
+    has_5x = bool(re.search(r"(?<!\d)(?:5\s*x|x\s*5)(?!\d)", norm))
+    has_20x = bool(re.search(r"(?<!\d)(?:20\s*x|x\s*20)(?!\d)", norm) or re.search(r"(?<!\d)20\s*x(?=200)", norm))
+    if has_5x and not has_20x:
+        return 5
+    if has_20x and not has_5x:
+        return 20
+    if has_5x and has_20x:
+        matches_5 = [m.start() for m in re.finditer(r"(?<!\d)(?:5\s*x|x\s*5)(?!\d)", norm)]
+        matches_20 = [m.start() for m in re.finditer(r"(?<!\d)(?:20\s*x|x\s*20)(?!\d)|(?<!\d)20\s*x(?=200)", norm)]
+        if matches_5 and matches_20:
+            return 20 if max(matches_20) > max(matches_5) else 5
+
     return None
 
 
@@ -363,9 +382,9 @@ def _chatgpt_tier(text: str) -> str | None:
     if _contains(text, ["chatgpt pro", "gpt pro", "chatgpt-pro", "gpt-pro"]):
         if any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "美金", "号池", "中转", "api"]):
             return None
-        return "chatgpt-pro"
+        return "chatgpt-pro-20x"
     if "200刀" in text and not any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "美金", "号池", "中转", "api"]):
-        return "chatgpt-pro"
+        return "chatgpt-pro-20x"
 
     if _contains(text, CHATGPT_PLUS_MARKERS):
         if any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "中转"]):
@@ -456,7 +475,7 @@ def _16688_chatgpt_alias_tier(value: str) -> str | None:
     if multiplier == 5:
         return "chatgpt-pro-5x"
     if any(marker in compact for marker in ("gptpro", "gtppro", "gpro")):
-        return "chatgpt-pro"
+        return "chatgpt-pro-20x"
     if any(marker in compact for marker in ("gptplus", "gtpplus", "gplus")):
         return "chatgpt-plus"
     if any(marker in compact for marker in ("gptgo", "gtpgo", "ggo")):
@@ -510,7 +529,8 @@ def _classify_16688_alias(
     elif _contains(title_text, CHATGPT_GO_MARKERS):
         title_plain_tier = "chatgpt-go"
     elif _contains(title_text, CHATGPT_PRO_MARKERS):
-        title_plain_tier = "chatgpt-pro"
+        multiplier = _pro_multiplier(title_text)
+        title_plain_tier = "chatgpt-pro-5x" if multiplier == 5 else "chatgpt-pro-20x"
 
     context = " ".join([category_text, description_text])
     context_grok = _16688_grok_alias(context)

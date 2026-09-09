@@ -48,11 +48,10 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> 
   OpenAI: [
     { label: "Free", slug: "chatgpt-account" },
     { label: "Plus", slug: "chatgpt-plus" },
-    { label: "Pro", slug: "chatgpt-pro" },
-    { label: "Go", slug: "chatgpt-go" },
-    { label: "K12 / Team", slug: "chatgpt-k12" },
     { label: "Pro 5x", slug: "chatgpt-pro-5x" },
     { label: "Pro 20x", slug: "chatgpt-pro-20x" },
+    { label: "Go", slug: "chatgpt-go" },
+    { label: "K12 / Team", slug: "chatgpt-k12" },
     { label: "OpenAI API", slug: "openai-api-credit" },
     { label: "手机接码", slug: "chatgpt-access-service" },
   ],
