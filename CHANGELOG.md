@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.62] - 2026-09-10
+
+### Changed & Improved
+
+- **Header Brand Typography & Icon Update**:
+  - Replaced the top-left site header icon with the new cyan price-tag radar emblem (`/brand/logo-icon.png`).
+  - Updated the top-left brand title from `AI Price Radar` to `AI Price Memory`.
+  - Replaced the browser tab bar icon (favicon) across all formats (`app/icon.png`, `app/apple-icon.png`, `app/icon.svg`, `public/favicon.ico`, `public/icon.png`) with the new centered cyan radar price-tag icon.
+
 ## [3.7.61] - 2026-09-09
 
 ### Changed & Improved
