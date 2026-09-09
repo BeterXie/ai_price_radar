@@ -30,12 +30,15 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
   return (
     <header className="app-header sticky top-0 z-50">
       <div className="shell flex h-[68px] items-center justify-between gap-3">
-        <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="group flex min-w-0 shrink-0 items-center gap-3">
-          <span className="brand-mark"><Image src="/icon.svg?theme=production-lime" alt="" width={25} height={25} priority /></span>
-          <span className="min-w-0">
-            <span className="block truncate font-semibold tracking-[-0.035em]">AI Price Radar</span>
-            <span className="hidden text-[11px] font-medium text-[color:var(--muted)] sm:block">公开报价记录</span>
-          </span>
+        <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="group flex min-w-0 shrink-0 items-center py-1">
+          <Image
+            src="/brand/logo.png"
+            alt="AI Price Radar · AI 订阅比价"
+            width={133}
+            height={42}
+            priority
+            className="h-10 w-auto object-contain transition-opacity group-hover:opacity-90"
+          />
         </Link>
 
         <nav aria-label="主要导航" className="hidden items-center gap-1 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--panel)]/72 p-1 shadow-[0_8px_28px_rgba(18,19,15,.05)] lg:flex">

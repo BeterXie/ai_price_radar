@@ -26,7 +26,7 @@ export function SiteStructuredData() {
             url: "https://ai.pricememo.cn",
             logo: {
               "@type": "ImageObject",
-              url: "https://ai.pricememo.cn/icon.svg",
+              url: "https://ai.pricememo.cn/brand/logo.png",
             },
             sameAs: ["https://github.com/BeterXie/ai_price_radar"],
             description: "整理公开 AI 商品报价、来源、库存和更新时间的价格信息项目。",

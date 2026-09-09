@@ -23,8 +23,8 @@ export default async function Image({ params }: { params: Promise<{ slug: string
           fontFamily: "Arial, sans-serif",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 18, fontSize: 27, color: "#cfff47" }}>
-          <div style={{ width: 18, height: 18, display: "flex", borderRadius: 999, background: "#cfff47" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 18, fontSize: 27, color: "#35f6ff" }}>
+          <div style={{ width: 18, height: 18, display: "flex", borderRadius: 999, background: "#0091ff" }} />
           AI Price Radar
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -34,7 +34,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 23 }}>
           <span>ai.pricememo.cn</span>
-          <span style={{ padding: "12px 18px", borderRadius: 10, background: "#cfff47", color: "#172000" }}>Check the source before buying</span>
+          <span style={{ padding: "12px 18px", borderRadius: 10, background: "#0091ff", color: "#ffffff" }}>Check the source before buying</span>
         </div>
       </div>
     ),

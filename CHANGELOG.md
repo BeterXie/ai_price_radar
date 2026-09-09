@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.61] - 2026-09-09
+
+### Changed & Improved
+
+- **Brand Identity & Tab Icon Refresh**:
+  - Replaced the website top-left corner brand mark and title/subtitle with the new high-resolution transparent logo (`/brand/logo.png`), featuring the vibrant cyan/blue radar graphic with upward trend arrow and "AI Price Radar · AI 订阅比价".
+  - Replaced the browser tab bar icon (favicon) across all formats (`app/icon.png`, `app/apple-icon.png`, `app/icon.svg`, `public/favicon.ico`, `public/icon.png`) with the new glowing neon-blue app-store squircle radar icon with transparent rounded corners.
+  - Updated Open Graph social card accent colors in `apps/web/app/opengraph-image.tsx` and `apps/web/app/products/[slug]/opengraph-image.tsx` to match the new brand blue.
+  - Updated organization logo in `apps/web/components/structured-data.tsx` to point to `/brand/logo.png`.
+
 ## [3.7.60] - 2026-09-09
 
 ### Changed & Improved
