@@ -85,12 +85,17 @@ def _integer(value: Any) -> int | None:
 
 
 def _stock(item: dict[str, Any]) -> tuple[int | None, str]:
-    count = _integer(item.get("stock_available_quantity"))
+    raw_quantity = item.get("stock_available_quantity")
+    count = _integer(raw_quantity)
     source_status = str(item.get("stock_available_status") or "").strip().casefold()
-    if source_status == "out" or count == 0:
+    if source_status in {"out", "unavailable", "offline", "closed"} or count == 0 or raw_quantity in (0, "0"):
         return 0, "out_of_stock"
     if count is not None and count > 0:
         return count, "in_stock"
+    # On 16688, goods with negative quantity (-1) or active goods without explicit out-of-stock status
+    # represent continuous supply / on-demand recharge services (e.g. 官方秒充, 直充) with abundant stock.
+    if raw_quantity in (-1, "-1") or (isinstance(raw_quantity, (int, float)) and raw_quantity < 0) or source_status != "out":
+        return None, "in_stock"
     return None, source_status or "unknown"
 
 

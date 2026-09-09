@@ -54,6 +54,13 @@ def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
                             "stock_available_quantity": 0,
                             "stock_available_status": "out",
                         },
+                        {
+                            "goods_no": "G3",
+                            "name": "【正规秒充】Pro 5x 官方充值",
+                            "price": 630,
+                            "stock_available_quantity": -1,
+                            "stock_available_status": "",
+                        },
                     ]},
                 }
             return PinnedResponse(
@@ -65,13 +72,17 @@ def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
     monkeypatch.setattr(platform_16688, "PinnedHTTPSClient", FakeClient)
     records = list(get_connector("16688")("https://www.16688.com.cn/shop/HARVEY"))
 
-    assert [item["product_key"] for item in records] == ["16688:G1", "16688:G2"]
+    assert [item["product_key"] for item in records] == ["16688:G1", "16688:G2", "16688:G3"]
     assert all(item["token"] == "16688-S343514" for item in records)
     assert all(item["shop_name"] == "Same Name" for item in records)
     assert records[0]["shop_url"] == "https://www.16688.com.cn/shop/S343514"
     assert records[0]["product_url"] == "https://www.16688.com.cn/goods/G1"
     assert records[0]["stock_count"] == 4
+    assert records[0]["product_status"] == "in_stock"
     assert records[1]["stock_count"] == 0
+    assert records[1]["product_status"] == "out_of_stock"
+    assert records[2]["stock_count"] is None
+    assert records[2]["product_status"] == "in_stock"
     assert calls == [
         (
             "https://www.16688.com.cn/shopApi/shop/detail",

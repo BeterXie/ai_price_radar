@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.59] - 2026-09-09
+
+### Changed & Improved
+
+- **16688 Platform Stock Status Optimization for Continuous & Recharge Goods**:
+  - In `pipeline/connectors/platform_16688.py`, optimized `_stock` resolution logic. 16688 goods with `stock_available_quantity = -1` (or negative integers) and non-"out" status now accurately resolve to `(None, "in_stock")` instead of `unknown`. This properly recognizes continuous on-demand supply / auto-recharge services (such as 官方秒充, 直充, CDK) as available in-stock products.
+  - Resolved public catalog ranking and filtering issues where 16688 recharge offers (e.g. `#13622` and `#13623` in "凌越穹顶源头招代理") were pushed off the first page or hidden under "仅看有货" filters.
+  - Added idempotent database migration script `scripts/migrate_16688_stock_status_v12.py` and unit tests to backfill existing 16688 offers from `unknown` to `in_stock`.
+  - Added connector unit tests in `pipeline/tests/test_connectors.py` verifying positive, zero, and negative/unlimited stock values.
+
 ## [3.7.58] - 2026-09-09
 
 ### Changed & Improved
