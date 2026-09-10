@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Globe, Layers } from "@phosphor-icons/react/ssr";
+import { ArrowRight, Globe, Stack } from "@phosphor-icons/react/ssr";
 import { getMeta } from "@/lib/api";
 import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 
@@ -17,7 +17,7 @@ export default async function SourcesPage() {
   return (
     <main id="main-content" className="container">
       <JsonLd data={structuredData} />
-      <div className="page-content"><header className="page-intro"><span className="eyebrow">DATA SOURCES</span><h1>知道价格，<br /><span className="green-text">也知道它从哪里来。</span></h1><p>我们保留公开来源平台、店铺与原始商品链接，让每一条报价都可以回到出处核对。</p></header><section className="directory-grid source-directory">{platforms.map((platform) => <Link key={platform.id} href={`/sources/${encodeURIComponent(platform.id)}`} className="directory-card"><div className="directory-card-icon"><Globe size={21} /></div><div className="directory-card-copy"><span className="eyebrow">SOURCE PLATFORM</span><h2>{platform.label}</h2><p>来源标识 · {platform.id}</p><div className="directory-card-meta"><span><Layers size={13} />查看店铺、标准产品与公开报价</span></div></div><ArrowRight className="directory-arrow" size={18} /></Link>)}</section></div>
+      <div className="page-content"><header className="page-intro"><span className="eyebrow">DATA SOURCES</span><h1>知道价格，<br /><span className="green-text">也知道它从哪里来。</span></h1><p>我们保留公开来源平台、店铺与原始商品链接，让每一条报价都可以回到出处核对。</p></header><section className="directory-grid source-directory">{platforms.map((platform) => <Link key={platform.id} href={`/sources/${encodeURIComponent(platform.id)}`} className="directory-card"><div className="directory-card-icon"><Globe size={21} /></div><div className="directory-card-copy"><span className="eyebrow">SOURCE PLATFORM</span><h2>{platform.label}</h2><p>来源标识 · {platform.id}</p><div className="directory-card-meta"><span><Stack size={13} />查看店铺、标准产品与公开报价</span></div></div><ArrowRight className="directory-arrow" size={18} /></Link>)}</section></div>
     </main>
   );
 }
