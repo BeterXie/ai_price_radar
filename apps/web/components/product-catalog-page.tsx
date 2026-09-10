@@ -75,6 +75,14 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
     ...(!product && searchQuery ? { q: searchQuery } : {}),
   };
   const updatedWithinLabel: Record<string, string> = { "6": "6 小时内", "24": "24 小时内", "72": "3 天内", "168": "7 天内" };
+  const selectedScope = [
+    { label: "范围", value: filters.comparable === "false" ? "包含相关商品" : "仅可直接比较" },
+    ...(product || searchQuery ? [{ label: "商品", value: product?.display_name || searchQuery }] : []),
+    ...(activeBrand ? [{ label: "品牌", value: activeBrand }] : []),
+    ...(activeSourcePlatform ? [{ label: "来源", value: meta.source_platforms.find((source) => source.id === activeSourcePlatform)?.label || activeSourcePlatform }] : []),
+    ...(filters.in_stock === "true" ? [{ label: "库存", value: "仅看有货" }] : []),
+    ...(filters.updated_within_hours ? [{ label: "更新", value: updatedWithinLabel[filters.updated_within_hours] || `${filters.updated_within_hours} 小时内` }] : []),
+  ];
   const headingTitle = product
     ? `${product.display_name} 报价`
     : searchQuery
@@ -99,7 +107,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         {!product ? <div className="catalog-heading-search"><SearchBox defaultValue={searchQuery} /></div> : null}
       </header>
 
-      <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="报价快捷筛选">
+      <section className="catalog-quick-filters" aria-label="报价快捷筛选">
         <nav className="filter-rail" aria-label="品牌筛选">
           <span className="filter-label">品牌</span>
           <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined} className="filter-chip">
@@ -111,7 +119,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             </Link>
           ))}
         </nav>
-        <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
+        <nav className="filter-rail" aria-label="商品类型筛选">
           <span className="filter-label">商品类型</span>
           <Link href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">
             全部商品
@@ -127,7 +135,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             </Link>
           ))}
         </nav>
-        <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="来源平台筛选">
+        <nav className="filter-rail" aria-label="来源平台筛选">
           <span className="filter-label">来源平台</span>
           <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip">全部来源</Link>
           {meta.source_platforms.filter((source) => source.id !== "dujiao_next").map((source) => (
@@ -139,14 +147,10 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
       <section className="catalog-scope-bar" aria-labelledby="selected-scope-title" data-vds-layer="inscription">
         <div className="catalog-scope-copy">
           <strong id="selected-scope-title">已选条件</strong>
-          这些条件会同时作用于下面的报价。
         </div>
-        <div className="catalog-scope-values" data-vds-role="evidence">
-          <div className="catalog-scope-value"><span>商品</span><strong>{product?.display_name || searchQuery || "全部商品"}</strong></div>
-          <div className="catalog-scope-value"><span>品牌</span><strong>{activeBrand || "全部品牌"}</strong></div>
-          <div className="catalog-scope-value"><span>库存</span><strong>{filters.in_stock === "true" ? "仅看有货" : "全部库存"}</strong></div>
-          <div className="catalog-scope-value"><span>更新时间</span><strong>{updatedWithinLabel[filters.updated_within_hours] || "全部时间"}</strong></div>
-        </div>
+        <dl className="catalog-scope-values" data-vds-role="evidence">
+          {selectedScope.map(({ label, value }) => <div key={label} className="catalog-scope-value"><dt>{label}</dt><dd>{value}</dd></div>)}
+        </dl>
       </section>
       {product ? (
         <ProductWorkspace
@@ -194,7 +198,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
       ) : catalogLoadFailed ? (
         <section className="empty-state my-10" role="alert" data-vds-layer="evidence">
           <h2 className="text-2xl font-semibold text-[color:var(--ink)]">当前报价暂时无法加载</h2>
-          <p className="mt-3 text-sm leading-6">筛选条件没有丢失。可以退出错误预览后重新读取当前报价。</p>
+          <p className="mt-3 text-sm leading-6">筛选条件没有丢失，请稍后重新读取当前报价。</p>
           <Link href={navigationHref} className="button-primary mt-6">重新读取报价</Link>
         </section>
       ) : null}

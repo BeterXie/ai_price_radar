@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CaretDown, SlidersHorizontal } from "@phosphor-icons/react/ssr";
 
 export type OfferFilterValues = {
   comparable: string;
@@ -105,15 +106,18 @@ export function OfferScopeControls({
 }) {
   const activeFilterCount = Object.entries(values).filter(([name, value]) => name === "comparable" ? value === "false" : Boolean(value)).length;
   return (
-    <section className="offer-filters py-5" aria-labelledby="offer-filter-title">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div><h2 id="offer-filter-title" className="text-sm font-semibold">更多条件</h2><p className="mt-1 text-xs text-[color:var(--muted)]">继续按交付形态、期限、质保和价格范围缩小报价。</p></div>
-        <Link href={resetHref} className="button-tertiary !min-h-9 !px-3 text-xs">重置筛选</Link>
-      </div>
+    <section className="offer-filters" aria-labelledby="offer-filter-title">
+      <h2 id="offer-filter-title" className="sr-only">更多筛选条件</h2>
       <details className="offer-filter-disclosure" open={defaultOpen}>
-        <summary>展开筛选 <span>{activeFilterCount ? `${activeFilterCount} 项已选` : "全部条件"}</span></summary>
+        <summary>
+          <SlidersHorizontal size={18} aria-hidden="true" />
+          <span className="filter-toggle-label"><span className="filter-when-closed">展开筛选</span><span className="filter-when-open">收起筛选</span></span>
+          <span className={`filter-selection-count${activeFilterCount ? " is-active" : ""}`}>{activeFilterCount ? `${activeFilterCount} 项已选` : "交付 · 期限 · 质保 · 价格"}</span>
+          <CaretDown size={16} className="filter-toggle-caret" aria-hidden="true" />
+        </summary>
         <div className="mt-3"><FilterForm action={action} values={values} hiddenFields={hiddenFields} /></div>
       </details>
+      <Link href={resetHref} className="button-tertiary filter-reset">重置筛选</Link>
     </section>
   );
 }

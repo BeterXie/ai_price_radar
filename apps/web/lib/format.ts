@@ -31,6 +31,19 @@ export function exactTime(value: string | null) {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")} 北京时间`;
 }
 
+/** Clock-only companion to exactTime, for compact stat cells that carry the date in a tooltip. */
+export function clockTime(value: string | null) {
+  if (!value) return "暂无";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "暂无";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 export function relativeTime(value: string | null) {
   if (!value) return "暂无更新";
   const diff = Date.now() - new Date(value).getTime();

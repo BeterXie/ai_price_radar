@@ -29,7 +29,7 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
   };
   return (
     <header className="app-header sticky top-0 z-50">
-      <div className="shell flex h-[68px] items-center justify-between gap-3">
+      <div className="shell-wide flex h-[80px] items-center justify-between gap-3">
         <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="group flex min-w-0 shrink-0 items-center gap-2.5">
           <Image
             src="/brand/logo-icon.png"
@@ -41,20 +41,14 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           />
           <span className="min-w-0">
             <span className="block truncate font-semibold tracking-[-0.035em]">AI Price Memory</span>
-            <span className="hidden text-[11px] font-medium text-[color:var(--muted)] sm:block">公开报价记录</span>
+            <span className="hidden text-[9px] font-medium tracking-[0.06em] text-[color:var(--muted)] sm:block">好选择，从信息透明开始</span>
           </span>
         </Link>
 
-        <nav aria-label="主要导航" className="hidden items-center gap-1 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--panel)]/72 p-1 shadow-[0_8px_28px_rgba(18,19,15,.05)] lg:flex">
+        <nav aria-label="主要导航" className="hidden items-center lg:flex">
           {primaryLinks.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link inline-flex">
+            <Link key={item.href} href={item.href} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link">
               {item.label}
-            </Link>
-          ))}
-          <span className="mx-1 h-5 w-px bg-[color:var(--line)]" aria-hidden="true" />
-          {brandLinks.slice(0, 4).map((brand) => (
-            <Link key={brand} href={`/products?platform=${encodeURIComponent(brand)}`} className="nav-link brand-nav-link">
-              <PlatformIcon platform={brand} size={14} />{brand}
             </Link>
           ))}
         </nav>
@@ -63,8 +57,12 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           <Link href="/watchlist" aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="header-action header-action-watch">
             <Bell size={18} />关注清单
           </Link>
-          <Link href="/shops/submit" aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="header-action header-action-submit">
-            <Storefront size={18} />申请收录
+          <Link
+            href="/shops/submit"
+            aria-current={current(pathname, "/shops/submit") ? "page" : undefined}
+            className="header-action header-action-submit"
+          >
+            <Storefront size={16} />申请收录
           </Link>
           <a href="https://github.com/BeterXie/ai_price_radar" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看 AI Price Radar 开源项目" title="GitHub 开源项目" className="github-action grid h-10 w-10 shrink-0 place-items-center rounded-[11px] text-white">
             <GithubLogo size={20} weight="fill" />

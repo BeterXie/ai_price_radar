@@ -72,7 +72,7 @@ export function NewFeatureModal() {
             type="button"
             onClick={handleDismiss}
             aria-label="关闭更新提示"
-            className="grid h-8 w-8 place-items-center rounded-lg text-[color:var(--muted)] hover:bg-[color:var(--hover)] hover:text-[color:var(--foreground)] transition"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[color:var(--muted)] hover:bg-[color:var(--subtle)] hover:text-[color:var(--ink)] transition"
           >
             <X size={18} />
           </button>
@@ -80,7 +80,7 @@ export function NewFeatureModal() {
 
         <h2
           id="feature-dialog-title"
-          className="mt-3 text-xl font-bold tracking-tight text-[color:var(--foreground)] sm:text-2xl"
+          className="mt-3 text-xl font-bold tracking-tight text-[color:var(--ink)] sm:text-2xl"
         >
           全网大模型“降智检测”与精选 Skill 竞技场已上线！
         </h2>
@@ -90,12 +90,12 @@ export function NewFeatureModal() {
         </p>
 
         {/* Feature Highlights */}
-        <div className="mt-4 space-y-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--card)] p-3.5 text-xs sm:text-sm">
+        <div className="mt-4 space-y-2.5 rounded-xl border border-[color:var(--line)] bg-[color:var(--subtle)] p-3.5 text-sm">
           <div className="flex items-start gap-2.5">
             <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
               <Fire size={13} weight="fill" />
             </span>
-            <div className="text-[color:var(--foreground)] leading-snug">
+            <div className="text-[color:var(--ink)] leading-snug">
               <span className="font-semibold">“鹈鹕骑自行车”零测试降智评测：</span>
               <span className="text-[color:var(--muted)]">
                 实测 GPT-6 Astra、GPT-5.6、Gemini 3.8 等前沿模型输出，一眼识别满血版与偷懒降智版！
@@ -107,7 +107,7 @@ export function NewFeatureModal() {
             <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold">
               <Sparkle size={13} weight="fill" />
             </span>
-            <div className="text-[color:var(--foreground)] leading-snug">
+            <div className="text-[color:var(--ink)] leading-snug">
               <span className="font-semibold">首批 11 款官方开源生产级 Skill：</span>
               <span className="text-[color:var(--muted)]">
                 涵盖 Karpathy 审美重塑（taste-skill）、Vercel 原生 Rust 浏览器、阿里代码审查等。
@@ -121,14 +121,14 @@ export function NewFeatureModal() {
           <button
             type="button"
             onClick={handleDismiss}
-            className="w-full sm:w-auto rounded-xl border border-[color:var(--line-strong)] px-4 py-2.5 text-sm font-medium text-[color:var(--muted)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--hover)] transition text-center"
+            className="button-secondary w-full sm:w-auto"
           >
             稍后再看
           </button>
           <Link
             href="/skills/pelican-bicycle-benchmark"
             onClick={handleDismiss}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--foreground)] px-5 py-2.5 text-sm font-semibold text-[color:var(--panel)] shadow-sm hover:opacity-90 transition active:scale-95 text-center"
+            className="button-primary tactile w-full sm:w-auto"
           >
             <span>立即试玩竞技场</span>
             <ArrowRight size={15} weight="bold" />

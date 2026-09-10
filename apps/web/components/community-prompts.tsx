@@ -203,7 +203,7 @@ export function CommunityPrompts() {
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => dismissPrompt("github", 30)}
-                    className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white"
+                    className="button-primary tactile"
                   >
                     去 GitHub 点 Star
                   </a>
@@ -211,7 +211,7 @@ export function CommunityPrompts() {
                   <button
                     type="button"
                     onClick={openSupport}
-                    className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white"
+                    className="button-primary tactile"
                   >
                     支持作者
                   </button>
