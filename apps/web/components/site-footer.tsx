@@ -1,70 +1,62 @@
+import Image from "next/image";
 import Link from "next/link";
-import { ArrowSquareOut } from "@phosphor-icons/react/ssr";
-import { BUSINESS_EMAIL, GITHUB_REPOSITORY_URL, SUPPORT_AVAILABLE } from "@/lib/community";
+import { ArrowRight, GithubLogo, Globe, ShieldCheck } from "@phosphor-icons/react/ssr";
+import { BUSINESS_EMAIL, GITHUB_REPOSITORY_URL } from "@/lib/community";
 
 export function SiteFooter({ advertiseEnabled = false }: { advertiseEnabled?: boolean }) {
-  const linkGroups = [
-    {
-      title: "浏览",
-      links: [["/products", "报价目录"], ["/watchlist", "关注清单"], ["/guides", "购买指南"], ["/guides/buying-checklist", "购买前检查"]],
-    },
-    {
-      title: "数据与反馈",
-      links: [["/methodology", "数据方法"], ["/corrections", "纠错记录"], ["/developers", "开发者接口"], ["/shops/submit", "申请收录"]],
-    },
-    {
-      title: advertiseEnabled ? "项目与合作" : "项目",
-      links: [
-        ["/about", "关于本站"],
-        ...(advertiseEnabled ? [["/advertise", "商务合作 / 广告投放"] as [string, string]] : []),
-        ["/privacy", "隐私政策"],
-        ["/terms", "使用条款"],
-        ["/security", "安全说明"],
-      ],
-    },
-  ];
-
   return (
-    <footer className="site-footer mt-20">
-      <div className="shell grid gap-12 py-12 lg:grid-cols-[1.15fr_1fr] lg:py-16">
-        <div className="max-w-xl">
-          <h2 className="text-2xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">购买前请核对来源页面</h2>
-          <p className="mt-4 text-sm leading-7 text-[color:var(--muted)]">本站聚合公开报价，不参与交易。价格、库存、交付方式和退款规则以来源页面为准。</p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer" className="footer-cta inline-flex min-h-11 items-center gap-2 rounded-[12px] px-4 text-sm font-semibold">
-              查看开源仓库 <ArrowSquareOut size={16} />
-            </a>
-            {advertiseEnabled ? (
-              <Link href="/advertise" className="footer-cta inline-flex min-h-11 items-center gap-2 rounded-[12px] px-4 text-sm font-semibold">
-                商务合作 / 广告投放
-              </Link>
-            ) : null}
-          </div>
-          {advertiseEnabled ? (
-            <p className="mt-3 text-xs text-[color:var(--muted)]">
-              商务合作联系邮箱：
-              <a href={`mailto:${BUSINESS_EMAIL}`} className="underline hover:text-[color:var(--ink)]">
-                {BUSINESS_EMAIL}
-              </a>
-            </p>
-          ) : null}
-        </div>
-        <nav aria-label="页脚导航" className="grid grid-cols-2 gap-8 sm:grid-cols-3">
-          {linkGroups.map((group) => (
-            <div key={group.title}>
-              <p className="text-xs font-semibold tracking-[.08em] text-[color:var(--muted)]">{group.title}</p>
-              <div className="mt-4 grid gap-3 text-sm">
-                {group.links.map(([href, label]) => <Link key={href} href={href} className="text-[color:var(--muted)] transition-colors hover:text-[color:var(--ink)]">{label}</Link>)}
-                {group.title.startsWith("项目") && SUPPORT_AVAILABLE ? <a href="#support-author" className="text-[color:var(--muted)] transition-colors hover:text-[color:var(--ink)]">支持作者</a> : null}
-              </div>
+    <footer className="site-footer">
+      <div className="container">
+        <div className="footer-main">
+          <div className="footer-brand">
+            <Link href="/" className="logo" aria-label="AI Price Memory 首页">
+              <span className="logo-symbol"><Image src="/brand/logo-icon.png" alt="" width={30} height={30} className="relative z-[1] h-[24px] w-[24px] object-contain" /></span>
+              <span><strong>AI Price Memory<span className="logo-period">.</span></strong><small>好选择，从信息透明开始</small></span>
+            </Link>
+            <p>让 AI 商品信息更透明，<br />让每一次选择更有把握。</p>
+            <div className="footer-socials">
+              <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer" aria-label="GitHub 开源仓库"><GithubLogo size={17} /></a>
+              <a href={`mailto:${BUSINESS_EMAIL}`} aria-label="联系邮箱">@</a>
+              <Link href="/methodology" aria-label="数据方法"><Globe size={17} /></Link>
             </div>
-          ))}
-        </nav>
-      </div>
-      <div className="border-t border-[color:var(--line)]">
-        <div className="shell flex flex-col gap-2 py-5 text-[11px] text-[color:var(--muted)] sm:flex-row sm:items-center sm:justify-between">
-          <p>AI Price Radar 开源项目</p>
-          <p>页面展示最近一次采集结果，购买前请在来源页面重新确认</p>
+          </div>
+
+          <div className="footer-links">
+            <h4>发现与学习</h4>
+            <Link href="/products">报价目录</Link>
+            <Link href="/skills">技能与实验室</Link>
+            <Link href="/guides">购买指南</Link>
+            <Link href="/watchlist">我的关注</Link>
+          </div>
+
+          <div className="footer-links">
+            <h4>数据与反馈</h4>
+            <Link href="/methodology">数据方法</Link>
+            <Link href="/shops/submit">申请收录</Link>
+            <Link href="/corrections">提交 / 查看纠错</Link>
+            <Link href="/developers">开发者接口</Link>
+          </div>
+
+          <div className="footer-links">
+            <h4>关于与合作</h4>
+            <Link href="/about">关于本站</Link>
+            {advertiseEnabled ? <Link href="/advertise">商务合作</Link> : null}
+            <Link href="/privacy">隐私政策</Link>
+            <Link href="/terms">使用条款</Link>
+            <Link href="/security">安全说明</Link>
+          </div>
+
+          <div className="footer-notice">
+            <ShieldCheck size={22} />
+            <h4>比价之后，记得核对。</h4>
+            <p>本站聚合公开信息，不参与交易。<br />价格、库存与交付规则，<br />请以来源页面为准。</p>
+            <Link className="text-button" href="/guides/buying-checklist">购买前检查 <ArrowRight size={14} /></Link>
+          </div>
+        </div>
+
+        <div className="footer-bottom">
+          <span>© {new Date().getFullYear()} AI Price Memory <span className="footer-dot">·</span> 让选择更有依据</span>
+          <span><span className="status-dot" />公开报价聚合 <span className="footer-dot">·</span> Powered by PriceMemo</span>
         </div>
       </div>
     </footer>

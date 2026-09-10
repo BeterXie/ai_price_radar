@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   ArrowSquareOut,
-  Check,
   Copy,
   Eye,
   Fire,
   GithubLogo,
   ShareNetwork,
+  ShieldCheck,
   Sparkle,
   Star,
   TerminalWindow,
@@ -21,266 +22,95 @@ import { PelicanArena } from "@/components/skills/pelican-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
 import { DemoIframe } from "@/components/skills/demo-iframe";
 
-const KIND_META: Record<string, { label: string; icon: any; badgeClass: string }> = {
-  benchmark: {
-    label: "降智体检",
-    icon: Fire,
-    badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-  },
-  skill: {
-    label: "实用技能",
-    icon: Sparkle,
-    badgeClass: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
-  },
-  article: {
-    label: "经验博文",
-    icon: TerminalWindow,
-    badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-  },
+const KIND_META: Record<string, { label: string; icon: any; tone: string }> = {
+  benchmark: { label: "模型评测", icon: Fire, tone: "orange" },
+  skill: { label: "实用 Skills", icon: Sparkle, tone: "purple" },
+  article: { label: "技巧与博文", icon: TerminalWindow, tone: "green" },
 };
 
 export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-
   const meta = KIND_META[skill.kind] || KIND_META.skill;
-  const IconComponent = meta.icon;
+  const Icon = meta.icon;
 
-  const handleCopyInstall = async () => {
-    if (!skill.install_command) return;
+  async function copy(text: string, kind: "cmd" | "prompt") {
     try {
-      await navigator.clipboard.writeText(skill.install_command);
-      setCopiedCmd(true);
+      await navigator.clipboard.writeText(text);
+      kind === "cmd" ? setCopiedCmd(true) : setCopiedPrompt(true);
       recordSkillCopy(skill.slug).catch(() => {});
-      setTimeout(() => setCopiedCmd(false), 2000);
+      window.setTimeout(() => kind === "cmd" ? setCopiedCmd(false) : setCopiedPrompt(false), 1800);
     } catch {}
-  };
+  }
 
-  const handleCopyPrompt = async () => {
-    if (!skill.prompt_template) return;
+  async function share() {
     try {
-      await navigator.clipboard.writeText(skill.prompt_template);
-      setCopiedPrompt(true);
-      recordSkillCopy(skill.slug).catch(() => {});
-      setTimeout(() => setCopiedPrompt(false), 2000);
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      window.setTimeout(() => setCopiedLink(false), 1800);
     } catch {}
-  };
-
-  const handleShare = async () => {
-    try {
-      if (typeof window !== "undefined") {
-        await navigator.clipboard.writeText(window.location.href);
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2000);
-      }
-    } catch {}
-  };
+  }
 
   return (
-    <article className="shell py-8">
-      {/* Breadcrumb & Top Bar */}
-      <div className="flex items-center justify-between gap-4 border-b border-[color:var(--line)] pb-4 text-xs">
-        <Link
-          href="/skills"
-          className="inline-flex items-center gap-1.5 font-medium text-[color:var(--muted)] transition hover:text-[color:var(--foreground)]"
-        >
-          <ArrowLeft size={14} />
-          <span>返回技能与实验室</span>
-        </Link>
-
-        <button
-          type="button"
-          onClick={handleShare}
-          className="inline-flex items-center gap-1 text-[color:var(--muted)] hover:text-[color:var(--foreground)] transition"
-        >
-          {copiedLink ? <Check size={14} className="text-emerald-500" /> : <ShareNetwork size={14} />}
-          <span>{copiedLink ? "链接已复制" : "分享本页"}</span>
-        </button>
-      </div>
-
-      {/* Main Header */}
-      <header className="mt-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${meta.badgeClass}`}>
-            <IconComponent size={14} weight="fill" />
-            {meta.label}
-          </span>
-
-          {skill.stars_count > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-semibold text-[color:var(--muted)]">
-              <Star size={13} weight="fill" className="text-amber-500" />
-              {skill.stars_count >= 1000 ? `${(skill.stars_count / 1000).toFixed(1)}k Stars` : `${skill.stars_count} Stars`}
-            </span>
-          ) : null}
-
-          {skill.repo_url ? (
-            <a
-              href={skill.repo_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-semibold text-[color:var(--foreground)] transition hover:bg-[color:var(--hover)]"
-            >
-              <GithubLogo size={14} />
-              <span>官方开源仓库</span>
-              <ArrowSquareOut size={12} />
-            </a>
-          ) : null}
+    <main className="container">
+      <article className="page-content detail-page">
+        <div className="breadcrumb">
+          <Link href="/skills"><ArrowLeft size={14} />返回技能与实验室</Link>
+          <button type="button" onClick={share}><ShareNetwork size={14} />{copiedLink ? "链接已复制" : "分享"}</button>
         </div>
 
-        <h1 className="mt-3 text-2xl font-bold tracking-tight text-[color:var(--foreground)] sm:text-3xl lg:text-4xl">
-          {skill.title}
-        </h1>
+        <header className="article-heading">
+          <div className="inline-items">
+            <span className={`pill ${meta.tone}`}><Icon size={13} weight="fill" />{meta.label}</span>
+            {skill.stars_count > 0 ? <span className="small-text muted"><Star size={13} weight="fill" />{skill.stars_count >= 1000 ? `${(skill.stars_count / 1000).toFixed(1)}k` : skill.stars_count} Stars</span> : null}
+            {skill.repo_url ? <a href={skill.repo_url} target="_blank" rel="noreferrer" className="small-text muted"><GithubLogo size={14} />开源仓库<ArrowSquareOut size={12} /></a> : null}
+          </div>
+          <h1>{skill.title}</h1>
+          <p>{skill.subtitle || skill.summary}</p>
+          <div className="article-meta">
+            {skill.author_name ? <span>作者 · {skill.author_name}</span> : null}
+            <span><Eye size={14} />{skill.view_count} 次浏览</span>
+            <span><Copy size={14} />{skill.copy_count} 次复制</span>
+            <span>适用 · {skill.target_models?.length ? skill.target_models.join(" / ") : "多模型 / AI 工具"}</span>
+          </div>
+        </header>
 
-        {skill.subtitle ? (
-          <p className="mt-2 text-base font-medium text-[color:var(--muted)] sm:text-lg">
-            {skill.subtitle}
-          </p>
+        {skill.install_command ? (
+          <section className="terminal-box" aria-label="快速开始">
+            <div><span><TerminalWindow size={15} />快速开始</span><button type="button" onClick={() => copy(skill.install_command, "cmd")}><Copy size={14} />{copiedCmd ? "已复制" : "复制命令"}</button></div>
+            <code>$ {skill.install_command}</code>
+          </section>
         ) : null}
 
-        {/* Metadata Row */}
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-[color:var(--muted)]">
-          {skill.author_name ? (
-            <div>
-              原作者:{" "}
-              {skill.author_url ? (
-                <a
-                  href={skill.author_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold text-[color:var(--foreground)] underline underline-offset-2 hover:opacity-80"
-                >
-                  {skill.author_name}
-                </a>
-              ) : (
-                <strong className="font-semibold text-[color:var(--foreground)]">{skill.author_name}</strong>
-              )}
-            </div>
-          ) : null}
+        {skill.prompt_template && skill.demo_type !== "pelican_arena" ? (
+          <section className="prompt-box" aria-label="测试提示词">
+            <div><TerminalWindow size={16} /><strong>用同一条 Prompt，开始你的测试</strong><button className="text-button" type="button" onClick={() => copy(skill.prompt_template, "prompt")}><Copy size={14} />{copiedPrompt ? "已复制" : "复制 Prompt"}</button></div>
+            <p>{skill.prompt_template}</p>
+          </section>
+        ) : null}
 
-          <div className="inline-flex items-center gap-1">
-            <Eye size={14} />
-            <span>{skill.view_count} 次浏览</span>
-          </div>
+        {skill.demo_type === "pelican_arena" ? <PelicanArena promptText={skill.prompt_template} skillSlug={skill.slug} /> : null}
 
-          <div className="inline-flex items-center gap-1">
-            <Copy size={14} />
-            <span>{skill.copy_count} 次复制</span>
-          </div>
+        {skill.demo_type === "iframe" && skill.demo_url ? (
+          <section className="demo-panel">
+            <div className="demo-toolbar"><span><span className="status-dot" />在线效果演示</span><a href={skill.demo_url} target="_blank" rel="noreferrer" className="text-button">新窗口打开<ArrowSquareOut size={14} /></a></div>
+            <div className="production-demo-frame"><DemoIframe src={skill.demo_url} title={skill.title} className="h-full w-full border-0 bg-white" /></div>
+          </section>
+        ) : null}
 
-          <div>
-            适用模型:{" "}
-            {skill.target_models?.length ? (
-              <span className="font-medium text-[color:var(--foreground)]">
-                {skill.target_models.join(" / ")}
-              </span>
-            ) : (
-              "通用"
-            )}
-          </div>
-        </div>
-      </header>
+        <section className="article-body production-markdown"><MarkdownView content={skill.content_markdown} /></section>
 
-      {/* Quick Action Commands / Prompts */}
-      {skill.install_command ? (
-        <div className="mt-6 overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 text-neutral-100 p-4 font-mono text-xs sm:text-sm">
-          <div className="flex items-center justify-between text-neutral-400 text-xs mb-2">
-            <span>一键安装命令 (终端执行)</span>
-            <button
-              type="button"
-              onClick={handleCopyInstall}
-              className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-white hover:bg-neutral-700 transition"
-            >
-              {copiedCmd ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-              <span>{copiedCmd ? "已复制命令" : "复制命令"}</span>
-            </button>
-          </div>
-          <div className="overflow-x-auto select-all leading-relaxed text-emerald-400">
-            $ {skill.install_command}
-          </div>
-        </div>
-      ) : null}
+        <div className="notice"><ShieldCheck size={19} /><div><strong>开放探索，也保留判断</strong><p>社区工具与品牌官方服务相互独立。使用前请核对项目来源，不要提交账号密码、完整 API Key 或其他敏感凭证。</p></div></div>
 
-      {skill.prompt_template && skill.demo_type !== "pelican_arena" ? (
-        <div className="mt-6 rounded-xl border border-dashed border-[color:var(--brand-line)] bg-[color:var(--brand-soft)]/40 p-4 text-xs sm:text-sm">
-          <div className="flex items-center justify-between text-[color:var(--brand-strong)] font-semibold mb-1.5">
-            <span>测试 Prompt：</span>
-            <button
-              type="button"
-              onClick={handleCopyPrompt}
-              className="inline-flex items-center gap-1 font-bold underline underline-offset-2 hover:opacity-80"
-            >
-              {copiedPrompt ? <Check size={13} /> : <Copy size={13} />}
-              <span>{copiedPrompt ? "已复制 Prompt" : "复制 Prompt"}</span>
-            </button>
-          </div>
-          <div className="font-mono text-[color:var(--foreground)] select-all leading-relaxed">
-            {skill.prompt_template}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Interactive Pelican Arena Viewer */}
-      {skill.demo_type === "pelican_arena" ? (
-        <PelicanArena promptText={skill.prompt_template} skillSlug={skill.slug} />
-      ) : null}
-
-      {/* Standalone Iframe Viewer (e.g. Bajie or VictorDesign) */}
-      {skill.demo_type === "iframe" && skill.demo_url ? (
-        <div className="mt-8 rounded-2xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-[color:var(--foreground)]">在线效果演示</h2>
-            <a
-              href={skill.demo_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--brand-strong)] underline underline-offset-2"
-            >
-              <span>新窗口全屏打开</span>
-              <ArrowSquareOut size={13} />
-            </a>
-          </div>
-          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 shadow-inner">
-            <DemoIframe
-              src={skill.demo_url}
-              title={skill.title}
-              className="h-full w-full border-0 bg-white"
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {/* Markdown Body Content */}
-      <div className="mt-8">
-        <MarkdownView content={skill.content_markdown} />
-      </div>
-
-      {/* Conversion Banner: Related Product */}
-      {skill.related_product ? (
-        <div className="mt-12 rounded-2xl border border-[color:var(--brand-line)] bg-[color:var(--brand-soft)]/50 p-6 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <span className="inline-block rounded-full bg-[color:var(--brand-strong)]/10 px-2.5 py-0.5 text-xs font-bold text-[color:var(--brand-strong)]">
-                满血体验推荐
-              </span>
-              <h3 className="mt-2 text-lg font-bold text-[color:var(--foreground)] sm:text-xl">
-                想要获得满血无降智体验或运行该技能？
-              </h3>
-              <p className="mt-1 text-xs sm:text-sm text-[color:var(--muted)]">
-                查看 <strong>{skill.related_product.display_name}</strong> 当前全网店铺最低报价、合租车位、直充与质保对比。
-              </p>
-            </div>
-
-            <Link
-              href={`/products/${encodeURIComponent(skill.related_product.slug)}`}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[color:var(--foreground)] px-5 py-3 text-sm font-bold text-[color:var(--panel)] shadow-sm transition hover:opacity-90 active:scale-95"
-            >
-              <span>查看 {skill.related_product.display_name} 实时底价</span>
-              <span>➔</span>
-            </Link>
-          </div>
-        </div>
-      ) : null}
-    </article>
+        {skill.related_product ? (
+          <section className="guide-callout">
+            <div className="callout-icon"><Sparkle size={24} /></div>
+            <div><h3>找到适合这项工作的 AI 产品</h3><p>查看 {skill.related_product.display_name} 的当前公开报价、库存与交付方式。</p></div>
+            <Link className="button" href={`/products/${encodeURIComponent(skill.related_product.slug)}`}>查看相关报价<ArrowRight size={16} /></Link>
+          </section>
+        ) : <section className="guide-callout"><div className="callout-icon"><Sparkle size={24} /></div><div><h3>找到适合这项工作的 AI 产品</h3><p>按商品与交付方式比较，不让单一低价替你做决定。</p></div><Link className="button" href="/products">查看报价目录<ArrowRight size={16} /></Link></section>}
+      </article>
+    </main>
   );
 }

@@ -1,45 +1,53 @@
 import Link from "next/link";
 import { ArrowUpRight, Clock, Package, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { PlatformIcon } from "@/components/platform-icon";
+import { WatchButton } from "@/components/watch-button";
 import type { ProductCard as ProductCardType } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
 
+const TYPE_LABELS: Record<string, string> = {
+  subscription: "订阅会员",
+  account: "成品账号",
+  api: "API 额度",
+  service: "辅助服务",
+  team: "团队席位",
+};
+
 export function ProductCard({ product }: { product: ProductCardType }) {
-  const typeLabel: Record<string, string> = {
-    subscription: "订阅 / 会员",
-    account: "成品账号",
-    api: "API / 额度",
-    service: "辅助服务",
-    team: "团队订阅",
-  };
+  const quality = Math.max(8, Math.min(100, product.data_quality_score || 0));
   return (
-    <Link
-      href={`/products/${encodeURIComponent(product.slug)}`}
-      className="product-row group grid gap-4 py-6 xl:grid-cols-[minmax(220px,1.4fr)_90px_100px_125px_130px_120px_100px_24px] xl:items-center"
-    >
-      <div>
-        <div className="flex flex-wrap items-center gap-2 xl:hidden">
-          <span className="flex items-center gap-1.5 rounded-full bg-black/6 px-2.5 py-1 text-[11px]"><PlatformIcon platform={product.brand} size={13} />{product.brand}</span>
-          <span className="rounded-full border hairline px-2.5 py-1 text-[11px]">{typeLabel[product.product_type] || product.product_type}</span>
-          {product.in_stock_count > 0 && <span className="flex items-center gap-2 text-xs font-medium"><span className="signal-dot" />有货</span>}
+    <article className="product-card">
+      <div className="product-card-top">
+        <span className={`brand-icon ${product.brand.toLowerCase()}`}><PlatformIcon platform={product.brand} size={27} /></span>
+        <span className={`pill ${product.in_stock_count > 0 ? "green" : "gray"}`}>
+          <span className="status-dot" />{product.in_stock_count > 0 ? "有货" : "暂缺"}
+        </span>
+        <WatchButton variant="icon" slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
+      </div>
+
+      <Link href={`/products/${encodeURIComponent(product.slug)}`} className="product-title">
+        <span>{product.display_name}</span><ArrowUpRight size={16} />
+      </Link>
+      <p className="product-description">{product.subtitle || `${product.brand} · ${TYPE_LABELS[product.product_type] || product.product_type}`}</p>
+
+      <div className="product-price-line">
+        <div>
+          <span className="price-caption">近期有货参考价</span>
+          <div className="price">{money(product.lowest_price, product.price_currency)}<small>起</small></div>
         </div>
-        <h3 className="mt-3 text-xl font-semibold tracking-[-.035em] group-hover:underline group-hover:decoration-[color:var(--accent)] group-hover:decoration-4 group-hover:underline-offset-4">{product.display_name}</h3>
-        <p className="mt-1 text-sm text-[color:var(--muted)]">{product.subtitle}</p>
-        <div className="mt-3 flex flex-wrap gap-2 md:hidden">
-          {product.tags.slice(0, 4).map((tag) => <span key={tag} className="rounded-full border hairline px-2 py-1 text-xs">{tag}</span>)}
+        <div className="trend" aria-label={`信息覆盖 ${product.data_quality_score} 分`}>
+          <svg className="sparkline" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true">
+            <path d={`M0 29 C18 25, 26 27, 38 20 S58 23, 68 14 S85 16, 100 ${34 - quality * 0.22}`} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          </svg>
+          <span><ShieldCheck size={11} /> 信息覆盖 {product.data_quality_score}<i>/ 100</i></span>
         </div>
       </div>
-      <div className="hidden items-center gap-2 text-sm xl:flex"><PlatformIcon platform={product.brand} />{product.brand}</div>
-      <div className="hidden text-sm text-[color:var(--muted)] xl:block">{typeLabel[product.product_type] || product.product_type}</div>
-      <div>
-        <p className="text-xs text-black/40 xl:hidden">有货观测价</p>
-        <p className="mt-2 text-2xl font-semibold tracking-[-.04em]">{money(product.lowest_price, product.price_currency)}</p>
-        {product.related_lowest_price && product.related_lowest_price !== product.lowest_price && <p className="mt-1 text-[11px] text-black/40">相关商品另有 {money(product.related_lowest_price, product.price_currency)} 起</p>}
+
+      <div className="product-card-bottom">
+        <span><Package size={12} />{product.in_stock_count} 条有货</span>
+        <span>{TYPE_LABELS[product.product_type] || product.product_type} · {product.source_count} 个来源</span>
+        <span><Clock size={12} />{relativeTime(product.last_updated_at)}</span>
       </div>
-      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Package size={16} /> {product.trusted_offer_count} 条纳入统计 / {product.in_stock_count} 条有货</p>
-      <p className="coverage-value flex items-center gap-2 text-sm"><ShieldCheck size={16} /> 信息覆盖 {product.data_quality_score} 分 · {product.data_quality_label}<br className="hidden" /></p>
-      <p className="flex items-center gap-2 text-sm text-[color:var(--muted)]"><Clock size={16} /> {relativeTime(product.last_updated_at)}</p>
-      <ArrowUpRight size={22} className="transition-transform group-hover:-translate-y-1 group-hover:translate-x-1" />
-    </Link>
+    </article>
   );
 }

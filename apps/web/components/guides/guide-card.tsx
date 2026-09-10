@@ -1,29 +1,18 @@
 import Link from "next/link";
-import { ArrowRight } from "@phosphor-icons/react/ssr";
+import { ArrowRight, BookOpenText } from "@phosphor-icons/react/ssr";
 
-type GuideCardProps = {
-  href: string;
-  title: string;
-  description: string;
-  meta?: string;
-};
+type GuideCardProps = { href: string; title: string; description: string; meta?: string };
 
 export function GuideCard({ href, title, description, meta }: GuideCardProps) {
   return (
-    <Link
-      href={href}
-      className="guide-card tactile group flex min-h-44 flex-col justify-between border bg-[color:var(--panel)] p-5"
-      data-vds-layer="evidence"
-    >
-      <div>
-        {meta ? <p className="section-kicker">{meta}</p> : null}
-        <h3 className="mt-2 text-lg font-semibold tracking-[-.025em]">{title}</h3>
-        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">{description}</p>
+    <Link href={href} className="guide-card tactile group" data-vds-layer="evidence">
+      <div className="guide-card-icon"><BookOpenText size={20} /></div>
+      <div className="guide-card-copy">
+        {meta ? <span className="pill green">{meta}</span> : null}
+        <h3>{title}</h3>
+        <p>{description}</p>
       </div>
-      <span className="mt-5 flex min-h-11 items-center gap-2 text-sm font-semibold text-[color:var(--info)]">
-        查看教程
-        <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" aria-hidden="true" />
-      </span>
+      <span className="guide-card-arrow" aria-hidden="true"><ArrowRight size={17} /></span>
     </Link>
   );
 }

@@ -1,58 +1,36 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { CaretRight } from "@phosphor-icons/react/ssr";
+import { ArrowLeft, BookOpenText, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { GuideToc, type GuideTocItem } from "./guide-toc";
 
-type Breadcrumb = {
-  href?: string;
-  label: string;
-};
-
-type GuideLayoutProps = {
-  breadcrumbs: Breadcrumb[];
-  title: string;
-  description: string;
-  lastReviewedAt: string;
-  toc: GuideTocItem[];
-  children: ReactNode;
-  footer?: ReactNode;
-};
+type Breadcrumb = { href?: string; label: string };
+type GuideLayoutProps = { breadcrumbs: Breadcrumb[]; title: string; description: string; lastReviewedAt: string; toc: GuideTocItem[]; children: ReactNode; footer?: ReactNode };
 
 export function GuideLayout({ breadcrumbs, title, description, lastReviewedAt, toc, children, footer }: GuideLayoutProps) {
+  const category = breadcrumbs[breadcrumbs.length - 1]?.label || "购买指南";
   return (
-    <main id="main-content" className="shell py-5 sm:py-8" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="breadcrumb-orientation review-status sticky-toc longform-evidence">
-      <nav aria-label="面包屑" className="overflow-x-auto">
-        <ol className="flex min-w-max items-center gap-1 text-sm text-[color:var(--muted)]">
-          {breadcrumbs.map((item, index) => (
-            <li key={`${item.label}-${index}`} className="flex items-center">
-              {index > 0 ? <CaretRight size={14} className="mx-1 text-black/30" aria-hidden="true" /> : null}
-              {item.href ? (
-                <Link href={item.href} className="flex min-h-11 items-center px-1 hover:text-[color:var(--ink)] hover:underline">{item.label}</Link>
-              ) : (
-                <span aria-current="page" className="flex min-h-11 items-center px-1 text-[color:var(--ink)]">{item.label}</span>
-              )}
-            </li>
-          ))}
-        </ol>
-      </nav>
-
-      <header className="page-hero !pt-7" data-vds-layer="event">
-        <p className="eyebrow"><span className="signal-dot" aria-hidden="true" />教程已复核</p>
-        <h1 className="page-title mt-5" data-vds-role="title">{title}</h1>
-        <p className="lede mt-5" data-vds-role="explanation">{description}</p>
-        <p className="status-pill status-info mt-5" data-vds-role="evidence">最近复核 {lastReviewedAt}</p>
-      </header>
-
-      <div className="mt-6">
-        <GuideToc items={toc} mobile />
+    <main id="main-content" className="container" data-vds-schema="v3.1">
+      <div className="page-content detail-page">
+        <nav className="breadcrumb" aria-label="面包屑">
+          <Link href="/guides"><ArrowLeft size={14} />返回购买指南</Link>
+          <span>{category}</span>
+        </nav>
+        <header className="article-heading">
+          <span className="pill green"><BookOpenText size={13} />{category}</span>
+          <h1>{title}</h1>
+          <p>{description}</p>
+          <div className="article-meta"><span>最近复核 · {lastReviewedAt}</span><span>以品牌官方页面和实际商品说明为准</span></div>
+        </header>
+        <div className="production-mobile-toc"><GuideToc items={toc} mobile /></div>
+        <div className="reading-layout">
+          <article className="article-body guide-article">{children}</article>
+          <aside className="article-toc">
+            <GuideToc items={toc} />
+            <div><ShieldCheck size={24} /><strong>多一次核对，<br />少一分不确定。</strong><p>保护隐私，保留凭证。</p></div>
+          </aside>
+        </div>
+        {footer ? <footer className="production-guide-footer">{footer}</footer> : null}
       </div>
-
-      <div className="mt-8 grid items-start gap-12 lg:grid-cols-[minmax(0,82ch)_260px] lg:justify-between">
-        <article className="guide-article min-w-0 space-y-12" data-vds-layer="evidence">{children}</article>
-        <aside><GuideToc items={toc} /></aside>
-      </div>
-
-      {footer ? <footer className="mt-14 max-w-[82ch] border-t border-[color:var(--line-strong)] pt-8">{footer}</footer> : null}
     </main>
   );
 }

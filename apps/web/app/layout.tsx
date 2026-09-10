@@ -2,6 +2,13 @@ import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
+import "./redesign-01.css";
+import "./redesign-02.css";
+import "./redesign-03.css";
+import "./redesign-04.css";
+import "./redesign-05.css";
+import "./redesign-06.css";
+import "./redesign-07.css";
 import { BackToTop } from "@/components/back-to-top";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -19,17 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { default: "AI Price Radar · PriceMemo", template: "%s · AI Price Radar · PriceMemo" },
     description: "聚合公开 AI 订阅商品报价，比较价格、库存、来源和更新时间。",
     openGraph: { siteName: "AI Price Radar", locale: "zh_CN", type: "website" },
-    robots: {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        "max-video-preview": -1,
-        "max-image-preview": "large",
-        "max-snippet": -1,
-      },
-    },
+    robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-video-preview": -1, "max-image-preview": "large", "max-snippet": -1 } },
     ...(verification ? { verification } : {}),
   };
 }
@@ -37,7 +34,6 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const meta = await getMeta().catch(() => null);
   const advertiseEnabled = Boolean(meta?.advertise_enabled);
-
   return (
     <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>

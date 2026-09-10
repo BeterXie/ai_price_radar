@@ -1,203 +1,105 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
-import { OfferGroupTable } from "@/components/offer-table";
-import { OfferScopeControls } from "@/components/offer-scope-controls";
-import { SectionIntro } from "@/components/page-shell";
-import { PlatformIcon } from "@/components/platform-icon";
-import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
-import { ReportForm } from "@/components/report-form";
+import { ArrowRight, List, Package, ShieldCheck, SquaresFour } from "@phosphor-icons/react/ssr";
+import { ProductCard } from "@/components/product-card";
+import { ProductWorkspace, filterValues, offerQuery, single, type RawSearchParams } from "@/components/product-workspace";
 import { SearchBox } from "@/components/search-box";
-import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
-import { exactTime, relativeTime } from "@/lib/format";
-import { getProductSeoContent } from "@/lib/product-seo";
+import { PlatformIcon } from "@/components/platform-icon";
+import { getMeta, getProduct, getProducts } from "@/lib/api";
 
-import { BRAND_TABS, type BrandName, PRODUCT_TABS } from "@/lib/catalog";
+const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
+const TYPE_TABS = [
+  ["", "全部商品"],
+  ["subscription", "订阅会员"],
+  ["account", "成品账号"],
+  ["api", "API 额度"],
+  ["team", "团队席位"],
+  ["service", "辅助服务"],
+] as const;
 
-const EMPTY_META = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
-
-function withQuery(path: string, query: URLSearchParams) {
-  const value = query.toString();
-  return value ? `${path}?${value}` : path;
+function hrefWith(rawParams: RawSearchParams, changes: Record<string, string | null>) {
+  const query = new URLSearchParams();
+  for (const [key, raw] of Object.entries(rawParams)) {
+    if (key === "product") continue;
+    const value = Array.isArray(raw) ? raw.at(-1) || "" : raw || "";
+    if (value) query.set(key, value);
+  }
+  for (const [key, value] of Object.entries(changes)) {
+    if (value) query.set(key, value);
+    else query.delete(key);
+  }
+  const suffix = query.toString();
+  return suffix ? `/products?${suffix}` : "/products";
 }
 
 export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
   const detailQuery = offerQuery(rawParams);
-  const searchQuery = single(rawParams, "q").trim();
-  const [product, metaResult] = await Promise.all([
-    productSlug ? getProduct(productSlug, detailQuery.toString()) : Promise.resolve(null),
-    getMeta().catch(() => null),
-  ]);
-  const meta = metaResult || EMPTY_META;
-  if (productSlug && !product) notFound();
+  if (productSlug) {
+    const product = await getProduct(productSlug, detailQuery.toString());
+    if (!product) notFound();
+    const resetHref = `/products/${encodeURIComponent(product.slug)}`;
+    return (
+      <main id="main-content" className="container">
+        <div className="page-content detail-page">
+          <ProductWorkspace product={product} rawParams={rawParams} query={detailQuery} filterAction={`/products/${encodeURIComponent(product.slug)}`} resetHref={resetHref} hiddenFields={{}} />
+        </div>
+      </main>
+    );
+  }
 
-  const activeBrand = product?.brand || single(rawParams, "brand") || single(rawParams, "platform");
-  const activeSourcePlatform = single(rawParams, "source_platform");
-  const catalogQuery = new URLSearchParams(detailQuery);
-  catalogQuery.delete("platform");
-  if (activeBrand) catalogQuery.set("brand", activeBrand);
-  if (searchQuery) catalogQuery.set("q", searchQuery);
-  let catalogLoadFailed = false;
-  const catalog = product ? null : await getCatalogGroups(catalogQuery.toString()).catch(() => {
-    catalogLoadFailed = true;
-    return null;
-  });
-  const productTabBrand = activeBrand && Object.prototype.hasOwnProperty.call(PRODUCT_TABS, activeBrand)
-    ? activeBrand as BrandName
-    : "OpenAI";
-  const productTabs = PRODUCT_TABS[productTabBrand];
-  const scopeQuery = new URLSearchParams(detailQuery);
-  if (searchQuery) scopeQuery.set("q", searchQuery);
-  const filters = filterValues(rawParams);
-  const catalogHref = (brand = "") => {
-    const next = new URLSearchParams(scopeQuery);
-    next.delete("platform");
-    if (brand) next.set("brand", brand);
-    else next.delete("brand");
-    return withQuery("/products", next);
-  };
-  const productHref = (slug: string) => withQuery(`/products/${encodeURIComponent(slug)}`, scopeQuery);
-  const sourceHref = (sourcePlatform = "") => {
-    const next = new URLSearchParams(scopeQuery);
-    if (sourcePlatform) next.set("source_platform", sourcePlatform);
-    else next.delete("source_platform");
-    if (!product && activeBrand) next.set("brand", activeBrand);
-    return withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", next);
-  };
-  const navigationQuery = new URLSearchParams();
-  if (!product && activeBrand) navigationQuery.set("brand", activeBrand);
-  if (activeSourcePlatform) navigationQuery.set("source_platform", activeSourcePlatform);
-  if (!product && searchQuery) navigationQuery.set("q", searchQuery);
-  const navigationHref = withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", navigationQuery);
-  const hiddenFields = {
-    ...(!product && activeBrand ? { brand: activeBrand } : {}),
-    ...(activeSourcePlatform ? { source_platform: activeSourcePlatform } : {}),
-    ...(!product && searchQuery ? { q: searchQuery } : {}),
-  };
-  const updatedWithinLabel: Record<string, string> = { "6": "6 小时内", "24": "24 小时内", "72": "3 天内", "168": "7 天内" };
-  const headingTitle = product
-    ? `${product.display_name} 报价`
-    : searchQuery
-      ? `“${searchQuery}”的报价`
-      : activeBrand
-        ? `${activeBrand} 报价`
-        : "AI 商品报价";
-  const headingDescription = product
-    ? getProductSeoContent(product.slug, product.display_name, product.description).intro
-    : searchQuery
-      ? "匹配商品名称与来源商品标题。继续按品牌、库存、交付方式和更新时间缩小范围。"
-      : "按品牌、商品类型、交付方式、库存和更新时间筛选公开报价。";
+  const q = single(rawParams, "q").trim();
+  const brand = single(rawParams, "brand") || single(rawParams, "platform");
+  const productType = single(rawParams, "product_type");
+  const sourcePlatform = single(rawParams, "source_platform");
+  const sort = single(rawParams, "sort") || "quality";
+  const view = single(rawParams, "view") === "list" ? "list" : "grid";
+  const inStock = single(rawParams, "in_stock") === "true";
+  const query = offerQuery(rawParams);
+  query.delete("platform");
+  if (q) query.set("q", q);
+  if (brand) query.set("brand", brand);
+  if (productType) query.set("product_type", productType);
+  if (sourcePlatform) query.set("source_platform", sourcePlatform);
+  if (inStock) query.set("in_stock", "true");
+  query.set("sort", ["quality", "price", "price_desc", "updated", "offers"].includes(sort) ? sort : "quality");
+
+  const [catalog, meta] = await Promise.all([getProducts(query.toString()), getMeta().catch(() => null)]);
+  const items = catalog.items;
 
   return (
-    <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="scope-rails selected-summary grouped-ledger responsive-filter-disclosure">
-      <header className="catalog-heading">
-        <div className="catalog-heading-copy">
-          <p className="text-xs font-semibold text-[color:var(--brand-strong)]">{product ? product.brand : activeBrand || "全部品牌"}</p>
-          <h1 data-vds-role="title">{headingTitle}</h1>
-          <p id={product ? "product-description" : undefined} data-vds-role="explanation">{headingDescription}</p>
-        </div>
-        {!product ? <div className="catalog-heading-search"><SearchBox defaultValue={searchQuery} /></div> : null}
-      </header>
+    <main id="main-content" className="container">
+      <div className="page-content">
+        <div className="page-intro"><span className="eyebrow">THE AI PRICE DIRECTORY</span><h1>好产品，值得认真比较。</h1><p>先选品牌与商品，再按交付方式、来源和更新时间寻找适合你的公开报价。</p></div>
+        <SearchBox defaultValue={q} compact />
 
-      <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="报价快捷筛选">
-        <nav className="filter-rail" aria-label="品牌筛选">
-          <span className="filter-label">品牌</span>
-          <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined} className="filter-chip">
-            <PlatformIcon platform="" />全部
-          </Link>
-          {BRAND_TABS.map((brand) => (
-            <Link key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined} className="filter-chip">
-              <PlatformIcon platform={brand} />{brand}
-            </Link>
-          ))}
-        </nav>
-        <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
-          <span className="filter-label">商品类型</span>
-          <Link href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">
-            全部商品
-          </Link>
-          {productTabs.map((tab) => (
-            <Link
-              key={tab.slug}
-              href={productHref(tab.slug)}
-              aria-current={product?.slug === tab.slug ? "page" : undefined}
-              className="filter-chip"
-            >
-              {tab.label}
-            </Link>
-          ))}
-        </nav>
-        <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="来源平台筛选">
-          <span className="filter-label">来源平台</span>
-          <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip">全部来源</Link>
-          {meta.source_platforms.filter((source) => source.id !== "dujiao_next").map((source) => (
-            <Link key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className="filter-chip">{source.label}</Link>
-          ))}
-          {!metaResult ? <span className="ml-2 text-xs text-[color:var(--muted)]">来源选项暂不可用，可继续浏览当前报价</span> : null}
-        </nav>
-      </section>
-      <section className="catalog-scope-bar" aria-labelledby="selected-scope-title" data-vds-layer="inscription">
-        <div className="catalog-scope-copy">
-          <strong id="selected-scope-title">已选条件</strong>
-          这些条件会同时作用于下面的报价。
+        <div className="filter-panel">
+          <div className="filter-line"><span>品牌</span><div className="tabs"><Link className={!brand ? "active" : ""} href={hrefWith(rawParams, { brand: null, platform: null })}>全部</Link>{BRAND_TABS.map((item) => <Link key={item} className={brand === item ? "active" : ""} href={hrefWith(rawParams, { brand: item, platform: null })}><span className="brand-icon small"><PlatformIcon platform={item} size={14} /></span>{item}</Link>)}</div></div>
+          <div className="filter-line"><span>商品类型</span><div className="tabs">{TYPE_TABS.map(([value, label]) => <Link key={label} className={productType === value || (!productType && !value) ? "active" : ""} href={hrefWith(rawParams, { product_type: value || null })}>{label}</Link>)}</div></div>
+          {meta?.source_platforms?.length ? <div className="filter-line"><span>来源</span><div className="tabs"><Link className={!sourcePlatform ? "active" : ""} href={hrefWith(rawParams, { source_platform: null })}>全部来源</Link>{meta.source_platforms.filter((source) => source.id !== "dujiao_next").map((source) => <Link key={source.id} className={sourcePlatform === source.id ? "active" : ""} href={hrefWith(rawParams, { source_platform: source.id })}>{source.label}</Link>)}</div></div> : null}
         </div>
-        <div className="catalog-scope-values" data-vds-role="evidence">
-          <div className="catalog-scope-value"><span>商品</span><strong>{product?.display_name || searchQuery || "全部商品"}</strong></div>
-          <div className="catalog-scope-value"><span>品牌</span><strong>{activeBrand || "全部品牌"}</strong></div>
-          <div className="catalog-scope-value"><span>库存</span><strong>{filters.in_stock === "true" ? "仅看有货" : "全部库存"}</strong></div>
-          <div className="catalog-scope-value"><span>更新时间</span><strong>{updatedWithinLabel[filters.updated_within_hours] || "全部时间"}</strong></div>
+
+        <div className="results-toolbar">
+          <span>找到 <strong>{catalog.total}</strong> 款产品 {q ? <>· 搜索“{q}”</> : null}<Link className="text-button subtle" href="/products">重置筛选</Link></span>
+          <div>
+            <Link className="toggle-label" href={hrefWith(rawParams, { in_stock: inStock ? null : "true" })}><span className={`toggle ${inStock ? "is-on" : ""}`} />仅看有货</Link>
+            <form action="/products" method="get" className="inline-items">
+              {q ? <input type="hidden" name="q" value={q} /> : null}
+              {brand ? <input type="hidden" name="brand" value={brand} /> : null}
+              {productType ? <input type="hidden" name="product_type" value={productType} /> : null}
+              {sourcePlatform ? <input type="hidden" name="source_platform" value={sourcePlatform} /> : null}
+              {inStock ? <input type="hidden" name="in_stock" value="true" /> : null}
+              <select aria-label="排序方式" name="sort" defaultValue={sort}><option value="quality">综合排序</option><option value="price">价格从低到高</option><option value="price_desc">价格从高到低</option><option value="updated">最近更新</option><option value="offers">报价数量</option></select>
+              <button className="text-button" type="submit">应用</button>
+            </form>
+            <div className="view-switch"><Link className={view === "grid" ? "active" : ""} href={hrefWith(rawParams, { view: null })} aria-label="网格视图"><SquaresFour size={17} /></Link><Link className={view === "list" ? "active" : ""} href={hrefWith(rawParams, { view: "list" })} aria-label="列表视图"><List size={17} /></Link></div>
+          </div>
         </div>
-      </section>
-      {product ? (
-        <ProductWorkspace
-          product={product}
-          rawParams={rawParams}
-          query={detailQuery}
-          filterAction={`/products/${encodeURIComponent(product.slug)}`}
-          resetHref={navigationHref}
-          hiddenFields={hiddenFields}
-        />
-      ) : catalog ? (
-        <>
-          <section className="catalog-stats" aria-label="目录报价概况">
-            <p><ShieldCheck size={15} /><span>{catalog.trusted_offer_count} 条纳入统计</span></p>
-            <p><Package size={15} /><span>{catalog.in_stock_count} 条有货</span></p>
-            <p><Stack size={15} /><span>{catalog.offer_total} 条报价，其中 {catalog.comparable_offer_count} 条可比较</span></p>
-            <p><Clock size={15} /><span>更新于 {relativeTime(catalog.last_updated_at)}</span></p>
-          </section>
 
-          <OfferScopeControls
-            action="/products"
-            values={filters}
-            hiddenFields={hiddenFields}
-            resetHref={navigationHref}
-            defaultOpen={false}
-          />
+        {items.length ? <div className={`product-grid ${view === "list" ? "list-view" : ""}`}>{items.map((product) => <ProductCard key={product.slug} product={product} />)}</div> : <div className="empty"><Package size={32} /><h3>没有找到匹配的产品</h3><p>试试其他关键词，或调整筛选条件。</p><Link href="/products" className="button">清空筛选</Link></div>}
 
-          <section className="pb-12">
-            <SectionIntro title="当前报价" description={<>相同商品会合并显示。当前筛选结果共 {catalog.total} 组报价，展开后可查看店铺、交付方式和商品原文。</>} />
-            <div className="mt-4">
-            <OfferGroupTable
-              key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
-              groups={catalog.items}
-              totalCount={catalog.total}
-              snapshotId={catalog.snapshot_id}
-              filterQuery={catalogQuery.toString()}
-              loadMorePath="/api/v1/catalog/groups"
-              showProduct
-            />
-            </div>
-          </section>
-          <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm /></div></section>
-          <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(catalog.snapshot_at)}</p>
-        </>
-      ) : catalogLoadFailed ? (
-        <section className="empty-state my-10" role="alert" data-vds-layer="evidence">
-          <h2 className="text-2xl font-semibold text-[color:var(--ink)]">当前报价暂时无法加载</h2>
-          <p className="mt-3 text-sm leading-6">筛选条件没有丢失。可以退出错误预览后重新读取当前报价。</p>
-          <Link href={navigationHref} className="button-primary mt-6">重新读取报价</Link>
-        </section>
-      ) : null}
+        <div className="quote-disclaimer"><ShieldCheck size={14} />不同交付方式、周期与质保条件的价格不应直接比较。进入产品详情页可查看店铺、商品原文、来源和更新时间。</div>
+        <section className="guide-callout"><div className="callout-icon"><Package size={24} /></div><div><h3>需要逐条查看店铺报价？</h3><p>进入任意产品详情即可展开同款商品的全部店铺、交付条件与原始来源。</p></div>{items[0] ? <Link className="button" href={`/products/${encodeURIComponent(items[0].slug)}`}>查看产品详情 <ArrowRight size={15} /></Link> : null}</section>
+      </div>
     </main>
   );
 }

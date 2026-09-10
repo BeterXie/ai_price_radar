@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, BellRinging } from "@phosphor-icons/react";
+import { Bell, BellRinging, BookmarkSimple } from "@phosphor-icons/react";
 
 export const WATCHLIST_KEY = "ai-price-radar:watchlist:v1";
 export const WATCHLIST_EVENT = "ai-price-radar:watchlist-change";
@@ -30,13 +30,7 @@ function normalizeWatchItem(value: unknown): WatchItem | null {
   if (typeof item.added_at !== "string" || !item.added_at.trim()) return null;
   const threshold = normalizeWatchThreshold(typeof item.threshold === "string" ? item.threshold : "");
   if (threshold === null) return null;
-  return {
-    slug: item.slug,
-    name: item.name,
-    currency: typeof item.currency === "string" && item.currency.trim() ? item.currency : "CNY",
-    threshold,
-    added_at: item.added_at,
-  };
+  return { slug: item.slug, name: item.name, currency: typeof item.currency === "string" && item.currency.trim() ? item.currency : "CNY", threshold, added_at: item.added_at };
 }
 
 export function readWatchlist(): WatchItem[] {
@@ -70,7 +64,7 @@ export function writeWatchlist(items: WatchItem[]): boolean {
   }
 }
 
-export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" }: { slug: string; name: string; currency?: string; suggestedPrice?: string | null }) {
+export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "", variant = "button" }: { slug: string; name: string; currency?: string; suggestedPrice?: string | null; variant?: "button" | "icon" }) {
   const [watched, setWatched] = useState(false);
 
   useEffect(() => {
@@ -87,32 +81,24 @@ export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" 
   function toggle() {
     const current = readWatchlist();
     if (current.some((item) => item.slug === slug)) {
-      const next = current.filter((item) => item.slug !== slug);
-      if (writeWatchlist(next)) setWatched(false);
+      if (writeWatchlist(current.filter((item) => item.slug !== slug))) setWatched(false);
       return;
     }
     if (current.length >= MAX_WATCHLIST_ITEMS) return;
     const threshold = normalizeWatchThreshold(suggestedPrice || "") ?? "";
-    const next = [
-      ...current,
-      {
-        slug,
-        name,
-        currency,
-        threshold,
-        added_at: new Date().toISOString(),
-      },
-    ];
-    if (writeWatchlist(next)) setWatched(true);
+    if (writeWatchlist([...current, { slug, name, currency, threshold, added_at: new Date().toISOString() }])) setWatched(true);
+  }
+
+  if (variant === "icon") {
+    return (
+      <button type="button" onClick={toggle} aria-pressed={watched} className="watch-icon-button" title={watched ? "移出关注清单" : "加入关注清单"}>
+        <BookmarkSimple size={16} weight={watched ? "fill" : "regular"} />
+      </button>
+    );
   }
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-pressed={watched}
-      className={`tactile inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-medium ${watched ? "bg-[color:var(--accent)] text-[color:var(--accent-ink)]" : "border border-[color:var(--line-strong)]"}`}
-    >
+    <button type="button" onClick={toggle} aria-pressed={watched} className="watch-action-button tactile">
       {watched ? <BellRinging size={17} weight="fill" /> : <Bell size={17} />}
       {watched ? "已加入清单" : "加入关注清单"}
     </button>

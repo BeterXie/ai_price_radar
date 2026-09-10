@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { ArrowSquareOut, Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { ArrowLeft, ArrowRight, ArrowSquareOut, Check, Clock, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
 import { JsonLd } from "@/components/structured-data";
 import { ProductEvidence } from "@/components/product-evidence";
 import { ProductHistoryPanel } from "@/components/product-history-panel";
+import { PlatformIcon } from "@/components/platform-icon";
 import { ReportForm } from "@/components/report-form";
 import { WatchButton } from "@/components/watch-button";
-import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime } from "@/lib/format";
 import { getProductGuide } from "@/lib/guides/registry";
 import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
@@ -47,14 +47,7 @@ export function filterValues(params: RawSearchParams): OfferFilterValues {
   };
 }
 
-export function ProductWorkspace({
-  product,
-  rawParams,
-  query,
-  filterAction,
-  resetHref,
-  hiddenFields = {},
-}: {
+export function ProductWorkspace({ product, rawParams, query, filterAction, resetHref, hiddenFields = {} }: {
   product: ProductDetail;
   rawParams: RawSearchParams;
   query: URLSearchParams;
@@ -66,6 +59,8 @@ export function ProductWorkspace({
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
   const productGuide = getProductGuide(product.slug);
   const evidenceSources = getProductEvidenceSources(product.brand, product.official_reference, productGuide?.officialSources);
+  const filters = filterValues(rawParams);
+  const guideFaq = productGuide?.faq[0];
   const structuredData: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -79,139 +74,63 @@ export function ProductWorkspace({
     image: `${canonical}/opengraph-image`,
     category: product.product_type,
     brand: { "@type": "Brand", name: product.brand },
-    citation: evidenceSources.map((source) => ({
-      "@type": "WebPage",
-      "@id": source.url,
-      name: source.title,
-      url: source.url,
-      publisher: { "@type": "Organization", name: source.publisher },
-    })),
+    citation: evidenceSources.map((source) => ({ "@type": "WebPage", "@id": source.url, name: source.title, url: source.url, publisher: { "@type": "Organization", name: source.publisher } })),
   };
   if (product.lowest_price && product.trusted_offer_count > 0) {
-    structuredData.offers = {
-      "@type": "AggregateOffer",
-      priceCurrency: product.price_currency,
-      lowPrice: product.lowest_price,
-      highPrice: product.highest_price || product.lowest_price,
-      offerCount: product.trusted_offer_count,
-      availability: product.in_stock_count > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      url: canonical,
-    };
+    structuredData.offers = { "@type": "AggregateOffer", priceCurrency: product.price_currency, lowPrice: product.lowest_price, highPrice: product.highest_price || product.lowest_price, offerCount: product.trusted_offer_count, availability: product.in_stock_count > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock", url: canonical };
   }
-  const filters = filterValues(rawParams);
-  const guideFaq = productGuide?.faq[0];
 
   return (
     <>
       <JsonLd data={structuredData} />
-      <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
-        <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条纳入统计</p>
-        <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
-        <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
-        <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
-      </section>
+      <div className="breadcrumb"><Link href="/products"><ArrowLeft size={14} />返回报价目录</Link><span>{product.brand} · {product.product_type}</span></div>
 
-      <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
-        <div className="data-strip sm:grid-cols-3">
-          <div className="data-cell"><p className="data-label">近期有货观测价</p><p className="data-value">{money(product.lowest_price, product.price_currency)}</p></div>
-          <div className="data-cell"><p className="data-label">常见观测价</p><p className="data-value">{money(product.median_price, product.price_currency)}</p></div>
-          <div className="data-cell"><p className="data-label">信息覆盖</p><p className="data-value">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">/ 100，{product.data_quality_label}</span></p><p className="mt-1 text-xs text-[color:var(--muted)]">{product.source_count} 个来源</p></div>
-        </div>
+      <section className="product-detail-heading">
+        <span className={`brand-icon ${product.brand.toLowerCase()}`}><PlatformIcon platform={product.brand} size={43} /></span>
+        <div><span className="eyebrow">{product.brand} · PUBLIC PRICE MEMORY</span><h1>{product.display_name}</h1><p>{seo.intro}</p></div>
         <WatchButton slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
       </section>
 
-      {product.official_reference && (
-        <section className="evidence-callout mt-4" data-vds-layer="evidence">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div><p className="section-kicker">官方价格参考 · 更新于 {product.official_reference.checked_at}</p><h2 className="mt-2 text-xl font-semibold">{product.official_reference.plan} · {product.official_reference.currency} {product.official_reference.price} / 月</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted)]">{product.official_reference.note}</p></div>
-            <a href={product.official_reference.url} target="_blank" rel="noreferrer" className="button-secondary shrink-0">查看官方来源 <ArrowSquareOut size={16} /></a>
-          </div>
-        </section>
-      )}
+      <section className="detail-stats" aria-label={`${product.display_name} 报价概况`}>
+        <div><span>近期有货参考价</span><strong>{money(product.lowest_price, product.price_currency)}</strong><small>{product.trusted_offer_count} 条报价纳入统计</small></div>
+        <div><span>当前有货</span><strong>{product.in_stock_count}<small> 条</small></strong><small>共 {product.offer_count} 条当前报价</small></div>
+        <div><span>常见观测价</span><strong>{money(product.median_price, product.price_currency)}</strong><small>{product.source_count} 个公开来源</small></div>
+        <div><span>最近更新</span><strong className="!text-[20px]">{relativeTime(product.last_updated_at)}</strong><small>{exactTime(product.snapshot_at)}</small></div>
+      </section>
+
+      {product.official_reference ? (
+        <section className="notice mt-6"><ShieldCheck size={20} /><div className="flex-1"><strong>官方价格参考 · {product.official_reference.plan}</strong><p>{product.official_reference.note} · 核对时间 {product.official_reference.checked_at}</p></div><a href={product.official_reference.url} target="_blank" rel="noreferrer" className="text-button">查看官方来源 <ArrowSquareOut size={14} /></a></section>
+      ) : null}
 
       <ProductEvidence sources={evidenceSources} />
 
-      <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
-
-      <section className="pb-12">
-        <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
-          <h2 className="text-3xl font-semibold tracking-[-.04em]">报价</h2>
-          <p className="mt-2 text-sm text-[color:var(--muted)]">相同商品会合并显示。共 {product.offer_group_count} 组报价，展开后可查看店铺、交付方式和商品原文。</p>
-        </div>
-        <OfferGroupTable
-          key={`${product.slug}:${product.snapshot_id || "current"}:${query.toString()}`}
-          groups={product.offer_groups}
-          productSlug={product.slug}
-          totalCount={product.offer_group_count}
-          snapshotId={product.snapshot_id}
-          filterQuery={query.toString()}
-        />
-      </section>
-
-      {productGuide && (
-        <section className="surface-subtle mb-12 p-5 md:p-7" aria-labelledby="buying-and-usage-guide">
-          <div className="grid gap-7 lg:grid-cols-[1.05fr_.95fr]">
-            <div>
-              <p className="section-kicker">产品教程</p>
-              <h2 id="buying-and-usage-guide" className="mt-3 text-2xl font-semibold tracking-[-.035em]">购买与使用</h2>
-              <h3 className="mt-5 text-lg font-semibold">{productGuide.title}</h3>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted)]">{productGuide.description}</p>
-              <div className="mt-5 flex flex-wrap gap-2" aria-label="教程支持的交付类型">
-                {productGuide.supportedDeliveryTypes.map((deliveryType) => (
-                  <span key={deliveryType} className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2.5 py-1 text-xs">
-                    {DELIVERY_TYPE_LABELS[deliveryType] || deliveryType}
-                  </span>
-                ))}
-              </div>
-            </div>
-          <div className="grid gap-5">
-              <div>
-                <h3 className="text-sm font-semibold">购买前提示</h3>
-                <ul className="mt-3 grid gap-2 text-sm leading-6 text-[color:var(--muted)]">
-                  {productGuide.buyingChecklist.slice(0, 3).map((item) => <li key={item} className="flex items-start gap-2"><span className="mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-[color:var(--accent)] text-[color:var(--accent-ink)]"><Check size={12} weight="bold" /></span><span>{item}</span></li>)}
-                </ul>
-              </div>
-              {guideFaq && (
-                <div>
-                  <h3 className="text-sm font-semibold">常见问题</h3>
-                  <p className="mt-2 text-sm font-medium">{guideFaq.question}</p>
-                  <p className="mt-1 text-sm leading-6 text-[color:var(--muted)]">{guideFaq.answer}</p>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="mt-6 flex flex-wrap gap-3 border-t border-[color:var(--line-strong)] pt-5">
-            <Link href={`/guides/products/${productGuide.productSlug}`} className="button-primary tactile">查看完整使用教程</Link>
-            <Link href="/guides" className="button-secondary tactile">查看全部教程</Link>
-          </div>
-        </section>
-      )}
-
-      <section className="border-t border-[color:var(--line-strong)] py-12" aria-labelledby="product-comparison-guide">
-        <div className="max-w-5xl">
-          <h2 id="product-comparison-guide" className="text-3xl font-semibold tracking-[-.04em]">购买前检查</h2>
-          <ul className="decision-list mt-6 grid text-sm leading-6 text-[color:var(--muted)] md:grid-cols-2">
-            {seo.comparisonPoints.map((point) => (
-              <li key={point}>{point}</li>
-            ))}
-          </ul>
-          <div className="mt-10 border-t hairline">
-            <h3 className="py-5 text-xl font-semibold">常见问题</h3>
-            {seo.faqs.map((faq) => (
-              <details key={faq.question} className="group border-t hairline py-4 first:border-t-0">
-                <summary className="cursor-pointer font-medium">{faq.question}</summary>
-                <p className="mt-3 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
+      <section className="mt-9">
+        <div className="section-heading"><div><div className="eyebrow">CURRENT OFFERS</div><h2>当前公开报价</h2><p>相同商品会合并显示。共 {product.offer_group_count} 组，展开后可查看店铺、交付方式、原文与来源。</p></div><span className="small-text muted"><Clock size={14} /> {relativeTime(product.last_updated_at)}更新</span></div>
+        <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
+        <div className="offer-list mt-4">
+          <OfferGroupTable key={`${product.slug}:${product.snapshot_id || "current"}:${query.toString()}`} groups={product.offer_groups} productSlug={product.slug} totalCount={product.offer_group_count} snapshotId={product.snapshot_id} filterQuery={query.toString()} />
         </div>
       </section>
 
-      <section className="grid gap-10 border-t border-[color:var(--line-strong)] py-12 lg:grid-cols-[1.35fr_.65fr]">
-        <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-[color:var(--muted)]">按天显示近期有货观测价、常见观测价和有货数量。</p><ProductHistoryPanel key={`${product.slug}:${single(rawParams, "source_platform")}`} slug={product.slug} sourcePlatform={single(rawParams, "source_platform")} /></div>
-        <aside><ReportForm /></aside>
+      {productGuide ? (
+        <section className="guide-callout mt-9"><div className="callout-icon"><Check size={23} /></div><div><h3>{productGuide.title}</h3><p>{productGuide.description}</p></div><Link className="button" href={`/guides/products/${productGuide.productSlug}`}>阅读完整教程 <ArrowRight size={15} /></Link></section>
+      ) : null}
+
+      <section className="detail-bottom-grid">
+        <div>
+          <div className="section-heading"><div><div className="eyebrow">PRICE & STOCK HISTORY</div><h2>最近价格和库存变化</h2><p>按天整理近期有货观测价、常见观测价和有货数量。</p></div></div>
+          <ProductHistoryPanel key={`${product.slug}:${single(rawParams, "source_platform")}`} slug={product.slug} sourcePlatform={single(rawParams, "source_platform")} />
+        </div>
+        <aside className="feedback-card"><h3>发现信息有误？</h3><p>提交价格、库存、分类或来源问题，帮助这份公开报价持续变得更准确。</p><div className="mt-5"><ReportForm /></div></aside>
       </section>
-      <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(product.snapshot_at)}</p>
+
+      {productGuide ? (
+        <section className="article-body mt-10"><h2>购买前检查</h2><div className="three-points">{productGuide.buyingChecklist.slice(0, 3).map((item, index) => <div key={item}><span>0{index + 1}</span><h3>{["确认商品类型", "确认控制权", "保留售后材料"][index] || "购买前确认"}</h3><p>{item}</p></div>)}</div>{guideFaq ? <div className="notice"><ShieldCheck size={18} /><div><strong>{guideFaq.question}</strong><p>{guideFaq.answer}</p></div></div> : null}</section>
+      ) : null}
+
+      <section className="article-body mt-8"><h2>比较这类商品时，还要看什么？</h2>{seo.comparisonPoints.map((point, index) => <div className="step-card" key={point}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>核对条件</h3><p>{point}</p></div></div>)}<h2>常见问题</h2>{seo.faqs.map((faq) => <details key={faq.question} className="faq"><summary>{faq.question}<span>＋</span></summary><p>{faq.answer}</p></details>)}</section>
+
+      <p className="quote-disclaimer"><Stack size={13} />数据更新于 {exactTime(product.snapshot_at)}。价格、库存和交付规则请以来源页面为准。</p>
     </>
   );
 }
