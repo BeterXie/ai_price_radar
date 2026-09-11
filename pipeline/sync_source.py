@@ -79,6 +79,7 @@ def main() -> int:
         "public_offer_count": imported.public_offer_count,
         "created": imported.created,
         "changed": imported.changed,
+        "pruned": imported.pruned,
         "failed": 0,
         "dry_run": args.dry_run,
         "snapshot_id": result.snapshot_id,

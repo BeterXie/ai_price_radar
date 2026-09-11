@@ -5,7 +5,7 @@ import json
 import os
 import sqlite3
 import urllib.parse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -55,6 +55,8 @@ class ImportResult:
     public_offer_count: int = 0
     created: int = 0
     changed: int = 0
+    pruned: int = 0
+    offer_ids: set[int] = field(default_factory=set)
 
 
 @dataclass(slots=True)
@@ -295,6 +297,7 @@ def import_source_into_snapshot(
             snapshot_id=snapshot_id,
             offer_ids=offer_ids,
         )
+    result.offer_ids = offer_ids
     return result
 
 
@@ -307,6 +310,47 @@ def _carry_forward_current_snapshot(db: Session, target_snapshot_id: int) -> Non
     )
     if current_id is not None:
         db.execute(update(Offer).where(Offer.snapshot_id == current_id).values(snapshot_id=target_snapshot_id))
+
+
+def _prune_stale_offers(
+    db: Session,
+    *,
+    snapshot_id: int,
+    valid_offer_ids: set[int],
+) -> int:
+    """Prune offers belonging to touched shops that are no longer present in the updated source."""
+    if not valid_offer_ids:
+        return 0
+
+    touched_shop_ids = set(
+        db.scalars(
+            select(Offer.shop_id)
+            .where(Offer.id.in_(valid_offer_ids))
+            .distinct()
+        ).all()
+    )
+    if not touched_shop_ids:
+        return 0
+
+    current_ids = set(
+        db.scalars(
+            select(Offer.id)
+            .where(
+                Offer.snapshot_id == snapshot_id,
+                Offer.shop_id.in_(touched_shop_ids),
+            )
+        ).all()
+    )
+    stale_ids = current_ids - valid_offer_ids
+    if not stale_ids:
+        return 0
+
+    db.execute(
+        update(Offer)
+        .where(Offer.id.in_(stale_ids), Offer.snapshot_id == snapshot_id)
+        .values(snapshot_id=None, stock_status="unavailable")
+    )
+    return len(stale_ids)
 
 
 def enqueue_published_intake_notifications(
@@ -448,6 +492,12 @@ def publish_sources(
                     snapshot_id=snapshot.id,
                     products=products,
                 )
+                if carry_forward_current and imported.offer_ids:
+                    imported.pruned = _prune_stale_offers(
+                        db,
+                        snapshot_id=snapshot.id,
+                        valid_offer_ids=imported.offer_ids,
+                    )
                 imports.append(imported)
                 for intake_id in spec.intake_ids:
                     intake_status = "published" if imported.public_offer_count > 0 else "no_products"

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from common import CatalogSnapshot, Offer, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
+from common import CatalogSnapshot, Offer, RawProduct, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
 from connectors import CONNECTORS
 from publish_catalog import (
     SourceImportError,
@@ -648,4 +648,108 @@ def test_published_intake_skips_notification_when_no_email(monkeypatch: pytest.M
         assert db.execute(text("SELECT count(*) FROM notification_outbox")).scalar_one() == 0
     finally:
         db.close()
+
+
+def test_carry_forward_prunes_stale_offers_for_touched_shops(monkeypatch: pytest.MonkeyPatch):
+    custom_records = {
+        "round1": [
+            {
+                "token": "shop-alpha",
+                "shop_name": "Shop Alpha",
+                "shop_url": "https://alpha.example",
+                "source_platform": "merchant_json",
+                "product_key": "P1",
+                "product_name": "ChatGPT Plus Alpha 1",
+                "product_url": "https://alpha.example/p1",
+                "listed_price": "28.80",
+                "currency": "CNY",
+                "stock_count": 4,
+                "product_status": "in_stock",
+            },
+            {
+                "token": "shop-alpha",
+                "shop_name": "Shop Alpha",
+                "shop_url": "https://alpha.example",
+                "source_platform": "merchant_json",
+                "product_key": "P2",
+                "product_name": "ChatGPT Plus Alpha 2",
+                "product_url": "https://alpha.example/p2",
+                "listed_price": "135.00",
+                "currency": "CNY",
+                "stock_count": 5,
+                "product_status": "in_stock",
+            },
+            {
+                "token": "shop-beta",
+                "shop_name": "Shop Beta",
+                "shop_url": "https://beta.example",
+                "source_platform": "merchant_json",
+                "product_key": "P3",
+                "product_name": "ChatGPT Plus Beta",
+                "product_url": "https://beta.example/p3",
+                "listed_price": "140.00",
+                "currency": "CNY",
+                "stock_count": 2,
+                "product_status": "in_stock",
+            },
+        ],
+        "round2": [
+            # P1 has been removed from shop-alpha upstream! Only P2 remains.
+            {
+                "token": "shop-alpha",
+                "shop_name": "Shop Alpha",
+                "shop_url": "https://alpha.example",
+                "source_platform": "merchant_json",
+                "product_key": "P2",
+                "product_name": "ChatGPT Plus Alpha 2",
+                "product_url": "https://alpha.example/p2",
+                "listed_price": "135.00",
+                "currency": "CNY",
+                "stock_count": 5,
+                "product_status": "in_stock",
+            },
+        ],
+    }
+
+    def custom_loader(source: str | Path):
+        for rec in custom_records.get(str(source), []):
+            yield dict(rec)
+
+    monkeypatch.setitem(CONNECTORS, "merchant-json", custom_loader)
+
+    db = session_for("sqlite://")
+    try:
+        # First publication: all 3 offers published
+        first_result = publish_sources(db, [SourceSpec("merchant-json", "round1")])
+        assert first_result.offer_count == 3
+
+        # Second publication: incremental sync with carry_forward_current=True
+        # Only shop-alpha updated, P1 removed upstream.
+        second_result = publish_sources(
+            db,
+            [SourceSpec("merchant-json", "round2")],
+            carry_forward_current=True,
+        )
+
+        assert second_result.imports[0].pruned == 1
+        assert second_result.offer_count == 2
+
+        all_offers = {
+            raw.source_product_key: offer
+            for offer, raw in db.query(Offer, RawProduct).join(RawProduct, Offer.raw_product_id == RawProduct.id).all()
+        }
+        # P1 must be pruned: snapshot_id removed and stock_status marked unavailable
+        assert all_offers["P1"].snapshot_id is None
+        assert all_offers["P1"].stock_status == "unavailable"
+
+        # P2 must be in the new snapshot
+        assert all_offers["P2"].snapshot_id == second_result.snapshot_id
+        assert all_offers["P2"].stock_status == "in_stock"
+
+        # P3 from untouched shop-beta must be preserved in the new snapshot
+        assert all_offers["P3"].snapshot_id == second_result.snapshot_id
+        assert all_offers["P3"].stock_status == "in_stock"
+    finally:
+        db.close()
+
 

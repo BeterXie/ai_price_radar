@@ -522,15 +522,42 @@ class StateDB:
             if matched_only
             else ""
         )
+        if matched_only:
+            order_clause = """
+                CASE
+                    WHEN candidates.intake_id IS NOT NULL AND status = 'pending' THEN 0
+                    WHEN last_attempt_at IS NULL THEN 1
+                    ELSE 2
+                END ASC,
+                last_attempt_at ASC,
+                source_score DESC,
+                discovered_at DESC
+            """
+        elif rescan:
+            order_clause = """
+                CASE
+                    WHEN candidates.intake_id IS NOT NULL AND status = 'pending' THEN 0
+                    WHEN last_attempt_at IS NULL THEN 1
+                    ELSE 2
+                END ASC,
+                CASE WHEN last_attempt_at IS NULL THEN source_score ELSE 0 END DESC,
+                last_attempt_at ASC,
+                source_score DESC,
+                discovered_at DESC
+            """
+        else:
+            order_clause = """
+                source_score DESC,
+                CASE WHEN last_attempt_at IS NULL THEN 0 ELSE 1 END,
+                last_attempt_at ASC,
+                discovered_at DESC
+            """
         sql = f"""
             SELECT * FROM candidates
             WHERE {where}
               AND {retry_clause}
               {matched_clause}
-            ORDER BY source_score DESC,
-                     CASE WHEN last_attempt_at IS NULL THEN 0 ELSE 1 END,
-                     last_attempt_at ASC,
-                     discovered_at DESC
+            ORDER BY {order_clause}
         """
         params.append(utc_now())
         if limit is not None and limit > 0:
