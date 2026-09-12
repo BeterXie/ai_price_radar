@@ -576,26 +576,64 @@ def test_approved_intake_stays_approved_when_atomic_publish_fails(monkeypatch: p
         db.close()
 
 
-def test_published_intake_enqueues_onboarded_notification_when_email_present(monkeypatch: pytest.MonkeyPatch):
-    install_loader(monkeypatch)
+def create_intake_tables(db) -> None:
+    db.execute(text(
+        "CREATE TABLE source_intakes ("
+        "id INTEGER PRIMARY KEY, source_type TEXT, detected_platform TEXT, "
+        "source_url TEXT, source_key TEXT, shop_name TEXT, contact_email TEXT, "
+        "status TEXT, product_count INT DEFAULT 0, finished_at TEXT, updated_at TEXT)"
+    ))
+    db.execute(text(
+        "CREATE TABLE notification_outbox ("
+        "id INTEGER PRIMARY KEY, event_type TEXT, recipient TEXT, subject TEXT, "
+        "text_body TEXT, status TEXT, attempt_count INT, next_attempt_at TEXT, "
+        "last_error TEXT, dedupe_key TEXT UNIQUE, created_at TEXT)"
+    ))
+    db.commit()
+
+
+def install_16688_shop_loader(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    shop_no: str,
+    shop_name: str,
+    product_count: int = 4,
+) -> None:
+    """Emit records the way the real 16688 connector does: the resolved shop token.
+
+    A goods-page source is resolved upstream, so the loader always yields the shop's
+    canonical token and shop URL regardless of which page the applicant submitted.
+    """
+
+    def loader(source: str | Path):
+        for i in range(1, product_count + 1):
+            yield {
+                "token": f"16688-{shop_no}",
+                "shop_name": shop_name,
+                "shop_url": f"https://www.16688.com.cn/shop/{shop_no}",
+                "source_platform": "16688",
+                "product_key": f"16688:G{i}",
+                "product_name": f"ChatGPT Plus 直充 {i}",
+                "product_url": f"https://www.16688.com.cn/goods/G{i}",
+                "listed_price": "88.00",
+                "currency": "CNY",
+                "stock_count": 1,
+                "product_status": "in_stock",
+            }
+
+    monkeypatch.setitem(CONNECTORS, "16688", loader)
+
+
+def test_published_new_shop_intake_enqueues_onboarded_notification(monkeypatch: pytest.MonkeyPatch):
+    shop_url = "https://www.16688.com.cn/shop/S230844"
+    install_16688_shop_loader(monkeypatch, shop_no="S230844", shop_name="凌越穹顶")
     db = session_for("sqlite://")
     try:
-        db.execute(text(
-            "CREATE TABLE source_intakes ("
-            "id INTEGER PRIMARY KEY, source_type TEXT, detected_platform TEXT, "
-            "source_url TEXT, source_key TEXT, shop_name TEXT, contact_email TEXT, "
-            "status TEXT, product_count INT DEFAULT 0, finished_at TEXT, updated_at TEXT)"
-        ))
-        db.execute(text(
-            "CREATE TABLE notification_outbox ("
-            "id INTEGER PRIMARY KEY, event_type TEXT, recipient TEXT, subject TEXT, "
-            "text_body TEXT, status TEXT, attempt_count INT, next_attempt_at TEXT, "
-            "last_error TEXT, dedupe_key TEXT UNIQUE, created_at TEXT)"
-        ))
+        create_intake_tables(db)
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
-            "VALUES (44, '16688', '16688', 'https://www.16688.com.cn/shop/S230844', 'https://www.16688.com.cn/shop/S230844', '凌越穹顶', '3470570896@qq.com', 'approved')"
-        ))
+            "VALUES (44, '16688', '16688', :url, :url, '凌越穹顶', '3470570896@qq.com', 'approved')"
+        ), {"url": shop_url})
         db.commit()
 
         publish_sources(db, approved_intake_sources(db))
@@ -611,11 +649,85 @@ def test_published_intake_enqueues_onboarded_notification_when_email_present(mon
         assert outbox[0]["subject"] == "店铺已正式收录"
         assert "凌越穹顶" in outbox[0]["text_body"]
         assert "4" in outbox[0]["text_body"]
+        assert "本站收录页面：https://ai.pricememo.cn/shops/16688-S230844" in outbox[0]["text_body"]
         assert outbox[0]["dedupe_key"] == "source-intake:44:shop_intake.onboarded"
 
         # Idempotency: publishing again does not duplicate the notification
         publish_sources(db, approved_intake_sources(db))
         assert db.execute(text("SELECT count(*) FROM notification_outbox")).scalar_one() == 1
+    finally:
+        db.close()
+
+
+def test_published_new_shop_submitted_via_goods_link_still_gets_onboarded(monkeypatch: pytest.MonkeyPatch):
+    """A first-time shop applied through one goods page is new, not an existing shop."""
+    goods_url = "https://www.16688.com.cn/goods/G90000001"
+    install_16688_shop_loader(monkeypatch, shop_no="S90000001", shop_name="新店直供")
+    db = session_for("sqlite://")
+    try:
+        create_intake_tables(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
+            "VALUES (48, '16688', '16688', :goods, :goods, 'www.16688.com.cn', 'new@example.com', 'approved')"
+        ), {"goods": goods_url})
+        db.commit()
+
+        publish_sources(db, approved_intake_sources(db))
+
+        outbox = db.execute(text("SELECT event_type, subject, text_body FROM notification_outbox")).mappings().all()
+        assert len(outbox) == 1
+        assert outbox[0]["event_type"] == "shop_intake.onboarded"
+        assert outbox[0]["subject"] == "店铺已正式收录"
+        body = outbox[0]["text_body"]
+        assert "新店直供" in body
+        assert "本站收录页面：https://ai.pricememo.cn/shops/16688-S90000001" in body
+        assert "无需重复申请收录" not in body
+    finally:
+        db.close()
+
+
+def test_published_goods_intake_for_existing_shop_explains_auto_discovery(monkeypatch: pytest.MonkeyPatch):
+    """A single goods page for an already-indexed shop must not claim a new onboarding."""
+    # The submitted goods page is one this shop already carries.
+    goods_url = "https://www.16688.com.cn/goods/G1"
+    shop_url = "https://www.16688.com.cn/shop/S358780"
+    install_16688_shop_loader(monkeypatch, shop_no="S358780", shop_name="千羽ai批发")
+    db = session_for("sqlite://")
+    try:
+        create_intake_tables(db)
+        # The shop was indexed earlier, so it already exists before this application.
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
+            "VALUES (46, '16688', '16688', :shop, :shop, '千羽ai批发', 'owner@example.com', 'published')"
+        ), {"shop": shop_url})
+        db.commit()
+        publish_sources(db, approved_intake_sources(db))
+        # A later applicant submits one goods page of that same, already-indexed shop.
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
+            "VALUES (47, '16688', '16688', :goods, :goods, 'www.16688.com.cn', '2172382955@qq.com', 'approved')"
+        ), {"goods": goods_url})
+        db.commit()
+
+        publish_sources(db, approved_intake_sources(db))
+
+        outbox = db.execute(text(
+            "SELECT event_type, recipient, subject, text_body FROM notification_outbox "
+            "WHERE recipient = '2172382955@qq.com'"
+        )).mappings().all()
+        assert len(outbox) == 1
+        assert outbox[0]["event_type"] == "shop_intake.goods_added"
+        assert outbox[0]["subject"] == "店铺已收录，新增商品无需重新申请"
+        body = outbox[0]["text_body"]
+        assert "所属店铺：千羽ai批发" in body
+        assert f"店铺地址：{shop_url}" in body
+        assert f"本次提交地址：{goods_url}" in body
+        assert "新增商品无需再次提交收录申请" in body
+        assert "系统会自动扫描并同步" in body
+        assert "店铺收录页面：https://ai.pricememo.cn/shops/16688-S358780" in body
+        # The broken link that treated the goods URL as a shop token must not return.
+        assert "/shops/https" not in body
+        assert "店铺已正式收录" not in body
     finally:
         db.close()
 

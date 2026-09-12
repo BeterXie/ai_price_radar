@@ -2,6 +2,19 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.66] - 2026-09-13
+
+### Fixed
+
+- **收录完成邮件地址与文案**:
+  - 修复 16688 单品链接（`/goods/G...`）收录完成后，「本站收录页面」错误套用申请表的 `source_key`，生成 `https://ai.pricememo.cn/shops/https://www.16688.com.cn/goods/G22076118` 这类无效地址的问题；现在只在校验到真实店铺 token 时才输出收录页链接，否则省略该行。
+  - 店铺名称为 URL（如 `www.16688.com.cn`）时自动替换为店铺真实名称。
+
+### Changed & Improved
+
+- **「店铺已收录，新增商品无需重新申请」通知**: 当提交地址是已收录店铺的商品页面时，改为发送收录规则说明邮件（新事件 `shop_intake.goods_added`），提示系统会自动扫描同步新增商品、无需重复提交申请；首次收录的新店铺仍发送「店铺已正式收录」。
+- `pipeline/backfill_published_intake_emails.py` 支持 `--intake-id` 与 `--replace`，用于针对单条申请补发正确邮件。
+
 ## [3.7.63] - 2026-09-10
 
 ### Changed & Improved

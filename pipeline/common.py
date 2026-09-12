@@ -926,6 +926,7 @@ def upsert_offer(
     snapshot_id: int | None = None,
     *,
     collected_offer_ids: set[int] | None = None,
+    collected_new_shop_tokens: set[str] | None = None,
 ) -> tuple[bool, bool]:
     token = str(record.get("token") or "").strip()
     if not token:
@@ -941,6 +942,8 @@ def upsert_offer(
     if shop is None:
         shop = Shop(token=token, name=str(record.get("shop_name") or token), source_url=str(record.get("shop_url") or ""), platform=str(record.get("source_platform") or "ldxp"))
         db.add(shop); db.flush()
+        if collected_new_shop_tokens is not None:
+            collected_new_shop_tokens.add(token)
     shop.name = str(record.get("shop_name") or shop.name or token)
     shop.source_url = str(record.get("shop_url") or shop.source_url)
     shop.platform = str(record.get("source_platform") or shop.platform or "unknown")

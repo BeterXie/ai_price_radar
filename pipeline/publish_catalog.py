@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sqlite3
 import urllib.parse
 from dataclasses import dataclass, field
@@ -60,6 +61,8 @@ class ImportResult:
     changed: int = 0
     pruned: int = 0
     offer_ids: set[int] = field(default_factory=set)
+    shop_tokens: set[str] = field(default_factory=set)
+    new_shop_tokens: set[str] = field(default_factory=set)
 
     def to_dict(self) -> dict[str, int | str]:
         return {
@@ -275,6 +278,8 @@ def import_source_into_snapshot(
     products = products or ensure_products(db)
     result = ImportResult(connector=connector, source=str(source))
     offer_ids: set[int] = set()
+    shop_tokens: set[str] = set()
+    new_shop_tokens: set[str] = set()
     current_record: dict[str, Any] | None = None
     try:
         for record in loader(source):
@@ -287,7 +292,10 @@ def import_source_into_snapshot(
                 products,
                 snapshot_id,
                 collected_offer_ids=offer_ids,
+                collected_new_shop_tokens=new_shop_tokens,
             )
+            if token := str(record.get("token") or "").strip():
+                shop_tokens.add(token)
             result.created += int(was_created)
             result.changed += int(was_changed)
             if result.total % 100 == 0:
@@ -314,6 +322,8 @@ def import_source_into_snapshot(
             offer_ids=offer_ids,
         )
     result.offer_ids = offer_ids
+    result.shop_tokens = shop_tokens
+    result.new_shop_tokens = new_shop_tokens
     return result
 
 
@@ -369,6 +379,120 @@ def _prune_stale_offers(
     return len(stale_ids)
 
 
+def _looks_like_url(value: str) -> bool:
+    """Detect applicant input that is really a host or URL, not a shop name."""
+    text = str(value or "").strip()
+    if not text or any(character.isspace() for character in text):
+        return False
+    if "://" in text:
+        return True
+    host = text.split("/", 1)[0]
+    return re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?", host) is not None
+
+
+def _shop_row(db: Session, clause: str, params: Mapping[str, Any], *, unique: bool = False) -> dict[str, Any] | None:
+    rows = db.execute(text(
+        f"SELECT token, name, source_url FROM shops WHERE {clause} ORDER BY id LIMIT 2"
+    ), dict(params)).mappings().all()
+    if not rows or (unique and len(rows) > 1):
+        return None
+    return dict(rows[0])
+
+
+def resolve_intake_shop(
+    db: Session,
+    *,
+    source_url: str,
+    source_key: str,
+    source_type: str = "",
+    preferred_token: str | None = None,
+) -> dict[str, Any] | None:
+    """Find the shop a source intake actually produced.
+
+    An intake keeps the address the applicant submitted, which may be a goods page
+    or a feed URL rather than the shop's own page. Every lookup must therefore prove
+    the identity instead of assuming ``source_key`` is a shop token; callers use the
+    returned token for public links and otherwise omit them.
+    """
+    # Reflect through the session's own connection: asking a separately checked-out
+    # pooled connection for schema metadata can roll back the open transaction.
+    inspector = inspect(db.connection())
+    if not inspector.has_table("shops"):
+        return None
+    if preferred_token:
+        if row := _shop_row(db, "token = :token", {"token": preferred_token}):
+            return row
+    for value in (source_url, source_key):
+        if value:
+            if row := _shop_row(db, "source_url = :value", {"value": value}):
+                return row
+    if source_key:
+        if row := _shop_row(db, "lower(token) = lower(:token)", {"token": source_key}):
+            return row
+    goods_key = _goods_product_key(source_url or source_key, source_type)
+    if goods_key and inspector.has_table("raw_products"):
+        rows = db.execute(text(
+            "SELECT s.token, s.name, s.source_url FROM raw_products rp "
+            "JOIN shops s ON s.id = rp.shop_id "
+            "WHERE rp.source_product_key = :key ORDER BY rp.id LIMIT 2"
+        ), {"key": goods_key}).mappings().all()
+        if len(rows) == 1:
+            return dict(rows[0])
+    # Last resort for single-origin sources (merchant feeds, WooCommerce, Schema.org):
+    # the shop page is the origin of the submitted address, never a bare host shared
+    # by unrelated shops.
+    origin = _source_origin(source_url or source_key)
+    if origin:
+        return _shop_row(db, "source_url = :origin", {"origin": origin}, unique=True)
+    return None
+
+
+def _source_origin(value: str) -> str:
+    parsed = urllib.parse.urlsplit(str(value or "").strip())
+    if not parsed.scheme or not parsed.hostname:
+        return ""
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
+
+def _normalize_url(value: str) -> str:
+    text = str(value or "").strip().rstrip("/")
+    return text.casefold()
+
+
+def _shop_has_product_url(db: Session, shop_token: str, url: str) -> bool:
+    """True when ``url`` is a product page already imported for the given shop."""
+    if not url or not inspect(db.connection()).has_table("raw_products"):
+        return False
+    return db.execute(text(
+        "SELECT 1 FROM raw_products rp JOIN shops s ON s.id = rp.shop_id "
+        "WHERE s.token = :token AND lower(rp.source_url) = lower(:url) LIMIT 1"
+    ), {"token": shop_token, "url": url}).scalar_one_or_none() is not None
+
+
+def _goods_product_key(value: str, source_type: str) -> str:
+    """Map a single goods page (``/goods/{code}``) back to the imported product key."""
+    platform = str(source_type or "").strip().casefold().replace("-", "_")
+    if not platform:
+        return ""
+    parsed = urllib.parse.urlsplit(str(value or "").strip())
+    match = re.fullmatch(r"/goods/([A-Za-z0-9._~-]+)/?", parsed.path)
+    if match is None:
+        return ""
+    return f"{platform}:{urllib.parse.unquote(match.group(1)).strip()}"
+
+
+def _insert_outbox_row(db: Session, values: Mapping[str, Any], *, dedupe_key: str) -> None:
+    columns = (
+        "(event_type, recipient, subject, text_body, status, attempt_count, "
+        "next_attempt_at, last_error, dedupe_key, created_at)"
+    )
+    placeholders = "(:event_type, :recipient, :subject, :text_body, 'pending', 0, :now, '', :dedupe_key, :now)"
+    conflict = " ON CONFLICT (dedupe_key) DO NOTHING" if db.get_bind().dialect.name == "postgresql" else ""
+    db.execute(text(
+        f"INSERT INTO notification_outbox {columns} VALUES {placeholders}{conflict}"
+    ), dict(values, dedupe_key=dedupe_key))
+
+
 def enqueue_published_intake_notifications(
     db: Session,
     *,
@@ -376,6 +500,8 @@ def enqueue_published_intake_notifications(
     intake_status: str,
     product_count: int,
     published_at: datetime,
+    preferred_shop_token: str | None = None,
+    new_shop_tokens: set[str] | None = None,
 ) -> None:
     conn = db.connection()
     inspector = inspect(conn)
@@ -387,7 +513,7 @@ def enqueue_published_intake_notifications(
         return
 
     row = db.execute(text(
-        "SELECT id, shop_name, source_url, source_key, contact_email "
+        "SELECT id, shop_name, source_url, source_key, source_type, contact_email "
         "FROM source_intakes WHERE id = :intake_id"
     ), {"intake_id": intake_id}).mappings().one_or_none()
 
@@ -400,38 +526,76 @@ def enqueue_published_intake_notifications(
     shop_name = str(row.get("shop_name") or "").strip()
     source_url = str(row.get("source_url") or "").strip()
     source_key = str(row.get("source_key") or "").strip()
+    source_type = str(row.get("source_type") or "").strip()
+    shop = resolve_intake_shop(
+        db,
+        source_url=source_url,
+        source_key=source_key,
+        source_type=source_type,
+        preferred_token=preferred_shop_token,
+    )
+    shop_token = str(shop.get("token") or "").strip() if shop else ""
+    display_name = shop_name
+    if shop and (not display_name or _looks_like_url(display_name)):
+        display_name = str(shop.get("name") or "").strip()
+    display_url = str(shop.get("source_url") or "").strip() if shop else ""
+    display_url = display_url or source_url
+    # An applicant may submit one product page of a shop the catalog already carries.
+    # Only an existing product of that shop proves the intent, so a merchant feed or a
+    # refreshed shop page still receives the onboarding mail instead of a rule notice.
+    shop_is_new = bool(shop_token) and shop_token in (new_shop_tokens or set())
+    submitted_url = source_url or source_key
+    is_product_request = (
+        not shop_is_new
+        and bool(shop_token)
+        and _normalize_url(submitted_url) != _normalize_url(display_url)
+        and _shop_has_product_url(db, shop_token, submitted_url)
+    )
+    site_base = os.getenv("PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
+    shop_page = (
+        f"{site_base}/shops/{urllib.parse.quote(shop_token, safe='')}" if shop_token else ""
+    )
 
     if intake_status == "published":
-        event_type = "shop_intake.onboarded"
-        dedupe_key = f"source-intake:{intake_id}:shop_intake.onboarded"
-
+        if is_product_request:
+            event_type = "shop_intake.goods_added"
+        else:
+            event_type = "shop_intake.onboarded"
+        dedupe_key = f"source-intake:{intake_id}:{event_type}"
         already = db.execute(text(
             "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"
         ), {"key": dedupe_key}).scalar_one_or_none()
         if already:
             return
 
-        shop_token = None
-        if inspector.has_table("shops"):
-            if source_url:
-                shop_token = db.execute(text(
-                    "SELECT token FROM shops WHERE source_url = :url ORDER BY id LIMIT 1"
-                ), {"url": source_url}).scalar_one_or_none()
-            if not shop_token and source_key:
-                shop_token = db.execute(text(
-                    "SELECT token FROM shops WHERE source_url = :url OR token = :tok ORDER BY id LIMIT 1"
-                ), {"url": source_key, "tok": source_key}).scalar_one_or_none()
-        shop_token = shop_token or source_key or str(intake_id)
-
-        site_base = os.getenv("PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
-        subject = "店铺已正式收录"
-        body = (
-            f"你的店铺收录申请（#{intake_id}）已完成验证并发布。\n"
-            f"店铺名称：{shop_name or '未填写'}\n"
-            f"店铺地址：{source_url}\n"
-            f"已发布商品数：{product_count}。\n"
-            f"本站收录页面：{site_base}/shops/{shop_token}"
-        )
+        if is_product_request:
+            subject = "店铺已收录，新增商品无需重新申请"
+            lines = [
+                f"你提交的收录申请（#{intake_id}）已完成处理。",
+                f"所属店铺：{display_name or '未填写'}",
+                f"店铺地址：{display_url}",
+                f"本次提交地址：{submitted_url}",
+                "",
+                "该地址所属店铺已在收录列表中，无需重复申请收录：",
+                "1. 店铺收录后，系统会自动扫描并同步该店铺后续新增的商品；",
+                "2. 已在收录列表中的店铺，新增商品无需再次提交收录申请；",
+                "3. 商品价格与库存会随自动扫描持续更新，无需人工干预。",
+            ]
+            if shop_page:
+                lines.append(f"店铺收录页面：{shop_page}")
+        else:
+            subject = "店铺已正式收录"
+            lines = [
+                f"你的店铺收录申请（#{intake_id}）已完成验证并发布。",
+                f"店铺名称：{display_name or '未填写'}",
+                f"店铺地址：{display_url}",
+                f"已发布商品数：{product_count}。",
+            ]
+            if shop_page:
+                lines.append(f"本站收录页面：{shop_page}")
+            if not shop_is_new:
+                lines.append("系统会持续自动扫描并更新该店铺商品，无需重复提交收录申请。")
+        body = "\n".join(lines)
     elif intake_status == "no_products":
         event_type = "shop_intake.no_products"
         dedupe_key = f"source-intake:{intake_id}:shop_intake.no_products"
@@ -445,40 +609,20 @@ def enqueue_published_intake_notifications(
         subject = "店铺验证完成，但暂未发现目标商品"
         body = (
             f"你的店铺收录申请（#{intake_id}）已完成读取，但暂未发现目录范围内商品。\n"
-            f"店铺名称：{shop_name or '未填写'}\n"
-            f"店铺地址：{source_url}\n"
+            f"店铺名称：{display_name or '未填写'}\n"
+            f"店铺地址：{display_url}\n"
             "管理员可以重新验证，或补充公开商品后再次提交。"
         )
     else:
         return
 
-    if conn.dialect.name == "postgresql":
-        db.execute(text(
-            "INSERT INTO notification_outbox "
-            "(event_type, recipient, subject, text_body, status, attempt_count, next_attempt_at, last_error, dedupe_key, created_at) "
-            "VALUES (:event_type, :recipient, :subject, :text_body, 'pending', 0, :now, '', :dedupe_key, :now) "
-            "ON CONFLICT (dedupe_key) DO NOTHING"
-        ), {
-            "event_type": event_type,
-            "recipient": contact_email,
-            "subject": subject,
-            "text_body": body,
-            "dedupe_key": dedupe_key,
-            "now": published_at,
-        })
-    else:
-        db.execute(text(
-            "INSERT INTO notification_outbox "
-            "(event_type, recipient, subject, text_body, status, attempt_count, next_attempt_at, last_error, dedupe_key, created_at) "
-            "VALUES (:event_type, :recipient, :subject, :text_body, 'pending', 0, :now, '', :dedupe_key, :now)"
-        ), {
-            "event_type": event_type,
-            "recipient": contact_email,
-            "subject": subject,
-            "text_body": body,
-            "dedupe_key": dedupe_key,
-            "now": published_at,
-        })
+    _insert_outbox_row(db, {
+        "event_type": event_type,
+        "recipient": contact_email,
+        "subject": subject,
+        "text_body": body,
+        "now": published_at,
+    }, dedupe_key=dedupe_key)
 
 
 def publish_sources(
@@ -534,6 +678,12 @@ def publish_sources(
                         intake_status=intake_status,
                         product_count=imported.public_offer_count,
                         published_at=published_at,
+                        preferred_shop_token=(
+                            next(iter(imported.shop_tokens))
+                            if len(imported.shop_tokens) == 1
+                            else None
+                        ),
+                        new_shop_tokens=imported.new_shop_tokens,
                     )
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0
