@@ -19,6 +19,7 @@ LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
+PLATFORM_16688_GOODS_PATH = re.compile(r"/goods/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 PLATFORM_16688_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 
 
@@ -162,6 +163,27 @@ def _probe_16688(
     return ProbeResult("16688", source_url, source_url, shop_name, len(items))
 
 
+def _probe_16688_goods(
+    parsed: urllib.parse.SplitResult,
+    goods_no: str,
+    client: PinnedHTTPSClient,
+) -> ProbeResult:
+    if not PLATFORM_16688_CODE.fullmatch(goods_no):
+        raise ValueError("16688 goods code is invalid")
+    host = (parsed.hostname or "").casefold()
+    origin = urllib.parse.urlunsplit(("https", host, "", "", ""))
+    detail = _json(client.post_json(
+        f"{origin}/shopApi/goods/detail",
+        {"goods_no": goods_no},
+    ))
+    if not isinstance(detail, dict) or detail.get("code") != 1 or not isinstance(detail.get("data"), dict):
+        raise ValueError("source is not a valid 16688 goods")
+    shop_no = str(detail["data"].get("shop_no") or "").strip()
+    if not PLATFORM_16688_CODE.fullmatch(shop_no):
+        raise ValueError("16688 goods detail returned an invalid shop number")
+    return _probe_16688(parsed, shop_no, client)
+
+
 def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> ProbeResult:
     client = client or PinnedHTTPSClient(
         max_response_bytes=MAX_RESPONSE_BYTES,
@@ -183,6 +205,11 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
     if host in PLATFORM_16688_HOSTS and match:
         shop_no = urllib.parse.unquote(match.group(1)).strip()
         return _probe_16688(parsed, shop_no, client)
+
+    match_goods = PLATFORM_16688_GOODS_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host in PLATFORM_16688_HOSTS and match_goods:
+        goods_no = urllib.parse.unquote(match_goods.group(1)).strip()
+        return _probe_16688_goods(parsed, goods_no, client)
 
     origin = urllib.parse.urlunsplit(("https", parsed.netloc, "", "", ""))
     try:

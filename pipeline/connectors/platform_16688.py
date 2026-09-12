@@ -15,9 +15,11 @@ from .base import validate_record
 name = "16688"
 HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 SHOP_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
+GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 CODE_PATTERN = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 SHOP_DETAIL_PATH = "/shopApi/shop/detail"
+GOODS_DETAIL_PATH = "/shopApi/goods/detail"
 GOODS_LIST_PATH = "/shopApi/goods/list"
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 20 * 1024 * 1024
@@ -25,23 +27,30 @@ MAX_TASK_SECONDS = 120
 REQUEST_TIMEOUT = 20
 
 
-def _validate_store_url(value: str) -> tuple[urllib.parse.SplitResult, str]:
+def _validate_store_url(value: str) -> tuple[urllib.parse.SplitResult, str | None, str | None]:
     raw = str(value or "")
     if not raw or raw != raw.strip() or CONTROL_CHARACTERS.search(raw) or "#" in raw:
-        raise ValueError("16688 source must be a public shop URL")
+        raise ValueError("16688 source must be a public shop or goods URL")
     try:
         parsed = urllib.parse.urlsplit(PinnedHTTPSClient.normalize_url(raw))
     except (TypeError, ValueError) as exc:
-        raise ValueError("16688 source must be a public HTTPS shop URL") from exc
+        raise ValueError("16688 source must be a public HTTPS shop or goods URL") from exc
     host = (parsed.hostname or "").casefold()
-    match = SHOP_PATH.fullmatch(parsed.path.rstrip("/"))
-    if host not in HOSTS or match is None or parsed.query or parsed.fragment:
-        raise ValueError("16688 source must be an official /shop/{code} URL")
-    shop_no = urllib.parse.unquote(match.group(1)).strip()
-    if CODE_PATTERN.fullmatch(shop_no) is None:
-        raise ValueError("16688 shop code is invalid")
-    normalized_path = f"/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
-    return parsed._replace(path=normalized_path), shop_no
+    match_shop = SHOP_PATH.fullmatch(parsed.path.rstrip("/"))
+    match_goods = GOODS_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host not in HOSTS or (match_shop is None and match_goods is None) or parsed.port not in (None, 443) or parsed.query or parsed.fragment:
+        raise ValueError("16688 source must be an official /shop/{code} or /goods/{code} URL")
+    if match_shop:
+        shop_no = urllib.parse.unquote(match_shop.group(1)).strip()
+        if CODE_PATTERN.fullmatch(shop_no) is None:
+            raise ValueError("16688 shop code is invalid")
+        normalized_path = f"/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
+        return parsed._replace(path=normalized_path), shop_no, None
+    goods_no = urllib.parse.unquote(match_goods.group(1)).strip()
+    if CODE_PATTERN.fullmatch(goods_no) is None:
+        raise ValueError("16688 goods code is invalid")
+    normalized_path = f"/goods/{urllib.parse.quote(goods_no, safe='._~-')}"
+    return parsed._replace(path=normalized_path), None, goods_no
 
 
 def _origin(parsed: urllib.parse.SplitResult) -> str:
@@ -138,7 +147,7 @@ def _record(
 
 
 def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
-    parsed, requested_shop_no = _validate_store_url(str(source))
+    parsed, requested_shop_no, requested_goods_no = _validate_store_url(str(source))
     origin = _origin(parsed)
     client = PinnedHTTPSClient(
         max_response_bytes=MAX_RESPONSE_BYTES,
@@ -147,6 +156,19 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         request_timeout=REQUEST_TIMEOUT,
         user_agent="AI-Price-Radar-Importer/1",
     )
+
+    if requested_shop_no is None:
+        goods_detail = _post_json(
+            client,
+            f"{origin}{GOODS_DETAIL_PATH}",
+            {"goods_no": requested_goods_no},
+        )
+        goods_data = goods_detail.get("data")
+        if not isinstance(goods_data, dict):
+            raise ValueError("16688 goods detail is missing")
+        requested_shop_no = str(goods_data.get("shop_no") or "").strip()
+        if CODE_PATTERN.fullmatch(requested_shop_no) is None:
+            raise ValueError("16688 goods detail returned an invalid shop number")
 
     detail = _post_json(
         client,

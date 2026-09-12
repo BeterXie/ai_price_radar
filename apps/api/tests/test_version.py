@@ -2,6 +2,6 @@ from app.main import VERSION, app, health
 
 
 def test_api_reports_release_version():
-    assert VERSION == "3.7.64"
+    assert VERSION == "3.7.65"
     assert app.version == VERSION
     assert health() == {"status": "ok", "version": VERSION}

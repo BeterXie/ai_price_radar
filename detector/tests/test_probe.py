@@ -60,6 +60,19 @@ def test_detector_recognizes_16688_alias_and_normalizes_shop_number():
     assert result.product_count == 2
 
 
+def test_detector_recognizes_16688_goods_url_and_normalizes_to_shop_number():
+    client = StubClient([
+        response({"code": 1, "data": {"shop_no": "S358780", "goods_no": "G22076118"}}),
+        response({"code": 1, "data": {"shop_no": "S358780", "name": "千羽ai批发"}}),
+        response({"code": 1, "data": {"list": [{"goods_no": "G22076118"}, {"goods_no": "G2"}]}}),
+    ])
+    result = probe_source("https://www.16688.com.cn/goods/G22076118", client=client)
+    assert result.detected_platform == "16688"
+    assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/S358780"
+    assert result.shop_name == "千羽ai批发"
+    assert result.product_count == 2
+
+
 def test_detector_recognizes_woocommerce_store_api_before_generic_json():
     client = StubClient([
         ProbeResponse(404, {}, b""),

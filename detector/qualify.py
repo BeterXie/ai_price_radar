@@ -36,6 +36,7 @@ WOO_MAX_PRODUCTS = 2_000
 WOO_MAX_PAGES = 100
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
+PLATFORM_16688_GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 PLATFORM_16688_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 
 
@@ -276,12 +277,31 @@ def _16688_qualify(source_url: str, client: PinnedHTTPSClient) -> QualificationR
     parsed = urllib.parse.urlsplit(source_url)
     host = (parsed.hostname or "").casefold()
     match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
-    if host not in PLATFORM_16688_HOSTS or match is None or parsed.port not in (None, 443) or parsed.query or parsed.fragment:
-        raise ValueError("16688 source URL is not a shop URL")
-    shop_no = urllib.parse.unquote(match.group(1)).strip()
-    if not PLATFORM_16688_CODE.fullmatch(shop_no):
-        raise ValueError("16688 shop code is invalid")
+    match_goods = PLATFORM_16688_GOODS_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host not in PLATFORM_16688_HOSTS or (match is None and match_goods is None) or parsed.port not in (None, 443) or parsed.query or parsed.fragment:
+        raise ValueError("16688 source URL is not a shop or goods URL")
     origin = _origin(source_url)
+    if match_goods:
+        goods_no = urllib.parse.unquote(match_goods.group(1)).strip()
+        if not PLATFORM_16688_CODE.fullmatch(goods_no):
+            raise ValueError("16688 goods code is invalid")
+        detail_response = client.post_json(
+            f"{origin}/shopApi/goods/detail",
+            {"goods_no": goods_no},
+        )
+        detail_doc = _json(detail_response)
+        if not isinstance(detail_doc, dict) or detail_doc.get("code") != 1 or not isinstance(detail_doc.get("data"), dict):
+            raise ValueError("16688 goods API returned an error")
+        shop_no = str(detail_doc["data"].get("shop_no") or "").strip()
+        if not PLATFORM_16688_CODE.fullmatch(shop_no):
+            raise ValueError("16688 goods detail returned an invalid shop number")
+        canonical_source_url = f"{origin}/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
+    else:
+        shop_no = urllib.parse.unquote(match.group(1)).strip()
+        if not PLATFORM_16688_CODE.fullmatch(shop_no):
+            raise ValueError("16688 shop code is invalid")
+        canonical_source_url = source_url
+
     response = client.post_json(
         f"{origin}/shopApi/goods/list",
         {"shop_no": shop_no, "sort": "default"},
@@ -321,8 +341,8 @@ def _16688_qualify(source_url: str, client: PinnedHTTPSClient) -> QualificationR
     return QualificationResult(
         status="detected",
         detected_platform="16688",
-        detected_source_key=source_url,
-        detected_source_url=source_url,
+        detected_source_key=canonical_source_url,
+        detected_source_url=canonical_source_url,
         total_product_count=len(items),
         ai_product_count=ai_count,
         sample_products=samples,

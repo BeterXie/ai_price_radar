@@ -53,6 +53,7 @@ def is_source_platform_disabled(value: str) -> bool:
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
+PLATFORM_16688_GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 
 
 def canonical_source_platform(value: str) -> str:
@@ -147,18 +148,23 @@ def _ldxp_detection(url: str) -> SourceDetection | None:
 def _16688_detection(url: str) -> SourceDetection | None:
     parsed = urllib.parse.urlsplit(url)
     host = (parsed.hostname or "").casefold()
-    match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
+    match_shop = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
+    match_goods = PLATFORM_16688_GOODS_PATH.fullmatch(parsed.path.rstrip("/"))
     if (
         host not in PLATFORM_16688_HOSTS
-        or match is None
+        or (match_shop is None and match_goods is None)
         or parsed.port not in (None, 443)
         or parsed.query
         or parsed.fragment
     ):
         return None
-    shop_no = urllib.parse.unquote(match.group(1)).strip()
-    source_url = f"https://{host}/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
-    return SourceDetection("16688", source_url, source_url, f"16688-{shop_no}")
+    if match_shop:
+        shop_no = urllib.parse.unquote(match_shop.group(1)).strip()
+        source_url = f"https://{host}/shop/{urllib.parse.quote(shop_no, safe='._~-')}"
+        return SourceDetection("16688", source_url, source_url, f"16688-{shop_no}")
+    goods_no = urllib.parse.unquote(match_goods.group(1)).strip()
+    source_url = f"https://{host}/goods/{urllib.parse.quote(goods_no, safe='._~-')}"
+    return SourceDetection("16688", source_url, source_url, f"16688-goods-{goods_no}")
 
 
 def prepare_source_submission(value: object) -> SourceDetection:

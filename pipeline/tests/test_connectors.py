@@ -31,7 +31,12 @@ def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
 
         def post_json(self, url: str, payload: dict[str, object]):
             calls.append((url, payload))
-            if url.endswith("/shopApi/shop/detail"):
+            if url.endswith("/shopApi/goods/detail"):
+                document = {
+                    "code": 1,
+                    "data": {"shop_no": "S343514", "goods_no": "G1"},
+                }
+            elif url.endswith("/shopApi/shop/detail"):
                 document = {
                     "code": 1,
                     "data": {"shop_no": "S343514", "name": "Same Name"},
@@ -87,6 +92,26 @@ def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
         (
             "https://www.16688.com.cn/shopApi/shop/detail",
             {"shop_no": "HARVEY"},
+        ),
+        (
+            "https://www.16688.com.cn/shopApi/goods/list",
+            {"shop_no": "S343514", "sort": "default"},
+        ),
+    ]
+
+    # Verify goods URL resolves to shop and loads records seamlessly
+    calls.clear()
+    goods_records = list(get_connector("16688")("https://www.16688.com.cn/goods/G1"))
+    assert len(goods_records) == 3
+    assert goods_records[0]["shop_url"] == "https://www.16688.com.cn/shop/S343514"
+    assert calls == [
+        (
+            "https://www.16688.com.cn/shopApi/goods/detail",
+            {"goods_no": "G1"},
+        ),
+        (
+            "https://www.16688.com.cn/shopApi/shop/detail",
+            {"shop_no": "S343514"},
         ),
         (
             "https://www.16688.com.cn/shopApi/goods/list",
