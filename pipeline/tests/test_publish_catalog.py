@@ -753,3 +753,28 @@ def test_carry_forward_prunes_stale_offers_for_touched_shops(monkeypatch: pytest
         db.close()
 
 
+def test_import_result_to_dict_json_serializable():
+    import json
+    from publish_catalog import ImportResult
+
+    res = ImportResult(
+        connector="16688",
+        source="https://www.16688.com.cn/shop/S294441",
+        total=10,
+        raw_record_count=10,
+        classified_offer_count=8,
+        public_offer_count=5,
+        created=5,
+        changed=0,
+        pruned=0,
+        offer_ids={101, 102, 103},
+    )
+    d = res.to_dict()
+    assert "offer_ids" not in d
+    assert d["public_offer_count"] == 5
+    payload = json.dumps({"imports": [d]})
+    parsed = json.loads(payload)
+    assert parsed["imports"][0]["connector"] == "16688"
+
+
+

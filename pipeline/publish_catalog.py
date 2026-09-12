@@ -6,7 +6,7 @@ import logging
 import os
 import sqlite3
 import urllib.parse
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -60,6 +60,19 @@ class ImportResult:
     changed: int = 0
     pruned: int = 0
     offer_ids: set[int] = field(default_factory=set)
+
+    def to_dict(self) -> dict[str, int | str]:
+        return {
+            "connector": self.connector,
+            "source": self.source,
+            "total": self.total,
+            "raw_record_count": self.raw_record_count,
+            "classified_offer_count": self.classified_offer_count,
+            "public_offer_count": self.public_offer_count,
+            "created": self.created,
+            "changed": self.changed,
+            "pruned": self.pruned,
+        }
 
 
 @dataclass(slots=True)
@@ -605,7 +618,7 @@ def main() -> int:
         "offer_count": result.offer_count,
         "published": True,
         "onboarding_failed": len(onboarding_errors),
-        "imports": [asdict(item) for item in result.imports],
+        "imports": [item.to_dict() for item in result.imports],
     }, ensure_ascii=False))
     for error in onboarding_errors:
         print(json.dumps({**error, "published_data_remains_validated": True}, ensure_ascii=False))
