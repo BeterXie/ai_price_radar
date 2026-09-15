@@ -83,7 +83,7 @@ export default async function WorkflowGuidePage({ params }: PageProps) {
         footer={
           <div className="space-y-6">
             <GuideCallout tone="warning" title="第三方与凭证风险">
-              Cockpit Tools、Sub2API、CC Switch 和 Codex++ 均为第三方项目，与 OpenAI 和 AI Price Radar 没有隶属关系。不要把完整 Cookie、Access Token、Refresh Token、API Key、恢复码或 auth.json 上传到本站、聊天机器人或公开仓库。
+              Cockpit Tools、Sub2API、CC Switch 和 Codex++ 均为第三方项目，与 OpenAI 和 AI Price Memory 没有隶属关系。不要把完整 Cookie、Access Token、Refresh Token、API Key、恢复码或 auth.json 上传到本站、聊天机器人或公开仓库。
             </GuideCallout>
             <Link href="/guides" className="tactile flex min-h-12 items-center justify-between text-sm font-semibold">
               返回教程中心

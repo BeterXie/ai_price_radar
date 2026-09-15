@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "面向 AI 账号发卡平台、中转 API 服务商、合租拼车平台及相关工具团队，提供精准高转化的商业推广与合作曝光渠道。",
   alternates: { canonical: "/advertise" },
   openGraph: {
-    title: "商务合作 / 广告投放 · AI Price Radar",
+    title: "商务合作 / 广告投放 · AI Price Memory / AI Price Radar",
     description: "面向 AI 订阅与账号服务商，提供分类置顶、CPS 返利、专属优惠码与品牌赞助渠道。",
     url: "/advertise",
   },
@@ -21,7 +21,7 @@ const valuePoints = [
   {
     Icon: Users,
     title: "超高转化交易流量",
-    copy: "访问 AI Price Radar 的用户均带有明确的购买与比价意向，涵盖开发者、企业白领与 AI 高频用户，转化率远超普通泛流量。",
+    copy: "访问 AI Price Memory 的用户均带有明确的购买与比价意向，涵盖开发者、企业白领与 AI 高频用户，转化率远超普通泛流量。",
   },
   {
     Icon: Lightning,
@@ -70,7 +70,7 @@ export default async function AdvertisePage() {
     notFound();
   }
 
-  const mailtoUrl = `mailto:${BUSINESS_EMAIL}?subject=${encodeURIComponent("商务合作咨询 - AI Price Radar")}`;
+  const mailtoUrl = `mailto:${BUSINESS_EMAIL}?subject=${encodeURIComponent("商务合作咨询 - AI Price Memory")}`;
 
   return (
     <InfoPage
@@ -81,7 +81,7 @@ export default async function AdvertisePage() {
       {/* 核心优势 */}
       <section>
         <SectionIntro
-          title="为什么选择在 AI Price Radar 投放？"
+          title="为什么选择在 AI Price Memory 投放？"
           description="我们的受众群体极其聚焦，每一个点击都代表一次潜在的真实订单交易。"
         />
         <div className="mt-8 grid gap-5 sm:grid-cols-3">

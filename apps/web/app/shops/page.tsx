@@ -20,7 +20,7 @@ export async function generateMetadata({
   const canonical = `${SITE_URL}/shops`;
   return {
     title: "AI 来源店铺目录",
-    description: "查看 AI Price Radar 收录的公开 AI 商品店铺，包含 16688、LDXP 等平台来源的报价数、库存和最近更新时间。",
+    description: "查看 AI Price Memory (AI Price Radar) 收录的公开 AI 商品店铺，包含 16688、LDXP 等平台来源的报价数、库存和最近更新时间。",
     alternates: { canonical },
     robots: { index: Object.keys(params).length === 0, follow: true },
     openGraph: {

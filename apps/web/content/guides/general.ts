@@ -28,7 +28,7 @@ export const generalGuideEntries = [
           "保存商品原页面、订单、期限和售后条件。",
         ],
       },
-      { type: "callout", tone: "warning", title: "交易边界", text: "AI Price Radar 不参与交易、支付、交付或售后；最终条件以商品原页面和品牌官方规则为准。" },
+      { type: "callout", tone: "warning", title: "交易边界", text: "AI Price Memory 不参与交易、支付、交付或售后；最终条件以商品原页面和品牌官方规则为准。" },
     ],
     officialSources: [OFFICIAL_SOURCES.openaiHelp, OFFICIAL_SOURCES.anthropicHelp],
     lastReviewedAt: LAST_REVIEWED_AT,

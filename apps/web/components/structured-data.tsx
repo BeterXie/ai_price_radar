@@ -21,8 +21,8 @@ export function SiteStructuredData() {
           {
             "@type": "Organization",
             "@id": organizationId,
-            name: "AI Price Radar",
-            alternateName: "PriceMemo",
+            name: "AI Price Memory",
+            alternateName: ["AI Price Radar", "PriceMemo"],
             url: "https://ai.pricememo.cn",
             logo: {
               "@type": "ImageObject",
@@ -36,8 +36,8 @@ export function SiteStructuredData() {
             "@type": "WebSite",
             "@id": websiteId,
             url: "https://ai.pricememo.cn",
-            name: "AI Price Radar",
-            alternateName: "PriceMemo",
+            name: "AI Price Memory",
+            alternateName: ["AI Price Radar", "PriceMemo"],
             inLanguage: "zh-CN",
             publisher: { "@id": organizationId },
             potentialAction: {

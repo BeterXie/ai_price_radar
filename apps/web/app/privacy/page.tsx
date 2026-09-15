@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { FactLedger, InfoPage } from "@/components/page-shell";
 
-export const metadata: Metadata = { title: "隐私政策", description: "AI Price Radar 的数据与隐私处理说明。", alternates: { canonical: "/privacy" } };
+export const metadata: Metadata = { title: "隐私政策", description: "AI Price Memory (AI Price Radar) 的数据与隐私处理说明。", alternates: { canonical: "/privacy" } };
 const items = [
   ["公开目录数据", "目录处理来自公开页面的商品名称、价格、库存、说明、来源和观测时间。不会主动采集登录凭据、付款信息、订单或客户名单。"],
   ["纠错与收录申请", "纠错表单不收集联系方式；来源收录申请需要联系邮箱，仅用于核对申请和发送状态通知，不会公开展示。公开纠错记录只包含管理员填写的摘要和商家公开回应。"],

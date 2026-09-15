@@ -8,13 +8,13 @@ import type {
 import { LAST_REVIEWED_AT, OFFICIAL_SOURCES, PROJECT_SOURCES } from "./sources";
 
 const THIRD_PARTY_NOTICE =
-  "Cockpit Tools、Sub2API、CC Switch 和 Codex++ 均为第三方项目，与 OpenAI 和 AI Price Radar 没有隶属关系。";
+  "Cockpit Tools、Sub2API、CC Switch 和 Codex++ 均为第三方项目，与 OpenAI 和 AI Price Memory 没有隶属关系。";
 
 const CREDENTIAL_WARNING =
-  "不要把完整 Cookie、Access Token、Refresh Token、API Key、恢复码或 auth.json 上传到 AI Price Radar、聊天机器人、公开仓库或陌生网站；不要上传或公开任何完整凭证。";
+  "不要把完整 Cookie、Access Token、Refresh Token、API Key、恢复码或 auth.json 上传到 AI Price Memory、聊天机器人、公开仓库或陌生网站；不要上传或公开任何完整凭证。";
 
 const LOCAL_CONVERTER_NOTE =
-  "AI Price Radar 的 JSON 转换器只在浏览器本地处理文件；但下载并导入第三方工具后，凭证会由对应工具读取和保存。";
+  "AI Price Memory 的 JSON 转换器只在浏览器本地处理文件；但下载并导入第三方工具后，凭证会由对应工具读取和保存。";
 
 const TEAM_SEAT_WARNING =
   "工作区席位可被管理员限制或移除。不要在第三方管理的工作区、共享账号或未经授权的账号池中处理公司机密和个人敏感信息。";

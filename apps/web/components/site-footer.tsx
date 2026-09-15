@@ -63,7 +63,7 @@ export function SiteFooter({ advertiseEnabled = false }: { advertiseEnabled?: bo
       </div>
       <div className="border-t border-[color:var(--line)]">
         <div className="shell flex flex-col gap-2 py-5 text-[11px] text-[color:var(--muted)] sm:flex-row sm:items-center sm:justify-between">
-          <p>AI Price Radar 开源项目</p>
+          <p>AI Price Memory 开源项目</p>
           <p>页面展示最近一次采集结果，购买前请在来源页面重新确认</p>
         </div>
       </div>

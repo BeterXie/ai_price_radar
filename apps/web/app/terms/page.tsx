@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { FactLedger, InfoPage } from "@/components/page-shell";
 
-export const metadata: Metadata = { title: "使用条款", description: "AI Price Radar 使用条款与免责声明。", alternates: { canonical: "/terms" } };
+export const metadata: Metadata = { title: "使用条款", description: "AI Price Memory (AI Price Radar) 使用条款与免责声明。", alternates: { canonical: "/terms" } };
 const items = [
   ["信息服务", "本站提供公开信息聚合、分类、统计和来源链接，不参与交易，也不承担卖方、代理商或支付服务商职责。"],
   ["不构成背书", "展示、收录、纳入价格统计的标记或来源更新状态，不代表对商品真实性、商家信誉、账号合规性、交付结果或售后能力的保证。"],

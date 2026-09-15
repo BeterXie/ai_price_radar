@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     title: "AI 订阅比价｜查价格、库存和交付方式",
     description: "汇总主流 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
     url: "https://ai.pricememo.cn",
-    siteName: "AI Price Radar",
+    siteName: "AI Price Memory / AI Price Radar",
     locale: "zh_CN",
     type: "website",
   },

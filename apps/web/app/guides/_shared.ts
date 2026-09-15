@@ -21,7 +21,7 @@ export function guideMetadata(title: string, description: string, path: string):
       title,
       description,
       url: canonical,
-      siteName: "AI Price Radar",
+      siteName: "AI Price Memory / AI Price Radar",
       locale: "zh_CN",
       type: "article",
     },
@@ -50,7 +50,7 @@ export function articleJsonLd(input: { title: string; description: string; path:
     dateModified: input.dateModified,
     inLanguage: "zh-CN",
     mainEntityOfPage: `${SITE_URL}${input.path}`,
-    publisher: { "@type": "Organization", name: "AI Price Radar", url: SITE_URL },
+    publisher: { "@type": "Organization", name: "AI Price Memory", alternateName: "AI Price Radar", url: SITE_URL },
   };
 }
 

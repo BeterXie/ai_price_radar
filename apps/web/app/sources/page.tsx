@@ -11,7 +11,7 @@ const DISABLED_SOURCES = new Set(["dujiao_next"]);
 
 export const metadata: Metadata = {
   title: "来源平台",
-  description: "AI Price Radar 收录的公开 AI 商品来源平台，包含 16688、LDXP 等平台的店铺与报价数据。",
+  description: "AI Price Memory (AI Price Radar) 收录的公开 AI 商品来源平台，包含 16688、LDXP 等平台的店铺与报价数据。",
   alternates: { canonical: `${SITE_URL}/sources` },
   robots: { index: true, follow: true },
 };
@@ -31,7 +31,7 @@ export default async function SourcesPage() {
       "@id": canonical,
       url: canonical,
       name: "来源平台",
-      description: "AI Price Radar 收录的公开 AI 商品来源平台。",
+      description: "AI Price Memory (AI Price Radar) 收录的公开 AI 商品来源平台。",
       isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
       mainEntity: {
         "@type": "ItemList",
@@ -52,7 +52,7 @@ export default async function SourcesPage() {
       <PageHero
         eyebrow="数据来源"
         title="来源平台"
-        description="AI Price Radar 从以下公开平台采集 AI 商品报价信息。"
+        description="AI Price Memory 从以下公开平台采集 AI 商品报价信息。"
       />
 
       <section aria-labelledby="source-platforms-title" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

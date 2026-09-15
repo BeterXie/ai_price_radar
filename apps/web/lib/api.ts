@@ -21,12 +21,23 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string): Promise<T> {
-  const response = await fetch(`${internalBase}${path}`, { cache: "no-store" });
-  if (!response.ok) {
-    throw new ApiError(response.status, path);
+async function apiFetch<T>(path: string, retries = 2): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetch(`${internalBase}${path}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new ApiError(response.status, path);
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      if (error instanceof ApiError || attempt >= retries) {
+        throw error;
+      }
+      attempt += 1;
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+    }
   }
-  return response.json() as Promise<T>;
 }
 
 export async function getProducts(query = ""): Promise<CatalogResponse> {

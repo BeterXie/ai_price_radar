@@ -66,7 +66,7 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           <Link href="/shops/submit" aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="header-action header-action-submit">
             <Storefront size={18} />申请收录
           </Link>
-          <a href="https://github.com/BeterXie/ai_price_radar" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看 AI Price Radar 开源项目" title="GitHub 开源项目" className="github-action grid h-10 w-10 shrink-0 place-items-center rounded-[11px] text-white">
+          <a href="https://github.com/BeterXie/ai_price_radar" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看 AI Price Memory 开源项目" title="GitHub 开源项目" className="github-action grid h-10 w-10 shrink-0 place-items-center rounded-[11px] text-white">
             <GithubLogo size={20} weight="fill" />
           </a>
 

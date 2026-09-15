@@ -33,7 +33,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
       title: "AI 商品购买与使用教程中心",
       description: "购买前看懂交付方式，购买后确认服务和账号状态。",
       url: "https://ai.pricememo.cn/guides",
-      siteName: "AI Price Radar",
+      siteName: "AI Price Memory / AI Price Radar",
       locale: "zh_CN",
       type: "website",
     },

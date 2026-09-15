@@ -2,7 +2,16 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
-## [3.7.66] - 2026-09-13
+## [3.7.67] - 2026-09-15
+
+### Changed & Improved
+
+- **全站品牌与可见文案统一为 AI Price Memory**:
+  - 网页界面直接可见的内容（页脚、关于页、合作推广页、数据来源页、指南免责声明、社区弹窗等）统一替换为 `AI Price Memory`。
+  - 涉及 SEO 的元数据（`title`、`description`、`openGraph.siteName`、Schema.org 结构化数据）在保留原有 `AI Price Radar` 权重的同时全面追加融入 `AI Price Memory`。
+- **SSR API 请求瞬态抖动重试**:
+  - `apps/web/lib/api.ts` 中的 `apiFetch` 增加指数退避重试（针对 Docker 内部 DNS 解析 `api` 出现的 `EAI_AGAIN` 等网络异常自动重试），大幅提升服务端渲染稳定性。
+
 
 ### Fixed
 

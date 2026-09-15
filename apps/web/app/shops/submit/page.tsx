@@ -7,10 +7,10 @@ import { getMeta } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "提交商品来源",
-  description: "提交公开店铺、商品页面或商家 Feed，申请加入 AI Price Radar 报价目录。",
+  description: "提交公开店铺、商品页面或商家 Feed，申请加入 AI Price Memory (AI Price Radar) 报价目录。",
   alternates: { canonical: "/shops/submit" },
   openGraph: {
-    title: "提交商品来源 · AI Price Radar",
+    title: "提交商品来源 · AI Price Memory / AI Price Radar",
     description: "提交公开店铺或商家 JSON Feed，经过审核和读取验证后加入报价目录。",
     url: "/shops/submit",
   },

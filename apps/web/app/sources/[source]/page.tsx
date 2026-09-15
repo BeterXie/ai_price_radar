@@ -20,13 +20,13 @@ const SOURCE_META: Record<string, { title: string; description: string; h1: stri
       "查看来自 16688 公开店铺的 ChatGPT、Codex、Claude、Gemini、Grok 商品报价、库存、店铺和最近更新时间。",
     h1: "16688 AI 商品与店铺报价",
     intro:
-      "AI Price Radar 汇总来自 16688 公开店铺的 ChatGPT、Codex、Claude、Gemini、Grok 等公开报价，展示价格、库存、交付方式与更新时间。",
+      "AI Price Memory 汇总来自 16688 公开店铺的 ChatGPT、Codex、Claude、Gemini、Grok 等公开报价，展示价格、库存、交付方式与更新时间。",
   },
   ldxp: {
     title: "LDXP AI 商品报价",
     description: "查看来自 LDXP 公开来源的 AI 订阅商品报价、库存和更新时间。",
     h1: "LDXP AI 商品报价",
-    intro: "AI Price Radar 汇总来自 LDXP 来源的 AI 订阅公开报价，展示价格、库存与更新时间。",
+    intro: "AI Price Memory 汇总来自 LDXP 来源的 AI 订阅公开报价，展示价格、库存与更新时间。",
   },
 };
 
@@ -34,7 +34,7 @@ const DEFAULT_META = (source: string) => ({
   title: `${source} AI 商品报价`,
   description: `查看来自 ${source} 来源的 AI 商品公开报价、库存和更新时间。`,
   h1: `${source} AI 商品报价`,
-  intro: `AI Price Radar 汇总来自 ${source} 来源的 AI 订阅公开报价。`,
+  intro: `AI Price Memory 汇总来自 ${source} 来源的 AI 订阅公开报价。`,
 });
 
 export async function generateMetadata({

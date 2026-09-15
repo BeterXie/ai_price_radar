@@ -193,7 +193,7 @@ export function CommunityPrompts() {
               </div>
               <p className="mt-2 text-sm leading-6 text-black/60">
                 {prompt === "github"
-                  ? "AI Price Radar 已在 GitHub 开源。欢迎查看代码、提交建议，顺手点个 Star。"
+                  ? "AI Price Memory 已在 GitHub 开源。欢迎查看代码、提交建议，顺手点个 Star。"
                   : "开发、服务器和数据维护需要持续投入。你可以自愿请作者喝杯咖啡。"}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -248,7 +248,7 @@ export function CommunityPrompts() {
             <header className="flex items-start justify-between gap-4 border-b hairline p-5 sm:p-6">
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium text-black/55">
-                  <Heart size={18} weight="fill" />支持 AI Price Radar
+                  <Heart size={18} weight="fill" />支持 AI Price Memory
                 </div>
                 <h2 id="support-dialog-title" className="mt-2 text-2xl font-semibold tracking-[-.04em]">请作者喝杯咖啡</h2>
                 <p id="support-dialog-description" className="mt-2 max-w-lg text-sm leading-6 text-black/60">
