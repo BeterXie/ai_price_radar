@@ -631,6 +631,11 @@ def test_group_lowest_price_matches_lowest_in_stock_and_group_offers_sorted_by_p
             ("shop-wanqu", "玩去了", Decimal("23.50"), "out_of_stock", 0),
         ]
 
+        # An older snapshot that has 0 offers (e.g. superseded snapshot)
+        empty_old_snapshot = CatalogSnapshot(source="old-empty", published_at=now - timedelta(hours=2))
+        db.add(empty_old_snapshot)
+        db.commit()
+
         for token, name, price, stock_status, stock_count in offers_data:
             shop = Shop(token=token, name=name, source_url=f"https://example.com/{token}")
             db.add(shop)
@@ -674,4 +679,13 @@ def test_group_lowest_price_matches_lowest_in_stock_and_group_offers_sorted_by_p
         assert len(group_offers) == 5
         prices = [o.price for o in group_offers]
         assert prices == [Decimal("20.00"), Decimal("22.00"), Decimal("23.00"), Decimal("23.50"), Decimal("30.00")]
+
+        # Querying with old empty snapshot should fall back to current snapshot rather than returning 0 offers
+        fallback_detail = get_product_detail(db, product.slug, snapshot_id=empty_old_snapshot.id)
+        assert fallback_detail is not None
+        assert len(fallback_detail.offer_groups) == 1
+
+        fallback_group_offers = get_group_offers(db, product.slug, group_fp, snapshot_id=empty_old_snapshot.id)
+        assert fallback_group_offers is not None
+        assert len(fallback_group_offers) == 5
 

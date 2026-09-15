@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.70] - 2026-09-16
+
+### Fixed
+- **商品详情展开“全部店铺报价”空白问题修复**:
+  - 修复后台爬虫更新快照后，客户端携带旧 snapshot ID 查询同款商品分组店铺报价返回空列表 `items: []` 的缺陷。在 `_snapshot_for_query` 中增加有效报价检测，对已被接力覆盖的旧快照自动降级至当前最新快照。
+  - 在 `get_group_offers` 增加容灾兜底策略，若前台带严格过滤条件或快照不一致导致查询结果为空时，自动回退查询当前快照下的该款式同款店铺，确保同款店铺列表稳定渲染。
+  - 前端 `OfferRow` 展开店铺报价时不再携带过期 snapshot 参数，并在接口返回空或异常时自动降级展示代表店铺报价；优化 `ShopOfferList` 边界态，彻底消除空边框容器。
+
 ## [3.7.69] - 2026-09-16
 
 ### Added

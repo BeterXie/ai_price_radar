@@ -114,7 +114,10 @@ def get_current_snapshot(db: Session) -> CatalogSnapshot | None:
 
 
 def _snapshot_for_query(db: Session, snapshot_id: int | None = None) -> CatalogSnapshot | None:
+    current = get_current_snapshot(db)
     if snapshot_id is not None:
+        if current is not None and snapshot_id == current.id:
+            return current
         snapshot = db.scalar(
             select(CatalogSnapshot).where(
                 CatalogSnapshot.id == snapshot_id,
@@ -122,8 +125,12 @@ def _snapshot_for_query(db: Session, snapshot_id: int | None = None) -> CatalogS
             )
         )
         if snapshot is not None:
-            return snapshot
-    return get_current_snapshot(db)
+            has_offers = db.scalar(
+                select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)
+            )
+            if has_offers and has_offers > 0:
+                return snapshot
+    return current
 
 
 def get_snapshot(db: Session, snapshot_id: int | None = None) -> CatalogSnapshot | None:
@@ -876,6 +883,18 @@ def get_group_offers(
     if currency:
         stmt = stmt.where(Offer.currency == currency.upper())
     offers = list(db.scalars(stmt.order_by(*_group_offer_ordering())).unique())
+    if not offers:
+        current_snapshot = get_current_snapshot(db)
+        fallback_stmt = (
+            _base_public_offer_query(db, snapshot=current_snapshot)
+            .where(
+                Offer.product_id == product_id,
+                fingerprint_condition,
+            )
+        )
+        if currency:
+            fallback_stmt = fallback_stmt.where(Offer.currency == currency.upper())
+        offers = list(db.scalars(fallback_stmt.order_by(*_group_offer_ordering())).unique())
     medians = _median_prices(offers, comparable_only=True)
     return [_offer_public(offer, median_price=medians.get(_median_key(offer))) for offer in offers]
 

@@ -44,6 +44,14 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
     return inStockA - inStockB;
   });
 
+  if (sortedOffers.length === 0) {
+    return (
+      <div className="mt-3 text-sm text-black/45">
+        暂无更多店铺报价。
+      </div>
+    );
+  }
+
   return (
     <div className="mt-5 overflow-hidden rounded-[10px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
       {sortedOffers.map((offer) => (
@@ -93,15 +101,25 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         setDescription("");
       }
       if (group && productSlug && group.offer_count > 1) {
-        const query = new URLSearchParams(filterQuery);
-        if (snapshotId) query.set("snapshot", String(snapshotId));
-        requests.push(fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}?${query}`)
-          .then((response) => response.ok ? response.json() : Promise.reject(new Error(`API ${response.status}`)))
-          .then((data: GroupOffers) => setShopOffers(data.items)));
+        requests.push(
+          fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}`)
+            .then((response) => response.ok ? response.json() : Promise.reject(new Error(`API ${response.status}`)))
+            .then((data: GroupOffers) => {
+              if (data.items && data.items.length > 0) {
+                setShopOffers(data.items);
+              } else {
+                setShopOffers([offer]);
+              }
+            })
+            .catch(() => {
+              setShopOffers([offer]);
+            })
+        );
       }
       await Promise.all(requests);
     } catch {
       setDescription("加载失败，请稍后刷新页面重试。");
+      if (group) setShopOffers([offer]);
     } finally {
       setLoading(false);
     }
