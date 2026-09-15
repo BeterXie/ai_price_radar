@@ -1,7 +1,23 @@
 "use client";
-
+ 
 import { useEffect, useRef, useState } from "react";
-import { ArrowClockwise, Check, Eye, EyeSlash, Key, MagnifyingGlass, X } from "@phosphor-icons/react";
+import {
+  ArrowClockwise,
+  Article,
+  Broadcast,
+  Check,
+  Eye,
+  EyeSlash,
+  Gear,
+  Globe,
+  Key,
+  MagnifyingGlass,
+  Storefront,
+  Tag,
+  UsersThree,
+  WarningCircle,
+  X,
+} from "@phosphor-icons/react";
 import { money, stockLabel } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 import { SkillsAdminPanel } from "@/components/skills-admin-panel";
@@ -9,6 +25,7 @@ import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/ca
 
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+export type AdminTab = "settings" | "intakes" | "skills" | "discovery" | "reports" | "offers";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
 type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
@@ -93,6 +110,7 @@ const REPORT_KIND_LABELS: Record<string, string> = {
 };
 
 export function AdminPanel({ previewState }: { previewState?: "error" }) {
+  const [activeTab, setActiveTab] = useState<AdminTab>("settings");
   const [key, setKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -116,14 +134,50 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
   const [advertiseEnabled, setAdvertiseEnabled] = useState<boolean>(false);
   const [updatingAdvertise, setUpdatingAdvertise] = useState<boolean>(false);
+  const [siteNotice, setSiteNotice] = useState({
+    enabled: true,
+    badge: "最新动态",
+    title: "",
+    content: "",
+    link_text: "",
+    link_url: "",
+  });
+  const [savingSiteNotice, setSavingSiteNotice] = useState<boolean>(false);
+  const [communityNoticeForm, setCommunityNoticeForm] = useState({
+    enabled: true,
+    title: "加入 AI 比价交流群",
+    desc: "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。",
+    qq_group: "938741334",
+    qq_url: "",
+    btn_text: "一键加入 QQ 群",
+  });
+  const [savingCommunityNotice, setSavingCommunityNotice] = useState<boolean>(false);
   const [error, setError] = useState(previewState === "error" ? "管理数据暂时无法加载。输入密钥后可以重新连接。" : "");
   const headers = { "X-Admin-Key": key };
   const hasScrolledToIntakeRef = useRef(false);
 
   useEffect(() => {
-    const intakeId = Number(new URLSearchParams(window.location.search).get("intake"));
-    if (Number.isInteger(intakeId) && intakeId > 0) setTargetIntakeId(intakeId);
+    const params = new URLSearchParams(window.location.search);
+    const intakeId = Number(params.get("intake"));
+    if (Number.isInteger(intakeId) && intakeId > 0) {
+      setTargetIntakeId(intakeId);
+      setActiveTab("intakes");
+    }
+    const tabParam = params.get("tab") as AdminTab | null;
+    const validTabs: AdminTab[] = ["settings", "intakes", "skills", "discovery", "reports", "offers"];
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
   }, []);
+
+  function switchTab(tab: AdminTab) {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
 
   useEffect(() => {
     if (hasScrolledToIntakeRef.current || targetIntakeId === null || !intakes.some((intake) => intake.id === targetIntakeId)) return;
@@ -251,6 +305,22 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       if (settingsResponse && settingsResponse.ok) {
         const settingsData = await settingsResponse.json();
         setAdvertiseEnabled(Boolean(settingsData.advertise_enabled));
+        setSiteNotice({
+          enabled: settingsData.site_notice_enabled ?? true,
+          badge: settingsData.site_notice_badge || "最新动态",
+          title: settingsData.site_notice_title || "",
+          content: settingsData.site_notice_content || "",
+          link_text: settingsData.site_notice_link_text || "",
+          link_url: settingsData.site_notice_link_url || "",
+        });
+        setCommunityNoticeForm({
+          enabled: settingsData.community_enabled ?? true,
+          title: settingsData.community_title || "加入 AI 比价交流群",
+          desc: settingsData.community_desc || "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。",
+          qq_group: settingsData.community_qq_group || "938741334",
+          qq_url: settingsData.community_qq_url || "",
+          btn_text: settingsData.community_btn_text || "一键加入 QQ 群",
+        });
       }
       const offersData = await offersResponse.json();
       const totalHeader = offersResponse.headers.get("x-total-count");
@@ -293,6 +363,130 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setError("网络请求失败，未能更新商务合作设置。");
     } finally {
       setUpdatingAdvertise(false);
+    }
+  }
+
+  async function toggleSiteNoticeEnabled(targetState: boolean) {
+    setSiteNotice((prev) => ({ ...prev, enabled: targetState }));
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ site_notice_enabled: targetState }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSiteNotice((prev) => ({ ...prev, enabled: Boolean(data.site_notice_enabled) }));
+        setActionToast(
+          data.site_notice_enabled
+            ? "已启用页面顶部横条公告（前台已显示）"
+            : "已停用页面顶部横条公告（前台已隐藏）"
+        );
+      } else {
+        setError("更新顶部公告开关失败。");
+      }
+    } catch {
+      setError("网络请求失败，未能更新顶部公告开关。");
+    }
+  }
+
+  async function saveSiteNotice() {
+    setSavingSiteNotice(true);
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          site_notice_enabled: siteNotice.enabled,
+          site_notice_badge: siteNotice.badge.trim(),
+          site_notice_title: siteNotice.title.trim(),
+          site_notice_content: siteNotice.content.trim(),
+          site_notice_link_text: siteNotice.link_text.trim(),
+          site_notice_link_url: siteNotice.link_url.trim(),
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSiteNotice({
+          enabled: data.site_notice_enabled ?? true,
+          badge: data.site_notice_badge || "最新动态",
+          title: data.site_notice_title || "",
+          content: data.site_notice_content || "",
+          link_text: data.site_notice_link_text || "",
+          link_url: data.site_notice_link_url || "",
+        });
+        setActionToast("页面顶部横条公告设置已保存并实时生效");
+      } else {
+        setError("保存页面顶部横条公告配置失败，请重试。");
+      }
+    } catch {
+      setError("网络请求失败，未能保存页面顶部横条公告配置。");
+    } finally {
+      setSavingSiteNotice(false);
+    }
+  }
+
+  async function toggleCommunityNoticeEnabled(targetState: boolean) {
+    setCommunityNoticeForm((prev) => ({ ...prev, enabled: targetState }));
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ community_enabled: targetState }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCommunityNoticeForm((prev) => ({ ...prev, enabled: Boolean(data.community_enabled) }));
+        setActionToast(
+          data.community_enabled
+            ? "已启用交流群引导弹窗（前台已开启）"
+            : "已停用交流群引导弹窗（前台已隐藏）"
+        );
+      } else {
+        setError("更新交流群引导弹窗开关失败。");
+      }
+    } catch {
+      setError("网络请求失败，未能更新交流群引导弹窗开关。");
+    }
+  }
+
+  async function saveCommunityNotice() {
+    setSavingCommunityNotice(true);
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          community_enabled: communityNoticeForm.enabled,
+          community_title: communityNoticeForm.title.trim(),
+          community_desc: communityNoticeForm.desc.trim(),
+          community_qq_group: communityNoticeForm.qq_group.trim(),
+          community_qq_url: communityNoticeForm.qq_url.trim(),
+          community_btn_text: communityNoticeForm.btn_text.trim(),
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCommunityNoticeForm({
+          enabled: data.community_enabled ?? true,
+          title: data.community_title || "加入 AI 比价交流群",
+          desc: data.community_desc || "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。",
+          qq_group: data.community_qq_group || "938741334",
+          qq_url: data.community_qq_url || "",
+          btn_text: data.community_btn_text || "一键加入 QQ 群",
+        });
+        setActionToast("交流群引导弹窗配置已保存并实时生效");
+      } else {
+        setError("保存交流群引导弹窗配置失败，请重试。");
+      }
+    } catch {
+      setError("网络请求失败，未能保存交流群引导弹窗配置。");
+    } finally {
+      setSavingCommunityNotice(false);
     }
   }
 
@@ -501,169 +695,559 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       </section>
 
       {error && <p role="alert" className="rounded-[9px] border border-[color:var(--danger)]/25 bg-[color:var(--danger-soft)] p-4 text-[color:var(--danger)]">{error}</p>}
+      {actionToast && (
+        <div role="status" className="flex items-center justify-between rounded-[9px] border border-[color:var(--success)]/25 bg-[color:var(--success-soft)] p-4 text-sm font-medium text-[color:var(--success)]">
+          <span>{actionToast}</span>
+          <button type="button" onClick={() => setActionToast("")} className="ml-2 text-xs underline hover:opacity-80">关闭</button>
+        </div>
+      )}
       {!stats && !error && <section className="surface-subtle p-5" role="status"><p className="section-kicker">尚未连接</p><p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">输入管理密钥后加载当前统计、收录申请、纠错队列和最近报价。</p></section>}
 
       {stats && (
-        <section className="data-strip sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-          {[
-            ["店铺", stats.shops],
-            ["标准产品", stats.products],
-            ["全部报价", stats.offers],
-            ["公开报价", stats.public_offers],
-            ["受限报价", stats.restricted_offers ?? 0],
-            ["未分类商品", stats.unclassified_offers ?? 0],
-            ["待处理纠错", stats.open_corrections],
-            ["待初审收录", stats.pending_source_intakes],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="data-cell">
-              <p className="data-label">{label}</p>
-              <p className="data-value">{value}</p>
-            </div>
-          ))}
-        </section>
+        <div className="sticky top-0 z-20 -mx-2 bg-[color:var(--paper)]/95 px-2 py-3 backdrop-blur-md border-b border-[color:var(--line)]">
+          <nav className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="后台功能模块导航">
+            {[
+              { id: "settings" as const, label: "运营与配置", icon: Gear, count: 0 },
+              { id: "intakes" as const, label: "店铺审核", icon: Storefront, count: stats.pending_source_intakes || 0 },
+              { id: "skills" as const, label: "社区玩法与文章", icon: Article, count: 0 },
+              { id: "discovery" as const, label: "公网来源发现", icon: Globe, count: 0 },
+              { id: "reports" as const, label: "纠错与反馈", icon: WarningCircle, count: stats.open_corrections || 0 },
+              { id: "offers" as const, label: "报价与分类", icon: Tag, count: stats.unclassified_offers || 0 },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => switchTab(tab.id)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`tactile inline-flex shrink-0 items-center gap-2 rounded-[10px] px-3.5 py-2 text-xs font-semibold transition-all ${
+                    isActive
+                      ? "bg-[color:var(--ink)] text-white shadow-sm"
+                      : "border border-[color:var(--line-strong)]/60 bg-[color:var(--panel)] text-[color:var(--muted)] hover:border-[color:var(--ink)] hover:text-[color:var(--ink)]"
+                  }`}
+                >
+                  <Icon size={16} weight={isActive ? "bold" : "regular"} />
+                  <span>{tab.label}</span>
+                  {tab.count > 0 && (
+                    <span
+                      className={`mono rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-amber-100 text-amber-900 border border-amber-300"
+                      }`}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       )}
 
+      {/* Tab 1: 运营与配置 */}
       {stats && (
-        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
-            <h2 className="text-base font-semibold">功能与运营配置</h2>
-            <p className="mt-0.5 text-xs text-black/55">
-              控制前台公开展示模块与业务开关。修改后实时生效，前台刷新页面即可看到变更。
-            </p>
-          </div>
-          <div className="p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface)] p-4">
-              <div className="max-w-3xl">
-                <div className="flex items-center gap-2.5">
-                  <h3 className="text-sm font-semibold text-[color:var(--ink)]">商务合作 / 广告投放专区</h3>
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${advertiseEnabled ? "bg-[color:var(--success-soft)] text-[color:var(--success)]" : "bg-[color:var(--subtle)] text-[color:var(--muted)]"}`}>
-                    {advertiseEnabled ? "已开启" : "已关闭"}
-                  </span>
+        <div style={{ display: activeTab === "settings" ? "block" : "none" }} className="space-y-8">
+          <section className="data-strip sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            {[
+              ["店铺", stats.shops],
+              ["标准产品", stats.products],
+              ["全部报价", stats.offers],
+              ["公开报价", stats.public_offers],
+              ["受限报价", stats.restricted_offers ?? 0],
+              ["未分类商品", stats.unclassified_offers ?? 0],
+              ["待处理纠错", stats.open_corrections],
+              ["待初审收录", stats.pending_source_intakes],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="data-cell">
+                <p className="data-label">{label}</p>
+                <p className="data-value">{value}</p>
+              </div>
+            ))}
+          </section>
+
+          {/* 商务合作 / 广告投放专区 */}
+          <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+            <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
+              <h2 className="text-base font-semibold">商务合作 / 广告投放专区</h2>
+              <p className="mt-0.5 text-xs text-black/55">
+                控制前台公开展示模块与业务开关。修改后实时生效，前台刷新页面即可看到变更。
+              </p>
+            </div>
+            <div className="p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface)] p-4">
+                <div className="max-w-3xl">
+                  <div className="flex items-center gap-2.5">
+                    <h3 className="text-sm font-semibold text-[color:var(--ink)]">商务合作入口与落地页</h3>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${advertiseEnabled ? "bg-[color:var(--success-soft)] text-[color:var(--success)]" : "bg-[color:var(--subtle)] text-[color:var(--muted)]"}`}>
+                      {advertiseEnabled ? "已开启" : "已关闭"}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-5 text-[color:var(--muted)]">
+                    开启后，将在全站页脚（Site Footer）、移动端抽屉导航、商户收录申请页（/shops/submit）及关于页展示「商务合作 / 广告投放」入口与联系邮箱（info@ai.pricememo.cn），且 /advertise 落地页对外公开可访问。关闭后，前台所有入口隐藏，直接访问 /advertise 返回 404。
+                  </p>
                 </div>
-                <p className="mt-1.5 text-xs leading-5 text-[color:var(--muted)]">
-                  开启后，将在全站页脚（Site Footer）、移动端抽屉导航、商户收录申请页（/shops/submit）及关于页展示「商务合作 / 广告投放」入口与联系邮箱（info@ai.pricememo.cn），且 /advertise 落地页对外公开可访问。关闭后，前台所有入口隐藏，直接访问 /advertise 返回 404。
+                <div className="shrink-0">
+                  <button
+                    type="button"
+                    disabled={updatingAdvertise}
+                    onClick={() => toggleAdvertise(!advertiseEnabled)}
+                    className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${advertiseEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    {updatingAdvertise ? "正在保存..." : advertiseEnabled ? "关闭商务合作专区" : "开启商务合作专区"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 页面顶部横条公告 (Site Notice) */}
+          <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 gap-2">
+              <div>
+                <h2 className="text-base font-semibold flex items-center gap-2">
+                  <Broadcast size={18} weight="bold" className="text-amber-500" />
+                  页面顶部横条公告（Site Notice）
+                </h2>
+                <p className="mt-0.5 text-xs text-black/55">
+                  全站页面顶部展示的通知横条，支持自定义徽标、标题、正文及跳转链接，前台支持点击叉号在本地会话关闭。
                 </p>
               </div>
-              <div className="shrink-0">
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${siteNotice.enabled ? "bg-[color:var(--success-soft)] text-[color:var(--success)]" : "bg-[color:var(--subtle)] text-[color:var(--muted)] border hairline"}`}>
+                  {siteNotice.enabled ? "已开启显示" : "已停用隐藏"}
+                </span>
                 <button
                   type="button"
-                  disabled={updatingAdvertise}
-                  onClick={() => toggleAdvertise(!advertiseEnabled)}
-                  className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${advertiseEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
+                  onClick={() => toggleSiteNoticeEnabled(!siteNotice.enabled)}
+                  className={`tactile inline-flex h-8 items-center justify-center rounded-[8px] px-3 text-xs font-medium border ${siteNotice.enabled ? "border-[color:var(--line-strong)] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] text-[color:var(--ink)]" : "bg-[color:var(--ink)] text-white"}`}
                 >
-                  {updatingAdvertise ? "正在保存..." : advertiseEnabled ? "关闭商务合作专区" : "开启商务合作专区"}
+                  {siteNotice.enabled ? "快速关闭" : "快速开启"}
                 </button>
               </div>
             </div>
-          </div>
-        </section>
-      )}
-
-      {intakes.length > 0 && (
-        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold">店铺收录申请</div>
-          <div className="divide-y divide-[color:var(--line)]">
-            {intakes.map((intake) => (
-              <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--brand-soft)]" : ""}`}>
+            <div className="p-5 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="mono text-xs text-black/40">#{intake.id}</p>
-                    <span className="status-pill status-info">{intakeStatusLabels[intake.status] || intake.status}</span>
-                    <div className="flex items-center gap-1.5 ml-1">
-                      <span className="text-xs text-black/50">平台:</span>
-                      <select
-                        value={intake.source_type}
-                        onChange={(e) => updateIntakePlatform(intake.id, e.target.value)}
-                        className="rounded-[6px] border hairline bg-[color:var(--panel)] px-2 py-0.5 text-xs text-[color:var(--ink)]"
-                      >
-                        <option value="ldxp">链动小铺 (ldxp)</option>
-                        <option value="dujiao_next" disabled>独角数卡 (dujiao_next - 已暂停)</option>
-                        <option value="16688">16688发卡 (16688)</option>
-                        <option value="woocommerce">WooCommerce</option>
-                        <option value="merchant_json">商家 JSON Feed</option>
-                        <option value="schema_org">Schema.org</option>
-                        <option value="other">其他独立站</option>
-                        <option value="unknown">未知来源</option>
-                      </select>
-                    </div>
-                  </div>
-                  <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
-                  <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
-                  <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email ? intake.contact_email : <span className="text-black/40">未填写（公网爬虫发现）</span>} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
-                  {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
-                  {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">提示：如该店铺为链动小铺、独角数卡等支持的平台，可在上方切换类型或点击“重新检测”；点击批准将自动按检测平台接入。</p>}
-                  {["merchant_json", "woocommerce", "16688", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
-                  {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
-                  {!intake.contact_email ? (
-                    <p className="mt-3 text-xs text-black/40">无联系邮箱（系统爬虫自动发现，不发送邮件通知）</p>
-                  ) : Object.keys(intake.email_status).length > 0 ? (
-                    <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>
-                  ) : (
-                    <p className="mt-3 text-xs text-black/40">暂无邮件记录</p>
-                  )}
-                  {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    徽标标签（Badge）
+                  </label>
+                  <input
+                    type="text"
+                    value={siteNotice.badge}
+                    onChange={(e) => setSiteNotice((prev) => ({ ...prev, badge: e.target.value }))}
+                    placeholder="例如：最新动态、特别提示"
+                    className="field text-sm"
+                  />
                 </div>
-                <div className="flex flex-wrap gap-2 xl:justify-end">
-                  {intake.status === "pending_review" && (
+                <div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    公告主标题（Title，选填）
+                  </label>
+                  <input
+                    type="text"
+                    value={siteNotice.title}
+                    onChange={(e) => setSiteNotice((prev) => ({ ...prev, title: e.target.value }))}
+                    placeholder="例如：全量快照上线"
+                    className="field text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-black/70 mb-1">
+                  公告详细说明（Content）
+                </label>
+                <textarea
+                  value={siteNotice.content}
+                  onChange={(e) => setSiteNotice((prev) => ({ ...prev, content: e.target.value }))}
+                  rows={2}
+                  placeholder="例如：AI 比价雷达已升级至全量快照驱动，商品切换 0 延迟无白屏。"
+                  className="w-full rounded-[8px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-3 text-sm text-[color:var(--ink)]"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    按钮文案（选填）
+                  </label>
+                  <input
+                    type="text"
+                    value={siteNotice.link_text}
+                    onChange={(e) => setSiteNotice((prev) => ({ ...prev, link_text: e.target.value }))}
+                    placeholder="例如：查看详情"
+                    className="field text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    目标跳转链接（选填）
+                  </label>
+                  <input
+                    type="text"
+                    value={siteNotice.link_url}
+                    onChange={(e) => setSiteNotice((prev) => ({ ...prev, link_url: e.target.value }))}
+                    placeholder="例如：/articles/dujiao-vs-ldxp 或 https://..."
+                    className="field text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 实时预览 */}
+              <div className="rounded-[10px] border border-dashed border-[color:var(--line-strong)] p-3.5 bg-[color:var(--subtle)]/40">
+                <p className="text-[11px] font-semibold text-[color:var(--muted)] mb-2 uppercase tracking-wider">
+                  顶部横条公告实时预览效果
+                </p>
+                {siteNotice.enabled ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[color:var(--line)] bg-[color:var(--panel)] px-4 py-2.5 shadow-sm text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[color:var(--ink)] px-2 py-0.5 text-[11px] font-bold text-white">
+                        {siteNotice.badge || "最新动态"}
+                      </span>
+                      {siteNotice.title && (
+                        <strong className="font-semibold text-[color:var(--ink)]">
+                          {siteNotice.title}
+                        </strong>
+                      )}
+                      <span className="text-[color:var(--muted)]">
+                        {siteNotice.content || "（暂无公告正文内容）"}
+                      </span>
+                    </div>
+                    {siteNotice.link_text && (
+                      <span className="inline-flex items-center gap-1 font-semibold text-[color:var(--info)] underline">
+                        {siteNotice.link_text}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[color:var(--muted)] italic">
+                    当前处于“已停用”状态，前台页面顶部不会渲染此横条。
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  disabled={savingSiteNotice}
+                  onClick={saveSiteNotice}
+                  className="button-primary tactile disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingSiteNotice ? (
                     <>
-                      <button type="button" onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile">
-                        <Check size={16} />
-                        {intake.source_type === "ldxp" ? "批准并验证" : intake.source_type === "other" ? "批准接入" : "批准并加入发布队列"}
-                      </button>
-                      <button type="button" onClick={() => updateIntake(intake.id, "redetect")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm" title="根据最新探测规则重新识别平台">
-                        <ArrowClockwise size={16} className="mr-1 inline" />
-                        重新检测
-                      </button>
-                      <button type="button" onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile">
-                        <X size={16} />
-                        驳回
-                      </button>
+                      <ArrowClockwise size={16} className="animate-spin" />
+                      <span>保存中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      <span>保存公告配置</span>
                     </>
                   )}
-                  {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button type="button" onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
-                  {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button type="button" onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
-                </div>
+                </button>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            </div>
+          </section>
 
-      {key && (
-        <>
-          <SkillsAdminPanel apiBase={API} headers={headers} />
-          <SourceDiscoveryPanel apiBase={API} headers={headers} />
-        </>
-      )}
-
-
-      {reports.length > 0 && (
-        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-          <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold">纠错与风险反馈</div>
-          <div className="divide-y divide-[color:var(--line)]">
-            {reports.map((report) => (
-              <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
+          {/* AI比价交流群引导配置 (Community Notice) */}
+          <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 gap-2">
+              <div>
+                <h2 className="text-base font-semibold flex items-center gap-2">
+                  <UsersThree size={18} weight="bold" className="text-amber-500" />
+                  加入 AI 比价交流群引导配置（Community Notice）
+                </h2>
+                <p className="mt-0.5 text-xs text-black/55">
+                  全站右下角浮动弹窗展示的入群引导，可配置开关、提示标题、详细文案、QQ群号、加群链接及按钮文案。
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${communityNoticeForm.enabled ? "bg-[color:var(--success-soft)] text-[color:var(--success)]" : "bg-[color:var(--subtle)] text-[color:var(--muted)] border hairline"}`}>
+                  {communityNoticeForm.enabled ? "已开启显示" : "已停用隐藏"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleCommunityNoticeEnabled(!communityNoticeForm.enabled)}
+                  className={`tactile inline-flex h-8 items-center justify-center rounded-[8px] px-3 text-xs font-medium border ${communityNoticeForm.enabled ? "border-[color:var(--line-strong)] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] text-[color:var(--ink)]" : "bg-[color:var(--ink)] text-white"}`}
+                >
+                  {communityNoticeForm.enabled ? "快速关闭" : "快速开启"}
+                </button>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <p className="mono text-xs text-black/40">{REPORT_KIND_LABELS[report.kind] || report.kind}{report.offer_id ? ` / 报价 #${report.offer_id}` : ""}</p>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6">{report.message}</p>
-                  {report.contact && <p className="mt-2 text-xs text-black/45">联系方式：{report.contact}</p>}
-                  <div className="mt-4 grid gap-3">
-                    <label className="text-xs font-medium text-black/55">公开处理摘要<textarea value={reportDrafts[report.id]?.public_summary || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { merchant_response: "" }), public_summary: event.target.value } }))} maxLength={500} rows={2} placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。" className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
-                    <label className="text-xs font-medium text-black/55">商家公开回应 <span className="font-normal">选填</span><textarea value={reportDrafts[report.id]?.merchant_response || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { public_summary: "" }), merchant_response: event.target.value } }))} maxLength={1000} rows={2} className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
-                  </div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    弹窗主标题（Title）
+                  </label>
+                  <input
+                    type="text"
+                    value={communityNoticeForm.title}
+                    onChange={(e) => setCommunityNoticeForm((prev) => ({ ...prev, title: e.target.value }))}
+                    placeholder="例如：加入 AI 比价交流群"
+                    className="field text-sm"
+                  />
                 </div>
-                <div className="flex gap-2 md:self-end">
-                  <button type="button" onClick={() => resolveReport(report.id, "resolved")} className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} />已处理</button>
-                  <button type="button" onClick={() => resolveReport(report.id, "rejected")} className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} />驳回</button>
+                <div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    QQ交流群号（QQ Group）
+                  </label>
+                  <input
+                    type="text"
+                    value={communityNoticeForm.qq_group}
+                    onChange={(e) => setCommunityNoticeForm((prev) => ({ ...prev, qq_group: e.target.value }))}
+                    placeholder="例如：938741334"
+                    className="field text-sm"
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
+
+              <div>
+                <label className="block text-xs font-medium text-black/70 mb-1">
+                  详细说明文案（Description）
+                </label>
+                <textarea
+                  value={communityNoticeForm.desc}
+                  onChange={(e) => setCommunityNoticeForm((prev) => ({ ...prev, desc: e.target.value }))}
+                  rows={2}
+                  placeholder="第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态..."
+                  className="w-full rounded-[8px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-3 text-sm text-[color:var(--ink)]"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    一键加群链接（QQ Group URL，选填）
+                  </label>
+                  <input
+                    type="text"
+                    value={communityNoticeForm.qq_url}
+                    onChange={(e) => setCommunityNoticeForm((prev) => ({ ...prev, qq_url: e.target.value }))}
+                    placeholder="例如：https://qm.qq.com/cgi-bin/qm/qr?k=..."
+                    className="field text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-black/70 mb-1">
+                    加群按钮文案（Button Text）
+                  </label>
+                  <input
+                    type="text"
+                    value={communityNoticeForm.btn_text}
+                    onChange={(e) => setCommunityNoticeForm((prev) => ({ ...prev, btn_text: e.target.value }))}
+                    placeholder="例如：一键加入 QQ 群"
+                    className="field text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 实时预览 */}
+              <div className="rounded-[10px] border border-dashed border-[color:var(--line-strong)] p-4 bg-[color:var(--subtle)]/40 max-w-md">
+                <p className="text-[11px] font-semibold text-[color:var(--muted)] mb-2 uppercase tracking-wider">
+                  弹窗效果实时预览
+                </p>
+                {communityNoticeForm.enabled ? (
+                  <div className="rounded-[14px] border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[8px] bg-[color:var(--ink)] text-amber-400">
+                        <UsersThree size={22} weight="bold" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold text-[color:var(--ink)]">
+                          {communityNoticeForm.title || "加入 AI 比价交流群"}
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-black/60">
+                          {communityNoticeForm.desc || "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。"} QQ群号：{communityNoticeForm.qq_group || "938741334"}
+                        </p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="inline-flex items-center justify-center rounded-[8px] bg-[color:var(--ink)] px-3 py-1.5 text-xs font-medium !text-white shadow-sm">
+                            {communityNoticeForm.btn_text || "一键加入 QQ 群"}
+                          </span>
+                          <span className="rounded-[8px] border hairline px-3 py-1.5 text-xs text-[color:var(--muted)]">
+                            稍后再说
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[color:var(--muted)] italic">
+                    当前入群引导处于“已停用”状态，前台不会弹出此提示。
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  disabled={savingCommunityNotice}
+                  onClick={saveCommunityNotice}
+                  className="button-primary tactile disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingCommunityNotice ? (
+                    <>
+                      <ArrowClockwise size={16} className="animate-spin" />
+                      <span>保存中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      <span>保存群引导配置</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
       )}
 
+      {/* Tab 2: 店铺审核 */}
       {stats && (
-        <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+        <div style={{ display: activeTab === "intakes" ? "block" : "none" }}>
+          {intakes.length > 0 ? (
+            <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+              <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold flex items-center justify-between">
+                <span>店铺收录申请</span>
+                <span className="text-xs text-[color:var(--muted)]">共 {intakes.length} 条申请</span>
+              </div>
+              <div className="divide-y divide-[color:var(--line)]">
+                {intakes.map((intake) => (
+                  <div id={`source-intake-${intake.id}`} key={intake.id} className={`scroll-mt-6 grid gap-5 px-5 py-5 xl:grid-cols-[1fr_auto] xl:items-start ${targetIntakeId === intake.id ? "bg-[color:var(--brand-soft)]" : ""}`}>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="mono text-xs text-black/40">#{intake.id}</p>
+                        <span className="status-pill status-info">{intakeStatusLabels[intake.status] || intake.status}</span>
+                        <div className="flex items-center gap-1.5 ml-1">
+                          <span className="text-xs text-black/50">平台:</span>
+                          <select
+                            value={intake.source_type}
+                            onChange={(e) => updateIntakePlatform(intake.id, e.target.value)}
+                            className="rounded-[6px] border hairline bg-[color:var(--panel)] px-2 py-0.5 text-xs text-[color:var(--ink)]"
+                          >
+                            <option value="ldxp">链动小铺 (ldxp)</option>
+                            <option value="dujiao_next" disabled>独角数卡 (dujiao_next - 已暂停)</option>
+                            <option value="16688">16688发卡 (16688)</option>
+                            <option value="woocommerce">WooCommerce</option>
+                            <option value="merchant_json">商家 JSON Feed</option>
+                            <option value="schema_org">Schema.org</option>
+                            <option value="other">其他独立站</option>
+                            <option value="unknown">未知来源</option>
+                          </select>
+                        </div>
+                      </div>
+                      <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
+                      <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
+                      <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email ? intake.contact_email : <span className="text-black/40">未填写（公网爬虫发现）</span>} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
+                      {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
+                      {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">提示：如该店铺为链动小铺、独角数卡等支持的平台，可在上方切换类型或点击“重新检测”；点击批准将自动按检测平台接入。</p>}
+                      {["merchant_json", "woocommerce", "16688", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
+                      {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
+                      {!intake.contact_email ? (
+                        <p className="mt-3 text-xs text-black/40">无联系邮箱（系统爬虫自动发现，不发送邮件通知）</p>
+                      ) : Object.keys(intake.email_status).length > 0 ? (
+                        <p className="mt-3 text-xs text-black/50">邮件状态：{Object.entries(intake.email_status).map(([event, mailStatus]) => `${event} ${emailStatusLabel(mailStatus)}`).join(" · ")}</p>
+                      ) : (
+                        <p className="mt-3 text-xs text-black/40">暂无邮件记录</p>
+                      )}
+                      {intake.status === "pending_review" && <label className="mt-4 block text-xs font-medium text-black/55">驳回原因<input value={intakeReasons[intake.id] || ""} onChange={(event) => setIntakeReasons((current) => ({ ...current, [intake.id]: event.target.value }))} maxLength={500} placeholder="仅在驳回时必填" className="field mt-1.5 text-sm" /></label>}
+                    </div>
+                    <div className="flex flex-wrap gap-2 xl:justify-end">
+                      {intake.status === "pending_review" && (
+                        <>
+                          <button type="button" onClick={() => updateIntake(intake.id, "approve")} className="button-primary tactile">
+                            <Check size={16} />
+                            {intake.source_type === "ldxp" ? "批准并验证" : intake.source_type === "other" ? "批准接入" : "批准并加入发布队列"}
+                          </button>
+                          <button type="button" onClick={() => updateIntake(intake.id, "redetect")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm" title="根据最新探测规则重新识别平台">
+                            <ArrowClockwise size={16} className="mr-1 inline" />
+                            重新检测
+                          </button>
+                          <button type="button" onClick={() => updateIntake(intake.id, "reject")} className="button-danger tactile">
+                            <X size={16} />
+                            驳回
+                          </button>
+                        </>
+                      )}
+                      {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button type="button" onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
+                      {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button type="button" onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="empty-state">
+              <Storefront size={40} className="mx-auto mb-2 text-[color:var(--muted)] opacity-60" />
+              <p className="text-base font-semibold text-[color:var(--ink)]">暂无待处理的店铺收录申请</p>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">商户在 /shops/submit 提交的新店铺申请将展示在此处供管理员审核。</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 3: 社区玩法与文章 */}
+      {key && (
+        <div style={{ display: activeTab === "skills" ? "block" : "none" }}>
+          <SkillsAdminPanel apiBase={API} headers={headers} />
+        </div>
+      )}
+
+      {/* Tab 4: 公网来源发现 */}
+      {key && (
+        <div style={{ display: activeTab === "discovery" ? "block" : "none" }}>
+          <SourceDiscoveryPanel apiBase={API} headers={headers} />
+        </div>
+      )}
+
+      {/* Tab 5: 纠错与风险反馈 */}
+      {stats && (
+        <div style={{ display: activeTab === "reports" ? "block" : "none" }}>
+          {reports.length > 0 ? (
+            <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+              <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold flex items-center justify-between">
+                <span>纠错与风险反馈</span>
+                <span className="text-xs text-[color:var(--muted)]">待处理 {reports.length} 条</span>
+              </div>
+              <div className="divide-y divide-[color:var(--line)]">
+                {reports.map((report) => (
+                  <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
+                    <div>
+                      <p className="mono text-xs text-black/40">{REPORT_KIND_LABELS[report.kind] || report.kind}{report.offer_id ? ` / 报价 #${report.offer_id}` : ""}</p>
+                      <p className="mt-2 whitespace-pre-line text-sm leading-6">{report.message}</p>
+                      {report.contact && <p className="mt-2 text-xs text-black/45">联系方式：{report.contact}</p>}
+                      <div className="mt-4 grid gap-3">
+                        <label className="text-xs font-medium text-black/55">公开处理摘要<textarea value={reportDrafts[report.id]?.public_summary || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { merchant_response: "" }), public_summary: event.target.value } }))} maxLength={500} rows={2} placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。" className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
+                        <label className="text-xs font-medium text-black/55">商家公开回应 <span className="font-normal">选填</span><textarea value={reportDrafts[report.id]?.merchant_response || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { public_summary: "" }), merchant_response: event.target.value } }))} maxLength={1000} rows={2} className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 md:self-end">
+                      <button type="button" onClick={() => resolveReport(report.id, "resolved")} className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} />已处理</button>
+                      <button type="button" onClick={() => resolveReport(report.id, "rejected")} className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} />驳回</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="empty-state">
+              <WarningCircle size={40} className="mx-auto mb-2 text-[color:var(--muted)] opacity-60" />
+              <p className="text-base font-semibold text-[color:var(--ink)]">暂无未处理的纠错与风险反馈</p>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">前台用户提交的报错或购买风险将汇总在此处进行调查与公开回应。</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 6: 报价与分类 */}
+      {stats && (
+        <div style={{ display: activeTab === "offers" ? "block" : "none" }}>
+          <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
           <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
             <h2 className="text-base font-semibold">报价与分类管理</h2>
             <p className="mt-0.5 text-xs text-black/55">
@@ -1161,6 +1745,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
             </div>
           )}
         </section>
+        </div>
       )}
     </div>
   );

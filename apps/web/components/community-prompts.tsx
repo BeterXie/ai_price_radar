@@ -11,6 +11,7 @@ import {
   SUPPORT_AVAILABLE,
   SUPPORT_METHODS,
 } from "@/lib/community";
+import type { CommunityNotice } from "@/lib/types";
 
 type PromptKind = "community" | "github" | "support";
 
@@ -35,13 +36,26 @@ function excludedPath(pathname: string) {
   return pathname.startsWith("/admin") || pathname.startsWith("/shops/submit");
 }
 
-export function CommunityPrompts() {
+export function CommunityPrompts({ communityNotice }: { communityNotice?: CommunityNotice | null }) {
   const pathname = usePathname();
   const [prompt, setPrompt] = useState<PromptKind | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const [activeMethodId, setActiveMethodId] = useState(SUPPORT_METHODS[0]?.id || "wechat");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRootRef = useRef<HTMLDivElement>(null);
+
+  const isCommunityEnabled =
+    communityNotice !== undefined && communityNotice !== null
+      ? communityNotice.enabled
+      : COMMUNITY_ENABLED;
+  const communityTitle = communityNotice?.title?.trim() || "加入 AI 比价交流群";
+  const communityDesc =
+    communityNotice?.desc?.trim() ||
+    `第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。QQ群号：${
+      communityNotice?.qq_group?.trim() || COMMUNITY_QQ_GROUP
+    }`;
+  const communityGroupUrl = communityNotice?.qq_url?.trim() || COMMUNITY_QQ_GROUP_URL;
+  const communityBtnText = communityNotice?.btn_text?.trim() || "一键加入 QQ 群";
 
   const rememberPrompt = useCallback(() => {
     try {
@@ -117,7 +131,7 @@ export function CommunityPrompts() {
       const pageViews = storedNumber(localStorage, storageKeys.pageViews);
 
       const communityEligible =
-        COMMUNITY_ENABLED &&
+        isCommunityEnabled &&
         (sessions >= 1 || pageViews >= 1) &&
         now >= storedNumber(localStorage, storageKeys.communityUntil);
       const supportEligible =
@@ -215,7 +229,7 @@ export function CommunityPrompts() {
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-lg font-semibold tracking-[-.03em]">
                   {prompt === "community"
-                    ? "加入 AI 比价交流群"
+                    ? communityTitle
                     : prompt === "github"
                       ? "觉得网站有用？"
                       : "这个工具帮到你了吗？"}
@@ -231,7 +245,7 @@ export function CommunityPrompts() {
               </div>
               <p className="mt-2 text-sm leading-6 text-black/60">
                 {prompt === "community"
-                  ? `第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。QQ群号：${COMMUNITY_QQ_GROUP}`
+                  ? communityDesc
                   : prompt === "github"
                     ? "AI Price Memory 已在 GitHub 开源。欢迎查看代码、提交建议，顺手点个 Star。"
                     : "开发、服务器和数据维护需要持续投入。你可以自愿请作者喝杯咖啡。"}
@@ -239,13 +253,13 @@ export function CommunityPrompts() {
               <div className="mt-4 flex flex-wrap gap-2">
                 {prompt === "community" ? (
                   <a
-                    href={COMMUNITY_QQ_GROUP_URL}
+                    href={communityGroupUrl}
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => dismissPrompt("community", 14)}
-                    className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white"
+                    className="tactile inline-flex items-center justify-center rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium !text-white shadow-sm hover:opacity-90 active:scale-95"
                   >
-                    一键加入 QQ 群
+                    {communityBtnText}
                   </a>
                 ) : prompt === "github" ? (
                   <a
@@ -253,7 +267,7 @@ export function CommunityPrompts() {
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => dismissPrompt("github", 30)}
-                    className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white"
+                    className="tactile inline-flex items-center justify-center rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium !text-white shadow-sm hover:opacity-90 active:scale-95"
                   >
                     去 GitHub 点 Star
                   </a>
@@ -261,7 +275,7 @@ export function CommunityPrompts() {
                   <button
                     type="button"
                     onClick={openSupport}
-                    className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white"
+                    className="tactile inline-flex items-center justify-center rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium !text-white shadow-sm hover:opacity-90 active:scale-95"
                   >
                     支持作者
                   </button>

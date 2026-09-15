@@ -270,7 +270,7 @@ export function SkillsAdminPanel({
           <button
             type="button"
             onClick={openCreateModal}
-            className="tactile inline-flex items-center gap-1 rounded-[10px] bg-[color:var(--foreground)] px-3.5 py-2 text-xs font-semibold text-[color:var(--panel)] hover:opacity-90 active:scale-95"
+            className="tactile inline-flex items-center gap-1 rounded-[10px] bg-[color:var(--ink)] px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-90 active:scale-95"
           >
             <Plus size={14} weight="bold" />
             <span>新建内容</span>
@@ -285,7 +285,7 @@ export function SkillsAdminPanel({
             type="button"
             onClick={() => setSelectedKind("")}
             className={`rounded-lg px-2.5 py-1 font-medium transition ${
-              !selectedKind ? "bg-[color:var(--foreground)] text-[color:var(--panel)]" : "text-[color:var(--muted)] hover:text-[color:var(--foreground)]"
+              !selectedKind ? "bg-[color:var(--ink)] text-white" : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
             }`}
           >
             全部类型
@@ -699,7 +699,7 @@ export function SkillsAdminPanel({
                 <button
                   type="submit"
                   disabled={formSaving}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[color:var(--foreground)] px-5 py-2 font-bold text-[color:var(--panel)] hover:opacity-90 active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[color:var(--ink)] px-5 py-2 font-bold text-white shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-50"
                 >
                   {formSaving ? <ArrowClockwise size={14} className="animate-spin" /> : <Check size={14} />}
                   <span>{formSaving ? "保存中..." : "保存发布"}</span>

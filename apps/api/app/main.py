@@ -11,7 +11,7 @@ from .routers import admin, discovery, internal, public, public_feed
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.68"
+VERSION = "3.7.69"
 
 
 @asynccontextmanager

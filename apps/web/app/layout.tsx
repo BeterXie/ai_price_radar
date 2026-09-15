@@ -45,12 +45,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <SiteStructuredData />
         <GoogleAnalytics />
         <a href="#page-content" className="skip-link">跳到主要内容</a>
-        <SiteNoticePrompt />
+        <SiteNoticePrompt notice={meta?.site_notice} />
         <SiteHeader advertiseEnabled={advertiseEnabled} />
         <div id="page-content" tabIndex={-1}>{children}</div>
         <BackToTop />
         <SiteFooter advertiseEnabled={advertiseEnabled} />
-        <CommunityPrompts />
+        <CommunityPrompts communityNotice={meta?.community_notice} />
         <NewFeatureModal />
       </body>
     </html>

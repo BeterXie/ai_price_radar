@@ -3,16 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Megaphone, X, ArrowRight } from "@phosphor-icons/react";
-import { CURRENT_SITE_NOTICE } from "@/lib/community";
+import type { SiteNotice } from "@/lib/types";
 
-export function SiteNoticePrompt() {
-  const notice = CURRENT_SITE_NOTICE;
+export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!notice.enabled) return;
+    if (!notice || !notice.enabled || !notice.title) {
+      setVisible(false);
+      return;
+    }
     try {
-      const dismissedKey = `apr:notice:dismissed:${notice.id}`;
+      const noticeKey = notice.title.slice(0, 30);
+      const dismissedKey = `apr:notice:dismissed:${noticeKey}`;
       if (localStorage.getItem(dismissedKey)) return;
       setVisible(true);
     } catch {
@@ -22,14 +25,15 @@ export function SiteNoticePrompt() {
 
   const dismiss = () => {
     try {
-      localStorage.setItem(`apr:notice:dismissed:${notice.id}`, "1");
+      const noticeKey = notice?.title ? notice.title.slice(0, 30) : "default";
+      localStorage.setItem(`apr:notice:dismissed:${noticeKey}`, "1");
     } catch {
       // Storage might be disabled
     }
     setVisible(false);
   };
 
-  if (!visible || !notice.enabled) return null;
+  if (!visible || !notice?.enabled || !notice?.title) return null;
 
   return (
     <aside
@@ -46,12 +50,12 @@ export function SiteNoticePrompt() {
           <span className="hidden text-[color:var(--muted)] md:inline">
             — {notice.content}
           </span>
-          {notice.linkUrl && notice.linkText && (
+          {(notice.link_url || (notice as any).linkUrl) && (notice.link_text || (notice as any).linkText) && (
             <Link
-              href={notice.linkUrl}
+              href={notice.link_url || (notice as any).linkUrl}
               className="inline-flex shrink-0 items-center gap-1 font-semibold text-[color:var(--info)] hover:underline"
             >
-              {notice.linkText}
+              {notice.link_text || (notice as any).linkText}
               <ArrowRight size={13} weight="bold" />
             </Link>
           )}

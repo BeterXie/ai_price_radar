@@ -82,10 +82,29 @@ def set_setting_str(db: Session, key: str, value: str) -> None:
     db.commit()
 
 
+def get_setting_str(db: Session, key: str, default: str = "") -> str:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting or setting.value is None:
+        return default
+    return setting.value
+
+
 @router.get("/settings", response_model=AdminSettingsOut)
 def get_admin_settings(db: Session = Depends(get_db)) -> AdminSettingsOut:
     return AdminSettingsOut(
         advertise_enabled=get_setting_bool(db, "advertise_enabled", default=False),
+        site_notice_enabled=get_setting_bool(db, "site_notice_enabled", default=True),
+        site_notice_badge=get_setting_str(db, "site_notice_badge", default="最新动态"),
+        site_notice_title=get_setting_str(db, "site_notice_title", default="已支持 16688 平台商户比价与 Agent 开放快照"),
+        site_notice_content=get_setting_str(db, "site_notice_content", default="我们新增了 16688 渠道 AI 商品实时抓取，并上线了面向 AI Agent 与开发者的全站静态只读 Feed。"),
+        site_notice_link_text=get_setting_str(db, "site_notice_link_text", default="查看开发文档"),
+        site_notice_link_url=get_setting_str(db, "site_notice_link_url", default="/developers"),
+        community_enabled=get_setting_bool(db, "community_enabled", default=True),
+        community_title=get_setting_str(db, "community_title", default="加入 AI 比价交流群"),
+        community_desc=get_setting_str(db, "community_desc", default="第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。"),
+        community_qq_group=get_setting_str(db, "community_qq_group", default="938741334"),
+        community_qq_url=get_setting_str(db, "community_qq_url", default=""),
+        community_btn_text=get_setting_str(db, "community_btn_text", default="一键加入 QQ 群"),
     )
 
 
@@ -96,9 +115,31 @@ def update_admin_settings(
 ) -> AdminSettingsOut:
     if payload.advertise_enabled is not None:
         set_setting_str(db, "advertise_enabled", "true" if payload.advertise_enabled else "false")
-    return AdminSettingsOut(
-        advertise_enabled=get_setting_bool(db, "advertise_enabled", default=False),
-    )
+    if payload.site_notice_enabled is not None:
+        set_setting_str(db, "site_notice_enabled", "true" if payload.site_notice_enabled else "false")
+    if payload.site_notice_badge is not None:
+        set_setting_str(db, "site_notice_badge", payload.site_notice_badge.strip())
+    if payload.site_notice_title is not None:
+        set_setting_str(db, "site_notice_title", payload.site_notice_title.strip())
+    if payload.site_notice_content is not None:
+        set_setting_str(db, "site_notice_content", payload.site_notice_content.strip())
+    if payload.site_notice_link_text is not None:
+        set_setting_str(db, "site_notice_link_text", payload.site_notice_link_text.strip())
+    if payload.site_notice_link_url is not None:
+        set_setting_str(db, "site_notice_link_url", payload.site_notice_link_url.strip())
+    if payload.community_enabled is not None:
+        set_setting_str(db, "community_enabled", "true" if payload.community_enabled else "false")
+    if payload.community_title is not None:
+        set_setting_str(db, "community_title", payload.community_title.strip())
+    if payload.community_desc is not None:
+        set_setting_str(db, "community_desc", payload.community_desc.strip())
+    if payload.community_qq_group is not None:
+        set_setting_str(db, "community_qq_group", payload.community_qq_group.strip())
+    if payload.community_qq_url is not None:
+        set_setting_str(db, "community_qq_url", payload.community_qq_url.strip())
+    if payload.community_btn_text is not None:
+        set_setting_str(db, "community_btn_text", payload.community_btn_text.strip())
+    return get_admin_settings(db)
 
 
 @router.get("/stats", response_model=AdminStats)

@@ -193,6 +193,24 @@ export type ShopListResponse = {
   total: number;
 };
 
+export type SiteNotice = {
+  enabled: boolean;
+  badge: string;
+  title: string;
+  content: string;
+  link_text?: string;
+  link_url?: string;
+};
+
+export type CommunityNotice = {
+  enabled: boolean;
+  title: string;
+  desc: string;
+  qq_group: string;
+  qq_url?: string;
+  btn_text: string;
+};
+
 export type Meta = {
   platforms: string[];
   brands: string[];
@@ -200,6 +218,8 @@ export type Meta = {
   product_types: string[];
   tags: string[];
   advertise_enabled?: boolean;
+  site_notice?: SiteNotice | null;
+  community_notice?: CommunityNotice | null;
 };
 
 export type CatalogResponse = {

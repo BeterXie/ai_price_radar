@@ -10,22 +10,25 @@ from fastapi.responses import FileResponse, JSONResponse
 
 router = APIRouter(tags=["public-feed"])
 
-# Search possible locations for data folder
-CANDIDATE_DATA_DIRS = [
-    Path(__file__).resolve().parents[4] / "apps" / "web" / "public" / "data",
-    Path(__file__).resolve().parents[3] / "web" / "public" / "data",
-    Path("/workspace/apps/web/public/data"),
-    Path("/opt/ai-price-radar-v3/apps/web/public/data"),
-    Path("./data"),
-]
+def _get_candidate_data_dirs() -> list[Path]:
+    dirs: list[Path] = [
+        Path("/workspace/apps/web/public/data"),
+        Path("/opt/ai-price-radar-v3/apps/web/public/data"),
+        Path("./data"),
+    ]
+    cur = Path(__file__).resolve()
+    for p in cur.parents:
+        dirs.append(p / "apps" / "web" / "public" / "data")
+        dirs.append(p / "web" / "public" / "data")
+        dirs.append(p / "data")
+    return dirs
 
 
 def _find_data_dir() -> Path:
-    for candidate in CANDIDATE_DATA_DIRS:
+    for candidate in _get_candidate_data_dirs():
         if candidate.is_dir():
             return candidate
-    # Fallback to the primary candidate
-    return CANDIDATE_DATA_DIRS[0]
+    return Path("./data")
 
 
 @router.get("/data/latest.json")

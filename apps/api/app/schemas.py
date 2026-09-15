@@ -244,6 +244,24 @@ class SourcePlatformMeta(BaseModel):
     label: str
 
 
+class SiteNoticeOut(BaseModel):
+    enabled: bool = True
+    badge: str = "最新动态"
+    title: str = ""
+    content: str = ""
+    link_text: str = ""
+    link_url: str = ""
+
+
+class CommunityNoticeOut(BaseModel):
+    enabled: bool = True
+    title: str = "加入 AI 比价交流群"
+    desc: str = "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。"
+    qq_group: str = "938741334"
+    qq_url: str = ""
+    btn_text: str = "一键加入 QQ 群"
+
+
 class MetaResponse(BaseModel):
     platforms: list[str]
     brands: list[str]
@@ -251,6 +269,8 @@ class MetaResponse(BaseModel):
     product_types: list[str]
     tags: list[str]
     advertise_enabled: bool = False
+    site_notice: SiteNoticeOut | None = None
+    community_notice: CommunityNoticeOut | None = None
 
 
 class ReportCreate(BaseModel):
@@ -641,10 +661,34 @@ class AdminStats(BaseModel):
 
 class AdminSettingsOut(BaseModel):
     advertise_enabled: bool = False
+    site_notice_enabled: bool = True
+    site_notice_badge: str = "最新动态"
+    site_notice_title: str = ""
+    site_notice_content: str = ""
+    site_notice_link_text: str = ""
+    site_notice_link_url: str = ""
+    community_enabled: bool = True
+    community_title: str = "加入 AI 比价交流群"
+    community_desc: str = "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。"
+    community_qq_group: str = "938741334"
+    community_qq_url: str = ""
+    community_btn_text: str = "一键加入 QQ 群"
 
 
 class AdminSettingsUpdate(BaseModel):
     advertise_enabled: bool | None = None
+    site_notice_enabled: bool | None = None
+    site_notice_badge: str | None = None
+    site_notice_title: str | None = None
+    site_notice_content: str | None = None
+    site_notice_link_text: str | None = None
+    site_notice_link_url: str | None = None
+    community_enabled: bool | None = None
+    community_title: str | None = None
+    community_desc: str | None = None
+    community_qq_group: str | None = None
+    community_qq_url: str | None = None
+    community_btn_text: str | None = None
 
 
 class CommunitySkillSummaryOut(BaseModel):

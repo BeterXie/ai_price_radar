@@ -22,6 +22,8 @@ from ..schemas import (
     CatalogSnapshotPublic,
     GroupOffersResponse,
     MetaResponse,
+    SiteNoticeOut,
+    CommunityNoticeOut,
     OfferDescriptionResponse,
     OfferGroupPageResponse,
     OfferPageResponse,
@@ -531,6 +533,35 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     source_platform_ids = sorted({canonical_source_platform(offer.shop.platform) for offer in offers})
     setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "advertise_enabled"))
     advertise_enabled = bool(setting and setting.value and setting.value.strip().lower() in ("true", "1", "yes", "on"))
+
+    notice_setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "site_notice_enabled"))
+    notice_enabled = True if not notice_setting or not notice_setting.value else notice_setting.value.strip().lower() in ("true", "1", "yes", "on")
+
+    def _get_setting_val(key: str, default: str = "") -> str:
+        s = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+        return s.value if s and s.value is not None else default
+
+    site_notice = SiteNoticeOut(
+        enabled=notice_enabled,
+        badge=_get_setting_val("site_notice_badge", "最新动态"),
+        title=_get_setting_val("site_notice_title", "已支持 16688 平台商户比价与 Agent 开放快照"),
+        content=_get_setting_val("site_notice_content", "我们新增了 16688 渠道 AI 商品实时抓取，并上线了面向 AI Agent 与开发者的全站静态只读 Feed。"),
+        link_text=_get_setting_val("site_notice_link_text", "查看开发文档"),
+        link_url=_get_setting_val("site_notice_link_url", "/developers"),
+    )
+
+    comm_setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "community_enabled"))
+    comm_enabled = True if not comm_setting or not comm_setting.value else comm_setting.value.strip().lower() in ("true", "1", "yes", "on")
+
+    community_notice = CommunityNoticeOut(
+        enabled=comm_enabled,
+        title=_get_setting_val("community_title", "加入 AI 比价交流群"),
+        desc=_get_setting_val("community_desc", "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。"),
+        qq_group=_get_setting_val("community_qq_group", "938741334"),
+        qq_url=_get_setting_val("community_qq_url", ""),
+        btn_text=_get_setting_val("community_btn_text", "一键加入 QQ 群"),
+    )
+
     return MetaResponse(
         platforms=brands,
         brands=brands,
@@ -542,6 +573,8 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         product_types=sorted({x.product_type for x in products}),
         tags=sorted({tag for offer in offers for tag in (offer.tags or [])}),
         advertise_enabled=advertise_enabled,
+        site_notice=site_notice,
+        community_notice=community_notice,
     )
 
 
