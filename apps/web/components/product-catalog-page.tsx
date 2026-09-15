@@ -102,24 +102,25 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
       <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="报价快捷筛选">
         <nav className="filter-rail" aria-label="品牌筛选">
           <span className="filter-label">品牌</span>
-          <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined} className="filter-chip">
+          <Link href={catalogHref()} prefetch={true} aria-current={!activeBrand ? "page" : undefined} className="filter-chip">
             <PlatformIcon platform="" />全部
           </Link>
           {BRAND_TABS.map((brand) => (
-            <Link key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined} className="filter-chip">
+            <Link key={brand} href={catalogHref(brand)} prefetch={true} aria-current={activeBrand === brand ? "page" : undefined} className="filter-chip">
               <PlatformIcon platform={brand} />{brand}
             </Link>
           ))}
         </nav>
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
           <span className="filter-label">商品类型</span>
-          <Link href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">
+          <Link href={catalogHref(activeBrand)} prefetch={true} aria-current={!product ? "page" : undefined} className="filter-chip">
             全部商品
           </Link>
           {productTabs.map((tab) => (
             <Link
               key={tab.slug}
               href={productHref(tab.slug)}
+              prefetch={true}
               aria-current={product?.slug === tab.slug ? "page" : undefined}
               className="filter-chip"
             >
@@ -129,9 +130,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         </nav>
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="来源平台筛选">
           <span className="filter-label">来源平台</span>
-          <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip">全部来源</Link>
+          <Link href={sourceHref()} prefetch={true} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip">全部来源</Link>
           {meta.source_platforms.filter((source) => source.id !== "dujiao_next").map((source) => (
-            <Link key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className="filter-chip">{source.label}</Link>
+            <Link key={source.id} href={sourceHref(source.id)} prefetch={true} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className="filter-chip">{source.label}</Link>
           ))}
           {!metaResult ? <span className="ml-2 text-xs text-[color:var(--muted)]">来源选项暂不可用，可继续浏览当前报价</span> : null}
         </nav>

@@ -694,6 +694,11 @@ def publish_sources(
             else:
                 snapshot.published_at = published_at
                 db.commit()
+                try:
+                    from export_snapshot import export_public_snapshot
+                    export_public_snapshot(db, snapshot.id)
+                except Exception as export_err:
+                    logger.warning("Failed to export public snapshot %d: %s", snapshot.id, export_err)
             return result
     except Exception:
         db.rollback()

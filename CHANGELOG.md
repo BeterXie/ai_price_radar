@@ -2,6 +2,22 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.68] - 2026-09-15
+
+### Added
+- **公共数据快照与开发者文档规范**:
+  - 提供不可变快照目录与接口规范文档（`/price-radar-api.md`、`/price-radar-v1.schema.json`、`/.well-known/price-radar.json`）。
+  - 开放 `/api/v1/feed` 公共 Feed 路由。
+  - 数据管道发布后自动生成最新只读不可变快照（`pipeline/export_snapshot.py`），支持前端直接读取快照渲染。
+
+### Changed & Improved
+- **商品类型切换无感过渡 (Smooth Tab Transition)**:
+  - 彻底移除 `apps/web/app/products/[slug]/loading.tsx`，避免 Next.js App Router 路由跳转触发全局卸载和骨架屏白屏闪烁。
+  - 开启商品类型 Tab 链接预取 (`prefetch={true}`) 与 30 秒客户端路由缓存 (`revalidate = 30`)。
+  - 使用 React `cache()` 消除元数据与详情页重复网络开销，实现商品类型即点即换，零白屏无感切换。
+- **API 稳定性与网络超时优化**:
+  - `apiFetch` 增加超时中断与取消信号，避免并发静态生成或网络波动时请求挂起。
+
 ## [3.7.67] - 2026-09-15
 
 ### Changed & Improved

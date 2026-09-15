@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CommunityPrompts } from "@/components/community-prompts";
 import { NewFeatureModal } from "@/components/new-feature-modal";
+import { SiteNoticePrompt } from "@/components/site-notice";
 import { SiteStructuredData } from "@/components/structured-data";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { getMeta } from "@/lib/api";
@@ -44,6 +45,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <SiteStructuredData />
         <GoogleAnalytics />
         <a href="#page-content" className="skip-link">跳到主要内容</a>
+        <SiteNoticePrompt />
         <SiteHeader advertiseEnabled={advertiseEnabled} />
         <div id="page-content" tabIndex={-1}>{children}</div>
         <BackToTop />

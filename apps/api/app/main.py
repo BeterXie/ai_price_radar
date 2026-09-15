@@ -7,11 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
 from .database import Base, engine
-from .routers import admin, discovery, internal, public
+from .routers import admin, discovery, internal, public, public_feed
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.67"
+VERSION = "3.7.68"
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(public.router)
+app.include_router(public_feed.router)
 app.include_router(admin.router)
 app.include_router(internal.router)
 app.include_router(internal.detector_router)

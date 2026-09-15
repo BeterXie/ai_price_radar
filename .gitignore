@@ -26,6 +26,7 @@ seo/
 data/crawler/
 data/support/
 apps/web/public/support/
+apps/web/public/data/
 postgres_data/
 *.log
 *.tmp

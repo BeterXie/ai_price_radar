@@ -3,7 +3,7 @@ import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
 import { getProductSeoContent } from "@/lib/product-seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

@@ -12,6 +12,9 @@ import type {
 } from "@/lib/types";
 
 
+import { cache } from "react";
+import { getSnapshotCatalog } from "@/lib/snapshot-catalog";
+
 const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
@@ -21,11 +24,18 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, retries = 2): Promise<T> {
+async function apiFetch<T>(path: string, retries = 2, init?: RequestInit): Promise<T> {
   let attempt = 0;
+  const options: RequestInit = {
+    ...(init?.next ? {} : { cache: "no-store" }),
+    ...init,
+  };
   while (true) {
     try {
-      const response = await fetch(`${internalBase}${path}`, { cache: "no-store" });
+      const response = await fetch(`${internalBase}${path}`, {
+        ...options,
+        signal: options.signal || AbortSignal.timeout(6000),
+      });
       if (!response.ok) {
         throw new ApiError(response.status, path);
       }
@@ -41,25 +51,34 @@ async function apiFetch<T>(path: string, retries = 2): Promise<T> {
 }
 
 export async function getProducts(query = ""): Promise<CatalogResponse> {
-  return apiFetch(`/api/v1/products${query ? `?${query}` : ""}`);
+  const clean = query.trim();
+  if (!clean || clean === "sort=quality") {
+    const snapshotData = await getSnapshotCatalog().catch(() => null);
+    if (snapshotData && snapshotData.items.length > 0) {
+      return snapshotData;
+    }
+  }
+  return apiFetch(`/api/v1/products${query ? `?${query}` : ""}`, 2, { next: { revalidate: 30 } });
 }
 
 export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPage> {
-  return apiFetch(`/api/v1/catalog/groups${query ? `?${query}` : ""}`);
+  return apiFetch(`/api/v1/catalog/groups${query ? `?${query}` : ""}`, 2, { next: { revalidate: 30 } });
 }
 
-export async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {
+export const getProduct = cache(async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {
   try {
-    return await apiFetch(`/api/v1/products/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`);
+    return await apiFetch(`/api/v1/products/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`, 2, {
+      next: { revalidate: 30 },
+    });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
   }
-}
+});
 
 export async function getShop(token: string): Promise<ShopDetail | null> {
   try {
-    return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}`);
+    return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}`, 2, { next: { revalidate: 60 } });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -68,17 +87,17 @@ export async function getShop(token: string): Promise<ShopDetail | null> {
 
 /** Returns a flat list of shop tokens for callers that only need identifiers. */
 export async function getShopTokens(): Promise<string[]> {
-  return apiFetch<string[]>("/api/v1/shops");
+  return apiFetch<string[]>("/api/v1/shops", 2, { next: { revalidate: 120 } });
 }
 
 /** Returns paginated ShopCard list for directory / source pages. */
 export async function getShopCards(query = ""): Promise<ShopListResponse> {
-  return apiFetch<ShopListResponse>(`/api/v1/shops/cards${query ? `?${query}` : ""}`);
+  return apiFetch<ShopListResponse>(`/api/v1/shops/cards${query ? `?${query}` : ""}`, 2, { next: { revalidate: 60 } });
 }
 
-export async function getMeta(): Promise<Meta> {
-  return apiFetch("/api/v1/meta");
-}
+export const getMeta = cache(async function getMeta(): Promise<Meta> {
+  return apiFetch("/api/v1/meta", 2, { next: { revalidate: 300 } });
+});
 
 export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {
   return apiFetch(`/api/v1/corrections${query ? `?${query}` : ""}`);

@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Coffee, GithubLogo, Heart, X } from "@phosphor-icons/react";
+import { Coffee, GithubLogo, Heart, UsersThree, X } from "@phosphor-icons/react";
 import {
+  COMMUNITY_ENABLED,
+  COMMUNITY_QQ_GROUP,
+  COMMUNITY_QQ_GROUP_URL,
   GITHUB_REPOSITORY_URL,
   SUPPORT_AVAILABLE,
   SUPPORT_METHODS,
 } from "@/lib/community";
 
-type PromptKind = "github" | "support";
+type PromptKind = "community" | "github" | "support";
 
 const DAY = 24 * 60 * 60 * 1000;
 const storageKeys = {
@@ -18,6 +21,7 @@ const storageKeys = {
   sessionCount: "apr:community:session-count",
   pageViews: "apr:community:page-views",
   lastPromptAt: "apr:community:last-prompt-at",
+  communityUntil: "apr:community:community-until",
   githubUntil: "apr:community:github-until",
   supportUntil: "apr:community:support-until",
 };
@@ -50,7 +54,12 @@ export function CommunityPrompts() {
 
   const snooze = useCallback((kind: PromptKind, days: number) => {
     try {
-      const key = kind === "github" ? storageKeys.githubUntil : storageKeys.supportUntil;
+      const key =
+        kind === "community"
+          ? storageKeys.communityUntil
+          : kind === "github"
+            ? storageKeys.githubUntil
+            : storageKeys.supportUntil;
       localStorage.setItem(key, String(Date.now() + days * DAY));
       localStorage.setItem(storageKeys.lastPromptAt, String(Date.now()));
     } catch {
@@ -106,6 +115,11 @@ export function CommunityPrompts() {
 
       const sessions = storedNumber(localStorage, storageKeys.sessionCount);
       const pageViews = storedNumber(localStorage, storageKeys.pageViews);
+
+      const communityEligible =
+        COMMUNITY_ENABLED &&
+        (sessions >= 1 || pageViews >= 1) &&
+        now >= storedNumber(localStorage, storageKeys.communityUntil);
       const supportEligible =
         SUPPORT_AVAILABLE &&
         sessions >= 3 &&
@@ -113,13 +127,21 @@ export function CommunityPrompts() {
       const githubEligible =
         (sessions >= 2 || pageViews >= 2) &&
         now >= storedNumber(localStorage, storageKeys.githubUntil);
-      const nextPrompt: PromptKind | null = supportEligible ? "support" : githubEligible ? "github" : null;
+
+      const nextPrompt: PromptKind | null = communityEligible
+        ? "community"
+        : supportEligible
+          ? "support"
+          : githubEligible
+            ? "github"
+            : null;
       if (!nextPrompt) return;
 
+      const delayMs = nextPrompt === "community" ? 25_000 : nextPrompt === "support" ? 60_000 : 45_000;
       const timer = window.setTimeout(() => {
         rememberPrompt();
         setPrompt(nextPrompt);
-      }, nextPrompt === "support" ? 60_000 : 45_000);
+      }, delayMs);
       return () => window.clearTimeout(timer);
     } catch {
       return;
@@ -170,21 +192,37 @@ export function CommunityPrompts() {
     <>
       {prompt && (
         <aside
-          aria-label={prompt === "github" ? "开源项目提示" : "支持作者提示"}
+          aria-label={
+            prompt === "community"
+              ? "交流群提示"
+              : prompt === "github"
+                ? "开源项目提示"
+                : "支持作者提示"
+          }
           className="fixed inset-x-4 bottom-20 z-40 rounded-[18px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-5 shadow-[0_20px_50px_rgba(18,19,15,.18)] md:right-auto md:bottom-8 md:left-8 md:w-[420px]"
         >
           <div className="flex items-start gap-4">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-[color:var(--ink)] text-white">
-              {prompt === "github" ? <GithubLogo size={23} weight="fill" /> : <Coffee size={23} weight="bold" />}
+              {prompt === "community" ? (
+                <UsersThree size={24} weight="bold" className="text-amber-400" />
+              ) : prompt === "github" ? (
+                <GithubLogo size={23} weight="fill" />
+              ) : (
+                <Coffee size={23} weight="bold" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-lg font-semibold tracking-[-.03em]">
-                  {prompt === "github" ? "觉得网站有用？" : "这个工具帮到你了吗？"}
+                  {prompt === "community"
+                    ? "加入 AI 比价交流群"
+                    : prompt === "github"
+                      ? "觉得网站有用？"
+                      : "这个工具帮到你了吗？"}
                 </h2>
                 <button
                   type="button"
-                  onClick={() => dismissPrompt(prompt, prompt === "github" ? 14 : 30)}
+                  onClick={() => dismissPrompt(prompt, prompt === "community" ? 14 : prompt === "github" ? 14 : 30)}
                   aria-label="关闭提示"
                   className="tactile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border hairline"
                 >
@@ -192,12 +230,24 @@ export function CommunityPrompts() {
                 </button>
               </div>
               <p className="mt-2 text-sm leading-6 text-black/60">
-                {prompt === "github"
-                  ? "AI Price Memory 已在 GitHub 开源。欢迎查看代码、提交建议，顺手点个 Star。"
-                  : "开发、服务器和数据维护需要持续投入。你可以自愿请作者喝杯咖啡。"}
+                {prompt === "community"
+                  ? `第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。QQ群号：${COMMUNITY_QQ_GROUP}`
+                  : prompt === "github"
+                    ? "AI Price Memory 已在 GitHub 开源。欢迎查看代码、提交建议，顺手点个 Star。"
+                    : "开发、服务器和数据维护需要持续投入。你可以自愿请作者喝杯咖啡。"}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {prompt === "github" ? (
+                {prompt === "community" ? (
+                  <a
+                    href={COMMUNITY_QQ_GROUP_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => dismissPrompt("community", 14)}
+                    className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2.5 text-sm font-medium text-white"
+                  >
+                    一键加入 QQ 群
+                  </a>
+                ) : prompt === "github" ? (
                   <a
                     href={GITHUB_REPOSITORY_URL}
                     target="_blank"
@@ -218,7 +268,7 @@ export function CommunityPrompts() {
                 )}
                 <button
                   type="button"
-                  onClick={() => dismissPrompt(prompt, prompt === "github" ? 14 : 30)}
+                  onClick={() => dismissPrompt(prompt, prompt === "community" ? 14 : prompt === "github" ? 14 : 30)}
                   className="tactile rounded-[10px] border border-[color:var(--line-strong)] px-4 py-2.5 text-sm"
                 >
                   稍后再说

@@ -35,3 +35,34 @@ export const SUPPORT_METHODS = configuredSupportMethods.filter((method) => Boole
 export const SUPPORT_AVAILABLE =
   process.env.NEXT_PUBLIC_SUPPORT_ENABLED !== "false" &&
   SUPPORT_METHODS.length > 0;
+
+// Community & Private Traffic Configuration
+export const COMMUNITY_QQ_GROUP = process.env.NEXT_PUBLIC_COMMUNITY_QQ_GROUP || "938741334";
+export const COMMUNITY_QQ_GROUP_URL =
+  process.env.NEXT_PUBLIC_COMMUNITY_QQ_URL ||
+  "https://qm.qq.com/cgi-bin/qm/qr?k=community&jump_from=webapi";
+export const COMMUNITY_WECHAT_QR_URL = safeQrUrl(
+  process.env.NEXT_PUBLIC_COMMUNITY_WECHAT_QR_URL || "https://ai.pricememo.cn/support/wechat.jpg"
+);
+export const COMMUNITY_ENABLED = process.env.NEXT_PUBLIC_COMMUNITY_ENABLED !== "false";
+
+// Global Site Notice Configuration
+export type SiteNoticeConfig = {
+  id: string;
+  badge: string;
+  title: string;
+  content: string;
+  linkText?: string;
+  linkUrl?: string;
+  enabled: boolean;
+};
+
+export const CURRENT_SITE_NOTICE: SiteNoticeConfig = {
+  id: "notice-20260915-agent-feed",
+  badge: "最新动态",
+  title: "已支持 16688 平台商户比价与 Agent 开放快照",
+  content: "我们新增了 16688 渠道 AI 商品实时抓取，并上线了面向 AI Agent 与开发者的全站静态只读 Feed。",
+  linkText: "查看开发文档",
+  linkUrl: "/developers",
+  enabled: process.env.NEXT_PUBLIC_SITE_NOTICE_ENABLED !== "false",
+};

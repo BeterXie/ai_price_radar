@@ -21,6 +21,27 @@ export default function DevelopersPage() {
         </div>
         <p className="mt-4 text-sm leading-6 text-[color:var(--muted)]">Atom 示例：<code className="mono">/api/v1/watch.atom?targets=chatgpt-plus:16,claude-pro</code>（客户端构造时请对 targets 查询参数进行 URL 编码）。未提供有效 targets 时接口会返回 422。</p>
       </section>
+      <section className="mt-12">
+        <SectionIntro title="AI Agent 开放数据协议与静态 Feed" description="面向大模型、自主 Agent 与自动化脚本的只读快照流，零数据库查询消耗，支持高并发与缓存加速。" />
+        <div className="data-table-frame mt-6 overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]" data-vds-layer="evidence">
+          <div className="grid gap-2 border-b border-[color:var(--line)] p-5 md:grid-cols-[280px_1fr]">
+            <code className="mono text-sm font-semibold text-[color:var(--info)]">GET /.well-known/price-radar.json</code>
+            <p className="text-sm leading-6 text-[color:var(--muted)]">RFC 规范的机器自发现元数据指针，包含当前最新快照地址、契约文档与 Schema 规范。</p>
+          </div>
+          <div className="grid gap-2 border-b border-[color:var(--line)] p-5 md:grid-cols-[280px_1fr]">
+            <code className="mono text-sm font-semibold text-[color:var(--info)]">GET /price-radar-api.md</code>
+            <p className="text-sm leading-6 text-[color:var(--muted)]">专为 AI Agent 和 LLM 提示词设计的 Markdown 接入说明，包含快照结构与缓存策略。</p>
+          </div>
+          <div className="grid gap-2 border-b border-[color:var(--line)] p-5 md:grid-cols-[280px_1fr]">
+            <code className="mono text-sm font-semibold text-[color:var(--info)]">GET /data/latest.json</code>
+            <p className="text-sm leading-6 text-[color:var(--muted)]">最新目录快照指针（约 1KB），轮询间隔建议 60 秒以上，返回不可变快照文件的 URL 与时间戳。</p>
+          </div>
+          <div className="grid gap-2 p-5 md:grid-cols-[280px_1fr]">
+            <code className="mono text-sm font-semibold text-[color:var(--info)]">GET /data/v1/snapshots/{"{id}"}.json</code>
+            <p className="text-sm leading-6 text-[color:var(--muted)]">不可变全量/Top 5 标准报价快照，完全静态化服务，客户端与 CDN 可永久缓存。</p>
+          </div>
+        </div>
+      </section>
       <section className="data-table-frame mt-12 grid gap-px overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--line)] md:grid-cols-2" data-vds-layer="evidence">
         <div className="bg-[color:var(--panel)] p-6"><h2 className="text-2xl font-semibold">商家 JSON Feed</h2><p className="mt-3 text-sm leading-7 text-[color:var(--muted)]">Feed 可返回商品数组，或包含 shop、updated_at、items 的对象。商品至少提供稳定 ID、名称和来源 URL；价格、库存、类别与公开描述按统一导入模型处理。</p><a href="/shops/submit" className="button-primary mt-6">提交 Feed 地址</a></div>
         <div className="bg-[color:var(--panel)] p-6"><h2 className="text-2xl font-semibold">Connector 接入</h2><p className="mt-3 text-sm leading-7 text-[color:var(--muted)]">后端 Connector 接口统一输出标准化记录。新增来源应实现读取、校验和转换，不直接写业务数据库；发布流程继续使用幂等导入和原子快照。</p><a href="https://github.com/BeterXie/ai_price_radar/tree/main/pipeline/connectors" target="_blank" rel="noreferrer" className="button-secondary mt-6">查看 Connector 代码</a></div>
