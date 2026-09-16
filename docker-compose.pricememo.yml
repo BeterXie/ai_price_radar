@@ -4,12 +4,15 @@ services:
       context: ./apps/api
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    volumes:
+      - ./extensions:/app/extensions:ro
     networks:
       default:
       detector_control:
       pricememo_frontend:
         aliases:
           - ai-radar-api
+
 
   web:
     build:
