@@ -3,9 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef } from "react";
-import { Bell, GithubLogo, List, Storefront, Tag, X } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, GithubLogo, List, Storefront, Tag, User, X } from "@phosphor-icons/react";
 import { PlatformIcon } from "@/components/platform-icon";
+import { fetchAuthMe } from "@/lib/auth-client";
+import type { AuthSessionState } from "@/lib/types";
+import { LoginModal } from "@/components/login-modal";
 
 const primaryLinks = [
   { href: "/products", label: "报价目录" },
@@ -24,6 +27,13 @@ function current(pathname: string, href: string) {
 export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: boolean }) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDetailsElement>(null);
+  const [session, setSession] = useState<AuthSessionState | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
+  useEffect(() => {
+    fetchAuthMe().then(setSession).catch(() => {});
+  }, []);
+
   const closeMenu = () => {
     if (menuRef.current) menuRef.current.open = false;
   };
@@ -66,6 +76,16 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           <Link href="/shops/submit" aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="header-action header-action-submit">
             <Storefront size={18} />申请收录
           </Link>
+          {session?.authenticated && session.user ? (
+            <Link href="/account" aria-current={current(pathname, "/account") ? "page" : undefined} className="header-action header-action-user">
+              <User size={18} />
+              <span className="max-w-[70px] truncate">{session.user.nickname || "个人中心"}</span>
+            </Link>
+          ) : (
+            <button type="button" onClick={() => setShowLoginModal(true)} className="header-action header-action-login">
+              <User size={18} />登录
+            </button>
+          )}
           <a href="https://github.com/BeterXie/ai_price_radar" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看 AI Price Memory 开源项目" title="GitHub 开源项目" className="github-action grid h-10 w-10 shrink-0 place-items-center rounded-[11px] text-white">
             <GithubLogo size={20} weight="fill" />
           </a>
@@ -84,6 +104,15 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
                 ))}
                 <Link href="/watchlist" onClick={closeMenu} aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="nav-link flex min-h-11"><Bell size={17} />关注清单</Link>
                 <Link href="/shops/submit" onClick={closeMenu} aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
+                {session?.authenticated && session.user ? (
+                  <Link href="/account" onClick={closeMenu} aria-current={current(pathname, "/account") ? "page" : undefined} className="nav-link flex min-h-11">
+                    <User size={17} />个人中心 ({session.user.nickname || "我的账号"})
+                  </Link>
+                ) : (
+                  <button type="button" onClick={() => { closeMenu(); setShowLoginModal(true); }} className="nav-link flex min-h-11 w-full text-left items-center gap-1.5">
+                    <User size={17} />登录 / 注册
+                  </button>
+                )}
                 {advertiseEnabled ? (
                   <Link href="/advertise" onClick={closeMenu} aria-current={current(pathname, "/advertise") ? "page" : undefined} className="nav-link flex min-h-11"><Tag size={17} />商务合作</Link>
                 ) : null}
@@ -102,6 +131,11 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           </details>
         </div>
       </div>
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={(s) => setSession(s)}
+      />
     </header>
   );
 }

@@ -2,6 +2,23 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.72] - 2026-09-17
+
+### Added
+- **机器人通知基础设施与消息分发解耦**:
+  - 新增 `PriceChangeEvent` 变动模型与 `dispatch_price_changes`、`handle_inbound_chat_message` 弱耦合插件化派发门面，动态加载本地私有扩展，无扩展时优雅降级。
+  - 私有机器人代码保存在 `extensions/` 专属目录，通过 `.gitignore` 严格隔离，杜绝公开仓库泄漏。
+- **用户体系与全链路认证**:
+  - 新增 `User`、`UserSession`、`AuthCode`、`UserBotBinding` 模型与 `scripts/migrate_user_auth_and_bot_v13.py` 迁移脚本。
+  - 支持邮箱 6 位验证码登录与 QQ 互联快捷登录，新增个人中心路由（`/account`）。
+- **手机 QQ 扫码绑定与交互查价指令**:
+  - 前端支持手机 QQ 原生扫码授权与一键绑定当前登录 QQ。
+  - 机器人交互指令全面支持 `plus`、`pro`、`gemini`、`grok`、`查 <关键词>`，严格要求 `is_comparable == True` 且 `stock_count > 1`。
+  - 支持大盘行情（`行情`）、今日降价精选（`降价`）、个人设置（`我的`）、聊天内快捷启停开关（`暂停推送`/`恢复推送`）。
+- **管理后台全局动态启停开关**:
+  - 后台运营与配置新增「QQ 机器人与价格变动通知开关」，保存在 `SystemSetting` 中即时生效。
+  - 关闭后前台个人中心完全隐藏机器人卡片，接口 403 阻断绑定请求，指令返回维护提示，后台爬虫推送静默。
+
 ## [3.7.71] - 2026-09-16
 
 ### Added

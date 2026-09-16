@@ -7,8 +7,16 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+import sys
 from pathlib import Path
 from typing import Any
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+APPS_API_DIR = ROOT_DIR / "apps" / "api"
+if str(APPS_API_DIR) not in sys.path:
+    sys.path.insert(0, str(APPS_API_DIR))
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -927,6 +935,7 @@ def upsert_offer(
     *,
     collected_offer_ids: set[int] | None = None,
     collected_new_shop_tokens: set[str] | None = None,
+    collected_price_changes: list[Any] | None = None,
 ) -> tuple[bool, bool]:
     token = str(record.get("token") or "").strip()
     if not token:
@@ -985,6 +994,28 @@ def upsert_offer(
         db.add(offer); db.flush()
         changed = True
     elif offer.price != price or offer.currency != currency or offer.stock_count != count or offer.stock_status != status:
+        if (
+            collected_price_changes is not None
+            and offer.price is not None
+            and price is not None
+            and offer.price != price
+        ):
+            try:
+                from app.services.notification_hub import create_price_change_event
+                evt = create_price_change_event(
+                    offer_id=offer.id,
+                    product_name=raw.original_name,
+                    shop_name=shop.name,
+                    source_platform=shop.platform,
+                    old_price=offer.price,
+                    new_price=price,
+                    currency=currency,
+                    product_url=raw.source_url,
+                )
+                if evt is not None:
+                    collected_price_changes.append(evt)
+            except Exception:
+                pass
         changed = True
     is_manually_locked = (not is_new_offer) and (("manual_override" in (offer.tags or [])) or (offer.classification_confidence == 100))
     if not is_manually_locked:

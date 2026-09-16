@@ -93,6 +93,7 @@ def get_setting_str(db: Session, key: str, default: str = "") -> str:
 def get_admin_settings(db: Session = Depends(get_db)) -> AdminSettingsOut:
     return AdminSettingsOut(
         advertise_enabled=get_setting_bool(db, "advertise_enabled", default=False),
+        bot_enabled=get_setting_bool(db, "bot_enabled", default=True),
         site_notice_enabled=get_setting_bool(db, "site_notice_enabled", default=True),
         site_notice_badge=get_setting_str(db, "site_notice_badge", default="最新动态"),
         site_notice_title=get_setting_str(db, "site_notice_title", default="已支持 16688 平台商户比价与 Agent 开放快照"),
@@ -115,6 +116,8 @@ def update_admin_settings(
 ) -> AdminSettingsOut:
     if payload.advertise_enabled is not None:
         set_setting_str(db, "advertise_enabled", "true" if payload.advertise_enabled else "false")
+    if payload.bot_enabled is not None:
+        set_setting_str(db, "bot_enabled", "true" if payload.bot_enabled else "false")
     if payload.site_notice_enabled is not None:
         set_setting_str(db, "site_notice_enabled", "true" if payload.site_notice_enabled else "false")
     if payload.site_notice_badge is not None:

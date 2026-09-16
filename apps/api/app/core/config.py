@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_starttls: bool = True
     smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
+    qq_auth_enabled: bool = False
+    qq_app_id: str = ""
+    qq_app_key: str = ""
+    qq_redirect_uri: str = ""
+    session_secret_key: str = "pricememo-auth-secret-key-change-in-production"
+    session_cookie_name: str = "pm_session"
+    session_max_age_days: int = Field(default=30, ge=1, le=365)
 
     @field_validator("shop_intake_admin_emails")
     @classmethod

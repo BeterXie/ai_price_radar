@@ -562,6 +562,9 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         btn_text=_get_setting_val("community_btn_text", "一键加入 QQ 群"),
     )
 
+    bot_setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "bot_enabled"))
+    bot_enabled = True if not bot_setting or not bot_setting.value else bot_setting.value.strip().lower() in ("true", "1", "yes", "on")
+
     return MetaResponse(
         platforms=brands,
         brands=brands,
@@ -573,6 +576,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         product_types=sorted({x.product_type for x in products}),
         tags=sorted({tag for offer in offers for tag in (offer.tags or [])}),
         advertise_enabled=advertise_enabled,
+        bot_enabled=bot_enabled,
         site_notice=site_notice,
         community_notice=community_notice,
     )

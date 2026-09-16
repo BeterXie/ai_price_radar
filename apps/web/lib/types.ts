@@ -218,6 +218,7 @@ export type Meta = {
   product_types: string[];
   tags: string[];
   advertise_enabled?: boolean;
+  bot_enabled?: boolean;
   site_notice?: SiteNotice | null;
   community_notice?: CommunityNotice | null;
 };
@@ -324,4 +325,43 @@ export type AdminCommunitySkillCreate = {
 };
 
 export type AdminCommunitySkillUpdate = Partial<AdminCommunitySkillCreate>;
+
+export type User = {
+  id: number;
+  email: string | null;
+  nickname: string;
+  avatar_url: string;
+  has_qq_bound: boolean;
+  created_at: string;
+};
+
+export type AuthSessionState = {
+  authenticated: boolean;
+  user: User | null;
+  token: string | null;
+};
+
+export type UserBotBinding = {
+  id: number;
+  channel: string;
+  target_id: string;
+  is_active: boolean;
+  notify_price_drop: boolean;
+  notify_price_hike: boolean;
+  created_at: string;
+};
+
+export type UserProfileResponse = {
+  user: User;
+  qq_bot_binding: UserBotBinding | null;
+  bot_enabled?: boolean;
+};
+
+export type QQBotBindingStartResponse = {
+  session_id: string;
+  bind_code: string;
+  qrcode_url?: string;
+  expires_in_seconds: number;
+  instruction: string;
+};
 

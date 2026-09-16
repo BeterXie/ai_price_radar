@@ -269,6 +269,7 @@ class MetaResponse(BaseModel):
     product_types: list[str]
     tags: list[str]
     advertise_enabled: bool = False
+    bot_enabled: bool = True
     site_notice: SiteNoticeOut | None = None
     community_notice: CommunityNoticeOut | None = None
 
@@ -661,6 +662,7 @@ class AdminStats(BaseModel):
 
 class AdminSettingsOut(BaseModel):
     advertise_enabled: bool = False
+    bot_enabled: bool = True
     site_notice_enabled: bool = True
     site_notice_badge: str = "最新动态"
     site_notice_title: str = ""
@@ -677,6 +679,7 @@ class AdminSettingsOut(BaseModel):
 
 class AdminSettingsUpdate(BaseModel):
     advertise_enabled: bool | None = None
+    bot_enabled: bool | None = None
     site_notice_enabled: bool | None = None
     site_notice_badge: str | None = None
     site_notice_title: str | None = None
@@ -787,4 +790,68 @@ class AdminCommunitySkillUpdate(BaseModel):
     is_pinned: bool | None = None
     is_visible: bool | None = None
     sort_order: int | None = None
+
+
+class UserRead(BaseModel):
+    id: int
+    email: str | None = None
+    nickname: str = ""
+    avatar_url: str = ""
+    has_qq_bound: bool = False
+    created_at: datetime
+
+
+class EmailCodeRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=200)
+
+
+class EmailCodeResponse(BaseModel):
+    success: bool
+    retry_after: int = 60
+    message: str
+
+
+class EmailVerifyRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=200)
+    code: str = Field(min_length=4, max_length=20)
+
+
+class AuthSessionResponse(BaseModel):
+    authenticated: bool
+    user: UserRead | None = None
+    token: str | None = None
+
+
+class UserBotBindingRead(BaseModel):
+    id: int
+    channel: str
+    target_id: str
+    is_active: bool
+    notify_price_drop: bool
+    notify_price_hike: bool
+    created_at: datetime
+
+
+class UserBotBindingUpdate(BaseModel):
+    is_active: bool | None = None
+    notify_price_drop: bool | None = None
+    notify_price_hike: bool | None = None
+
+
+class QQBotBindingStartResponse(BaseModel):
+    session_id: str
+    bind_code: str
+    qrcode_url: str = ""
+    expires_in_seconds: int = 300
+    instruction: str = "请使用手机 QQ 扫描二维码进行授权绑定"
+
+
+class BotCommandRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    channel: str = Field(default="qq", max_length=30)
+    sender_id: str = Field(default="", max_length=100)
+
+
+class BotCommandResponse(BaseModel):
+    reply: str
 

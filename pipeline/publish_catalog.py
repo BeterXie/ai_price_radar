@@ -272,6 +272,7 @@ def import_source_into_snapshot(
     source: str | Path,
     snapshot_id: int,
     products: dict[str, Any] | None = None,
+    collected_price_changes: list[Any] | None = None,
 ) -> ImportResult:
     """Import one source without committing or publishing the target snapshot."""
     loader = get_connector(connector)
@@ -293,6 +294,7 @@ def import_source_into_snapshot(
                 snapshot_id,
                 collected_offer_ids=offer_ids,
                 collected_new_shop_tokens=new_shop_tokens,
+                collected_price_changes=collected_price_changes,
             )
             if token := str(record.get("token") or "").strip():
                 shop_tokens.add(token)
@@ -644,6 +646,7 @@ def publish_sources(
                 _carry_forward_current_snapshot(db, snapshot.id)
             imports: list[ImportResult] = []
             published_at = utcnow()
+            all_price_changes: list[Any] = []
             for spec in sources:
                 imported = import_source_into_snapshot(
                     db,
@@ -651,6 +654,7 @@ def publish_sources(
                     source=spec.source,
                     snapshot_id=snapshot.id,
                     products=products,
+                    collected_price_changes=all_price_changes,
                 )
                 if carry_forward_current and imported.offer_ids:
                     imported.pruned = _prune_stale_offers(
@@ -699,6 +703,12 @@ def publish_sources(
                     export_public_snapshot(db, snapshot.id)
                 except Exception as export_err:
                     logger.warning("Failed to export public snapshot %d: %s", snapshot.id, export_err)
+                if all_price_changes:
+                    try:
+                        from app.services.notification_hub import dispatch_price_changes
+                        dispatch_price_changes(all_price_changes, db_session=db)
+                    except Exception as notify_err:
+                        logger.warning("Failed to dispatch price change notifications: %s", notify_err)
             return result
     except Exception:
         db.rollback()

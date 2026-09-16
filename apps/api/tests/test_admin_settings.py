@@ -117,3 +117,32 @@ def test_admin_settings_community_toggle():
         assert public_meta_updated.community_notice.title == "官方微信群"
 
 
+def test_admin_settings_bot_toggle():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        # 1. Default should be True
+        default_settings = get_admin_settings(db=db)
+        assert default_settings.bot_enabled is True
+
+        public_meta = meta(db=db)
+        assert public_meta.bot_enabled is True
+
+        # 2. Toggle to False
+        updated = update_admin_settings(payload=AdminSettingsUpdate(bot_enabled=False), db=db)
+        assert updated.bot_enabled is False
+
+        read_again = get_admin_settings(db=db)
+        assert read_again.bot_enabled is False
+
+        public_meta_off = meta(db=db)
+        assert public_meta_off.bot_enabled is False
+
+        # 3. Toggle back to True
+        updated_on = update_admin_settings(payload=AdminSettingsUpdate(bot_enabled=True), db=db)
+        assert updated_on.bot_enabled is True
+
+        public_meta_on = meta(db=db)
+        assert public_meta_on.bot_enabled is True
+
+

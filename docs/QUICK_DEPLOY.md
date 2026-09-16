@@ -236,6 +236,15 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_source_platform_16688_v11.py
 
+# 用户账号体系与机器人绑定表结构迁移 (v13)；创建 users, user_sessions, auth_codes, user_bot_bindings，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_user_auth_and_bot_v13.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 

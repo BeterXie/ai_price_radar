@@ -5,6 +5,7 @@ import {
   ArrowClockwise,
   Article,
   Broadcast,
+  ChatCircleDots,
   Check,
   Eye,
   EyeSlash,
@@ -12,6 +13,7 @@ import {
   Globe,
   Key,
   MagnifyingGlass,
+  Robot,
   Storefront,
   Tag,
   UsersThree,
@@ -137,6 +139,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
   const [advertiseEnabled, setAdvertiseEnabled] = useState<boolean>(false);
   const [updatingAdvertise, setUpdatingAdvertise] = useState<boolean>(false);
+  const [botEnabled, setBotEnabled] = useState<boolean>(true);
+  const [updatingBot, setUpdatingBot] = useState<boolean>(false);
   const [siteNotice, setSiteNotice] = useState({
     enabled: true,
     badge: "最新动态",
@@ -308,6 +312,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       if (settingsResponse && settingsResponse.ok) {
         const settingsData = await settingsResponse.json();
         setAdvertiseEnabled(Boolean(settingsData.advertise_enabled));
+        setBotEnabled(settingsData.bot_enabled ?? true);
         setSiteNotice({
           enabled: settingsData.site_notice_enabled ?? true,
           badge: settingsData.site_notice_badge || "最新动态",
@@ -392,6 +397,33 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setError("网络请求失败，未能更新商务合作设置。");
     } finally {
       setUpdatingAdvertise(false);
+    }
+  }
+
+  async function toggleBot(targetState: boolean) {
+    setUpdatingBot(true);
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ bot_enabled: targetState }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBotEnabled(Boolean(data.bot_enabled ?? true));
+        setActionToast(
+          data.bot_enabled
+            ? "已开启 QQ 机器人服务（前台个人中心已显示绑定卡片）"
+            : "已关闭 QQ 机器人服务（前台个人中心已完全隐藏）"
+        );
+      } else {
+        setError("更新机器人开关失败，请重试。");
+      }
+    } catch {
+      setError("网络请求失败，未能更新机器人设置。");
+    } finally {
+      setUpdatingBot(false);
     }
   }
 
@@ -834,6 +866,44 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                     className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${advertiseEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
                   >
                     {updatingAdvertise ? "正在保存..." : advertiseEnabled ? "关闭商务合作专区" : "开启商务合作专区"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 机器人功能与变动推送开关 */}
+          <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+            <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <Robot size={18} weight="bold" className="text-blue-500" />
+                QQ 机器人与价格变动通知开关
+              </h2>
+              <p className="mt-0.5 text-xs text-black/55">
+                控制全站机器人（QQ Bot 等）推送服务及前台个人中心的通知绑定模块。修改后实时生效。
+              </p>
+            </div>
+            <div className="p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface)] p-4">
+                <div className="max-w-3xl">
+                  <div className="flex items-center gap-2.5">
+                    <h3 className="text-sm font-semibold text-[color:var(--ink)]">机器人服务与前台展示</h3>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${botEnabled ? "bg-[color:var(--success-soft)] text-[color:var(--success)]" : "bg-[color:var(--subtle)] text-[color:var(--muted)]"}`}>
+                      {botEnabled ? "已开启" : "已关闭"}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-5 text-[color:var(--muted)]">
+                    开启后，已登录用户可在个人中心（/account）通过手机 QQ 扫码或一键绑定机器人，接收降价/涨价私聊通知并使用 plus、pro、行情等交互指令。关闭后，前台个人中心将完全隐藏机器人绑定卡片，系统停止对外推送变动通知，且接口拒绝非管理员的绑定请求。
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <button
+                    type="button"
+                    disabled={updatingBot}
+                    onClick={() => toggleBot(!botEnabled)}
+                    className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${botEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    {updatingBot ? "正在保存..." : botEnabled ? "关闭机器人功能" : "开启机器人功能"}
                   </button>
                 </div>
               </div>

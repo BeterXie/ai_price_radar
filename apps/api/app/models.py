@@ -370,3 +370,61 @@ class CommunitySkill(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True, index=True)
+    nickname: Mapped[str] = mapped_column(String(100), default="")
+    avatar_url: Mapped[str] = mapped_column(Text, default="")
+    qq_openid: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    sessions: Mapped[list[UserSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    bot_bindings: Mapped[list[UserBotBinding]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class AuthCode(Base):
+    __tablename__ = "auth_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(200), index=True)
+    code: Mapped[str] = mapped_column(String(20))
+    purpose: Mapped[str] = mapped_column(String(30), default="login")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UserBotBinding(Base):
+    __tablename__ = "user_bot_bindings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "channel", name="uq_user_bot_binding"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    channel: Mapped[str] = mapped_column(String(20), default="qq", index=True)
+    target_id: Mapped[str] = mapped_column(String(128), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_price_drop: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_price_hike: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship(back_populates="bot_bindings")
+
