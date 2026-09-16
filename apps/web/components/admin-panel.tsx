@@ -31,6 +31,7 @@ type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
 type ScopeFilter = "current" | "all";
 type OfferSort = "frontend" | "updated_desc" | "price_asc" | "price_desc";
+type ReportFilter = "open" | "resolved" | "rejected" | "all";
 
 type Stats = {
   shops: number;
@@ -128,6 +129,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [reclassifyingOfferId, setReclassifyingOfferId] = useState<number | null>(null);
   const [actionToast, setActionToast] = useState<string>("");
   const [reports, setReports] = useState<Report[]>([]);
+  const [reportFilter, setReportFilter] = useState<ReportFilter>("open");
+  const [loadingReports, setLoadingReports] = useState(false);
   const [intakes, setIntakes] = useState<SourceIntake[]>([]);
   const [targetIntakeId, setTargetIntakeId] = useState<number | null>(null);
   const [reportDrafts, setReportDrafts] = useState<Record<number, { public_summary: string; merchant_response: string }>>({});
@@ -293,7 +296,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       const [statsResponse, offersResponse, reportsResponse, intakesResponse, settingsResponse] = await Promise.all([
         fetch(`${API}/api/v1/admin/stats`, { headers }),
         fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers }),
-        fetch(`${API}/api/v1/admin/reports?status=open`, { headers }),
+        fetch(`${API}/api/v1/admin/reports?status=${reportFilter}`, { headers }),
         fetch(`${API}/api/v1/admin/source-intakes`, { headers }),
         fetch(`${API}/api/v1/admin/settings`, { headers }).catch(() => null),
       ]);
@@ -336,6 +339,32 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setError("管理 API 暂时无法访问。密钥仍保留在当前页面，请稍后重试。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadReports(status: ReportFilter = reportFilter) {
+    if (!key) return;
+    setLoadingReports(true);
+    try {
+      const response = await fetch(`${API}/api/v1/admin/reports?status=${status}`, { headers });
+      if (response.ok) {
+        const loadedReports = (await response.json()) as Report[];
+        setReports(loadedReports);
+        setReportDrafts((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            loadedReports.map((report) => [
+              report.id,
+              {
+                public_summary: current[report.id]?.public_summary ?? (report.public_summary || ""),
+                merchant_response: current[report.id]?.merchant_response ?? (report.merchant_response || ""),
+              },
+            ])
+          ),
+        }));
+      }
+    } finally {
+      setLoadingReports(false);
     }
   }
 
@@ -587,7 +616,14 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ status, public_summary: draft.public_summary.trim(), merchant_response: draft.merchant_response.trim() }),
       });
-      if (response.ok) await load();
+      if (response.ok) {
+        setActionToast(status === "resolved" ? `反馈 #${reportId} 已标记处理并发布公开摘要` : `反馈 #${reportId} 已驳回`);
+        await load();
+        await loadReports(reportFilter);
+      } else {
+        const data = await response.json().catch(() => null);
+        setError(data?.detail || "反馈状态更新失败，请重试。");
+      }
     });
   }
 
@@ -1208,39 +1244,198 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       {/* Tab 5: 纠错与风险反馈 */}
       {stats && (
         <div style={{ display: activeTab === "reports" ? "block" : "none" }}>
-          {reports.length > 0 ? (
-            <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-              <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 font-semibold flex items-center justify-between">
-                <span>纠错与风险反馈</span>
-                <span className="text-xs text-[color:var(--muted)]">待处理 {reports.length} 条</span>
+          <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+            <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold">纠错与风险反馈</h2>
+                <p className="mt-0.5 text-xs text-black/55">前台用户提交的报错或购买风险汇总。支持调查、核验后填写公开结论或驳回。</p>
               </div>
+              <button
+                type="button"
+                onClick={() => loadReports(reportFilter)}
+                className="tactile text-xs border hairline px-2.5 py-1.5 rounded-[8px] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] flex items-center gap-1.5"
+              >
+                <ArrowClockwise size={14} className={loadingReports ? "animate-spin" : ""} />
+                刷新
+              </button>
+            </div>
+
+            {/* Sub-tab filter buttons */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--line)] bg-[color:var(--panel)] px-5 py-3">
+              {[
+                { id: "open" as const, label: "待处理", count: stats.open_corrections },
+                { id: "resolved" as const, label: "已处理" },
+                { id: "rejected" as const, label: "已驳回" },
+                { id: "all" as const, label: "全部记录" },
+              ].map((filterItem) => (
+                <button
+                  key={filterItem.id}
+                  type="button"
+                  onClick={() => {
+                    setReportFilter(filterItem.id);
+                    loadReports(filterItem.id);
+                  }}
+                  className={`tactile flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-xs font-medium transition-colors ${
+                    reportFilter === filterItem.id
+                      ? "bg-[color:var(--ink)] text-white"
+                      : "bg-[color:var(--subtle)] text-[color:var(--ink)] hover:bg-[color:var(--line)]"
+                  }`}
+                >
+                  <span>{filterItem.label}</span>
+                  {typeof filterItem.count === "number" && filterItem.count > 0 && (
+                    <span
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                        reportFilter === filterItem.id ? "bg-white/20 text-white" : "bg-red-500 text-white"
+                      }`}
+                    >
+                      {filterItem.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {loadingReports && <span className="text-xs text-[color:var(--muted)] ml-2">加载中...</span>}
+            </div>
+
+            {/* Content List */}
+            {reports.length > 0 ? (
               <div className="divide-y divide-[color:var(--line)]">
                 {reports.map((report) => (
-                  <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
-                    <div>
-                      <p className="mono text-xs text-black/40">{REPORT_KIND_LABELS[report.kind] || report.kind}{report.offer_id ? ` / 报价 #${report.offer_id}` : ""}</p>
-                      <p className="mt-2 whitespace-pre-line text-sm leading-6">{report.message}</p>
-                      {report.contact && <p className="mt-2 text-xs text-black/45">联系方式：{report.contact}</p>}
-                      <div className="mt-4 grid gap-3">
-                        <label className="text-xs font-medium text-black/55">公开处理摘要<textarea value={reportDrafts[report.id]?.public_summary || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { merchant_response: "" }), public_summary: event.target.value } }))} maxLength={500} rows={2} placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。" className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
-                        <label className="text-xs font-medium text-black/55">商家公开回应 <span className="font-normal">选填</span><textarea value={reportDrafts[report.id]?.merchant_response || ""} onChange={(event) => setReportDrafts((current) => ({ ...current, [report.id]: { ...(current[report.id] || { public_summary: "" }), merchant_response: event.target.value } }))} maxLength={1000} rows={2} className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]" /></label>
+                  <div key={report.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto] md:items-start">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-[6px] bg-[color:var(--subtle)] px-2 py-0.5 text-xs font-medium mono text-black/60">
+                          #{report.id} · {REPORT_KIND_LABELS[report.kind] || report.kind}
+                        </span>
+                        {report.status === "open" && (
+                          <span className="rounded-[6px] bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-700">待处理</span>
+                        )}
+                        {report.status === "resolved" && (
+                          <span className="rounded-[6px] bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-700">已处理</span>
+                        )}
+                        {report.status === "rejected" && (
+                          <span className="rounded-[6px] bg-slate-500/15 px-2 py-0.5 text-xs font-semibold text-slate-600">已驳回</span>
+                        )}
+                        {report.offer_id ? (
+                          <span className="text-xs mono text-[color:var(--muted)]">关联报价 #{report.offer_id}</span>
+                        ) : null}
+                        <span className="text-xs text-[color:var(--muted)] ml-auto">
+                          提交于 {new Date(report.created_at).toLocaleString("zh-CN", { hour12: false })}
+                        </span>
                       </div>
+
+                      <div className="rounded-[8px] bg-[color:var(--subtle)] p-3 text-sm leading-6 text-[color:var(--ink)] whitespace-pre-line">
+                        {report.message}
+                      </div>
+
+                      {report.contact ? (
+                        <p className="text-xs text-black/55">用户联系方式：<span className="font-mono text-[color:var(--ink)]">{report.contact}</span></p>
+                      ) : null}
+
+                      {/* If resolved */}
+                      {report.status === "resolved" && (
+                        <div className="rounded-[8px] border hairline border-emerald-500/30 bg-emerald-50/50 p-3 text-xs space-y-1">
+                          <p className="font-medium text-emerald-900">公开处理摘要：{report.public_summary || "（未填写公开摘要）"}</p>
+                          {report.merchant_response ? (
+                            <p className="text-emerald-800">商家公开回应：{report.merchant_response}</p>
+                          ) : null}
+                          {report.resolved_at ? (
+                            <p className="text-[10px] text-emerald-700">处理时间：{new Date(report.resolved_at).toLocaleString("zh-CN", { hour12: false })}</p>
+                          ) : null}
+                        </div>
+                      )}
+
+                      {/* If rejected */}
+                      {report.status === "rejected" && (
+                        <div className="rounded-[8px] border hairline border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                          已驳回此反馈。{report.resolved_at ? `处理时间：${new Date(report.resolved_at).toLocaleString("zh-CN", { hour12: false })}` : ""}
+                        </div>
+                      )}
+
+                      {/* If open, show editing inputs */}
+                      {report.status === "open" && (
+                        <div className="mt-3 grid gap-3">
+                          <label className="text-xs font-medium text-black/55">
+                            公开处理摘要 <span className="text-red-500">*</span>
+                            <textarea
+                              value={reportDrafts[report.id]?.public_summary || ""}
+                              onChange={(event) =>
+                                setReportDrafts((current) => ({
+                                  ...current,
+                                  [report.id]: {
+                                    ...(current[report.id] || { merchant_response: "" }),
+                                    public_summary: event.target.value,
+                                  },
+                                }))
+                              }
+                              maxLength={500}
+                              rows={2}
+                              placeholder="只写适合公开的事实结论，不要复制联系方式或私密内容。"
+                              className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]"
+                            />
+                          </label>
+                          <label className="text-xs font-medium text-black/55">
+                            商家公开回应 <span className="font-normal text-[color:var(--muted)]">选填</span>
+                            <textarea
+                              value={reportDrafts[report.id]?.merchant_response || ""}
+                              onChange={(event) =>
+                                setReportDrafts((current) => ({
+                                  ...current,
+                                  [report.id]: {
+                                    ...(current[report.id] || { public_summary: "" }),
+                                    merchant_response: event.target.value,
+                                  },
+                                }))
+                              }
+                              maxLength={1000}
+                              rows={2}
+                              className="mt-1.5 w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm text-[color:var(--ink)]"
+                            />
+                          </label>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-2 md:self-end">
-                      <button type="button" onClick={() => resolveReport(report.id, "resolved")} className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={16} />已处理</button>
-                      <button type="button" onClick={() => resolveReport(report.id, "rejected")} className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={16} />驳回</button>
-                    </div>
+
+                    {report.status === "open" && (
+                      <div className="flex gap-2 md:self-end">
+                        <button
+                          type="button"
+                          onClick={() => resolveReport(report.id, "resolved")}
+                          className="tactile flex items-center gap-2 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"
+                        >
+                          <Check size={16} />已处理
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => resolveReport(report.id, "rejected")}
+                          className="tactile flex items-center gap-2 rounded-[10px] border hairline px-3 py-2 text-sm"
+                        >
+                          <X size={16} />驳回
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </section>
-          ) : (
-            <div className="empty-state">
-              <WarningCircle size={40} className="mx-auto mb-2 text-[color:var(--muted)] opacity-60" />
-              <p className="text-base font-semibold text-[color:var(--ink)]">暂无未处理的纠错与风险反馈</p>
-              <p className="mt-1 text-xs text-[color:var(--muted)]">前台用户提交的报错或购买风险将汇总在此处进行调查与公开回应。</p>
-            </div>
-          )}
+            ) : (
+              <div className="empty-state py-12">
+                <WarningCircle size={40} className="mx-auto mb-2 text-[color:var(--muted)] opacity-60" />
+                <p className="text-base font-semibold text-[color:var(--ink)]">
+                  {reportFilter === "open"
+                    ? "暂无待处理的纠错与风险反馈"
+                    : reportFilter === "resolved"
+                    ? "暂无已处理的纠错记录"
+                    : reportFilter === "rejected"
+                    ? "暂无已驳回的纠错记录"
+                    : "暂无纠错与风险反馈记录"}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                  {reportFilter === "open"
+                    ? "当用户在前台提交新的报错或购买风险时，将汇总在此处等待处理。"
+                    : "历史已处理或已驳回的记录会在此处归档留存。"}
+                </p>
+              </div>
+            )}
+          </section>
         </div>
       )}
 

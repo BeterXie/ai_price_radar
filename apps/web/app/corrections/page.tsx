@@ -3,6 +3,7 @@ import { InfoPage } from "@/components/page-shell";
 import { getCorrections } from "@/lib/api";
 import { exactTime } from "@/lib/format";
 import type { PublicCorrectionPage } from "@/lib/types";
+import { ReportForm } from "@/components/report-form";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "公开纠错记录", description: "查看已解决并允许公开的报价纠错摘要与商家回应。", alternates: { canonical: "/corrections" } };
@@ -19,6 +20,11 @@ export default async function CorrectionsPage() {
           {data.items.map((item) => <article key={item.id} className="grid gap-4 py-7 md:grid-cols-[180px_1fr]"><div><p className="mono text-xs font-semibold text-[color:var(--info)]">#{item.id} · {kinds[item.kind] || item.kind}</p><p className="mt-2 text-xs text-[color:var(--muted)]">处理于 {exactTime(item.resolved_at)}</p></div><div><h2 className="text-lg font-semibold">{item.public_summary}</h2>{item.merchant_response && <div className="surface-subtle mt-4 p-4"><p className="text-xs font-semibold text-[color:var(--muted)]">商家公开回应</p><p className="mt-2 whitespace-pre-line text-sm leading-6 text-[color:var(--muted)]">{item.merchant_response}</p></div>}</div></article>)}
         </div>
       )}
+      <section className="mt-12 max-w-2xl border-t border-[color:var(--line-strong)] pt-8">
+        <h3 className="mb-4 text-base font-semibold text-[color:var(--ink)]">提交新的纠错或反馈</h3>
+        <ReportForm />
+      </section>
     </InfoPage>
   );
 }
+

@@ -488,13 +488,15 @@ def reclassify(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/reports", response_model=list[ReportOut])
 def reports(status: str = "open", db: Session = Depends(get_db)) -> list[Report]:
+    stmt = select(Report).where(Report.kind != "shop_request")
+    if status and status != "all":
+        stmt = stmt.where(Report.status == status)
     return list(
         db.scalars(
-            select(Report)
-            .where(Report.status == status, Report.kind != "shop_request")
-            .order_by(Report.created_at.desc())
+            stmt.order_by(Report.created_at.desc())
         )
     )
+
 
 
 def _source_intake_response(db: Session, intake: SourceIntake) -> SourceIntakeOut:

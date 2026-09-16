@@ -177,3 +177,62 @@ def test_shop_request_rejects_non_ldxp_url(monkeypatch):
         assert response.status_code == 422
     finally:
         app.dependency_overrides.clear()
+
+
+def test_admin_reports_status_filtering(monkeypatch):
+    from app.core.config import get_settings
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(get_settings(), "admin_api_key", "admin-key")
+
+    with Session(engine) as db:
+        db.add(Report(kind="correction", message="待处理反馈1", status="open"))
+        db.add(Report(kind="correction", message="已处理反馈2", status="resolved", public_summary="已核实"))
+        db.add(Report(kind="correction", message="已驳回反馈3", status="rejected"))
+        db.add(Report(kind="shop_request", message="店铺收录申请4", status="open"))
+        db.commit()
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        headers = {"X-Admin-Key": "admin-key"}
+
+        # Default is status=open (excluding shop_request)
+        res_open = client.get("/api/v1/admin/reports", headers=headers)
+        assert res_open.status_code == 200
+        assert len(res_open.json()) == 1
+        assert res_open.json()[0]["message"] == "待处理反馈1"
+
+        # status=resolved
+        res_resolved = client.get("/api/v1/admin/reports?status=resolved", headers=headers)
+        assert res_resolved.status_code == 200
+        assert len(res_resolved.json()) == 1
+        assert res_resolved.json()[0]["message"] == "已处理反馈2"
+
+        # status=rejected
+        res_rejected = client.get("/api/v1/admin/reports?status=rejected", headers=headers)
+        assert res_rejected.status_code == 200
+        assert len(res_rejected.json()) == 1
+        assert res_rejected.json()[0]["message"] == "已驳回反馈3"
+
+        # status=all (should include open, resolved, rejected, but exclude shop_request)
+        res_all = client.get("/api/v1/admin/reports?status=all", headers=headers)
+        assert res_all.status_code == 200
+        assert len(res_all.json()) == 3
+        messages = [r["message"] for r in res_all.json()]
+        assert "待处理反馈1" in messages
+        assert "已处理反馈2" in messages
+        assert "已驳回反馈3" in messages
+        assert "店铺收录申请4" not in messages
+    finally:
+        app.dependency_overrides.clear()
+
