@@ -529,3 +529,10 @@ def test_bot_disabled_behavior(client: TestClient, test_db):
         new_price=Decimal("90.00"),
     )
     dispatch_price_changes([evt], db_session=test_db)
+
+
+def test_qq_login_endpoint_disabled_when_not_configured(client: TestClient):
+    resp = client.get("/api/v1/auth/qq/login")
+    assert resp.status_code == 400
+    assert "暂未开放" in resp.json()["detail"]
+

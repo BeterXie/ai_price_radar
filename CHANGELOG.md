@@ -2,7 +2,15 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.73] - 2026-09-17
+
+### Fixed
+- **登录弹窗居中与 QQ 登录收敛**:
+  - 使用 React `createPortal` 将登录弹窗挂载至 `document.body`，彻底解除 `.app-header` 中 `backdrop-filter: blur(12px)` 对 `position: fixed` 视口定位的干扰，确保登录窗口在全屏正中间垂直水平居中。
+  - 在配置 QQ App ID 之前暂时隐藏前台 QQ 快捷登录入口，未配置时后端接口返回 400，引导用户统一使用邮箱验证码安全免密登录。
+
 ## [3.7.72] - 2026-09-17
+
 
 ### Added
 - **机器人通知基础设施与消息分发解耦**:

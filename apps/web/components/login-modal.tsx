@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { AuthSessionState } from "@/lib/types";
 import { requestEmailLoginCode, verifyEmailLoginCode } from "@/lib/auth-client";
 
@@ -11,6 +12,7 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
@@ -20,6 +22,10 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (countdown <= 0) return;
     const timer = setInterval(() => {
       setCountdown((prev) => prev - 1);
@@ -27,7 +33,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const handleSendCode = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -79,17 +85,13 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     }
   };
 
-  const handleQQLogin = () => {
-    window.location.href = "/api/v1/auth/qq/login";
-  };
-
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 p-6 sm:p-8 shadow-2xl text-zinc-100"
+        className="relative w-full max-w-md my-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-6 sm:p-8 shadow-2xl text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -104,11 +106,11 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
         <div className="mb-6">
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            快速安全登录
+            邮箱安全登录
           </div>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight">登录 PriceMemo</h2>
           <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-            登录后可开启价格变动提醒、绑定 QQ 机器人、享受实时推送
+            输入邮箱获取 6 位动态验证码，免密快速登录；登录后可绑定机器人接收实时价格变动
           </p>
         </div>
 
@@ -123,29 +125,6 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
             {info}
           </div>
         )}
-
-        {/* QQ Quick Login */}
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={handleQQLogin}
-            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium text-sm transition shadow-lg shadow-blue-600/20"
-          >
-            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12c0 2.85 1.2 5.41 3.12 7.23-.08-.6-.12-1.21-.12-1.83 0-3.31 2.69-6 6-6s6 2.69 6 6c0 .62-.04 1.23-.12 1.83C18.8 17.41 20 14.85 20 12c0-5.52-4.48-10-10-10zm0 15c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" />
-            </svg>
-            <span>QQ 快捷登录</span>
-          </button>
-        </div>
-
-        <div className="relative my-6 text-center">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-zinc-800" />
-          </div>
-          <span className="relative bg-zinc-900 px-3 text-xs text-zinc-500">
-            或使用邮箱验证码登录
-          </span>
-        </div>
 
         {/* Email Login Form */}
         <form onSubmit={step === "email" ? handleSendCode : handleVerify} className="space-y-4">
@@ -223,6 +202,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

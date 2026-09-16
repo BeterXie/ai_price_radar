@@ -101,11 +101,12 @@ def qq_login_redirect(request: Request) -> Any:
     settings = get_settings()
     state = secrets.token_hex(16)
 
-    # If QQ Auth is not configured or in local development mock mode:
+    # If QQ Auth is not configured or disabled:
     if not settings.qq_auth_enabled or not settings.qq_app_id:
-        # Provide dev convenience redirect
-        dev_mock_url = f"/api/v1/auth/qq/callback?mock=true&state={state}"
-        return RedirectResponse(url=dev_mock_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="QQ快捷登录暂未开放",
+        )
 
     auth_url = build_qq_auth_url(state, settings)
     return RedirectResponse(url=auth_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
