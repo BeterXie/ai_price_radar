@@ -2,7 +2,17 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.74] - 2026-09-17
+
+### Fixed
+- **彻底去除开发调试按钮**:
+  - 移除了个人中心二维码授权区域遗留的 `🧪 模拟手机扫码成功（开发调试）` 按钮，防止线上暴露调试接口。
+- **页面设计系统规范统一**:
+  - 彻底重构了个人中心（`AccountClient`）与登录弹窗（`LoginModal`）的界面风格，将原先突兀的暗色块替换为 PriceMemo 项目原生温暖报刊纸张设计规范（`var(--panel)`、`var(--paper)`、`var(--ink)`、`var(--line)`、`.surface-panel`、`.button-primary` 等）。
+  - 手机 QQ 扫码卡片调整为米白底色配合精细浅灰边框的清爽报刊卡片排版，二维码居中展示并提供优雅状态指示。
+
 ## [3.7.73] - 2026-09-17
+
 
 ### Fixed
 - **登录弹窗居中与 QQ 登录收敛**:

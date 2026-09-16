@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { X, EnvelopeSimple, Sparkle } from "@phosphor-icons/react";
 import type { AuthSessionState } from "@/lib/types";
 import { requestEmailLoginCode, verifyEmailLoginCode } from "@/lib/auth-client";
 
@@ -87,41 +88,53 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200"
-      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="login-dialog-title"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"
     >
+      {/* Editorial Dimmed Backdrop */}
       <div
-        className="relative w-full max-w-md my-auto rounded-2xl bg-zinc-900 border border-zinc-800 p-6 sm:p-8 shadow-2xl text-zinc-100"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal Dialog Card adhering to PriceMemo paper design system */}
+      <div
+        className="relative w-full max-w-md my-auto rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 sm:p-8 shadow-2xl text-[color:var(--ink)] z-10 transition-all"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-100 text-xl font-bold w-8 h-8 rounded-full flex items-center justify-center hover:bg-zinc-800 transition"
+          className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-[color:var(--muted)] hover:bg-[color:var(--subtle)] hover:text-[color:var(--ink)] transition"
           aria-label="关闭"
         >
-          ✕
+          <X size={18} weight="bold" />
         </button>
 
         <div className="mb-6">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            邮箱安全登录
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-800 mb-3">
+            <Sparkle size={13} weight="fill" />
+            <span>邮箱安全免密登录</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">登录 PriceMemo</h2>
-          <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-            输入邮箱获取 6 位动态验证码，免密快速登录；登录后可绑定机器人接收实时价格变动
+          <h2 id="login-dialog-title" className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--ink)]">
+            登录 PriceMemo
+          </h2>
+          <p className="text-xs sm:text-sm text-[color:var(--muted)] mt-1.5 leading-relaxed">
+            输入邮箱获取 6 位动态验证码；登录后可设置降价提醒并绑定机器人接收实时价格变动。
           </p>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-900/30 border border-red-800/50 text-red-300 text-xs sm:text-sm">
+          <div className="mb-4 rounded-[9px] border border-[color:var(--danger)]/30 bg-[color:var(--danger-soft)] text-[color:var(--danger)] p-3 text-xs sm:text-sm">
             {error}
           </div>
         )}
 
         {info && (
-          <div className="mb-4 p-3 rounded-lg bg-emerald-900/30 border border-emerald-800/50 text-emerald-300 text-xs sm:text-sm">
+          <div className="mb-4 rounded-[9px] border border-[color:var(--success)]/30 bg-[color:var(--success-soft)] text-[color:var(--success)] p-3 text-xs sm:text-sm">
             {info}
           </div>
         )}
@@ -129,30 +142,32 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
         {/* Email Login Form */}
         <form onSubmit={step === "email" ? handleSendCode : handleVerify} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-              邮箱地址
+            <label className="block text-xs font-semibold text-[color:var(--ink)] mb-1.5">
+              电子邮箱
             </label>
-            <input
-              type="email"
-              placeholder="name@example.com"
-              value={email}
-              disabled={step === "code" && countdown > 0}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-800/80 border border-zinc-700 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition disabled:opacity-60"
-            />
+            <div className="relative">
+              <input
+                type="email"
+                placeholder="name@example.com"
+                value={email}
+                disabled={step === "code" && countdown > 0}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] text-sm text-[color:var(--ink)] placeholder-[color:var(--muted)] focus:outline-none focus:border-[color:var(--focus)] focus:ring-1 focus:ring-[color:var(--focus)] transition disabled:opacity-60 disabled:bg-[color:var(--subtle)]"
+              />
+            </div>
           </div>
 
           {step === "code" && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-zinc-400">
-                  6 位验证码
+                <label className="text-xs font-semibold text-[color:var(--ink)]">
+                  6 位动态验证码
                 </label>
                 <button
                   type="button"
                   disabled={countdown > 0 || loading}
                   onClick={() => handleSendCode()}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 disabled:text-zinc-500 transition"
+                  className="text-xs font-semibold text-[color:var(--info)] hover:underline disabled:text-[color:var(--muted)] disabled:no-underline transition"
                 >
                   {countdown > 0 ? `${countdown}s 后可重新获取` : "重新获取验证码"}
                 </button>
@@ -163,7 +178,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-800/80 border border-zinc-700 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 tracking-widest text-center font-mono text-lg transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] text-base text-[color:var(--ink)] placeholder-[color:var(--muted)] focus:outline-none focus:border-[color:var(--focus)] focus:ring-1 focus:ring-[color:var(--focus)] tracking-widest text-center font-mono font-bold transition"
                 autoFocus
               />
             </div>
@@ -174,18 +189,18 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
               <button
                 type="submit"
                 disabled={loading || !email}
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white font-medium text-sm transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+                className="button-primary tactile w-full py-2.5 rounded-xl text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "发送中..." : "获取邮箱验证码"}
+                {loading ? "正在发送验证码..." : "获取邮箱验证码"}
               </button>
             ) : (
               <div className="space-y-2">
                 <button
                   type="submit"
                   disabled={loading || code.length < 4}
-                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white font-medium text-sm transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+                  className="button-primary tactile w-full py-2.5 rounded-xl text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {loading ? "验证中..." : "登录 / 注册"}
+                  {loading ? "正在验证..." : "登录 / 注册"}
                 </button>
                 <button
                   type="button"
@@ -193,9 +208,9 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                     setStep("email");
                     setCode("");
                   }}
-                  className="w-full py-2 text-xs text-zinc-400 hover:text-zinc-200 transition"
+                  className="w-full py-2 text-xs font-medium text-[color:var(--muted)] hover:text-[color:var(--ink)] transition text-center"
                 >
-                  更换邮箱
+                  更换其他邮箱
                 </button>
               </div>
             )}
