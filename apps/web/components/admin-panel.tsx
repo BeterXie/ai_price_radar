@@ -25,11 +25,12 @@ import { money, stockLabel } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { CouponsAdminPanel } from "@/components/coupons-admin-panel";
+import { UsersAdminPanel } from "@/components/users-admin-panel";
 import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-export type AdminTab = "settings" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
+export type AdminTab = "settings" | "users" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
 type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
@@ -47,6 +48,7 @@ type Stats = {
   open_corrections: number;
   pending_source_intakes: number;
   open_reports: number;
+  total_users?: number;
   last_scan_at: string | null;
   product_counts?: Record<string, number>;
   brand_counts?: Record<string, number>;
@@ -173,7 +175,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setActiveTab("intakes");
     }
     const tabParam = params.get("tab") as AdminTab | null;
-    const validTabs: AdminTab[] = ["settings", "coupons", "intakes", "skills", "discovery", "reports", "offers"];
+    const validTabs: AdminTab[] = ["settings", "users", "coupons", "intakes", "skills", "discovery", "reports", "offers"];
     if (tabParam && validTabs.includes(tabParam)) {
       setActiveTab(tabParam);
     }
@@ -778,6 +780,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
           <nav className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="后台功能模块导航">
             {[
               { id: "settings" as const, label: "运营与配置", icon: Gear, count: 0 },
+              { id: "users" as const, label: "用户管理", icon: UsersThree, count: stats.total_users || 0 },
               { id: "coupons" as const, label: "优惠券与营销", icon: Gift, count: 0 },
               { id: "intakes" as const, label: "店铺审核", icon: Storefront, count: stats.pending_source_intakes || 0 },
               { id: "skills" as const, label: "社区玩法与文章", icon: Article, count: 0 },
@@ -1297,6 +1300,13 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               <p className="mt-1 text-xs text-[color:var(--muted)]">商户在 /shops/submit 提交的新店铺申请将展示在此处供管理员审核。</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: 用户管理 */}
+      {key && (
+        <div style={{ display: activeTab === "users" ? "block" : "none" }}>
+          <UsersAdminPanel apiBase={API} headers={headers} />
         </div>
       )}
 

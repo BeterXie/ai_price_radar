@@ -383,6 +383,11 @@ class User(Base):
     avatar_url: Mapped[str] = mapped_column(Text, default="")
     qq_openid: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_ip: Mapped[str] = mapped_column(String(64), default="")
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    button_click_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -390,6 +395,7 @@ class User(Base):
     bot_bindings: Mapped[list[UserBotBinding]] = relationship(back_populates="user", cascade="all, delete-orphan")
     product_subscriptions: Mapped[list[UserProductSubscription]] = relationship(back_populates="user", cascade="all, delete-orphan")
     coupons: Mapped[list[ShopCoupon]] = relationship(back_populates="assigned_user")
+    action_logs: Mapped[list[UserActionLog]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserSession(Base):
@@ -397,6 +403,9 @@ class UserSession(Base):
 
     token: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(Text, default="")
+    last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -513,6 +522,7 @@ class OfferClick(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     offer_id: Mapped[int | None] = mapped_column(ForeignKey("offers.id", ondelete="CASCADE"), nullable=True, index=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     product_slug: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
     ip_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     user_agent: Mapped[str] = mapped_column(Text, default="")
@@ -520,6 +530,39 @@ class OfferClick(Base):
 
     offer: Mapped[Offer | None] = relationship(back_populates="clicks")
     shop: Mapped[Shop] = relationship(back_populates="clicks")
+    user: Mapped[User | None] = relationship()
 
 
+class UserActionLog(Base):
+    __tablename__ = "user_action_logs"
+    __table_args__ = (
+        Index("ix_user_action_logs_user_created", "user_id", "created_at"),
+    )
 
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    action_type: Mapped[str] = mapped_column(String(50), default="button_click", index=True)
+    action_name: Mapped[str] = mapped_column(String(100), default="")
+    target_id: Mapped[str] = mapped_column(String(100), default="")
+    page: Mapped[str] = mapped_column(String(200), default="")
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(Text, default="")
+    extra_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    user: Mapped[User | None] = relationship(back_populates="action_logs")
+
+
+class AdminBroadcast(Base):
+    __tablename__ = "admin_broadcasts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    channels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    target_user_count: Mapped[int] = mapped_column(Integer, default=0)
+    email_sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    bot_sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="sent")
+    created_by: Mapped[str] = mapped_column(String(100), default="admin")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

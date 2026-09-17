@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -15,8 +15,10 @@ from ..models import (
     ShopCoupon,
     SystemSetting,
     User,
+    UserActionLog,
     UserBotBinding,
     UserProductSubscription,
+    UserSession,
 )
 from ..schemas import (
     BotCommandRequest,
@@ -29,12 +31,14 @@ from ..schemas import (
     UserBotBindingRead,
     UserBotBindingUpdate,
     UserCouponListOut,
+    UserHeartbeatResponse,
     UserRead,
     UserSubscriptionCreateOrUpdate,
     UserSubscriptionListOut,
     UserSubscriptionRead,
+    UserTrackClickRequest,
 )
-from ..security import get_current_user, require_current_user
+from ..security import get_current_user, get_token_from_request, require_current_user
 from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
@@ -639,6 +643,16 @@ def claim_lucky_drop(
     coupon.is_assigned = True
     coupon.assigned_user_id = current_user.id
     coupon.assigned_at = now
+    db.add(
+        UserActionLog(
+            user_id=current_user.id,
+            action_type="coupon_claim",
+            action_name=f"领取优惠券: {coupon.name}",
+            target_id=str(coupon.id),
+            extra_data={"code": coupon.code, "shop_name": coupon.shop_name, "discount": str(coupon.discount_amount)},
+            created_at=now,
+        )
+    )
     db.commit()
     db.refresh(coupon)
     return CouponClaimResponse(
@@ -646,5 +660,76 @@ def claim_lucky_drop(
         message=f"🎉 恭喜获得{coupon.shop_name or '店铺'}【{coupon.name}】！已自动存入个人卡包。",
         coupon=_coupon_to_read(coupon),
     )
+
+
+@router.post("/heartbeat", response_model=UserHeartbeatResponse)
+def user_heartbeat(
+    request: Request,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> UserHeartbeatResponse:
+    now = datetime.now(timezone.utc)
+    token = get_token_from_request(request)
+    session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+
+    # Calculate delta from last active time to accumulate online seconds safely
+    if current_user.last_active_at:
+        last_dt = current_user.last_active_at
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        delta = int((now - last_dt).total_seconds())
+        # Cap delta between 5s and 120s to avoid bogus spikes
+        if 5 <= delta <= 120:
+            current_user.total_duration_seconds = (current_user.total_duration_seconds or 0) + delta
+
+    current_user.last_active_at = now
+    if session:
+        session.last_active_at = now
+
+    db.commit()
+    return UserHeartbeatResponse(
+        status="ok",
+        online_seconds=current_user.total_duration_seconds or 0,
+        is_online=True,
+    )
+
+
+@router.post("/track-click")
+def user_track_click(
+    payload: UserTrackClickRequest,
+    request: Request,
+    current_user: User | None = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    from .public import _client_address
+
+    client_ip = _client_address(request)
+    ua = request.headers.get("user-agent", "")
+    now = datetime.now(timezone.utc)
+
+    user_id = current_user.id if current_user else None
+    if current_user:
+        current_user.button_click_count = (current_user.button_click_count or 0) + 1
+        current_user.last_active_at = now
+
+    log = UserActionLog(
+        user_id=user_id,
+        action_type="button_click",
+        action_name=payload.button_name,
+        target_id=payload.button_id or "",
+        page=payload.page or "",
+        ip_address=client_ip,
+        user_agent=ua,
+        extra_data=payload.extra_data or {},
+        created_at=now,
+    )
+    db.add(log)
+    db.commit()
+    return {
+        "status": "ok",
+        "recorded": True,
+        "click_count": current_user.button_click_count if current_user else 0,
+    }
+
 
 

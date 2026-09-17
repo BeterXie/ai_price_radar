@@ -35,6 +35,12 @@ PRODUCTS = [
     ("x-premium-basic", "X", "X Premium Basic", "Basic 订阅与充值", "subscription", "聚合 X Premium Basic 订阅与充值公开报价。"),
     ("x-premium", "X", "X Premium", "Premium 订阅与充值", "subscription", "聚合 X Premium 订阅与充值公开报价。"),
     ("x-premium-plus", "X", "X Premium+", "Premium+ 订阅与充值", "subscription", "聚合 X Premium+ 订阅与充值公开报价。"),
+    ("cursor-pro", "Cursor", "Cursor Pro", "Pro 个人会员订阅", "subscription", "聚合 Cursor Pro 个人订阅与代充公开报价。"),
+    ("cursor-business", "Cursor", "Cursor Business", "Business 团队席位", "subscription", "聚合 Cursor Business 商业版与团队席位公开报价。"),
+    ("cursor-account", "Cursor", "Cursor 账号", "基础账号与访问类商品", "account", "聚合 Cursor 基础账号与新号公开报价。"),
+    ("zhipu-qingyan-vip", "智谱", "智谱清言会员", "清言会员与订阅充值", "subscription", "聚合智谱清言个人会员与权益公开报价。"),
+    ("zhipu-api-credit", "智谱", "智谱 GLM API", "BigModel API 额度与 Key", "api", "聚合智谱开放平台 GLM API 额度与资源包公开报价。"),
+    ("zhipu-account", "智谱", "智谱账号", "基础账号与开发者账号", "account", "聚合智谱清言与开放平台基础账号公开报价。"),
 ]
 
 DEMO_OFFERS = [

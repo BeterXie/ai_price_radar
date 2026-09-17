@@ -8,6 +8,7 @@ import { Bell, GithubLogo, List, Storefront, Tag, User, X } from "@phosphor-icon
 import { PlatformIcon } from "@/components/platform-icon";
 import { fetchAuthMe } from "@/lib/auth-client";
 import type { AuthSessionState } from "@/lib/types";
+import { initUserHeartbeat } from "@/lib/analytics";
 import { LoginModal } from "@/components/login-modal";
 
 const primaryLinks = [
@@ -31,7 +32,19 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
-    fetchAuthMe().then(setSession).catch(() => {});
+    let cleanupHb: (() => void) | null = null;
+    fetchAuthMe()
+      .then((s) => {
+        setSession(s);
+        if (s?.authenticated) {
+          cleanupHb = initUserHeartbeat();
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      if (cleanupHb) cleanupHb();
+    };
   }, []);
 
   const closeMenu = () => {
@@ -134,7 +147,12 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
-        onSuccess={(s) => setSession(s)}
+        onSuccess={(s) => {
+          setSession(s);
+          if (s?.authenticated) {
+            initUserHeartbeat();
+          }
+        }}
       />
     </header>
   );

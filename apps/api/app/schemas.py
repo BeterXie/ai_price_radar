@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 import re
 
@@ -665,6 +665,7 @@ class AdminStats(BaseModel):
     pending_source_intakes: int
     # Backward-compatible alias; the UI uses the explicit fields above.
     open_reports: int
+    total_users: int = 0
     last_scan_at: datetime | None
     product_counts: dict[str, int] = Field(default_factory=dict)
     brand_counts: dict[str, int] = Field(default_factory=dict)
@@ -1006,6 +1007,117 @@ class AdminCampaignCreate(BaseModel):
     max_per_user: int = 1
     total_quota: int = 100
     expires_at: datetime | None = None
+
+
+class AdminUserItem(BaseModel):
+    id: int
+    email: str | None = None
+    nickname: str = ""
+    avatar_url: str = ""
+    has_qq_bound: bool = False
+    has_bot_bound: bool = False
+    bot_channel: str | None = None
+    bot_target_id: str | None = None
+    bot_active: bool = False
+    is_active: bool = True
+    created_at: datetime
+    last_login_at: datetime | None = None
+    last_login_ip: str = ""
+    last_active_at: datetime | None = None
+    session_duration_seconds: int = 0
+    total_duration_seconds: int = 0
+    is_online: bool = False
+    button_click_count: int = 0
+    coupon_count: int = 0
+    active_coupon_count: int = 0
+    used_coupon_count: int = 0
+
+
+class AdminUserPageOut(BaseModel):
+    items: list[AdminUserItem]
+    total: int
+    page: int
+    limit: int
+
+
+class AdminUserStatsOut(BaseModel):
+    total_users: int = 0
+    active_today: int = 0
+    active_7d: int = 0
+    online_now: int = 0
+    total_clicks: int = 0
+    total_coupons_held: int = 0
+
+
+class AdminUserSessionItem(BaseModel):
+    token: str
+    ip_address: str = ""
+    user_agent: str = ""
+    created_at: datetime
+    last_active_at: datetime | None = None
+    duration_seconds: int = 0
+    is_active: bool = False
+
+
+class AdminUserActionLogItem(BaseModel):
+    id: int
+    action_type: str
+    action_name: str
+    target_id: str = ""
+    page: str = ""
+    ip_address: str = ""
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class AdminUserDetailOut(BaseModel):
+    user: AdminUserItem
+    sessions: list[AdminUserSessionItem] = Field(default_factory=list)
+    coupons: list[CouponRead] = Field(default_factory=list)
+    action_logs: list[AdminUserActionLogItem] = Field(default_factory=list)
+    bot_bindings: list[UserBotBindingRead] = Field(default_factory=list)
+    subscription_count: int = 0
+
+
+class AdminBroadcastCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=5000)
+    channels: list[str] = Field(default_factory=lambda: ["email", "bot"])
+
+
+class AdminBroadcastItem(BaseModel):
+    id: int
+    title: str
+    content: str
+    channels: list[str] = Field(default_factory=list)
+    target_user_count: int = 0
+    email_sent_count: int = 0
+    bot_sent_count: int = 0
+    status: str = "sent"
+    created_by: str = "admin"
+    created_at: datetime
+
+
+class AdminBroadcastAudienceOut(BaseModel):
+    total_users: int = 0
+    email_users: int = 0
+    bot_users: int = 0
+    total_reach: int = 0
+
+
+class UserTrackClickRequest(BaseModel):
+    button_name: str = Field(min_length=1, max_length=100)
+    button_id: str = Field(default="", max_length=100)
+    page: str = Field(default="", max_length=200)
+    target_url: str = Field(default="", max_length=500)
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class UserHeartbeatResponse(BaseModel):
+    status: str = "ok"
+    online_seconds: int = 0
+    is_online: bool = True
+
 
 
 

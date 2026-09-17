@@ -11,12 +11,14 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.84"
+VERSION = "3.7.85"
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    from .services.db_migration import ensure_db_schema
+    ensure_db_schema(engine)
     if settings.seed_demo_data:
         seed()
     else:

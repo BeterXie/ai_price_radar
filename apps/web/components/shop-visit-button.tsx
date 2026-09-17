@@ -15,6 +15,7 @@ export function ShopVisitButton({
     try {
       fetch(`${publicApiBase}/api/v1/shops/${encodeURIComponent(shopToken)}/click`, {
         method: "POST",
+        credentials: "include",
         keepalive: true,
       }).catch(() => {});
     } catch {

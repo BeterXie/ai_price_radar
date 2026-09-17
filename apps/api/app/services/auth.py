@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
 from ..core.email import normalize_email
-from ..models import AuthCode, NotificationOutbox, User, UserSession
+from ..models import AuthCode, NotificationOutbox, User, UserActionLog, UserSession
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +32,40 @@ def ensure_utc(dt: datetime | None) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def create_user_session(db: Session, user: User, settings: Settings | None = None) -> UserSession:
+def create_user_session(
+    db: Session,
+    user: User,
+    settings: Settings | None = None,
+    ip_address: str = "",
+    user_agent: str = "",
+) -> UserSession:
     settings = settings or get_settings()
     token = secrets.token_hex(32)
-    expires_at = utcnow() + timedelta(days=settings.session_max_age_days)
+    now = utcnow()
+    expires_at = now + timedelta(days=settings.session_max_age_days)
     session = UserSession(
         token=token,
         user_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        last_active_at=now,
         expires_at=expires_at,
-        created_at=utcnow(),
+        created_at=now,
     )
     db.add(session)
+    user.last_login_at = now
+    if ip_address:
+        user.last_login_ip = ip_address
+    user.last_active_at = now
+    log = UserActionLog(
+        user_id=user.id,
+        action_type="login",
+        action_name="用户登录",
+        ip_address=ip_address,
+        user_agent=user_agent,
+        created_at=now,
+    )
+    db.add(log)
     db.commit()
     db.refresh(session)
     return session
@@ -63,8 +86,24 @@ def get_user_by_session_token(db: Session, token: str) -> User | None:
 def delete_user_session(db: Session, token: str) -> None:
     if not token:
         return
-    db.execute(delete(UserSession).where(UserSession.token == token))
-    db.commit()
+    session = db.scalar(select(UserSession).where(UserSession.token == token))
+    if session:
+        now = utcnow()
+        duration = int((ensure_utc(session.last_active_at or now) - ensure_utc(session.created_at)).total_seconds())
+        if duration > 0 and session.user:
+            session.user.total_duration_seconds = (session.user.total_duration_seconds or 0) + duration
+            log = UserActionLog(
+                user_id=session.user_id,
+                action_type="logout",
+                action_name="用户退出登录",
+                ip_address=session.ip_address or "",
+                user_agent=session.user_agent or "",
+                extra_data={"duration_seconds": duration},
+                created_at=now,
+            )
+            db.add(log)
+        db.delete(session)
+        db.commit()
 
 
 def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:

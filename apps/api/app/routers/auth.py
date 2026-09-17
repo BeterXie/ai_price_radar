@@ -79,6 +79,7 @@ def request_email_code(
 @router.post("/email/verify", response_model=AuthSessionResponse)
 def verify_email_code(
     payload: EmailVerifyRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
@@ -86,7 +87,11 @@ def verify_email_code(
     if user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg or "验证失败")
 
-    session = create_user_session(db, user)
+    from .public import _client_address
+
+    client_ip = _client_address(request)
+    ua = request.headers.get("user-agent", "")
+    session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
     _set_auth_cookie(response, session.token)
 
     return AuthSessionResponse(
@@ -123,6 +128,10 @@ def qq_oauth_callback(
     current_user: User | None = Depends(get_current_user),
 ) -> Any:
     settings = get_settings()
+    from .public import _client_address
+
+    client_ip = _client_address(request)
+    ua = request.headers.get("user-agent", "")
 
     # Handle local dev / mock mode
     if mock == "true" or not settings.qq_auth_enabled:
@@ -142,7 +151,7 @@ def qq_oauth_callback(
                 db.refresh(user)
         else:
             user = find_or_create_qq_user(db, openid=mock_openid, nickname="QQ体验用户")
-        session = create_user_session(db, user)
+        session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
         _set_auth_cookie(redir, session.token)
         return redir
@@ -175,7 +184,7 @@ def qq_oauth_callback(
                 nickname=identity.get("nickname", ""),
                 avatar_url=identity.get("avatar_url", ""),
             )
-        session = create_user_session(db, user)
+        session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
         _set_auth_cookie(redir, session.token)
         return redir

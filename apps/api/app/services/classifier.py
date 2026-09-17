@@ -29,6 +29,8 @@ BRAND_MARKERS = {
     "gemini": ["gemini", "google one ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
     "x": ["x premium", "xpremium", "twitter", "推特"],
+    "cursor": ["cursor", "cursor ai", "cursor pro", "cursor business"],
+    "zhipu": ["智谱", "智谱清言", "智普", "智普清言", "glm", "chatglm", "bigmodel", "zhipu"],
 }
 
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
@@ -457,6 +459,10 @@ def _detect_brand(title_text: str, category_text: str, description_text: str = "
             return "grok"
         if any(m in desc_norm for m in ["x premium", "twitter blue", "推特会员"]):
             return "x"
+        if any(m in desc_norm for m in ["cursor pro", "cursor", "cursor ai"]):
+            return "cursor"
+        if any(m in desc_norm for m in ["智谱", "智谱清言", "智普", "glm", "chatglm", "bigmodel"]):
+            return "zhipu"
         if any(m in desc_norm for m in ["codex", "cc switch", "codex++"]):
             return "codex"
 
@@ -613,6 +619,20 @@ def _classify_identity(
         if _contains(identity_text, ["premium", "twitter blue", "推特会员", "蓝v", "蓝标"]):
             return "x-premium", True
         return None, False
+
+    if brand == "cursor":
+        if _contains(identity_text, ["business", "商业", "企业", "team", "团队", "席位"]):
+            return "cursor-business", True
+        if _contains(identity_text, ["pro", "会员", "订阅", "充值", "代充", "直充", "月卡", "年卡"]) or _contains(tier_text, ["cursor pro"]):
+            return "cursor-pro", True
+        return "cursor-account", False
+
+    if brand == "zhipu":
+        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度", "开放平台", "bigmodel", "glm-4", "glm4", "glm"]):
+            return "zhipu-api-credit", True
+        if _contains(identity_text, ["vip", "会员", "清言会员", "清言vip", "订阅", "代充", "直充", "充值", "月卡"]):
+            return "zhipu-qingyan-vip", True
+        return "zhipu-account", False
 
     if _contains(identity_text, CHATGPT_API_MARKERS):
         if _contains(identity_text, ["中转", "倍率"]):

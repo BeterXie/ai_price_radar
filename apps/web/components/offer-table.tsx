@@ -15,6 +15,7 @@ export function trackOfferClick(offerId: number) {
   try {
     fetch(`${publicApiBase}/api/v1/offers/${offerId}/click`, {
       method: "POST",
+      credentials: "include",
       keepalive: true,
     }).catch(() => {});
   } catch {

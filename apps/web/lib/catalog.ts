@@ -41,7 +41,7 @@ export const SCENARIO_LABELS: Record<string, string> = {
   relay: "中转 / 反代",
 };
 
-export const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X"] as const;
+export const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X", "Cursor", "智谱"] as const;
 export type BrandName = (typeof BRAND_TABS)[number];
 
 export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> = {
@@ -76,6 +76,16 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> 
     { label: "Basic", slug: "x-premium-basic" },
     { label: "Premium", slug: "x-premium" },
     { label: "Premium+", slug: "x-premium-plus" },
+  ],
+  Cursor: [
+    { label: "Cursor Pro", slug: "cursor-pro" },
+    { label: "Cursor Business", slug: "cursor-business" },
+    { label: "Cursor 账号", slug: "cursor-account" },
+  ],
+  智谱: [
+    { label: "清言会员", slug: "zhipu-qingyan-vip" },
+    { label: "GLM API", slug: "zhipu-api-credit" },
+    { label: "智谱账号", slug: "zhipu-account" },
   ],
 };
 

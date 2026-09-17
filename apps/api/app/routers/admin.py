@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -7,8 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, case, cast, delete, func, nullslast, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
+logger = logging.getLogger(__name__)
+
 from ..database import get_db
 from ..models import (
+    AdminBroadcast,
     NotificationOutbox,
     Offer,
     Product,
@@ -23,8 +28,16 @@ from ..models import (
     SourceIntake,
     SystemSetting,
     CommunitySkill,
+    User,
+    UserActionLog,
+    UserBotBinding,
+    UserProductSubscription,
+    UserSession,
 )
 from ..schemas import (
+    AdminBroadcastAudienceOut,
+    AdminBroadcastCreate,
+    AdminBroadcastItem,
     AdminCampaignCreate,
     AdminCouponImportRequest,
     AdminCouponImportResponse,
@@ -36,6 +49,12 @@ from ..schemas import (
     AdminSettingsOut,
     AdminSettingsUpdate,
     AdminStats,
+    AdminUserActionLogItem,
+    AdminUserDetailOut,
+    AdminUserItem,
+    AdminUserPageOut,
+    AdminUserSessionItem,
+    AdminUserStatsOut,
     CampaignRead,
     CouponRead,
     NotificationOutboxOut,
@@ -54,6 +73,7 @@ from ..schemas import (
     CommunitySkillDetailOut,
     CommunitySkillPageOut,
     CommunitySkillSummaryOut,
+    UserBotBindingRead,
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
@@ -228,6 +248,8 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
     brand_counts_raw = db.execute(brand_stmt.group_by(Product.platform)).all()
     brand_counts = {brand: count for brand, count in brand_counts_raw if brand}
 
+    total_users = db.scalar(select(func.count()).select_from(User)) or 0
+
     return AdminStats(
         shops=db.scalar(select(func.count()).select_from(Shop)) or 0,
         products=db.scalar(select(func.count()).select_from(Product)) or 0,
@@ -238,6 +260,7 @@ def stats(db: Session = Depends(get_db)) -> AdminStats:
         open_corrections=open_corrections,
         pending_source_intakes=pending_source_intakes,
         open_reports=open_corrections,
+        total_users=total_users,
         last_scan_at=last_scan,
         product_counts=product_counts,
         brand_counts=brand_counts,
@@ -1469,5 +1492,500 @@ def admin_delete_campaign(
     db.delete(campaign)
     db.commit()
     return {"ok": True, "id": campaign_id}
+
+
+def _ensure_utc_dt(dt: datetime | None) -> datetime:
+    if dt is None:
+        return datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+@router.get("/users/stats", response_model=AdminUserStatsOut)
+def admin_get_user_stats(db: Session = Depends(get_db)) -> AdminUserStatsOut:
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    seven_days_ago = now - timedelta(days=7)
+    fifteen_mins_ago = now - timedelta(minutes=15)
+
+    total_users = db.scalar(select(func.count(User.id))) or 0
+    active_today = db.scalar(
+        select(func.count(User.id)).where(
+            or_(
+                User.last_login_at >= today_start,
+                User.last_active_at >= today_start,
+            )
+        )
+    ) or 0
+    active_7d = db.scalar(
+        select(func.count(User.id)).where(
+            or_(
+                User.last_login_at >= seven_days_ago,
+                User.last_active_at >= seven_days_ago,
+            )
+        )
+    ) or 0
+    online_now = db.scalar(
+        select(func.count(User.id)).where(User.last_active_at >= fifteen_mins_ago)
+    ) or 0
+    total_clicks = db.scalar(select(func.sum(User.button_click_count))) or 0
+    total_coupons = db.scalar(
+        select(func.count(ShopCoupon.id)).where(ShopCoupon.is_assigned.is_(True))
+    ) or 0
+
+    return AdminUserStatsOut(
+        total_users=total_users,
+        active_today=active_today,
+        active_7d=active_7d,
+        online_now=online_now,
+        total_clicks=int(total_clicks),
+        total_coupons_held=total_coupons,
+    )
+
+
+@router.get("/users", response_model=AdminUserPageOut)
+def admin_list_users(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    q: str = Query(""),
+    status: str = Query("all"),
+    sort_by: str = Query("last_login"),
+    order: str = Query("desc"),
+    db: Session = Depends(get_db),
+) -> AdminUserPageOut:
+    now = datetime.now(timezone.utc)
+    fifteen_mins_ago = now - timedelta(minutes=15)
+    stmt = select(User)
+
+    if q.strip():
+        term = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                User.email.ilike(term),
+                User.nickname.ilike(term),
+                User.last_login_ip.ilike(term),
+                User.qq_openid.ilike(term),
+            )
+        )
+
+    if status == "active":
+        stmt = stmt.where(User.is_active.is_(True))
+    elif status == "disabled":
+        stmt = stmt.where(User.is_active.is_(False))
+    elif status == "online":
+        stmt = stmt.where(User.last_active_at >= fifteen_mins_ago)
+    elif status == "offline":
+        stmt = stmt.where(or_(User.last_active_at.is_(None), User.last_active_at < fifteen_mins_ago))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    is_desc = order.lower() != "asc"
+    if sort_by == "created_at":
+        stmt = stmt.order_by(User.created_at.desc() if is_desc else User.created_at.asc())
+    elif sort_by == "duration":
+        stmt = stmt.order_by(
+            User.total_duration_seconds.desc() if is_desc else User.total_duration_seconds.asc(),
+            User.id.desc(),
+        )
+    elif sort_by == "clicks":
+        stmt = stmt.order_by(
+            User.button_click_count.desc() if is_desc else User.button_click_count.asc(),
+            User.id.desc(),
+        )
+    else:  # default last_login
+        order_col = User.last_login_at.desc() if is_desc else User.last_login_at.asc()
+        stmt = stmt.order_by(nullslast(order_col), User.id.desc())
+
+    offset = (page - 1) * limit
+    users = list(db.scalars(stmt.offset(offset).limit(limit)))
+
+    # Batch compute coupon counts for users on this page
+    user_ids = [u.id for u in users]
+    coupons_by_user: dict[int, tuple[int, int, int]] = {}
+    sessions_by_user: dict[int, UserSession] = {}
+
+    if user_ids:
+        coupon_rows = db.execute(
+            select(
+                ShopCoupon.assigned_user_id,
+                func.count(ShopCoupon.id).label("total"),
+                func.count(case((and_(ShopCoupon.is_used.is_(False), ShopCoupon.expires_at > now), 1))).label("active"),
+                func.count(case((ShopCoupon.is_used.is_(True), 1))).label("used"),
+            )
+            .where(ShopCoupon.assigned_user_id.in_(user_ids))
+            .group_by(ShopCoupon.assigned_user_id)
+        ).all()
+        for r in coupon_rows:
+            if r[0] is not None:
+                coupons_by_user[r[0]] = (r[1], r[2], r[3])
+
+        all_sessions = list(
+            db.scalars(
+                select(UserSession)
+                .where(UserSession.user_id.in_(user_ids))
+                .order_by(UserSession.created_at.desc())
+            )
+        )
+        for s in all_sessions:
+            if s.user_id not in sessions_by_user:
+                sessions_by_user[s.user_id] = s
+
+    bindings_by_user: dict[int, UserBotBinding] = {}
+    if user_ids:
+        all_bindings = list(
+            db.scalars(
+                select(UserBotBinding)
+                .where(UserBotBinding.user_id.in_(user_ids))
+                .order_by(UserBotBinding.is_active.desc(), UserBotBinding.id.desc())
+            )
+        )
+        for b in all_bindings:
+            if b.user_id not in bindings_by_user:
+                bindings_by_user[b.user_id] = b
+
+    items: list[AdminUserItem] = []
+    for u in users:
+        c_total, c_active, c_used = coupons_by_user.get(u.id, (0, 0, 0))
+        latest_session = sessions_by_user.get(u.id)
+
+        session_dur = 0
+        if latest_session:
+            s_end = latest_session.last_active_at or latest_session.created_at
+            session_dur = max(0, int((_ensure_utc_dt(s_end) - _ensure_utc_dt(latest_session.created_at)).total_seconds()))
+
+        is_online = bool(u.last_active_at and _ensure_utc_dt(u.last_active_at) >= fifteen_mins_ago)
+        display_ip = u.last_login_ip or (latest_session.ip_address if latest_session else "")
+
+        binding = bindings_by_user.get(u.id)
+
+        items.append(
+            AdminUserItem(
+                id=u.id,
+                email=u.email,
+                nickname=u.nickname or (u.email.split("@")[0] if u.email else f"用户#{u.id}"),
+                avatar_url=u.avatar_url or "",
+                has_qq_bound=bool(u.qq_openid),
+                has_bot_bound=bool(binding and binding.is_active),
+                bot_channel=binding.channel if binding else None,
+                bot_target_id=binding.target_id if binding else None,
+                bot_active=bool(binding.is_active) if binding else False,
+                is_active=u.is_active,
+                created_at=u.created_at,
+                last_login_at=u.last_login_at,
+                last_login_ip=display_ip,
+                last_active_at=u.last_active_at,
+                session_duration_seconds=session_dur,
+                total_duration_seconds=max(u.total_duration_seconds or 0, session_dur),
+                is_online=is_online,
+                button_click_count=u.button_click_count or 0,
+                coupon_count=c_total,
+                active_coupon_count=c_active,
+                used_coupon_count=c_used,
+            )
+        )
+
+    return AdminUserPageOut(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+    )
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetailOut)
+def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminUserDetailOut:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    now = datetime.now(timezone.utc)
+    fifteen_mins_ago = now - timedelta(minutes=15)
+
+    # Sessions
+    sessions = list(
+        db.scalars(
+            select(UserSession)
+            .where(UserSession.user_id == user.id)
+            .order_by(UserSession.created_at.desc())
+            .limit(20)
+        )
+    )
+    session_items: list[AdminUserSessionItem] = []
+    latest_dur = 0
+    for s in sessions:
+        s_end = s.last_active_at or s.created_at
+        dur = max(0, int((_ensure_utc_dt(s_end) - _ensure_utc_dt(s.created_at)).total_seconds()))
+        if not latest_dur:
+            latest_dur = dur
+        session_items.append(
+            AdminUserSessionItem(
+                token=s.token[:8] + "..." if len(s.token) > 12 else s.token,
+                ip_address=s.ip_address or "",
+                user_agent=s.user_agent or "",
+                created_at=s.created_at,
+                last_active_at=s.last_active_at,
+                duration_seconds=dur,
+                is_active=_ensure_utc_dt(s.expires_at) > now,
+            )
+        )
+
+    # Coupons
+    user_coupons = list(
+        db.scalars(
+            select(ShopCoupon)
+            .where(ShopCoupon.assigned_user_id == user.id)
+            .order_by(ShopCoupon.assigned_at.desc(), ShopCoupon.id.desc())
+            .limit(50)
+        )
+    )
+    c_active = sum(1 for c in user_coupons if not c.is_used and _ensure_utc_dt(c.expires_at) > now)
+    c_used = sum(1 for c in user_coupons if c.is_used)
+
+    # Action logs
+    action_logs = list(
+        db.scalars(
+            select(UserActionLog)
+            .where(UserActionLog.user_id == user.id)
+            .order_by(UserActionLog.id.desc())
+            .limit(50)
+        )
+    )
+    log_items = [
+        AdminUserActionLogItem(
+            id=l.id,
+            action_type=l.action_type,
+            action_name=l.action_name,
+            target_id=l.target_id,
+            page=l.page,
+            ip_address=l.ip_address,
+            extra_data=l.extra_data or {},
+            created_at=l.created_at,
+        )
+        for l in action_logs
+    ]
+
+    # Bot bindings
+    user_bot_bindings = list(
+        db.scalars(
+            select(UserBotBinding)
+            .where(UserBotBinding.user_id == user.id)
+            .order_by(UserBotBinding.is_active.desc(), UserBotBinding.id.desc())
+        )
+    )
+    b_first = user_bot_bindings[0] if user_bot_bindings else None
+
+    # Subscriptions
+    sub_count = db.scalar(
+        select(func.count(UserProductSubscription.id)).where(UserProductSubscription.user_id == user.id)
+    ) or 0
+
+    user_item = AdminUserItem(
+        id=user.id,
+        email=user.email,
+        nickname=user.nickname or (user.email.split("@")[0] if user.email else f"用户#{user.id}"),
+        avatar_url=user.avatar_url or "",
+        has_qq_bound=bool(user.qq_openid),
+        has_bot_bound=bool(b_first and b_first.is_active),
+        bot_channel=b_first.channel if b_first else None,
+        bot_target_id=b_first.target_id if b_first else None,
+        bot_active=bool(b_first.is_active) if b_first else False,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        last_login_at=user.last_login_at,
+        last_login_ip=user.last_login_ip or (sessions[0].ip_address if sessions else ""),
+        last_active_at=user.last_active_at,
+        session_duration_seconds=latest_dur,
+        total_duration_seconds=max(user.total_duration_seconds or 0, latest_dur),
+        is_online=bool(user.last_active_at and _ensure_utc_dt(user.last_active_at) >= fifteen_mins_ago),
+        button_click_count=user.button_click_count or 0,
+        coupon_count=len(user_coupons),
+        active_coupon_count=c_active,
+        used_coupon_count=c_used,
+    )
+
+    return AdminUserDetailOut(
+        user=user_item,
+        sessions=session_items,
+        coupons=[_admin_coupon_to_read(c) for c in user_coupons],
+        action_logs=log_items,
+        bot_bindings=[
+            UserBotBindingRead(
+                id=b.id,
+                channel=b.channel,
+                target_id=b.target_id,
+                is_active=b.is_active,
+                notify_price_drop=b.notify_price_drop,
+                notify_price_hike=b.notify_price_hike,
+                created_at=b.created_at,
+            )
+            for b in user_bot_bindings
+        ],
+        subscription_count=sub_count,
+    )
+
+
+@router.patch("/users/{user_id}/status")
+def admin_toggle_user_status(
+    user_id: int,
+    payload: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if "is_active" in payload:
+        user.is_active = bool(payload["is_active"])
+        db.commit()
+        db.refresh(user)
+    return {"id": user.id, "is_active": user.is_active}
+
+
+@router.get("/broadcasts/audience", response_model=AdminBroadcastAudienceOut)
+def admin_broadcast_audience(db: Session = Depends(get_db)) -> AdminBroadcastAudienceOut:
+    total_users = db.scalar(select(func.count(User.id)).where(User.is_active == True)) or 0
+    email_users = db.scalar(
+        select(func.count(User.id))
+        .where(User.is_active == True, User.email.is_not(None), User.email != "")
+    ) or 0
+
+    bot_users = db.scalar(
+        select(func.count(func.distinct(UserBotBinding.user_id)))
+        .join(User, User.id == UserBotBinding.user_id)
+        .where(User.is_active == True, UserBotBinding.is_active == True)
+    ) or 0
+
+    reach_users = db.scalar(
+        select(func.count(func.distinct(User.id)))
+        .outerjoin(UserBotBinding, (UserBotBinding.user_id == User.id) & (UserBotBinding.is_active == True))
+        .where(
+            User.is_active == True,
+            or_(
+                (User.email.is_not(None)) & (User.email != ""),
+                UserBotBinding.id.is_not(None),
+            ),
+        )
+    ) or 0
+
+    return AdminBroadcastAudienceOut(
+        total_users=total_users,
+        email_users=email_users,
+        bot_users=bot_users,
+        total_reach=reach_users,
+    )
+
+
+@router.post("/broadcasts", response_model=AdminBroadcastItem)
+def admin_create_broadcast(
+    payload: AdminBroadcastCreate,
+    db: Session = Depends(get_db),
+) -> AdminBroadcast:
+    channels = payload.channels or ["email", "bot"]
+    site_url = os.getenv("NEXT_PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
+    now = datetime.now(timezone.utc)
+
+    broadcast = AdminBroadcast(
+        title=payload.title.strip(),
+        content=payload.content.strip(),
+        channels=channels,
+        status="sent",
+        created_by="admin",
+        created_at=now,
+    )
+    db.add(broadcast)
+    db.flush()
+
+    email_count = 0
+    bot_count = 0
+    target_user_ids: set[int] = set()
+
+    if "email" in channels:
+        users_with_email = list(
+            db.scalars(
+                select(User).where(
+                    User.is_active == True,
+                    User.email.is_not(None),
+                    User.email != "",
+                )
+            )
+        )
+        for u in users_with_email:
+            target_user_ids.add(u.id)
+            dedupe_key = f"broadcast:{broadcast.id}:{u.id}:email"
+            outbox_row = NotificationOutbox(
+                event_type="admin_broadcast",
+                recipient=u.email,
+                subject=f"【PriceMemo 公告】{broadcast.title}",
+                text_body=(
+                    f"尊敬的 {u.nickname or '用户'}，您好！\n\n"
+                    f"{broadcast.content}\n\n"
+                    f"------------------------------------\n"
+                    f"访问 PriceMemo 查看最新 AI 比价：{site_url}\n"
+                    f"如需管理订阅或通知偏好，请登录：{site_url}/account\n\n"
+                    f"—— PriceMemo 团队"
+                ),
+                status="pending",
+                dedupe_key=dedupe_key,
+                next_attempt_at=now,
+                created_at=now,
+            )
+            db.add(outbox_row)
+            email_count += 1
+
+    if "bot" in channels:
+        active_bindings = list(
+            db.scalars(
+                select(UserBotBinding)
+                .join(User, User.id == UserBotBinding.user_id)
+                .where(
+                    User.is_active == True,
+                    UserBotBinding.is_active == True,
+                    UserBotBinding.target_id != "",
+                )
+            )
+        )
+        bot_msg = (
+            f"📢【PriceMemo 系统公告】\n"
+            f"📌 {broadcast.title}\n"
+            f"------------------------------------\n"
+            f"{broadcast.content}\n"
+            f"------------------------------------\n"
+            f"🔗 访问官网：{site_url}"
+        )
+        for b in active_bindings:
+            target_user_ids.add(b.user_id)
+            bot_count += 1
+            try:
+                from extensions.bots.qq_bot import QQBotClient
+                qq_client = QQBotClient()
+                if qq_client.is_configured:
+                    app_id = (b.extra_meta or {}).get("app_id") if isinstance(b.extra_meta, dict) else None
+                    app_secret = b.bot_token or None
+                    qq_client.send_c2c_message(
+                        b.target_id,
+                        bot_msg,
+                        app_id=app_id,
+                        app_secret=app_secret,
+                    )
+            except Exception as b_err:
+                logger.debug("Failed sending broadcast message to bot target %s: %s", b.target_id, b_err)
+
+    broadcast.target_user_count = len(target_user_ids)
+    broadcast.email_sent_count = email_count
+    broadcast.bot_sent_count = bot_count
+    db.commit()
+    db.refresh(broadcast)
+    return broadcast
+
+
+@router.get("/broadcasts", response_model=list[AdminBroadcastItem])
+def admin_list_broadcasts(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[AdminBroadcast]:
+    stmt = select(AdminBroadcast).order_by(AdminBroadcast.created_at.desc()).limit(limit).offset(offset)
+    return list(db.scalars(stmt))
+
 
 

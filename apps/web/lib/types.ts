@@ -478,5 +478,102 @@ export type AdminCampaignCreate = {
   expires_at?: string | null;
 };
 
+export type AdminUserItem = {
+  id: number;
+  email: string | null;
+  nickname: string;
+  avatar_url: string;
+  has_qq_bound: boolean;
+  has_bot_bound: boolean;
+  bot_channel: string | null;
+  bot_target_id: string | null;
+  bot_active: boolean;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+  last_login_ip: string;
+  last_active_at: string | null;
+  session_duration_seconds: number;
+  total_duration_seconds: number;
+  is_online: boolean;
+  button_click_count: number;
+  coupon_count: number;
+  active_coupon_count: number;
+  used_coupon_count: number;
+};
+
+export type AdminUserPageOut = {
+  items: AdminUserItem[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type AdminUserStatsOut = {
+  total_users: number;
+  active_today: number;
+  active_7d: number;
+  online_now: number;
+  total_clicks: number;
+  total_coupons_held: number;
+};
+
+export type AdminUserSessionItem = {
+  token: string;
+  ip_address: string;
+  user_agent: string;
+  created_at: string;
+  last_active_at: string | null;
+  duration_seconds: number;
+  is_active: boolean;
+};
+
+export type AdminUserActionLogItem = {
+  id: number;
+  action_type: string;
+  action_name: string;
+  target_id: string;
+  page: string;
+  ip_address: string;
+  extra_data: Record<string, any>;
+  created_at: string;
+};
+
+export type AdminUserDetailOut = {
+  user: AdminUserItem;
+  sessions: AdminUserSessionItem[];
+  coupons: ShopCoupon[];
+  action_logs: AdminUserActionLogItem[];
+  bot_bindings: UserBotBinding[];
+  subscription_count: number;
+};
+
+export type AdminBroadcastAudienceOut = {
+  total_users: number;
+  email_users: number;
+  bot_users: number;
+  total_reach: number;
+};
+
+export type AdminBroadcastCreate = {
+  title: string;
+  content: string;
+  channels: string[];
+};
+
+export type AdminBroadcastItem = {
+  id: number;
+  title: string;
+  content: string;
+  channels: string[];
+  target_user_count: number;
+  email_sent_count: number;
+  bot_sent_count: number;
+  status: string;
+  created_by: string;
+  created_at: string;
+};
+
+
 
 
