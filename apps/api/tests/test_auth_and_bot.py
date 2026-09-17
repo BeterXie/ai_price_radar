@@ -297,6 +297,11 @@ def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db):
 
 
 def test_bot_chat_commands(client: TestClient, test_db):
+    try:
+        import extensions.bots.chat_commands
+    except ImportError:
+        pytest.skip("extensions.bots not available in open-source environment")
+
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
 
@@ -613,7 +618,10 @@ def test_qq_login_endpoint_disabled_when_not_configured(client: TestClient):
 
 
 def test_qq_connector_protocol():
-    from extensions.bots.qq_connector import QQConnectorClient
+    try:
+        from extensions.bots.qq_connector import QQConnectorClient
+    except ImportError:
+        pytest.skip("extensions.bots not available in open-source environment")
     import secrets, base64
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 

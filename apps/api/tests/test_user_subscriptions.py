@@ -155,6 +155,11 @@ def test_user_subscriptions_crud(client: TestClient, test_db):
 
 
 def test_targeted_subscription_price_drop_dispatch(client: TestClient, test_db):
+    try:
+        import extensions.bots.dispatcher
+    except ImportError:
+        pytest.skip("extensions.bots not available in open-source environment")
+
     now = datetime.now(timezone.utc)
 
     # 1. Seed Product, Shop, User, and UserProductSubscription
