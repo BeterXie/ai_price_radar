@@ -908,6 +908,8 @@ class CouponRead(BaseModel):
     expires_at: datetime
     is_used: bool = False
     created_at: datetime
+    coupon_batch_id: int = 0
+    campaign_id: int | None = None
 
 
 class UserCouponListOut(BaseModel):

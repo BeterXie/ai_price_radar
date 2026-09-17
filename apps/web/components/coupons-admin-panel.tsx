@@ -1350,14 +1350,15 @@ LDXP-WXYZ-5678
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold mb-1 text-[color:var(--ink)]">券批次 ID</label>
+                  <label className="block font-semibold mb-1 text-[color:var(--ink)]">绑定券批次 ID (选填)</label>
                   <input
                     type="number"
                     value={campaignForm.coupon_batch_id}
                     onChange={(e) => setCampaignForm({ ...campaignForm, coupon_batch_id: Number(e.target.value) })}
-                    placeholder="0 表示通用券"
+                    placeholder="0 表示通用券池"
                     className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-1.5 focus:outline-none"
                   />
+                  <p className="mt-1 text-[10px] text-black/40">如无特定批次请填 0 或留空，系统自动从通用券池发放</p>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-[color:var(--ink)]">单人限领 (张)</label>

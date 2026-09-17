@@ -363,6 +363,8 @@ def _coupon_to_read(c: ShopCoupon) -> CouponRead:
         expires_at=c.expires_at,
         is_used=c.is_used,
         created_at=c.created_at,
+        coupon_batch_id=getattr(c, "coupon_batch_id", 0) or 0,
+        campaign_id=getattr(c, "campaign_id", None),
     )
 
 
@@ -412,12 +414,15 @@ def redeem_coupon(
         if campaign.claimed_count >= campaign.total_quota:
             return CouponClaimResponse(success=False, message="该活动口令名额已被领完", coupon=None)
 
-        # Check how many coupons this user has already claimed from this campaign's batch (or in general)
-        batch_filter = [ShopCoupon.assigned_user_id == current_user.id]
-        if campaign.coupon_batch_id > 0:
-            batch_filter.append(ShopCoupon.coupon_batch_id == campaign.coupon_batch_id)
+        # Check how many coupons this user has already claimed from this specific campaign
         user_claimed_count = (
-            db.scalar(select(func.count(ShopCoupon.id)).where(*batch_filter)) or 0
+            db.scalar(
+                select(func.count(ShopCoupon.id)).where(
+                    ShopCoupon.assigned_user_id == current_user.id,
+                    ShopCoupon.campaign_id == campaign.id,
+                )
+            )
+            or 0
         )
         if user_claimed_count >= campaign.max_per_user:
             return CouponClaimResponse(
@@ -431,15 +436,28 @@ def redeem_coupon(
             ShopCoupon.is_assigned.is_(False),
             ShopCoupon.expires_at > now,
         )
+        coupon = None
         if campaign.coupon_batch_id > 0:
-            query = query.where(ShopCoupon.coupon_batch_id == campaign.coupon_batch_id)
-        coupon = db.scalar(query.order_by(ShopCoupon.id.asc()).with_for_update(skip_locked=True).limit(1))
+            coupon = db.scalar(
+                query.where(ShopCoupon.coupon_batch_id == campaign.coupon_batch_id)
+                .order_by(ShopCoupon.id.asc())
+                .with_for_update(skip_locked=True)
+                .limit(1)
+            )
+        # If no specific batch coupon found, fallback to unassigned general coupons
+        if not coupon:
+            coupon = db.scalar(
+                query.order_by(ShopCoupon.id.asc())
+                .with_for_update(skip_locked=True)
+                .limit(1)
+            )
         if not coupon:
             return CouponClaimResponse(success=False, message="优惠券库存暂时不足，请稍后再试", coupon=None)
 
         coupon.is_assigned = True
         coupon.assigned_user_id = current_user.id
         coupon.assigned_at = now
+        coupon.campaign_id = campaign.id
         campaign.claimed_count += 1
         db.commit()
         db.refresh(coupon)
@@ -571,6 +589,7 @@ def claim_lucky_drop(
         select(ShopCoupon)
         .where(
             ShopCoupon.assigned_user_id == current_user.id,
+            ShopCoupon.campaign_id.is_(None),
             ShopCoupon.assigned_at >= cooldown_cutoff,
         )
         .order_by(ShopCoupon.assigned_at.desc())

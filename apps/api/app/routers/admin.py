@@ -1115,6 +1115,8 @@ def _admin_coupon_to_read(c: ShopCoupon) -> CouponRead:
         expires_at=c.expires_at,
         is_used=c.is_used,
         created_at=c.created_at,
+        coupon_batch_id=getattr(c, "coupon_batch_id", 0) or 0,
+        campaign_id=getattr(c, "campaign_id", None),
     )
 
 

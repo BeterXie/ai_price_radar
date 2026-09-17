@@ -351,3 +351,82 @@ def test_admin_coupon_management(client: TestClient, test_db):
         app.dependency_overrides.pop(require_admin, None)
 
 
+def test_redeem_campaign_fallback_and_independent_campaign_quotas(client: TestClient, test_db):
+    user = User(id=1, email="user@example.com", nickname="测试员")
+    test_db.add(user)
+
+    future = datetime.now(timezone.utc) + timedelta(days=30)
+    # Campaign with coupon_batch_id = 1, but only batch 0 coupons exist in DB
+    campaign1 = CouponCampaign(
+        id=1,
+        campaign_code="PRIICEMEMO666",
+        title="测试活动1",
+        coupon_batch_id=1,
+        max_per_user=1,
+        total_quota=50,
+        claimed_count=0,
+        is_active=True,
+        expires_at=future,
+    )
+    campaign2 = CouponCampaign(
+        id=2,
+        campaign_code="COMMUNITY888",
+        title="测试活动2",
+        coupon_batch_id=0,
+        max_per_user=1,
+        total_quota=50,
+        claimed_count=0,
+        is_active=True,
+        expires_at=future,
+    )
+    # Two general coupons in batch 0
+    coupon1 = ShopCoupon(
+        id=101,
+        coupon_batch_id=0,
+        name="通用立减券1",
+        code="GEN_CODE_1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        shop_name="彩头AI",
+        shop_url="https://wzyp.cn/shop/pricememo",
+        is_assigned=False,
+        expires_at=future,
+    )
+    coupon2 = ShopCoupon(
+        id=102,
+        coupon_batch_id=0,
+        name="通用立减券2",
+        code="GEN_CODE_2",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        shop_name="彩头AI",
+        shop_url="https://wzyp.cn/shop/pricememo",
+        is_assigned=False,
+        expires_at=future,
+    )
+    test_db.add_all([campaign1, campaign2, coupon1, coupon2])
+    test_db.commit()
+
+    headers = _login_user(test_db, user, client)
+
+    # 1. Redeem campaign 1 (batch_id 1 falls back to batch 0)
+    res1 = client.post("/api/v1/user/coupons/redeem", json={"code": "PRIICEMEMO666"}, headers=headers)
+    assert res1.status_code == 200
+    assert res1.json()["success"] is True
+    assert res1.json()["coupon"]["code"] == "GEN_CODE_1"
+    assert res1.json()["coupon"]["campaign_id"] == 1
+
+    # 2. Campaign 1 cannot be redeemed again by same user
+    res1_again = client.post("/api/v1/user/coupons/redeem", json={"code": "PRIICEMEMO666"}, headers=headers)
+    assert res1_again.status_code == 200
+    assert res1_again.json()["success"] is False
+    assert "限领 1 张" in res1_again.json()["message"]
+
+    # 3. User CAN still redeem Campaign 2 independently!
+    res2 = client.post("/api/v1/user/coupons/redeem", json={"code": "COMMUNITY888"}, headers=headers)
+    assert res2.status_code == 200
+    assert res2.json()["success"] is True
+    assert res2.json()["coupon"]["code"] == "GEN_CODE_2"
+    assert res2.json()["coupon"]["campaign_id"] == 2
+
+

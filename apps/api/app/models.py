@@ -463,6 +463,7 @@ class ShopCoupon(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     coupon_batch_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("coupon_campaigns.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
@@ -477,6 +478,7 @@ class ShopCoupon(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     assigned_user: Mapped[User | None] = relationship(back_populates="coupons")
+    campaign: Mapped[CouponCampaign | None] = relationship()
 
 
 class CouponCampaign(Base):
