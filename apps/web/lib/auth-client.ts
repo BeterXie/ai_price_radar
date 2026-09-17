@@ -98,3 +98,48 @@ export async function bindCurrentLoggedInQQ(): Promise<{ success: boolean; bindi
     method: "POST",
   });
 }
+
+export interface UserSubscriptionItem {
+  id: number;
+  product_slug: string;
+  product_name: string;
+  platform: string;
+  target_price: string | null;
+  current_min_price: string | null;
+  current_currency: string;
+  stock_count: number;
+  notify_email: boolean;
+  notify_bot: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserSubscriptionListResponse {
+  items: UserSubscriptionItem[];
+  count: number;
+  email_bound: boolean;
+  bot_bound: boolean;
+}
+
+export async function fetchUserSubscriptions(): Promise<UserSubscriptionListResponse> {
+  return jsonFetch<UserSubscriptionListResponse>("/api/v1/user/subscriptions");
+}
+
+export async function saveUserSubscription(payload: {
+  product_slug: string;
+  target_price?: string | null;
+  notify_email?: boolean;
+  notify_bot?: boolean;
+}): Promise<UserSubscriptionItem> {
+  return jsonFetch<UserSubscriptionItem>("/api/v1/user/subscriptions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteUserSubscription(slug: string): Promise<{ success: boolean }> {
+  return jsonFetch<{ success: boolean }>(`/api/v1/user/subscriptions/${encodeURIComponent(slug)}`, {
+    method: "DELETE",
+  });
+}
+

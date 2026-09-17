@@ -855,3 +855,32 @@ class BotCommandRequest(BaseModel):
 class BotCommandResponse(BaseModel):
     reply: str
 
+
+class UserSubscriptionRead(BaseModel):
+    id: int
+    product_slug: str
+    product_name: str
+    platform: str
+    target_price: Decimal | None = None
+    current_min_price: Decimal | None = None
+    current_currency: str = "CNY"
+    stock_count: int = 0
+    notify_email: bool
+    notify_bot: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserSubscriptionCreateOrUpdate(BaseModel):
+    product_slug: str = Field(min_length=1, max_length=120)
+    target_price: Decimal | None = None
+    notify_email: bool = True
+    notify_bot: bool = True
+
+
+class UserSubscriptionListOut(BaseModel):
+    items: list[UserSubscriptionRead]
+    count: int
+    email_bound: bool
+    bot_bound: bool
+

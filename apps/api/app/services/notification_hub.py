@@ -22,6 +22,7 @@ class PriceChangeEvent:
     is_drop: bool
     diff: Decimal
     percent_change: float
+    product_slug: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -41,6 +42,7 @@ def create_price_change_event(
     new_price: Decimal,
     currency: str = "CNY",
     product_url: str = "",
+    product_slug: str = "",
 ) -> PriceChangeEvent | None:
     if old_price is None or new_price is None or old_price == new_price:
         return None
@@ -59,7 +61,9 @@ def create_price_change_event(
         is_drop=is_drop,
         diff=diff,
         percent_change=round(percent, 2),
+        product_slug=product_slug or "",
     )
+
 
 
 def dispatch_price_changes(events: list[PriceChangeEvent], db_session: Any = None) -> None:

@@ -1,165 +1,746 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowClockwise, BellRinging, CheckCircle, Copy, Rss, Trash } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowClockwise,
+  BellRinging,
+  CheckCircle,
+  Copy,
+  Rss,
+  Trash,
+  Envelope,
+  ChatCircleDots,
+  User,
+  WarningCircle,
+  Lightning,
+  Sparkle,
+  SlidersHorizontal,
+} from "@phosphor-icons/react";
 import type { CatalogResponse, ProductCard } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
-import { normalizeWatchThreshold, readWatchlist, WATCHLIST_EVENT, type WatchItem, writeWatchlist } from "@/components/watch-button";
+import {
+  normalizeWatchThreshold,
+  readWatchlist,
+  WATCHLIST_EVENT,
+  type WatchItem,
+  writeWatchlist,
+} from "@/components/watch-button";
+import {
+  deleteUserSubscription,
+  fetchAuthMe,
+  fetchUserSubscriptions,
+  saveUserSubscription,
+  type UserSubscriptionItem,
+} from "@/lib/auth-client";
+import { LoginModal } from "@/components/login-modal";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 export function WatchlistClient({ previewState }: { previewState?: "empty" | "loading" | "error" }) {
-  const [items, setItems] = useState<WatchItem[]>([]);
+  const [authenticated, setAuthenticated] = useState<boolean>(false);
+  const [userNickname, setUserNickname] = useState<string>("");
+  const [emailBound, setEmailBound] = useState<boolean>(false);
+  const [botBound, setBotBound] = useState<boolean>(false);
+  const [subscriptions, setSubscriptions] = useState<UserSubscriptionItem[]>([]);
+  const [localItems, setLocalItems] = useState<WatchItem[]>([]);
   const [products, setProducts] = useState<Record<string, ProductCard>>({});
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [actionNotice, setActionNotice] = useState<{ type: "info" | "warning" | "success"; text: string } | null>(null);
 
-  useEffect(() => {
-    const sync = () => setItems(readWatchlist());
-    sync();
-    window.addEventListener(WATCHLIST_EVENT, sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(WATCHLIST_EVENT, sync);
-      window.removeEventListener("storage", sync);
-    };
+  // Threshold draft inputs to allow smooth typing before persisting
+  const [thresholdDrafts, setThresholdDrafts] = useState<Record<string, string>>({});
+
+  // 1. Initial Load: Check Auth & fetch either Cloud Subscriptions or Local Items
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const auth = await fetchAuthMe();
+      if (auth.authenticated && auth.user) {
+        setAuthenticated(true);
+        setUserNickname(auth.user.nickname || "用户");
+
+        // Fetch cloud subscriptions
+        const cloudData = await fetchUserSubscriptions();
+        setEmailBound(cloudData.email_bound);
+        setBotBound(cloudData.bot_bound);
+
+        // Check if there are local items to migrate
+        const local = readWatchlist();
+        const existingCloudSlugs = new Set(cloudData.items.map((i) => i.product_slug));
+        const toMigrate = local.filter((item) => !existingCloudSlugs.has(item.slug));
+
+        if (toMigrate.length > 0) {
+          await Promise.all(
+            toMigrate.map((item) =>
+              saveUserSubscription({
+                product_slug: item.slug,
+                target_price: item.threshold || null,
+                notify_email: true,
+                notify_bot: true,
+              }).catch(() => null)
+            )
+          );
+          const refreshed = await fetchUserSubscriptions();
+          setSubscriptions(refreshed.items);
+          setActionNotice({
+            type: "success",
+            text: `已自动将您浏览器中暂存的 ${toMigrate.length} 个关注商品同步至云端！`,
+          });
+          // sync local with refreshed
+          writeWatchlist(
+            refreshed.items.map((sub) => ({
+              slug: sub.product_slug,
+              name: sub.product_name,
+              currency: sub.current_currency || "CNY",
+              threshold: sub.target_price || "",
+              added_at: sub.created_at,
+            }))
+          );
+        } else {
+          setSubscriptions(cloudData.items);
+          // keep local storage in sync
+          writeWatchlist(
+            cloudData.items.map((sub) => ({
+              slug: sub.product_slug,
+              name: sub.product_name,
+              currency: sub.current_currency || "CNY",
+              threshold: sub.target_price || "",
+              added_at: sub.created_at,
+            }))
+          );
+        }
+      } else {
+        setAuthenticated(false);
+        setLocalItems(readWatchlist());
+      }
+    } catch {
+      // Fallback to local
+      setAuthenticated(false);
+      setLocalItems(readWatchlist());
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    let active = true;
-    async function load() {
-      setLoading(true);
-      const results = await Promise.all(items.map(async (item) => {
-        try {
-          const response = await fetch(`${API}/api/v1/products?product=${encodeURIComponent(item.slug)}&sort=quality`, { cache: "no-store" });
-          if (!response.ok) return null;
-          const data = await response.json() as CatalogResponse;
-          return data.items[0] || null;
-        } catch {
-          return null;
-        }
+    void loadData();
+    const handleStorageChange = () => {
+      if (!authenticated) {
+        setLocalItems(readWatchlist());
+      }
+    };
+    window.addEventListener(WATCHLIST_EVENT, handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener(WATCHLIST_EVENT, handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [loadData, authenticated]);
+
+  // Unified items list
+  const displayItems = useMemo(() => {
+    if (authenticated) {
+      return subscriptions.map((sub) => ({
+        slug: sub.product_slug,
+        name: sub.product_name,
+        currency: sub.current_currency || "CNY",
+        threshold: thresholdDrafts[sub.product_slug] ?? (sub.target_price || ""),
+        notifyEmail: sub.notify_email,
+        notifyBot: sub.notify_bot,
+        isCloud: true,
       }));
+    }
+    return localItems.map((item) => ({
+      slug: item.slug,
+      name: item.name,
+      currency: item.currency || "CNY",
+      threshold: thresholdDrafts[item.slug] ?? (item.threshold || ""),
+      notifyEmail: false,
+      notifyBot: false,
+      isCloud: false,
+    }));
+  }, [authenticated, subscriptions, localItems, thresholdDrafts]);
+
+  // Load live product cards for price & inventory details
+  useEffect(() => {
+    let active = true;
+    async function loadProducts() {
+      if (displayItems.length === 0) return;
+      const results = await Promise.all(
+        displayItems.map(async (item) => {
+          try {
+            const response = await fetch(
+              `${API}/api/v1/products?product=${encodeURIComponent(item.slug)}&sort=quality`,
+              { cache: "no-store" }
+            );
+            if (!response.ok) return null;
+            const data = (await response.json()) as CatalogResponse;
+            return data.items[0] || null;
+          } catch {
+            return null;
+          }
+        })
+      );
       if (active) {
-        setProducts(Object.fromEntries(results.filter((value): value is ProductCard => Boolean(value)).map((product) => [product.slug, product])));
-        setLoading(false);
+        setProducts(
+          Object.fromEntries(
+            results
+              .filter((value): value is ProductCard => Boolean(value))
+              .map((product) => [product.slug, product])
+          )
+        );
       }
     }
-    void load();
-    return () => { active = false; };
-  }, [items]);
+    void loadProducts();
+    return () => {
+      active = false;
+    };
+  }, [displayItems.map((i) => i.slug).join(",")]);
 
+  // Atom feed URL for RSS readers
   const feedUrl = useMemo(() => {
-    const targets = items.map((item) => `${item.slug}${item.threshold ? `:${item.threshold}` : ""}`).join(",");
+    const targets = displayItems
+      .map((item) => `${item.slug}${item.threshold ? `:${item.threshold}` : ""}`)
+      .join(",");
     return targets ? `${API}/api/v1/watch.atom?targets=${encodeURIComponent(targets)}` : "";
-  }, [items]);
+  }, [displayItems]);
 
-  function updateThreshold(slug: string, threshold: string) {
-    const normalized = normalizeWatchThreshold(threshold);
-    if (normalized === null) return;
-    const next = items.map((item) => item.slug === slug ? { ...item, threshold: normalized } : item);
-    if (writeWatchlist(next)) setItems(next);
-  }
+  // Update target price
+  const handleThresholdChange = (slug: string, value: string) => {
+    setThresholdDrafts((prev) => ({ ...prev, [slug]: value }));
+  };
 
-  function remove(slug: string) {
-    const next = items.filter((item) => item.slug !== slug);
-    if (writeWatchlist(next)) setItems(next);
-  }
+  const handleThresholdCommit = async (slug: string) => {
+    const draft = thresholdDrafts[slug];
+    if (draft === undefined) return;
 
-  async function copyFeed() {
+    const normalized = normalizeWatchThreshold(draft);
+    if (normalized === null) {
+      // Invalid number input, reset draft
+      setThresholdDrafts((prev) => {
+        const copy = { ...prev };
+        delete copy[slug];
+        return copy;
+      });
+      return;
+    }
+
+    if (authenticated) {
+      try {
+        await saveUserSubscription({
+          product_slug: slug,
+          target_price: normalized || null,
+        });
+        setSubscriptions((prev) =>
+          prev.map((s) => (s.product_slug === slug ? { ...s, target_price: normalized || null } : s))
+        );
+      } catch (err: any) {
+        setActionNotice({ type: "warning", text: err.message || "更新目标价失败" });
+      }
+    } else {
+      const next = localItems.map((item) => (item.slug === slug ? { ...item, threshold: normalized } : item));
+      if (writeWatchlist(next)) setLocalItems(next);
+    }
+  };
+
+  // Toggle Email Channel
+  const handleToggleEmail = async (slug: string, currentVal: boolean) => {
+    if (!authenticated) {
+      setShowLoginModal(true);
+      return;
+    }
+    if (!currentVal && !emailBound) {
+      setActionNotice({
+        type: "warning",
+        text: "您尚未绑定接收邮箱。请前往个人中心绑定邮箱后，降价邮件提醒即可自动激活。",
+      });
+    }
+    try {
+      await saveUserSubscription({
+        product_slug: slug,
+        notify_email: !currentVal,
+      });
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.product_slug === slug ? { ...s, notify_email: !currentVal } : s))
+      );
+    } catch (err: any) {
+      setActionNotice({ type: "warning", text: err.message || "更新提醒渠道失败" });
+    }
+  };
+
+  // Toggle Bot Channel
+  const handleToggleBot = async (slug: string, currentVal: boolean) => {
+    if (!authenticated) {
+      setShowLoginModal(true);
+      return;
+    }
+    if (!currentVal && !botBound) {
+      setActionNotice({
+        type: "warning",
+        text: "您尚未连接 QQ/微信 机器人。请前往个人中心扫码加好友，即可通过私聊接收降价推送与指令交互。",
+      });
+    }
+    try {
+      await saveUserSubscription({
+        product_slug: slug,
+        notify_bot: !currentVal,
+      });
+      setSubscriptions((prev) =>
+        prev.map((s) => (s.product_slug === slug ? { ...s, notify_bot: !currentVal } : s))
+      );
+    } catch (err: any) {
+      setActionNotice({ type: "warning", text: err.message || "更新提醒渠道失败" });
+    }
+  };
+
+  // Remove item
+  const handleRemove = async (slug: string) => {
+    if (authenticated) {
+      try {
+        await deleteUserSubscription(slug);
+        setSubscriptions((prev) => prev.filter((s) => s.product_slug !== slug));
+      } catch (err: any) {
+        setActionNotice({ type: "warning", text: err.message || "删除关注失败" });
+      }
+    }
+    const nextLocal = readWatchlist().filter((item) => item.slug !== slug);
+    writeWatchlist(nextLocal);
+    setLocalItems(nextLocal);
+  };
+
+  // Copy Atom feed
+  const copyFeed = async () => {
     if (!feedUrl) return;
     await navigator.clipboard.writeText(feedUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
-  }
+  };
 
-  if (previewState === "loading") {
+  // Loading Skeleton
+  if (previewState === "loading" || (loading && !displayItems.length)) {
     return (
-      <section className="surface-panel p-6" role="status" aria-busy="true" data-vds-layer="evidence">
-        <p className="section-kicker">正在读取当前浏览器</p>
-        <h2 className="mt-3 text-2xl font-semibold">正在加载关注清单</h2>
-        <div className="mt-6 grid gap-2" aria-hidden="true">
-          <span className="h-14 animate-pulse rounded-[8px] bg-[color:var(--subtle)]" />
-          <span className="h-14 animate-pulse rounded-[8px] bg-[color:var(--subtle)]" />
+      <section className="surface-panel p-6 sm:p-8" role="status" aria-busy="true" data-vds-layer="evidence">
+        <p className="section-kicker">正在连接价格监控数据中心</p>
+        <h2 className="mt-2 text-2xl font-semibold">正在同步关注清单与提醒配置…</h2>
+        <div className="mt-6 grid gap-3" aria-hidden="true">
+          <span className="h-16 animate-pulse rounded-[10px] bg-[color:var(--subtle)]" />
+          <span className="h-16 animate-pulse rounded-[10px] bg-[color:var(--subtle)]" />
+          <span className="h-16 animate-pulse rounded-[10px] bg-[color:var(--subtle)]" />
         </div>
       </section>
     );
   }
 
+  // Error preview
   if (previewState === "error") {
     return (
       <div className="empty-state" role="alert" data-vds-layer="evidence">
         <ArrowClockwise className="mx-auto" size={34} />
         <h2 className="mt-4 text-2xl font-semibold text-[color:var(--ink)]">关注清单暂时无法读取</h2>
-        <p className="mt-3 text-sm leading-6">当前浏览器中的内容没有被修改。退出错误预览后可以重新读取。</p>
-        <Link href="/watchlist" className="button-primary mt-6">重新读取</Link>
+        <p className="mt-3 text-sm leading-6">云端与本地关注记录未受影响。退出错误预览后可以重新读取。</p>
+        <button type="button" onClick={() => void loadData()} className="button-primary mt-6">
+          重新读取
+        </button>
       </div>
     );
   }
 
-  if (previewState === "empty" || !items.length) {
+  // Empty state
+  if (previewState === "empty" || !displayItems.length) {
     return (
-      <div className="empty-state" role="status">
-        <BellRinging className="mx-auto" size={34} />
-        <h2 className="mt-4 text-2xl font-semibold text-[color:var(--ink)]">还没有关注商品</h2>
-        <p className="mt-3 text-sm leading-6">进入任意商品页，点击“加入关注清单”。这里会显示当前观测价、库存和更新时间。</p>
-        <Link href="/products" className="button-primary mt-6">浏览报价目录</Link>
+      <div className="space-y-6">
+        {!authenticated && (
+          <div className="p-5 rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--paper)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-[color:var(--ink)] flex items-center gap-2">
+                <Sparkle size={16} weight="fill" className="text-[color:var(--accent)]" />
+                登录开启多渠道降价提醒
+              </h3>
+              <p className="text-xs text-[color:var(--muted)] leading-relaxed">
+                登录后关注的商品将持久化存储在云端，并可通过绑定的邮箱或 QQ / 微信 机器人实时接收降价通知。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLoginModal(true)}
+              className="button-primary tactile px-5 py-2.5 rounded-xl text-xs font-semibold shrink-0"
+            >
+              <User size={15} />
+              <span>立即登录 / 注册</span>
+            </button>
+          </div>
+        )}
+
+        <div className="empty-state" role="status">
+          <BellRinging className="mx-auto text-[color:var(--muted)]" size={38} />
+          <h2 className="mt-4 text-2xl font-semibold text-[color:var(--ink)]">还没有关注任何商品</h2>
+          <p className="mt-3 text-sm leading-6 max-w-md mx-auto text-[color:var(--muted)]">
+            浏览商品目录时，点击“关注商品 (降价提醒)”即可加入监控。设定目标价后，价格达标将第一时间发送私聊提醒。
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/products" className="button-primary tactile">
+              浏览报价目录
+            </Link>
+            {!authenticated && (
+              <button
+                type="button"
+                onClick={() => setShowLoginModal(true)}
+                className="button-secondary tactile"
+              >
+                登录账号
+              </button>
+            )}
+          </div>
+        </div>
+
+        <LoginModal
+          isOpen={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+          onSuccess={() => void loadData()}
+        />
       </div>
     );
   }
 
-  const reachedCount = items.filter((item) => {
+  // Count reaching threshold
+  const reachedCount = displayItems.filter((item) => {
     const product = products[item.slug];
     const current = product?.lowest_price ? Number(product.lowest_price) : null;
     const threshold = item.threshold ? Number(item.threshold) : null;
-    return Boolean(product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold)));
+    return Boolean(
+      product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold))
+    );
   }).length;
 
   return (
-    <div className="space-y-8" data-vds-layer="evidence" data-vds-action="local-state price-threshold live-status feed-recovery">
-      <section className="data-strip sm:grid-cols-3" aria-label="关注清单概况">
-        <div className="data-cell"><p className="data-label">关注商品</p><p className="data-value">{items.length}</p></div>
-        <div className="data-cell"><p className="data-label">达到提醒条件</p><p className="data-value">{reachedCount}</p></div>
-        <div className="data-cell"><p className="data-label">保存位置</p><p className="data-value !text-base">当前浏览器</p></div>
-      </section>
-      <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-        <div className="grid gap-3 border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 text-xs text-[color:var(--muted)] md:grid-cols-[1fr_150px_150px_110px]">
-          <span>商品与当前状态</span><span>近期有货观测价</span><span>提醒目标价</span><span>操作</span>
+    <div className="space-y-8" data-vds-layer="evidence">
+      {/* 1. Login or Binding Guide Banner */}
+      {!authenticated ? (
+        <div className="p-5 rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--paper)] flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded bg-[color:var(--accent)]/15 text-[color:var(--ink)]">
+                <Sparkle size={12} weight="fill" />
+                本地暂存模式
+              </span>
+              <h3 className="text-sm font-bold text-[color:var(--ink)]">
+                当前为未登录状态，已关注商品仅保存在本浏览器
+              </h3>
+            </div>
+            <p className="text-xs text-[color:var(--muted)] max-w-2xl leading-relaxed">
+              登录或注册账号后，关注商品将<strong>自动同步存入云端数据库</strong>，并可通过您已绑定的<strong>邮箱</strong>与 <strong>QQ / 微信 机器人</strong>在达到目标价时为您发送即时私聊提醒。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowLoginModal(true)}
+            className="button-primary tactile px-5 py-2.5 rounded-xl text-xs font-semibold shrink-0"
+          >
+            <User size={15} />
+            <span>立即登录同步到云端</span>
+          </button>
         </div>
+      ) : (!emailBound || !botBound) ? (
+        <div className="p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <h4 className="text-sm font-bold text-[color:var(--ink)] flex items-center gap-1.5">
+              <WarningCircle size={17} className="text-amber-600" weight="fill" />
+              尚未完全开启主动通知推送
+            </h4>
+            <p className="text-xs text-[color:var(--muted)]">
+              当前状态：邮箱推送 {emailBound ? "已开通" : "未绑定"} · QQ/微信 机器人 {botBound ? "已连接" : "未连接"}。前往个人中心配置后即可接收实时降价私聊。
+            </p>
+          </div>
+          <Link
+            href="/account"
+            className="button-secondary tactile px-4 py-2 rounded-xl text-xs font-semibold shrink-0"
+          >
+            前往个人中心配置 →
+          </Link>
+        </div>
+      ) : (
+        <div className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-xs text-emerald-900">
+            <CheckCircle size={18} weight="fill" className="text-emerald-600 shrink-0" />
+            <span>
+              <strong>云端价格监控就绪</strong>：监控变动将自动通过您的有效邮箱及已连接的 QQ / 微信 机器人私聊推送。
+            </span>
+          </div>
+          <Link href="/account" className="text-xs font-semibold text-emerald-800 hover:underline shrink-0">
+            管理推送渠道
+          </Link>
+        </div>
+      )}
+
+      {/* Action Notice Alert */}
+      {actionNotice && (
+        <div
+          className={`p-4 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+            actionNotice.type === "success"
+              ? "border-emerald-500/30 bg-emerald-50 text-emerald-900"
+              : actionNotice.type === "warning"
+              ? "border-amber-500/30 bg-amber-50 text-amber-900"
+              : "border-[color:var(--line-strong)] bg-[color:var(--subtle)] text-[color:var(--ink)]"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {actionNotice.type === "success" && <CheckCircle size={16} weight="fill" />}
+            {actionNotice.type === "warning" && <WarningCircle size={16} weight="fill" />}
+            <span>{actionNotice.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionNotice(null)}
+            className="text-[11px] underline opacity-70 hover:opacity-100"
+          >
+            关闭
+          </button>
+        </div>
+      )}
+
+      {/* 2. Overview Strip */}
+      <section className="data-strip grid-cols-2 sm:grid-cols-4" aria-label="关注清单与提醒概况">
+        <div className="data-cell">
+          <p className="data-label">监控商品数量</p>
+          <p className="data-value">{displayItems.length}</p>
+        </div>
+        <div className="data-cell">
+          <p className="data-label">达到提醒条件</p>
+          <p className="data-value">{reachedCount}</p>
+        </div>
+        <div className="data-cell">
+          <p className="data-label">邮件推送渠道</p>
+          <p className="data-value !text-sm flex items-center gap-1 mt-1">
+            {!authenticated ? (
+              <span className="text-[color:var(--muted)]">需登录</span>
+            ) : emailBound ? (
+              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                <CheckCircle size={14} weight="fill" />已开启
+              </span>
+            ) : (
+              <Link href="/account" className="text-amber-700 font-medium hover:underline text-xs">
+                未绑定 (去配置)
+              </Link>
+            )}
+          </p>
+        </div>
+        <div className="data-cell">
+          <p className="data-label">机器人私聊渠道</p>
+          <p className="data-value !text-sm flex items-center gap-1 mt-1">
+            {!authenticated ? (
+              <span className="text-[color:var(--muted)]">需登录</span>
+            ) : botBound ? (
+              <span className="text-sky-700 font-semibold flex items-center gap-1">
+                <CheckCircle size={14} weight="fill" />已连接
+              </span>
+            ) : (
+              <Link href="/account" className="text-sky-700 font-medium hover:underline text-xs">
+                未扫码 (去加好友)
+              </Link>
+            )}
+          </p>
+        </div>
+      </section>
+
+      {/* 3. Subscriptions Table */}
+      <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+        <div className="grid gap-3 border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4 text-xs font-semibold text-[color:var(--muted)] md:grid-cols-[1fr_130px_160px_170px_80px]">
+          <span>商品与当前观测状态</span>
+          <span>近期有货观测价</span>
+          <span>降价提醒目标价</span>
+          <span>推送提醒渠道</span>
+          <span className="text-right">操作</span>
+        </div>
+
         <div className="divide-y divide-[color:var(--line)]">
-          {items.map((item) => {
+          {displayItems.map((item) => {
             const product = products[item.slug];
             const current = product?.lowest_price ? Number(product.lowest_price) : null;
             const threshold = item.threshold ? Number(item.threshold) : null;
-            const reached = Boolean(product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold)));
+            const reached = Boolean(
+              product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold))
+            );
+
             return (
-              <div key={item.slug} className="watchlist-row grid gap-4 px-5 py-5 md:grid-cols-[1fr_150px_150px_110px] md:items-center">
+              <div
+                key={item.slug}
+                className="watchlist-row grid gap-4 px-5 py-5 md:grid-cols-[1fr_130px_160px_170px_80px] md:items-center hover:bg-[color:var(--paper)]/50 transition-colors"
+              >
+                {/* Product Title and Stock Info */}
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/products/${encodeURIComponent(item.slug)}`} className="font-semibold hover:underline">{product?.display_name || item.name}</Link>
-                    {reached && <span className="status-pill status-success !py-1 !text-[10px]"><CheckCircle size={12} weight="fill" />达到条件</span>}
+                    <Link
+                      href={`/products/${encodeURIComponent(item.slug)}`}
+                      className="font-semibold text-sm hover:underline text-[color:var(--ink)]"
+                    >
+                      {product?.display_name || item.name}
+                    </Link>
+                    {reached ? (
+                      <span className="status-pill status-success !py-0.5 !text-[10px] inline-flex items-center gap-1">
+                        <CheckCircle size={12} weight="fill" />
+                        达到降价条件
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-[color:var(--subtle)] border border-[color:var(--line)] text-[color:var(--muted)]">
+                        监控中
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-2 text-xs text-[color:var(--muted)]">{product ? `${product.in_stock_count} 条有货 · ${product.trusted_offer_count} 条纳入统计 · ${relativeTime(product.last_updated_at)}更新` : loading ? "正在加载…" : "报价暂时无法加载，可稍后刷新"}</p>
+                  <p className="mt-1.5 text-xs text-[color:var(--muted)]">
+                    {product ? (
+                      <>
+                        <span className={product.in_stock_count > 0 ? "text-emerald-700 font-medium" : "text-amber-700"}>
+                          {product.in_stock_count > 0 ? `${product.in_stock_count} 平台有现货` : "暂无现货"}
+                        </span>
+                        {" · "}
+                        <span>{product.trusted_offer_count} 条有效报价</span>
+                        {" · "}
+                        <span>{relativeTime(product.last_updated_at)} 更新</span>
+                      </>
+                    ) : (
+                      "正在加载观测数据…"
+                    )}
+                  </p>
                 </div>
-                <div className="font-semibold">{product ? money(product.lowest_price, product.price_currency) : "暂无"}</div>
-                <label className="text-xs text-black/45">
-                  <span className="sr-only">{item.name} 提醒目标价</span>
-                  <span className="flex min-h-11 items-center rounded-[9px] border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3"><span>{product?.price_currency || item.currency || "CNY"}</span><input value={item.threshold} onChange={(event) => updateThreshold(item.slug, event.target.value)} inputMode="decimal" placeholder="不限" className="w-full bg-transparent py-2.5 pl-1 outline-none" /></span>
-                </label>
-                <button type="button" onClick={() => remove(item.slug)} className="button-tertiary !justify-start !px-0 text-[color:var(--danger)]"><Trash size={16} />移除</button>
+
+                {/* Lowest Live Price */}
+                <div className="font-semibold text-sm text-[color:var(--ink)]">
+                  {product ? money(product.lowest_price, product.price_currency) : "暂无"}
+                </div>
+
+                {/* Target Price Input */}
+                <div>
+                  <label className="block text-xs">
+                    <span className="sr-only">{item.name} 提醒目标价</span>
+                    <span className="flex min-h-10 items-center rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 text-xs focus-within:border-[color:var(--ink)]">
+                      <span className="text-[color:var(--muted)] font-medium pr-1">
+                        {product?.price_currency || item.currency || "¥"}
+                      </span>
+                      <input
+                        value={item.threshold}
+                        onChange={(e) => handleThresholdChange(item.slug, e.target.value)}
+                        onBlur={() => void handleThresholdCommit(item.slug)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        inputMode="decimal"
+                        placeholder="不限 (有降即推)"
+                        className="w-full bg-transparent py-2 text-xs outline-none text-[color:var(--ink)] placeholder:text-[color:var(--muted)]/60 font-mono"
+                      />
+                    </span>
+                  </label>
+                  <p className="mt-1 text-[10px] text-[color:var(--muted)]">
+                    {item.threshold ? "现货低于此价时推送" : "现货出现任意降价即推"}
+                  </p>
+                </div>
+
+                {/* Channel Toggles (Email & Bot) */}
+                <div className="flex items-center gap-2">
+                  {/* Email Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleEmail(item.slug, item.notifyEmail)}
+                    title={
+                      !authenticated
+                        ? "点击登录并开启邮件提醒"
+                        : item.notifyEmail
+                        ? "邮件推送已开启 (点击关闭)"
+                        : "邮件推送已关闭 (点击开启)"
+                    }
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+                      item.notifyEmail
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800"
+                        : "border-[color:var(--line)] bg-[color:var(--subtle)] text-[color:var(--muted)] opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    <Envelope size={13} weight={item.notifyEmail ? "fill" : "regular"} />
+                    <span>邮件</span>
+                  </button>
+
+                  {/* Bot Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleBot(item.slug, item.notifyBot)}
+                    title={
+                      !authenticated
+                        ? "点击登录并开启机器人私聊提醒"
+                        : item.notifyBot
+                        ? "QQ/微信 机器人推送已开启 (点击关闭)"
+                        : "QQ/微信 机器人推送已关闭 (点击开启)"
+                    }
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+                      item.notifyBot
+                        ? "border-sky-500/40 bg-sky-500/10 text-sky-800"
+                        : "border-[color:var(--line)] bg-[color:var(--subtle)] text-[color:var(--muted)] opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    <ChatCircleDots size={13} weight={item.notifyBot ? "fill" : "regular"} />
+                    <span>机器人</span>
+                  </button>
+                </div>
+
+                {/* Remove Action */}
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => void handleRemove(item.slug)}
+                    className="button-tertiary !px-2 !py-1 text-xs text-[color:var(--danger)] inline-flex items-center gap-1 hover:bg-rose-50 rounded-lg"
+                  >
+                    <Trash size={15} />
+                    <span>移除</span>
+                  </button>
+                </div>
               </div>
             );
           })}
         </div>
       </section>
 
-      <section className="surface-subtle p-6">
-        <div className="flex items-start gap-3"><Rss className="mt-1 shrink-0" size={24} /><div><h2 className="text-xl font-semibold">订阅价格与补货更新</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-black/55">把下方链接添加到支持 Atom/RSS 的阅读器。价格、库存或更新时间变化时，阅读器会出现新条目；本站不会发送消息或邮件，服务端也不保存邮箱、账号或关注清单。</p></div></div>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <input readOnly value={feedUrl} aria-label="Atom Feed 地址" className="field min-w-0 flex-1 text-xs" />
-          <button type="button" onClick={copyFeed} className="button-primary tactile"><Copy size={17} />{copied ? "已复制" : "复制订阅地址"}</button>
+      {/* 4. Atom / RSS Reader Subscription Feed */}
+      <section className="surface-subtle p-6 rounded-2xl border border-[color:var(--line)]">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+            <Rss size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-[color:var(--ink)]">
+              备用追踪：Atom / RSS 离线阅读器订阅
+            </h2>
+            <p className="mt-1.5 max-w-3xl text-xs leading-relaxed text-[color:var(--muted)]">
+              除了上述通过云端已绑定的邮箱和 QQ / 微信 机器人直接接收推送之外，您也可以将下方专属地址添加到支持 Atom / RSS 的客户端（如 NetNewsWire、Feedly 或自建服务），在阅读器中同步追踪最新报价与现货动态。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
+          <input
+            readOnly
+            value={feedUrl}
+            aria-label="Atom Feed 地址"
+            className="field min-w-0 flex-1 text-xs font-mono bg-[color:var(--panel)]"
+          />
+          <button
+            type="button"
+            onClick={copyFeed}
+            className="button-primary tactile shrink-0 text-xs px-4 py-2.5 rounded-xl font-medium inline-flex items-center gap-1.5"
+          >
+            <Copy size={15} />
+            <span>{copied ? "已复制到剪贴板" : "复制 Atom 地址"}</span>
+          </button>
         </div>
       </section>
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={() => void loadData()}
+      />
     </div>
   );
 }

@@ -1,14 +1,13 @@
-from __future__ import annotations
-
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import SystemSetting, User, UserBotBinding
+from ..models import CatalogSnapshot, Offer, Product, SystemSetting, User, UserBotBinding, UserProductSubscription
 from ..schemas import (
     BotCommandRequest,
     BotCommandResponse,
@@ -16,6 +15,9 @@ from ..schemas import (
     UserBotBindingRead,
     UserBotBindingUpdate,
     UserRead,
+    UserSubscriptionCreateOrUpdate,
+    UserSubscriptionListOut,
+    UserSubscriptionRead,
 )
 from ..security import get_current_user, require_current_user
 from ..services.bot_binding import (
@@ -70,6 +72,147 @@ def get_user_profile(
         "qq_bot_binding": _binding_to_read(qq_binding) if qq_binding else None,
         "bot_enabled": _is_bot_enabled(db),
     }
+
+
+def _subscription_to_read(
+    sub: UserProductSubscription,
+    db: Session,
+    snapshot: CatalogSnapshot | None = None,
+) -> UserSubscriptionRead:
+    product = db.scalar(select(Product).where(Product.slug == sub.product_slug))
+    p_name = product.display_name if product else sub.product_slug
+    platform = product.platform if product else "AI"
+    min_price = None
+    stock_count = 0
+    currency = "CNY"
+
+    if snapshot is None:
+        snapshot = db.scalar(
+            select(CatalogSnapshot)
+            .where(CatalogSnapshot.published_at.is_not(None))
+            .order_by(CatalogSnapshot.id.desc())
+            .limit(1)
+        )
+
+    if snapshot and product:
+        min_offer = db.scalar(
+            select(Offer)
+            .where(
+                Offer.snapshot_id == snapshot.id,
+                Offer.product_id == product.id,
+                Offer.is_comparable == True,
+                Offer.stock_count > 0,
+            )
+            .order_by(Offer.price.asc())
+            .limit(1)
+        )
+        if min_offer:
+            min_price = min_offer.price
+            stock_count = min_offer.stock_count
+            currency = min_offer.currency or "CNY"
+
+    return UserSubscriptionRead(
+        id=sub.id,
+        product_slug=sub.product_slug,
+        product_name=p_name,
+        platform=platform,
+        target_price=sub.target_price,
+        current_min_price=min_price,
+        current_currency=currency,
+        stock_count=stock_count,
+        notify_email=sub.notify_email,
+        notify_bot=sub.notify_bot,
+        created_at=sub.created_at,
+        updated_at=sub.updated_at,
+    )
+
+
+@router.get("/subscriptions", response_model=UserSubscriptionListOut)
+def get_user_subscriptions(
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> UserSubscriptionListOut:
+    subs = list(
+        db.scalars(
+            select(UserProductSubscription)
+            .where(UserProductSubscription.user_id == current_user.id)
+            .order_by(UserProductSubscription.id.desc())
+        )
+    )
+    snapshot = db.scalar(
+        select(CatalogSnapshot)
+        .where(CatalogSnapshot.published_at.is_not(None))
+        .order_by(CatalogSnapshot.id.desc())
+        .limit(1)
+    )
+    items = [_subscription_to_read(s, db, snapshot) for s in subs]
+    bindings = get_user_bindings(db, current_user.id)
+    bot_bound = any(b.is_active for b in bindings)
+    email_bound = bool(current_user.email)
+    return UserSubscriptionListOut(
+        items=items,
+        count=len(items),
+        email_bound=email_bound,
+        bot_bound=bot_bound,
+    )
+
+
+@router.post("/subscriptions", response_model=UserSubscriptionRead)
+def create_or_update_subscription(
+    payload: UserSubscriptionCreateOrUpdate,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> UserSubscriptionRead:
+    clean_slug = payload.product_slug.strip().casefold()
+    product = db.scalar(select(Product).where(Product.slug == clean_slug))
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"商品「{clean_slug}」不存在")
+
+    sub = db.scalar(
+        select(UserProductSubscription).where(
+            UserProductSubscription.user_id == current_user.id,
+            UserProductSubscription.product_slug == clean_slug,
+        )
+    )
+    now = datetime.now(timezone.utc)
+    if sub is None:
+        sub = UserProductSubscription(
+            user_id=current_user.id,
+            product_slug=clean_slug,
+            target_price=payload.target_price,
+            notify_email=payload.notify_email,
+            notify_bot=payload.notify_bot,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(sub)
+    else:
+        sub.target_price = payload.target_price
+        sub.notify_email = payload.notify_email
+        sub.notify_bot = payload.notify_bot
+        sub.updated_at = now
+
+    db.commit()
+    db.refresh(sub)
+    return _subscription_to_read(sub, db)
+
+
+@router.delete("/subscriptions/{slug}")
+def delete_subscription(
+    slug: str,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    clean_slug = slug.strip().casefold()
+    res = db.execute(
+        delete(UserProductSubscription).where(
+            UserProductSubscription.user_id == current_user.id,
+            UserProductSubscription.product_slug == clean_slug,
+        )
+    )
+    db.commit()
+    return {"success": bool(res.rowcount and res.rowcount > 0)}
+
 
 
 @router.post("/notifications/qq/start", response_model=QQBotBindingStartResponse)

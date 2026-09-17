@@ -385,6 +385,7 @@ class User(Base):
 
     sessions: Mapped[list[UserSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
     bot_bindings: Mapped[list[UserBotBinding]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    product_subscriptions: Mapped[list[UserProductSubscription]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserSession(Base):
@@ -420,6 +421,8 @@ class UserBotBinding(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     channel: Mapped[str] = mapped_column(String(20), default="qq", index=True)
     target_id: Mapped[str] = mapped_column(String(128), index=True)
+    bot_token: Mapped[str] = mapped_column(Text, default="")
+    extra_meta: Mapped[dict] = mapped_column(JSON, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_price_drop: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_price_hike: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -427,4 +430,24 @@ class UserBotBinding(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="bot_bindings")
+
+
+class UserProductSubscription(Base):
+    __tablename__ = "user_product_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "product_slug", name="uq_user_product_subscription"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    product_slug: Mapped[str] = mapped_column(String(120), ForeignKey("products.slug", ondelete="CASCADE"), index=True)
+    target_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    notify_email: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_bot: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship(back_populates="product_subscriptions")
+    product: Mapped[Product] = relationship()
+
 

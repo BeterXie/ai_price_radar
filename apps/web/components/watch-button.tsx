@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Bell, BellRinging } from "@phosphor-icons/react";
+import { LoginModal } from "@/components/login-modal";
+import { deleteUserSubscription, fetchAuthMe, saveUserSubscription } from "@/lib/auth-client";
 
 export const WATCHLIST_KEY = "ai-price-radar:watchlist:v1";
 export const WATCHLIST_EVENT = "ai-price-radar:watchlist-change";
@@ -70,8 +72,20 @@ export function writeWatchlist(items: WatchItem[]): boolean {
   }
 }
 
-export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" }: { slug: string; name: string; currency?: string; suggestedPrice?: string | null }) {
+export function WatchButton({
+  slug,
+  name,
+  currency = "CNY",
+  suggestedPrice = "",
+}: {
+  slug: string;
+  name: string;
+  currency?: string;
+  suggestedPrice?: string | null;
+}) {
   const [watched, setWatched] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const sync = () => setWatched(readWatchlist().some((item) => item.slug === slug));
@@ -84,17 +98,11 @@ export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" 
     };
   }, [slug]);
 
-  function toggle() {
-    const current = readWatchlist();
-    if (current.some((item) => item.slug === slug)) {
-      const next = current.filter((item) => item.slug !== slug);
-      if (writeWatchlist(next)) setWatched(false);
-      return;
-    }
-    if (current.length >= MAX_WATCHLIST_ITEMS) return;
+  async function performAddSubscription() {
     const threshold = normalizeWatchThreshold(suggestedPrice || "") ?? "";
+    const current = readWatchlist();
     const next = [
-      ...current,
+      ...current.filter((item) => item.slug !== slug),
       {
         slug,
         name,
@@ -103,18 +111,75 @@ export function WatchButton({ slug, name, currency = "CNY", suggestedPrice = "" 
         added_at: new Date().toISOString(),
       },
     ];
-    if (writeWatchlist(next)) setWatched(true);
+    writeWatchlist(next);
+    setWatched(true);
+    try {
+      await saveUserSubscription({
+        product_slug: slug,
+        target_price: threshold || null,
+        notify_email: true,
+        notify_bot: true,
+      });
+    } catch {
+      // offline/transient handled via local storage
+    }
+  }
+
+  async function toggle() {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      const auth = await fetchAuthMe();
+      if (!auth.authenticated) {
+        setShowLoginModal(true);
+        setLoading(false);
+        return;
+      }
+
+      const current = readWatchlist();
+      if (current.some((item) => item.slug === slug)) {
+        const next = current.filter((item) => item.slug !== slug);
+        writeWatchlist(next);
+        setWatched(false);
+        try {
+          await deleteUserSubscription(slug);
+        } catch {
+          // ignore
+        }
+      } else {
+        await performAddSubscription();
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-pressed={watched}
-      className={`tactile inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-medium ${watched ? "bg-[color:var(--accent)] text-[color:var(--accent-ink)]" : "border border-[color:var(--line-strong)]"}`}
-    >
-      {watched ? <BellRinging size={17} weight="fill" /> : <Bell size={17} />}
-      {watched ? "已加入清单" : "加入关注清单"}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={loading}
+        aria-pressed={watched}
+        className={`tactile inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-medium transition ${
+          watched
+            ? "bg-[color:var(--accent)] text-[color:var(--accent-ink)]"
+            : "border border-[color:var(--line-strong)] hover:bg-[color:var(--paper)]"
+        }`}
+      >
+        {watched ? <BellRinging size={17} weight="fill" /> : <Bell size={17} />}
+        <span>{watched ? "已关注 (降价提醒)" : "关注商品 (降价提醒)"}</span>
+      </button>
+
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={() => {
+          setShowLoginModal(false);
+          void performAddSubscription();
+        }}
+      />
+    </>
   );
 }
