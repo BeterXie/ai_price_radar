@@ -30,8 +30,9 @@ async def lifespan(_: FastAPI):
         from extensions.bots.qq_gateway import qq_gateway_service
 
         qq_gateway_service.start()
-    except Exception:
-        pass
+        print(">>> [FastAPI Lifespan] QQ Gateway service started <<<", flush=True)
+    except Exception as exc:
+        print(f">>> [FastAPI Lifespan] QQ Gateway service failed: {exc} <<<", flush=True)
 
     yield
 
