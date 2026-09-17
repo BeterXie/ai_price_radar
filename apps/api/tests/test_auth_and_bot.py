@@ -536,3 +536,33 @@ def test_qq_login_endpoint_disabled_when_not_configured(client: TestClient):
     assert resp.status_code == 400
     assert "暂未开放" in resp.json()["detail"]
 
+
+def test_qq_connector_protocol():
+    from extensions.bots.qq_connector import QQConnectorClient
+    import secrets, base64
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    connector = QQConnectorClient()
+    # 1. Test starting bind task
+    res = connector.start_bind_task()
+    assert res.get("task_id")
+    assert res.get("key")
+    assert "q.qq.com/qqbot/openclaw/connect.html" in res.get("qrcode_url", "")
+
+    # 2. Test polling bind task
+    poll_res = connector.poll_bind_task(res["task_id"], res["key"])
+    assert poll_res.get("status") == "PENDING"
+
+    # 3. Test AES-256-GCM decryption
+    raw_key = secrets.token_bytes(32)
+    key_b64 = base64.b64encode(raw_key).decode("ascii")
+    aes = AESGCM(raw_key)
+    nonce = secrets.token_bytes(12)
+    plaintext = b"qq_app_secret_test_987654321"
+    ct_tag = aes.encrypt(nonce, plaintext, None)
+    encrypted_payload = base64.b64encode(nonce + ct_tag).decode("ascii")
+
+    decrypted = connector.decrypt_secret(encrypted_payload, key_b64)
+    assert decrypted == "qq_app_secret_test_987654321"
+
+

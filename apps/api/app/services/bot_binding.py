@@ -37,24 +37,25 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
 
     settings = get_settings()
     qrcode_url = ""
+    qq_task_id = None
+    qq_key = None
     bridge_session_id = None
-    clawbot_qrcode = None
-    clawbot_base_url = None
 
-    # 1. First priority: Tencent iLink ClawBot Client (Official Tencent Bot, zero-auth, real QR friend addition)
+    # 1. First priority: Tencent QQ Connector (Official QQ OpenClaw zero-auth mobile QQ connect)
+    # Reference: Dota AI Decision Lab (@tencent-connect/qqbot-connector)
     try:
-        from extensions.bots.clawbot_client import ClawBotClient
+        from extensions.bots.qq_connector import QQConnectorClient
 
-        claw_client = ClawBotClient()
-        claw_res = claw_client.start_qr_login()
-        if claw_res and claw_res.get("qrcode_url"):
-            qrcode_url = claw_res["qrcode_url"]
-            clawbot_qrcode = claw_res.get("qrcode")
-            clawbot_base_url = claw_client.base_url
+        connector = QQConnectorClient()
+        conn_res = connector.start_bind_task()
+        if conn_res and conn_res.get("qrcode_url"):
+            qrcode_url = conn_res["qrcode_url"]
+            qq_task_id = conn_res.get("task_id")
+            qq_key = conn_res.get("key")
     except Exception as exc:
-        logger.debug("ClawBot QR not available: %s", exc)
+        logger.debug("QQ Connector not available: %s", exc)
 
-    # 2. Check if QQ bot bridge connector QR is available
+    # 2. Check if QQ bot bridge connector QR is available (Dota AI Decision Lab Node bridge)
     if not qrcode_url:
         try:
             from extensions.bots.qq_bot import QQBotClient
@@ -78,8 +79,8 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
         "user_id": user_id,
         "bind_code": bind_code,
         "qrcode_url": qrcode_url,
-        "clawbot_qrcode": clawbot_qrcode,
-        "clawbot_base_url": clawbot_base_url,
+        "qq_task_id": qq_task_id,
+        "qq_key": qq_key,
         "bridge_session_id": bridge_session_id,
         "expires_at": expires_at,
         "status": "WAITING",
@@ -91,7 +92,7 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
         "bind_code": bind_code,
         "qrcode_url": qrcode_url,
         "expires_in_seconds": 300,
-        "instruction": "请使用手机微信或 QQ 扫描二维码添加机器人并授权",
+        "instruction": "请使用手机 QQ 扫描二维码添加机器人并授权",
     }
 
 
@@ -113,55 +114,56 @@ def check_qq_binding_session(session_id: str, db: Session | None = None) -> dict
             "message": "绑定成功",
         }
 
-    # Check ClawBot status if session originated from ClawBot
-    clawbot_qrcode = session.get("clawbot_qrcode")
-    if clawbot_qrcode and db is not None:
+    # Check QQ Connector status if session originated from QQ Connector
+    qq_task_id = session.get("qq_task_id")
+    qq_key = session.get("qq_key")
+    if qq_task_id and qq_key and db is not None:
         try:
-            from extensions.bots.clawbot_client import ClawBotClient
+            from extensions.bots.qq_connector import QQConnectorClient
 
-            claw_client = ClawBotClient()
-            claw_status = claw_client.poll_qr_status(clawbot_qrcode, base_url=session.get("clawbot_base_url"))
-            st = str(claw_status.get("status") or "").lower()
-            if st == "confirmed":
-                bot_token = claw_status.get("bot_token") or ""
-                target_id = claw_status.get("user_id") or claw_status.get("account_id") or "clawbot_friend"
-                complete_qq_binding(db, session_id, target_id, bot_token=bot_token, channel="qq")
-                if bot_token:
-                    try:
-                        claw_client.notify_start(bot_token, base_url=claw_status.get("base_url"))
-                        claw_client.send_text(
-                            bot_token,
-                            target_id,
-                            "🎉 绑定成功！您已成功连接 PriceMemo 机器人好友。\n"
-                            "💡 常用指令：\n"
-                            "  • plus — 查询 ChatGPT Plus 最低价(库存充足)\n"
-                            "  • pro — 查询 Claude Pro 最低价\n"
-                            "  • 降价 — 查看今日降价精选\n"
-                            "  • 关注 — 查看您在 PriceMemo 关注的所有商品及最新价格\n"
-                            "  • 行情 — 查看全网大盘报价",
-                            base_url=claw_status.get("base_url"),
-                        )
-                    except Exception as e:
-                        logger.warning("ClawBot notify_start or welcome failed: %s", e)
+            connector = QQConnectorClient()
+            res = connector.poll_bind_task(qq_task_id, qq_key)
+            st = res.get("status")
+            if st == "COMPLETED":
+                app_id = res.get("app_id") or ""
+                app_secret = res.get("app_secret") or ""
+                user_openid = res.get("user_openid") or ""
+                complete_qq_binding(
+                    db,
+                    session_id,
+                    target_id=user_openid,
+                    bot_token=app_secret,
+                    extra_meta={"app_id": app_id, "user_openid": user_openid},
+                    channel="qq",
+                )
+                try:
+                    from extensions.bots.qq_bot import QQBotClient
+
+                    bot_client = QQBotClient(app_id=app_id, app_secret=app_secret)
+                    welcome_msg = (
+                        "🎉 恭喜！您已成功连接 PriceMemo QQ 机器人好友。\n"
+                        "💡 常用指令：\n"
+                        "  • plus — 查询 ChatGPT Plus 最低价(库存充足)\n"
+                        "  • pro — 查询 Claude Pro 最低价\n"
+                        "  • 降价 — 查看今日降价精选\n"
+                        "  • 关注 — 查看您在 PriceMemo 关注的全部商品及最新价格\n"
+                        "  • 行情 — 查看全网大盘报价"
+                    )
+                    bot_client.send_c2c_message(user_openid, welcome_msg, app_id=app_id, app_secret=app_secret)
+                except Exception as e:
+                    logger.warning("Failed sending QQ welcome message: %s", e)
+
                 return {
                     "status": "BOUND",
                     "bind_code": session["bind_code"],
                     "qrcode_url": session.get("qrcode_url", ""),
-                    "target_id": target_id,
-                    "message": "绑定成功，已与机器人成为好友！",
+                    "target_id": user_openid,
+                    "message": "绑定成功！已成功连接手机 QQ 机器人。",
                 }
-            elif st == "scaned":
-                session["status"] = "SCANNED"
-                return {
-                    "status": "SCANNED",
-                    "bind_code": session["bind_code"],
-                    "qrcode_url": session.get("qrcode_url", ""),
-                    "message": "已扫码，请在手机上确认授权",
-                }
-            elif st in ("expired", "timeout"):
+            elif st == "EXPIRED":
                 return {"status": "EXPIRED", "message": "二维码已过期，请重新生成"}
         except Exception as exc:
-            logger.debug("Error querying ClawBot QR status: %s", exc)
+            logger.debug("Error querying QQ connector status: %s", exc)
 
     # Check bridge status if session originated from bridge
     bridge_session_id = session.get("bridge_session_id")
@@ -176,8 +178,18 @@ def check_qq_binding_session(session_id: str, db: Session | None = None) -> dict
                 if b_status in ("COMPLETED", "BOUND"):
                     creds = bridge_status.get("credentials") or {}
                     target_id = creds.get("user_openid") or creds.get("app_id") or "qq_bound_user"
-                    complete_qq_binding(db, session_id, target_id)
+                    app_id = creds.get("app_id") or ""
+                    app_secret = creds.get("app_secret") or ""
+                    complete_qq_binding(
+                        db,
+                        session_id,
+                        target_id,
+                        bot_token=app_secret,
+                        extra_meta={"app_id": app_id, "user_openid": target_id},
+                        channel="qq",
+                    )
                     return {
+
                         "status": "BOUND",
                         "bind_code": session["bind_code"],
                         "qrcode_url": session.get("qrcode_url", ""),
@@ -237,6 +249,7 @@ def complete_qq_binding(
     bind_code_or_session: str,
     target_id: str,
     bot_token: str = "",
+    extra_meta: dict | None = None,
     channel: str = "qq",
 ) -> UserBotBinding | None:
     """Invoked when QQ Bot receives `/bind <code>` or bridge confirms binding."""
@@ -267,6 +280,7 @@ def complete_qq_binding(
             channel=channel,
             target_id=target_id,
             bot_token=bot_token,
+            extra_meta=extra_meta or {},
             is_active=True,
             notify_price_drop=True,
             notify_price_hike=True,
@@ -278,8 +292,11 @@ def complete_qq_binding(
         binding.target_id = target_id
         if bot_token:
             binding.bot_token = bot_token
+        if extra_meta:
+            binding.extra_meta = extra_meta
         binding.is_active = True
         binding.updated_at = now
+
 
     db.commit()
     db.refresh(binding)
