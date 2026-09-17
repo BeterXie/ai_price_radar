@@ -334,6 +334,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
         snapshot_id=snap.id,
         price=Decimal("120.00"),
         stock_count=10,
+        stock_status="in_stock",
         is_comparable=True,
         delivery_type="subscription_recharge",
         warranty="subscription_term",
@@ -348,6 +349,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
         snapshot_id=snap.id,
         price=Decimal("80.00"),
         stock_count=1,
+        stock_status="in_stock",
         is_comparable=True,
         delivery_type="finished_account",
         warranty="none",
@@ -362,21 +364,67 @@ def test_bot_chat_commands(client: TestClient, test_db):
         snapshot_id=snap.id,
         price=Decimal("135.00"),
         stock_count=5,
+        stock_status="in_stock",
         is_comparable=True,
         delivery_type="team_seat",
         warranty="seven_days",
         source_url="https://shop2.com/p3",
     )
-    test_db.add_all([off1, off2, off3])
+    # Offer 4: Unapproved offer with extreme low price (must be ignored by bot)
+    raw4 = RawProduct(id=4, shop_id=shop1.id, source_product_key="p4", original_name="ChatGPT Plus 假低价未审核")
+    off4 = Offer(
+        id=4,
+        raw_product_id=raw4.id,
+        product_id=p_plus.id,
+        shop_id=shop1.id,
+        snapshot_id=snap.id,
+        price=Decimal("6.80"),
+        stock_count=10,
+        stock_status="in_stock",
+        is_comparable=True,
+        approved=False,  # unapproved
+    )
+    # Offer 5: Hidden offer with admin ban (must be ignored by bot)
+    raw5 = RawProduct(id=5, shop_id=shop1.id, source_product_key="p5", original_name="ChatGPT Plus 违规封禁")
+    off5 = Offer(
+        id=5,
+        raw_product_id=raw5.id,
+        product_id=p_plus.id,
+        shop_id=shop1.id,
+        snapshot_id=snap.id,
+        price=Decimal("19.79"),
+        stock_count=16,
+        stock_status="in_stock",
+        is_comparable=True,
+        hidden_reason="管理员限制",  # hidden
+    )
+    # Offer 6: Invisible shop offer (must be ignored by bot)
+    shop_hidden = Shop(id=3, token="shop_hidden", name="违规隐身店", source_url="https://hidden.com", is_visible=False)
+    raw6 = RawProduct(id=6, shop_id=shop_hidden.id, source_product_key="p6", original_name="ChatGPT Plus 隐藏店铺")
+    off6 = Offer(
+        id=6,
+        raw_product_id=raw6.id,
+        product_id=p_plus.id,
+        shop_id=shop_hidden.id,
+        snapshot_id=snap.id,
+        price=Decimal("9.99"),
+        stock_count=20,
+        stock_status="in_stock",
+        is_comparable=True,
+    )
+    test_db.add_all([shop_hidden, raw4, raw5, raw6, off1, off2, off3, off4, off5, off6])
     test_db.commit()
 
-    # A. Test `plus` command (must pick 120.00, NOT 80.00, because stock > 1 is required)
+    # A. Test `plus` command (must pick 120.00, NOT 80.00, 6.80, 19.79, or 9.99)
     resp = client.post("/api/v1/user/notifications/bot/command", json={"text": "plus"})
     assert resp.status_code == 200
     reply = resp.json()["reply"]
     assert "ChatGPT Plus" in reply
     assert "120.00" in reply
     assert "¥80.00" not in reply  # 80.00 offer has stock=1, filtered out
+    assert "6.80" not in reply  # unapproved offer filtered out
+    assert "19.79" not in reply  # hidden offer filtered out
+    assert "9.99" not in reply  # invisible shop filtered out
     assert "次优报价: ¥135.00" in reply
     assert "极客小铺" in reply
     assert "10 件" in reply
@@ -403,6 +451,10 @@ def test_bot_chat_commands(client: TestClient, test_db):
     reply_openai = resp_openai.json()["reply"]
     assert "OpenAI / ChatGPT 全系列最低报价一览" in reply_openai
     assert "ChatGPT Plus" in reply_openai
+    assert "120.00" in reply_openai
+    assert "6.80" not in reply_openai
+    assert "19.79" not in reply_openai
+    assert "9.99" not in reply_openai
 
     # B4. Test `20x` single product query
     resp_20x = client.post("/api/v1/user/notifications/bot/command", json={"text": "20x"})

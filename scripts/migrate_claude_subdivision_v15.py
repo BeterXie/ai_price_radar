@@ -90,13 +90,14 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
 
         session.commit()
 
-        # 4. Reclassify offers currently under claude-pro
-        offers = session.query(Offer).filter(Offer.product_id == pro_5x.id).all()
-        print(f"[INFO] Scanning {len(offers)} offers under claude-pro (id={pro_5x.id})...")
+        # 4. Reclassify offers across claude-pro, claude-pro-20x, claude-team
+        claude_product_ids = [p.id for p in [pro_5x, pro_20x, team] if p]
+        offers = session.query(Offer).filter(Offer.product_id.in_(claude_product_ids)).all()
+        print(f"[INFO] Scanning {len(offers)} offers across Claude subscription products...")
 
-        count_stay_5x = 0
-        count_to_20x = 0
-        count_to_team = 0
+        count_5x = 0
+        count_20x = 0
+        count_team = 0
 
         team_pattern = re.compile(r"team|团队|车位|席位|企业", re.IGNORECASE)
         pattern_20x = re.compile(r"20x|20倍|max20x|max\s*20x", re.IGNORECASE)
@@ -105,19 +106,27 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
             raw = offer.raw_product
             title = raw.original_name if raw else ""
             category = raw.original_category if raw else ""
-            full_text = f"{title} {category}"
 
-            target = None
-            if team_pattern.search(full_text):
+            # Check title first (primary intent)
+            if team_pattern.search(title):
                 target = team
-                count_to_team += 1
-            elif pattern_20x.search(full_text):
+            elif pattern_20x.search(title):
                 target = pro_20x
-                count_to_20x += 1
+            elif team_pattern.search(category) and not ("pro" in title.lower() and "ios" in title.lower()):
+                target = team
+            elif pattern_20x.search(category) and not re.search(r"5x|5倍|pro", title, re.IGNORECASE):
+                target = pro_20x
             else:
-                count_stay_5x += 1
+                target = pro_5x
 
-            if target and target.id != offer.product_id:
+            if target.id == pro_5x.id:
+                count_5x += 1
+            elif target.id == pro_20x.id:
+                count_20x += 1
+            elif target.id == team.id:
+                count_team += 1
+
+            if target.id != offer.product_id:
                 print(f"  Reclassifying offer #{offer.id} ({float(offer.price or 0)} CNY) '{title}': -> {target.slug} (id={target.id})")
                 if not dry_run:
                     offer.product_id = target.id
@@ -125,11 +134,11 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
         if not dry_run:
             session.commit()
             print(f"[SUCCESS] Claude offers reclassification complete:")
-            print(f"  - Kept as Claude Pro (5x): {count_stay_5x}")
-            print(f"  - Moved to Claude Pro 20x: {count_to_20x}")
-            print(f"  - Moved to Claude Team:    {count_to_team}")
+            print(f"  - Claude Pro (5x): {count_5x}")
+            print(f"  - Claude Pro 20x: {count_20x}")
+            print(f"  - Claude Team:    {count_team}")
         else:
-            print(f"[DRY RUN] Would keep {count_stay_5x} in 5x, move {count_to_20x} to 20x, move {count_to_team} to Team.")
+            print(f"[DRY RUN] Would set 5x: {count_5x}, 20x: {count_20x}, Team: {count_team}.")
 
     finally:
         session.close()

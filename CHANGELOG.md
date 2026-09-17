@@ -2,6 +2,18 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.79] - 2026-09-17
+
+### Fixed
+- **机器人查价与公共前台大盘规则严格对齐与异常过滤**:
+  - 彻底解决 QQ / Telegram 机器人查价时可能返回后台已封禁（如管理员限制、自动过滤、未审核）或异常极端低价诱饵报价的问题；
+  - 机器人报价查询统一接入前台标准公共查询引擎（`_base_public_offer_query` + `_median_prices` + `_is_trusted_offer`）：
+    - 严格只允许 `Offer.active == True`、`Offer.approved == True`、`hidden_reason == ""` 的有效报价；
+    - 严格限制店铺 `Shop.is_visible == True` 且平台非禁用状态，且在 `stale_offer_hours` 新鲜度窗口内；
+    - 执行中位价异常过滤（`_is_trusted_offer`），自动剔除低于 1 元或低于同交付形态中位数 40% 的异常报价；
+    - 优先推荐多库存现货（`stock_count >= 2`），单件微库存兜底；
+  - 覆盖品牌全系列聚合（`query_brand_lowest_prices`）、单品深度对比（`query_lowest_price`）、大盘行情（`query_market_overview`）、降价追踪（`query_recent_drops`）与个人订阅盯盘（`query_user_subscriptions`），实现机器人答复与网页前台展示的 100% 精确一致。
+
 ## [3.7.78] - 2026-09-17
 
 ### Added
