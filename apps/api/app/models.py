@@ -34,6 +34,7 @@ class Shop(Base):
 
     raw_products: Mapped[list[RawProduct]] = relationship(back_populates="shop", cascade="all, delete-orphan")
     offers: Mapped[list[Offer]] = relationship(back_populates="shop")
+    clicks: Mapped[list[OfferClick]] = relationship(back_populates="shop", cascade="all, delete-orphan")
 
 
 class Product(Base):
@@ -112,6 +113,7 @@ class Offer(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     approved: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     hidden_reason: Mapped[str] = mapped_column(Text, default="")
+    click_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -119,6 +121,7 @@ class Offer(Base):
     product: Mapped[Product | None] = relationship(back_populates="offers")
     shop: Mapped[Shop] = relationship(back_populates="offers")
     history: Mapped[list[OfferHistory]] = relationship(back_populates="offer", cascade="all, delete-orphan")
+    clicks: Mapped[list[OfferClick]] = relationship(back_populates="offer", cascade="all, delete-orphan")
 
 
 class OfferHistory(Base):
@@ -386,6 +389,7 @@ class User(Base):
     sessions: Mapped[list[UserSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
     bot_bindings: Mapped[list[UserBotBinding]] = relationship(back_populates="user", cascade="all, delete-orphan")
     product_subscriptions: Mapped[list[UserProductSubscription]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    coupons: Mapped[list[ShopCoupon]] = relationship(back_populates="assigned_user")
 
 
 class UserSession(Base):
@@ -449,5 +453,64 @@ class UserProductSubscription(Base):
 
     user: Mapped[User] = relationship(back_populates="product_subscriptions")
     product: Mapped[Product] = relationship()
+
+
+class ShopCoupon(Base):
+    __tablename__ = "shop_coupons"
+    __table_args__ = (
+        Index("ix_shop_coupons_unassigned", "is_assigned", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    coupon_batch_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    min_spend: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    shop_name: Mapped[str] = mapped_column(String(100), default="彩头AI")
+    shop_url: Mapped[str] = mapped_column(Text, default="https://wzyp.cn/shop/pricememo")
+    is_assigned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    assigned_user: Mapped[User | None] = relationship(back_populates="coupons")
+
+
+class CouponCampaign(Base):
+    __tablename__ = "coupon_campaigns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    coupon_batch_id: Mapped[int] = mapped_column(Integer, default=0)
+    max_per_user: Mapped[int] = mapped_column(Integer, default=1)
+    total_quota: Mapped[int] = mapped_column(Integer, default=100)
+    claimed_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OfferClick(Base):
+    __tablename__ = "offer_clicks"
+    __table_args__ = (
+        Index("ix_offer_clicks_shop_created", "shop_id", "created_at"),
+        Index("ix_offer_clicks_ip_dedup", "offer_id", "ip_hash", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    offer_id: Mapped[int | None] = mapped_column(ForeignKey("offers.id", ondelete="CASCADE"), nullable=True, index=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"), index=True)
+    product_slug: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    ip_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
+    user_agent: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    offer: Mapped[Offer | None] = relationship(back_populates="clicks")
+    shop: Mapped[Shop] = relationship(back_populates="clicks")
+
 
 

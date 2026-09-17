@@ -254,6 +254,24 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_user_subscriptions_v14.py
 
+# 店铺优惠券与营销口令结构迁移 (v16)；创建 shop_coupons 与 coupon_campaigns，幂等安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_shop_coupons_v16.py
+
+# 商品外链点击与访问统计表结构迁移 (v17)；offers 增加 click_count，创建 offer_clicks，幂等安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_offer_clicks_v17.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 

@@ -4,18 +4,24 @@ import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import {
+  ArrowSquareOut,
   Bell,
+  Check,
   CheckCircle,
   ChatCircleDots,
+  Copy,
   Envelope,
+  Gift,
   SignOut,
+  Sparkle,
+  Ticket,
   User,
   WarningCircle,
   QrCode,
   SlidersHorizontal,
   Lightning,
 } from "@phosphor-icons/react";
-import type { UserProfileResponse, UserBotBinding, QQBotBindingStartResponse } from "@/lib/types";
+import type { UserProfileResponse, UserBotBinding, QQBotBindingStartResponse, ShopCoupon } from "@/lib/types";
 import {
   fetchUserProfile,
   logout,
@@ -25,6 +31,8 @@ import {
   updateQQNotificationPreferences,
   unbindQQBot,
   bindCurrentLoggedInQQ,
+  fetchUserCoupons,
+  redeemCoupon,
 } from "@/lib/auth-client";
 import { LoginModal } from "@/components/login-modal";
 
@@ -32,6 +40,14 @@ export function AccountClient() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfileResponse | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  // Coupon wallet states
+  const [coupons, setCoupons] = useState<ShopCoupon[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [redeemCode, setRedeemCode] = useState("");
+  const [redeemLoading, setRedeemLoading] = useState(false);
+  const [redeemMsg, setRedeemMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Binding states
   const [bindSession, setBindSession] = useState<QQBotBindingStartResponse | null>(null);
@@ -49,8 +65,14 @@ export function AccountClient() {
     try {
       const data = await fetchUserProfile();
       setProfile(data);
+      if (data?.user) {
+        fetchUserCoupons()
+          .then((res) => setCoupons(res.items || []))
+          .catch(() => setCoupons([]));
+      }
     } catch {
       setProfile(null);
+      setCoupons([]);
     } finally {
       setLoading(false);
     }
@@ -197,6 +219,35 @@ export function AccountClient() {
     }
   };
 
+  const handleRedeem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = redeemCode.trim();
+    if (!trimmed) return;
+    setRedeemLoading(true);
+    setRedeemMsg(null);
+    try {
+      const res = await redeemCoupon(trimmed);
+      if (res.success) {
+        setRedeemMsg({ type: "success", text: res.message });
+        setRedeemCode("");
+        const updated = await fetchUserCoupons();
+        setCoupons(updated.items || []);
+      } else {
+        setRedeemMsg({ type: "error", text: res.message });
+      }
+    } catch (err: any) {
+      setRedeemMsg({ type: "error", text: err.message || "兑换失败，请稍后重试" });
+    } finally {
+      setRedeemLoading(false);
+    }
+  };
+
+  const handleCopy = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2500);
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-[color:var(--muted)]">
@@ -298,7 +349,156 @@ export function AccountClient() {
         </div>
       </section>
 
-      {/* 2. QQ Bot Notification Card (Hidden when bot_enabled is false) */}
+      {/* 2. My Exclusive Coupon Wallet Section */}
+      <section className="surface-panel p-6 sm:p-8 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-800 text-xs font-semibold mb-2">
+              <Gift size={14} weight="fill" />
+              <span>彩头AI · 直营店铺卡券包</span>
+            </div>
+            <h3 className="text-lg font-bold text-[color:var(--ink)]">我的专属卡包</h3>
+            <p className="text-xs sm:text-sm text-[color:var(--muted)] mt-1">
+              已领取的店铺专享立减券，下单直接抵扣现金。可复制 10 位券码并在彩头AI店铺结算时填入使用。
+            </p>
+          </div>
+
+          <a
+            href="https://wzyp.cn/shop/pricememo"
+            target="_blank"
+            rel="noreferrer"
+            className="button-secondary tactile inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold self-start sm:self-center"
+          >
+            <span>直达彩头AI店铺</span>
+            <ArrowSquareOut size={14} />
+          </a>
+        </div>
+
+        {/* Redeem Input Box */}
+        <div className="p-4 rounded-xl border border-[color:var(--line)] bg-[color:var(--paper)]">
+          <form onSubmit={handleRedeem} className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <input
+                type="text"
+                placeholder="输入活动口令兑换专属券 (例如 RADAR888 或 10位券码)"
+                value={redeemCode}
+                onChange={(e) => setRedeemCode(e.target.value)}
+                className="field text-xs sm:text-sm py-2 px-3.5 rounded-xl w-full"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={redeemLoading || !redeemCode.trim()}
+              className="button-primary tactile px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap w-full sm:w-auto disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            >
+              <Sparkle size={14} weight="fill" />
+              <span>{redeemLoading ? "兑换中..." : "立即兑换"}</span>
+            </button>
+          </form>
+
+          {redeemMsg && (
+            <div
+              className={`mt-3 p-3 rounded-lg text-xs flex items-center gap-2 ${
+                redeemMsg.type === "success"
+                  ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800"
+                  : "bg-rose-500/10 border border-rose-500/20 text-rose-800"
+              }`}
+            >
+              {redeemMsg.type === "success" ? (
+                <CheckCircle size={16} weight="fill" className="shrink-0" />
+              ) : (
+                <WarningCircle size={16} weight="fill" className="shrink-0" />
+              )}
+              <span>{redeemMsg.text}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Coupons List */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs font-semibold tracking-wider text-[color:var(--muted)] uppercase">
+            <span>已持有的优惠券 ({coupons.length})</span>
+            <span className="text-[11px] text-[color:var(--muted)] lowercase">每单限用一张</span>
+          </div>
+
+          {coupons.length === 0 ? (
+            <div className="p-8 rounded-xl border border-dashed border-[color:var(--line)] text-center text-[color:var(--muted)] space-y-2">
+              <Ticket size={32} className="mx-auto text-[color:var(--muted)] opacity-60" />
+              <p className="text-xs font-medium">卡包暂无可用优惠券</p>
+              <p className="text-[11px] max-w-sm mx-auto opacity-75">
+                在网站浏览比价时会随机掉落锦鲤立减券，或在上方输入活动口令（如 RADAR888）直接兑换！
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {coupons.map((coupon) => (
+                <div
+                  key={coupon.id}
+                  className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.04] to-amber-500/[0.12] p-4 flex flex-col justify-between gap-3 shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-baseline gap-1 text-amber-700">
+                        <span className="text-xs font-bold">¥</span>
+                        <span className="text-2xl font-black tracking-tight">{coupon.discount_amount}</span>
+                        <span className="text-xs font-semibold ml-1.5 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30">
+                          满 {coupon.min_spend} 元可用
+                        </span>
+                      </div>
+                      <h4 className="text-xs sm:text-sm font-bold text-[color:var(--ink)] mt-1.5">
+                        {coupon.name}
+                      </h4>
+                    </div>
+
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 shrink-0">
+                      可使用
+                    </span>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-amber-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[color:var(--muted)]">券码:</span>
+                      <code className="px-2 py-0.5 rounded bg-[color:var(--panel)] border border-[color:var(--line)] font-mono font-bold text-[color:var(--ink)] text-xs tracking-wider">
+                        {coupon.code}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(coupon.code)}
+                        className="button-secondary tactile p-1.5 rounded-lg text-xs hover:text-amber-700 inline-flex items-center gap-1"
+                        title="复制券码"
+                      >
+                        {copiedCode === coupon.code ? (
+                          <Check size={14} className="text-emerald-700" weight="bold" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                        <span className="text-[11px]">{copiedCode === coupon.code ? "已复制" : "复制"}</span>
+                      </button>
+                    </div>
+
+                    <a
+                      href={coupon.shop_url || "https://wzyp.cn/shop/pricememo"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="button-primary tactile px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto"
+                    >
+                      <span>去店铺使用</span>
+                      <ArrowSquareOut size={12} />
+                    </a>
+                  </div>
+
+                  <div className="text-[10px] text-[color:var(--muted)] flex items-center justify-between">
+                    <span>适用：{coupon.shop_name || "彩头AI"} 官方店铺</span>
+                    <span>有效期至：{new Date(coupon.expires_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 3. QQ Bot Notification Card (Hidden when bot_enabled is false) */}
       {(profile.bot_enabled ?? true) && (
         <section className="surface-panel p-6 sm:p-8 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -2,6 +2,42 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.81] - 2026-09-17
+
+### Added
+- **商品外链点击统计与店铺访问量看板**:
+  - `offers` 表新增 `click_count` 字段，提供报价列表与详情卡片 $O(1)$ 极速访问读取；
+  - 新增 `offer_clicks` 访问明细表与双引擎幂等迁移脚本 `scripts/migrate_offer_clicks_v17.py`，支持记录访问事件、商户、IP 哈希与客户端环境；
+  - 后端提供 `POST /api/v1/offers/{offer_id}/click` 与 `POST /api/v1/shops/{token}/click` 上报接口，内置 60 秒 IP 防重复防刷频控；
+  - `GET /api/v1/shops/{token}` 新增返回商家**“当日商品点击数”**（北京时间当天 0 点至今）与**“累计总点击数”**；
+  - 前端商品卡片和详情展开表格全面增加访问热度徽章（🔥 次访问），用户点击“查看原站”或“去原站查看”时使用 `keepalive: true` 原生保活异步无感上报；
+  - 店铺主页（`/shops/[token]`）全新加入商家访问数据看板与原店铺访问行为追踪组件 `ShopVisitButton`；
+  - 新增完备的单元测试 `apps/api/tests/test_offer_clicks.py`，覆盖外链上报、频控防刷、商户主页聚合及各接口反序列化。
+
+## [3.7.80] - 2026-09-17
+
+### Added
+- **店铺专属卡包、LDXP 真实优惠券池、动态概率掉落与后台营销中心**:
+  - 新增 `shop_coupons`（优惠券池表）与 `coupon_campaigns`（活动营销口令表），支持持久化链动小铺（LDXP）真实 10 位券码（如满 15 减 5 元）；
+  - 新增幂等数据库结构迁移脚本 `scripts/migrate_shop_coupons_v16.py`，支持 PostgreSQL 与 SQLite；
+  - 新增商户后台同步工具 `scripts/sync_ldxp_coupons.py`，支持自动拉取官方 SalesCoupon 批次与 10 位券码，保持卡券库存充沛；
+  - 新增后端用户卡包与动态概率 API：
+    - `GET /api/v1/user/coupons/drop-status`：根据当前剩余未领库存动态微调掉落概率（低库存阶梯衰减）；
+    - `GET /api/v1/user/coupons`：获取当前登录用户已持有的专属卡券列表；
+    - `POST /api/v1/user/coupons/redeem`：支持活动口令（如 `RADAR888`）或直接券码核销兑换；
+    - `POST /api/v1/user/coupons/claim-drop`：领取前台幸运彩蛋券，严格校验掉落开关、单人单日配额与剩余库存；
+  - 后台管理（`/admin?tab=coupons`）全新上线【优惠券与营销管理】控制面板：
+    - 实时监控可用库存、已发放数、已核销数、口令数与掉落状态；
+    - 支持在线配置前台随机掉落开关、基准概率滑块、库存紧缺自适应控频与单用户每日领取上限；
+    - 集成一键从链动小铺(LDXP)同步券码，以及多行文本批量导入券码并自动排重；
+    - 完整的券码明细表格（支持状态筛选、模糊搜索、分页与安全删除）；
+    - 营销活动口令（如 `RADAR888`）的生命周期、单人限额与配额进度管理；
+  - 前端个人中心（`/account`）新增【🎁 我的专享卡包】卡片：
+    - 展示面额（¥5 满15元可用）、专属 10 位券码、一键复制、直达彩头AI店铺下单；
+    - 集成口令快速兑换输入框；
+  - 前台全局布局挂载【🎁 锦鲤彩蛋随机概率掉落】浮窗（`LuckyCouponDrop`），浏览比价时基于后端动态概率随机触发立减券掉落，引导一键存入卡包并完成“比价 $\to$ 领券 $\to$ 店铺下单”闭环。
+
+
 ## [3.7.79] - 2026-09-17
 
 ### Fixed

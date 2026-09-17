@@ -78,6 +78,7 @@ export type Offer = {
   is_trusted_price: boolean;
   source_health: SourceHealth;
   source_url: string;
+  click_count?: number;
   first_seen_at: string;
   last_seen_at: string;
   observed_at: string;
@@ -119,6 +120,7 @@ export type OfferGroup = {
   price_currency: string;
   lowest_price: string | null;
   highest_price: string | null;
+  click_count?: number;
   latest_observed_at: string | null;
 };
 
@@ -162,6 +164,8 @@ export type ShopDetail = {
   consecutive_failures: number;
   source_health: SourceHealth;
   offer_count: number;
+  today_clicks?: number;
+  total_clicks?: number;
   products: ShopProduct[];
   offers: Offer[];
 };
@@ -364,4 +368,105 @@ export type QQBotBindingStartResponse = {
   expires_in_seconds: number;
   instruction: string;
 };
+
+export type ShopCoupon = {
+  id: number;
+  name: string;
+  code: string;
+  discount_amount: number | string;
+  min_spend: number | string;
+  shop_name: string;
+  shop_url: string;
+  is_assigned: boolean;
+  assigned_at?: string | null;
+  expires_at: string;
+  is_used: boolean;
+  created_at: string;
+};
+
+export type UserCouponListOut = {
+  items: ShopCoupon[];
+  count: number;
+};
+
+export type CouponClaimResponse = {
+  success: boolean;
+  message: string;
+  coupon?: ShopCoupon | null;
+};
+
+export type CouponDropStatus = {
+  enabled: boolean;
+  probability: number;
+  has_stock: boolean;
+  remaining_stock: number;
+};
+
+export type AdminCouponStats = {
+  total_coupons: number;
+  assigned_coupons: number;
+  unassigned_coupons: number;
+  used_coupons: number;
+  total_campaigns: number;
+  drop_enabled: boolean;
+  drop_probability: number;
+  dynamic_drop: boolean;
+  daily_drop_limit: number;
+};
+
+export type AdminCouponSettingsUpdate = {
+  drop_enabled?: boolean;
+  drop_probability?: number;
+  dynamic_drop?: boolean;
+  daily_drop_limit?: number;
+};
+
+export type AdminCouponImportRequest = {
+  name: string;
+  discount_amount: number;
+  min_spend: number;
+  expires_at?: string | null;
+  shop_name: string;
+  shop_url: string;
+  coupon_batch_id: number;
+  codes_text: string;
+};
+
+export type AdminCouponImportResponse = {
+  success: boolean;
+  imported_count: number;
+  skipped_count: number;
+  message: string;
+};
+
+export type AdminCouponPageOut = {
+  items: ShopCoupon[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type CampaignRead = {
+  id: number;
+  campaign_code: string;
+  title: string;
+  coupon_batch_id: number;
+  max_per_user: number;
+  total_quota: number;
+  claimed_count: number;
+  is_active: boolean;
+  expires_at: string;
+  created_at: string;
+};
+
+export type AdminCampaignCreate = {
+  campaign_code: string;
+  title: string;
+  coupon_batch_id: number;
+  max_per_user: number;
+  total_quota: number;
+  expires_at?: string | null;
+};
+
+
 

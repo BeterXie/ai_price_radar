@@ -1,7 +1,10 @@
 import type {
   AuthSessionState,
+  CouponClaimResponse,
+  CouponDropStatus,
   QQBotBindingStartResponse,
   UserBotBinding,
+  UserCouponListOut,
   UserProfileResponse,
 } from "./types";
 
@@ -142,4 +145,27 @@ export async function deleteUserSubscription(slug: string): Promise<{ success: b
     method: "DELETE",
   });
 }
+
+export async function fetchUserCoupons(): Promise<UserCouponListOut> {
+  return jsonFetch<UserCouponListOut>("/api/v1/user/coupons");
+}
+
+export async function redeemCoupon(code: string): Promise<CouponClaimResponse> {
+  return jsonFetch<CouponClaimResponse>("/api/v1/user/coupons/redeem", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function claimLuckyDrop(): Promise<CouponClaimResponse> {
+  return jsonFetch<CouponClaimResponse>("/api/v1/user/coupons/claim-drop", {
+    method: "POST",
+  });
+}
+
+export async function fetchCouponDropStatus(): Promise<CouponDropStatus> {
+  return jsonFetch<CouponDropStatus>("/api/v1/user/coupons/drop-status");
+}
+
+
 

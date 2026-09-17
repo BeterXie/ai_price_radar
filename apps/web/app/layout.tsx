@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CommunityPrompts } from "@/components/community-prompts";
 import { NewFeatureModal } from "@/components/new-feature-modal";
+import { LuckyCouponDrop } from "@/components/lucky-coupon-drop";
 import { SiteNoticePrompt } from "@/components/site-notice";
 import { SiteStructuredData } from "@/components/structured-data";
 import { GoogleAnalytics } from "@/components/google-analytics";
@@ -52,6 +53,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <SiteFooter advertiseEnabled={advertiseEnabled} />
         <CommunityPrompts communityNotice={meta?.community_notice} />
         <NewFeatureModal />
+        <LuckyCouponDrop />
       </body>
     </html>
   );

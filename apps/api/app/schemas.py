@@ -68,6 +68,7 @@ class OfferPublic(BaseModel):
     is_trusted_price: bool = False
     source_health: SourceHealthPublic
     source_url: str
+    click_count: int = 0
     first_seen_at: datetime
     last_seen_at: datetime
     observed_at: datetime
@@ -122,6 +123,7 @@ class OfferGroupPublic(BaseModel):
     price_currency: str
     lowest_price: Decimal | None
     highest_price: Decimal | None
+    click_count: int = 0
     latest_observed_at: datetime | None
 
 
@@ -196,8 +198,16 @@ class ShopDetail(BaseModel):
     consecutive_failures: int
     source_health: SourceHealthPublic
     offer_count: int
+    today_clicks: int = 0
+    total_clicks: int = 0
     products: list[ShopProduct] = Field(default_factory=list)
     offers: list[OfferPublic]
+
+
+class OfferClickResponse(BaseModel):
+    success: bool = True
+    recorded: bool = True
+    click_count: int = 0
 
 
 class ShopCard(BaseModel):
@@ -883,4 +893,109 @@ class UserSubscriptionListOut(BaseModel):
     count: int
     email_bound: bool
     bot_bound: bool
+
+
+class CouponRead(BaseModel):
+    id: int
+    name: str
+    code: str
+    discount_amount: Decimal
+    min_spend: Decimal
+    shop_name: str
+    shop_url: str
+    is_assigned: bool
+    assigned_at: datetime | None = None
+    expires_at: datetime
+    is_used: bool = False
+    created_at: datetime
+
+
+class UserCouponListOut(BaseModel):
+    items: list[CouponRead]
+    count: int
+
+
+class CouponRedeemRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+
+
+class CouponClaimResponse(BaseModel):
+    success: bool
+    message: str
+    coupon: CouponRead | None = None
+
+
+class CampaignRead(BaseModel):
+    id: int
+    campaign_code: str
+    title: str
+    coupon_batch_id: int
+    max_per_user: int
+    total_quota: int
+    claimed_count: int
+    is_active: bool
+    expires_at: datetime
+    created_at: datetime
+
+
+class CouponDropStatus(BaseModel):
+    enabled: bool
+    probability: int
+    has_stock: bool
+    remaining_stock: int
+
+
+class AdminCouponStats(BaseModel):
+    total_coupons: int
+    assigned_coupons: int
+    unassigned_coupons: int
+    used_coupons: int
+    total_campaigns: int
+    drop_enabled: bool
+    drop_probability: int
+    dynamic_drop: bool
+    daily_drop_limit: int
+
+
+class AdminCouponSettingsUpdate(BaseModel):
+    drop_enabled: bool | None = None
+    drop_probability: int | None = None
+    dynamic_drop: bool | None = None
+    daily_drop_limit: int | None = None
+
+
+class AdminCouponImportRequest(BaseModel):
+    name: str = "专享立减券"
+    discount_amount: Decimal = Decimal("5.00")
+    min_spend: Decimal = Decimal("15.00")
+    expires_at: datetime | None = None
+    shop_name: str = "彩头AI"
+    shop_url: str = "https://wzyp.cn/shop/pricememo"
+    coupon_batch_id: int = 0
+    codes_text: str = Field(min_length=1)
+
+
+class AdminCouponImportResponse(BaseModel):
+    success: bool
+    imported_count: int
+    skipped_count: int
+    message: str
+
+
+class AdminCouponPageOut(BaseModel):
+    items: list[CouponRead]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminCampaignCreate(BaseModel):
+    campaign_code: str = Field(min_length=2, max_length=64)
+    title: str = Field(min_length=2, max_length=120)
+    coupon_batch_id: int = 0
+    max_per_user: int = 1
+    total_quota: int = 100
+    expires_at: datetime | None = None
+
+
 

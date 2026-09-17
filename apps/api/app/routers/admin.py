@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, case, cast, delete, func, nullslast, or_, select, update
@@ -15,6 +16,8 @@ from ..models import (
     Report,
     ScanRun,
     Shop,
+    ShopCoupon,
+    CouponCampaign,
     SourceCandidate,
     SourceDiscoveryRun,
     SourceIntake,
@@ -22,11 +25,19 @@ from ..models import (
     CommunitySkill,
 )
 from ..schemas import (
+    AdminCampaignCreate,
+    AdminCouponImportRequest,
+    AdminCouponImportResponse,
+    AdminCouponPageOut,
+    AdminCouponSettingsUpdate,
+    AdminCouponStats,
     AdminOfferUpdate,
     AdminReportUpdate,
     AdminSettingsOut,
     AdminSettingsUpdate,
     AdminStats,
+    CampaignRead,
+    CouponRead,
     NotificationOutboxOut,
     ReportOut,
     SourceCandidateAction,
@@ -87,6 +98,17 @@ def get_setting_str(db: Session, key: str, default: str = "") -> str:
     if not setting or setting.value is None:
         return default
     return setting.value
+
+
+def get_setting_int(db: Session, key: str, default: int = 0) -> int:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting or setting.value is None:
+        return default
+    try:
+        return int(setting.value.strip())
+    except (ValueError, TypeError):
+        return default
+
 
 
 @router.get("/settings", response_model=AdminSettingsOut)
@@ -1046,4 +1068,324 @@ def admin_toggle_skill_visibility(
     if not skill:
         raise HTTPException(status_code=404, detail="skill not found")
     return skill
+
+
+DEFAULT_LDXP_TOKEN = "182d5854-1b08-4c93-aa06-33189b3971a3"
+
+
+def _fetch_ldxp_batches(token: str) -> list[dict]:
+    import requests
+    url = "https://api.wzyp.cn/merchantApi/SalesCoupon/list"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "token": token,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    resp = requests.post(url, headers=headers, data="current=1&pageSize=50", timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("data", {}).get("list", []) if data.get("code") == 1 else []
+
+
+def _fetch_ldxp_codes(token: str, coupon_id: int) -> list[dict]:
+    import requests
+    url = "https://api.wzyp.cn/merchantApi/SalesCoupon/codeList"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "token": token,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    resp = requests.post(url, headers=headers, data=f"coupon_id={coupon_id}&current=1&pageSize=100", timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("data", {}).get("list", []) if data.get("code") == 1 else []
+
+
+def _admin_coupon_to_read(c: ShopCoupon) -> CouponRead:
+    return CouponRead(
+        id=c.id,
+        name=c.name,
+        code=c.code,
+        discount_amount=c.discount_amount,
+        min_spend=c.min_spend,
+        shop_name=c.shop_name,
+        shop_url=c.shop_url,
+        is_assigned=c.is_assigned,
+        assigned_at=c.assigned_at,
+        expires_at=c.expires_at,
+        is_used=c.is_used,
+        created_at=c.created_at,
+    )
+
+
+def _admin_campaign_to_read(c: CouponCampaign) -> CampaignRead:
+    return CampaignRead(
+        id=c.id,
+        campaign_code=c.campaign_code,
+        title=c.title,
+        coupon_batch_id=c.coupon_batch_id,
+        max_per_user=c.max_per_user,
+        total_quota=c.total_quota,
+        claimed_count=c.claimed_count,
+        is_active=c.is_active,
+        expires_at=c.expires_at,
+        created_at=c.created_at,
+    )
+
+
+def _get_coupon_stats(db: Session) -> AdminCouponStats:
+    total = db.scalar(select(func.count(ShopCoupon.id))) or 0
+    assigned = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_assigned.is_(True))) or 0
+    unassigned = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_assigned.is_(False))) or 0
+    used = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_used.is_(True))) or 0
+    campaigns = db.scalar(select(func.count(CouponCampaign.id))) or 0
+
+    return AdminCouponStats(
+        total_coupons=total,
+        assigned_coupons=assigned,
+        unassigned_coupons=unassigned,
+        used_coupons=used,
+        total_campaigns=campaigns,
+        drop_enabled=get_setting_bool(db, "coupon_drop_enabled", default=True),
+        drop_probability=get_setting_int(db, "coupon_drop_probability", default=20),
+        dynamic_drop=get_setting_bool(db, "coupon_dynamic_drop", default=True),
+        daily_drop_limit=get_setting_int(db, "coupon_daily_drop_limit", default=100),
+    )
+
+
+@router.get("/coupons/stats", response_model=AdminCouponStats)
+def admin_get_coupon_stats(db: Session = Depends(get_db)) -> AdminCouponStats:
+    return _get_coupon_stats(db)
+
+
+@router.patch("/coupons/settings", response_model=AdminCouponStats)
+def admin_update_coupon_settings(
+    payload: AdminCouponSettingsUpdate,
+    db: Session = Depends(get_db),
+) -> AdminCouponStats:
+    if payload.drop_enabled is not None:
+        set_setting_str(db, "coupon_drop_enabled", "true" if payload.drop_enabled else "false")
+    if payload.drop_probability is not None:
+        val = max(0, min(100, payload.drop_probability))
+        set_setting_str(db, "coupon_drop_probability", str(val))
+    if payload.dynamic_drop is not None:
+        set_setting_str(db, "coupon_dynamic_drop", "true" if payload.dynamic_drop else "false")
+    if payload.daily_drop_limit is not None:
+        val = max(0, payload.daily_drop_limit)
+        set_setting_str(db, "coupon_daily_drop_limit", str(val))
+    return _get_coupon_stats(db)
+
+
+@router.get("/coupons", response_model=AdminCouponPageOut)
+def admin_list_coupons(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    status: str = Query(default="all"),
+    search: str = Query(default=""),
+    db: Session = Depends(get_db),
+) -> AdminCouponPageOut:
+    stmt = select(ShopCoupon)
+    if status == "assigned":
+        stmt = stmt.where(ShopCoupon.is_assigned.is_(True))
+    elif status == "unassigned":
+        stmt = stmt.where(ShopCoupon.is_assigned.is_(False))
+    elif status == "used":
+        stmt = stmt.where(ShopCoupon.is_used.is_(True))
+
+    if search.strip():
+        term = f"%{search.strip()}%"
+        stmt = stmt.where(or_(ShopCoupon.code.ilike(term), ShopCoupon.name.ilike(term)))
+
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    items = db.scalars(
+        stmt.order_by(ShopCoupon.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+
+    return AdminCouponPageOut(
+        items=[_admin_coupon_to_read(c) for c in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.post("/coupons/import", response_model=AdminCouponImportResponse)
+def admin_import_coupons(
+    payload: AdminCouponImportRequest,
+    db: Session = Depends(get_db),
+) -> AdminCouponImportResponse:
+    raw_lines = payload.codes_text.replace(",", "\n").replace(";", "\n").splitlines()
+    codes = [line.strip() for line in raw_lines if line.strip()]
+    if not codes:
+        raise HTTPException(status_code=400, detail="未检测到有效券码")
+
+    now = datetime.now(timezone.utc)
+    expires_at = payload.expires_at or (now + timedelta(days=30))
+
+    # Query existing codes in set
+    existing_codes = set(
+        db.scalars(select(ShopCoupon.code).where(ShopCoupon.code.in_(codes))).all()
+    )
+
+    imported = 0
+    skipped = 0
+    seen_in_batch = set()
+
+    for code in codes:
+        if code in existing_codes or code in seen_in_batch:
+            skipped += 1
+            continue
+        seen_in_batch.add(code)
+        coupon = ShopCoupon(
+            coupon_batch_id=payload.coupon_batch_id,
+            name=payload.name.strip(),
+            code=code,
+            discount_amount=payload.discount_amount,
+            min_spend=payload.min_spend,
+            shop_name=payload.shop_name.strip(),
+            shop_url=payload.shop_url.strip(),
+            is_assigned=False,
+            expires_at=expires_at,
+        )
+        db.add(coupon)
+        imported += 1
+
+    db.commit()
+    return AdminCouponImportResponse(
+        success=True,
+        imported_count=imported,
+        skipped_count=skipped,
+        message=f"成功导入 {imported} 张券码，跳过 {skipped} 张重复券码",
+    )
+
+
+@router.post("/coupons/sync-ldxp", response_model=AdminCouponImportResponse)
+def admin_sync_ldxp_coupons(
+    token: str = Query(default=""),
+    db: Session = Depends(get_db),
+) -> AdminCouponImportResponse:
+    use_token = token.strip() or DEFAULT_LDXP_TOKEN
+    try:
+        batches = _fetch_ldxp_batches(use_token)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"调用 LDXP 接口失败: {e}")
+
+    imported = 0
+    skipped = 0
+    reconciled_used = 0
+    now = datetime.now(timezone.utc)
+
+    for batch in batches:
+        coupon_id = batch.get("id")
+        name = batch.get("name", "专享优惠券")
+        discount = Decimal(str(batch.get("money", 5)))
+        min_spend = Decimal(str(batch.get("min_money", 0)))
+        end_time = batch.get("end_time")
+        if end_time:
+            expires_at = datetime.fromtimestamp(int(end_time), tz=timezone.utc)
+        else:
+            expires_at = now + timedelta(days=90)
+
+        codes_data = _fetch_ldxp_codes(use_token, coupon_id)
+        for item in codes_data:
+            code_str = str(item.get("code", "")).strip()
+            if not code_str:
+                continue
+            existing = db.scalar(select(ShopCoupon).where(ShopCoupon.code == code_str))
+            if existing:
+                if item.get("status") == 1 and not existing.is_used:
+                    existing.is_used = True
+                    reconciled_used += 1
+                skipped += 1
+                continue
+
+            new_coupon = ShopCoupon(
+                coupon_batch_id=coupon_id,
+                name=name,
+                code=code_str,
+                discount_amount=discount,
+                min_spend=min_spend,
+                shop_name="彩头AI",
+                shop_url="https://wzyp.cn/shop/pricememo",
+                is_assigned=False,
+                expires_at=expires_at,
+                is_used=bool(item.get("status") == 1),
+            )
+            db.add(new_coupon)
+            imported += 1
+
+    db.commit()
+    msg = f"从链动小铺同步完成：新增 {imported} 张券码，跳过 {skipped} 张已有券码"
+    if reconciled_used > 0:
+        msg += f"（已自动对账核销 {reconciled_used} 张已在店铺消费的券）"
+    return AdminCouponImportResponse(
+        success=True,
+        imported_count=imported,
+        skipped_count=skipped,
+        message=msg,
+    )
+
+
+@router.delete("/coupons/{coupon_id}")
+def admin_delete_coupon(
+    coupon_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    coupon = db.get(ShopCoupon, coupon_id)
+    if not coupon:
+        raise HTTPException(status_code=404, detail="优惠券不存在")
+    db.delete(coupon)
+    db.commit()
+    return {"ok": True, "id": coupon_id}
+
+
+@router.get("/coupons/campaigns", response_model=list[CampaignRead])
+def admin_list_campaigns(db: Session = Depends(get_db)) -> list[CampaignRead]:
+    items = db.scalars(select(CouponCampaign).order_by(CouponCampaign.id.desc())).all()
+    return [_admin_campaign_to_read(c) for c in items]
+
+
+@router.post("/coupons/campaigns", response_model=CampaignRead)
+def admin_create_campaign(
+    payload: AdminCampaignCreate,
+    db: Session = Depends(get_db),
+) -> CampaignRead:
+    code = payload.campaign_code.strip()
+    existing = db.scalar(select(CouponCampaign).where(CouponCampaign.campaign_code.ilike(code)))
+    if existing:
+        raise HTTPException(status_code=409, detail="该口令已存在")
+
+    now = datetime.now(timezone.utc)
+    expires_at = payload.expires_at or (now + timedelta(days=90))
+
+    campaign = CouponCampaign(
+        campaign_code=code,
+        title=payload.title.strip(),
+        coupon_batch_id=payload.coupon_batch_id,
+        max_per_user=payload.max_per_user,
+        total_quota=payload.total_quota,
+        claimed_count=0,
+        is_active=True,
+        expires_at=expires_at,
+    )
+    db.add(campaign)
+    db.commit()
+    db.refresh(campaign)
+    return _admin_campaign_to_read(campaign)
+
+
+@router.delete("/coupons/campaigns/{campaign_id}")
+def admin_delete_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    campaign = db.get(CouponCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="活动口令不存在")
+    db.delete(campaign)
+    db.commit()
+    return {"ok": True, "id": campaign_id}
+
 

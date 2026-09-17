@@ -12,7 +12,7 @@ from sqlalchemy import and_, case, false, func, not_, or_, select
 from sqlalchemy.orm import Session, contains_eager
 
 from ..core.config import get_settings
-from ..models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Shop
+from ..models import CatalogSnapshot, Offer, OfferClick, OfferHistory, Product, RawProduct, Shop
 from ..schemas import (
     DeliveryPriceSummary,
     OfferGroupPublic,
@@ -282,6 +282,7 @@ def _offer_public(
         is_trusted_price=bool(offer.is_comparable) and is_trusted_price(offer.price, median_price),
         source_health=asdict(source_health(offer.shop)),
         source_url=offer.source_url,
+        click_count=int(getattr(offer, "click_count", 0) or 0),
         first_seen_at=offer.raw_product.first_seen_at,
         last_seen_at=offer.raw_product.last_seen_at,
         observed_at=offer.observed_at,
@@ -486,6 +487,7 @@ def get_product_group_page(
             price_currency=PRICE_CURRENCY,
             lowest_price=min(prices, default=None),
             highest_price=max(prices, default=None),
+            click_count=sum(int(getattr(offer, "click_count", 0) or 0) for offer in group),
             latest_observed_at=max((offer.observed_at for offer in group), default=None),
         ))
     return items, len(grouped), len(offers)
@@ -610,6 +612,7 @@ def get_catalog_group_page(
             price_currency=PRICE_CURRENCY,
             lowest_price=min(prices, default=None),
             highest_price=max(prices, default=None),
+            click_count=sum(int(getattr(offer, "click_count", 0) or 0) for offer in group),
             latest_observed_at=max((offer.observed_at for offer in group), default=None),
         ))
 
@@ -963,6 +966,24 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         )
         for slug, display_name, offer_count, in_stock_count in db.execute(product_stmt)
     ]
+    cst = timezone(timedelta(hours=8))
+    now_cst = datetime.now(cst)
+    today_start_cst = datetime(now_cst.year, now_cst.month, now_cst.day, tzinfo=cst)
+    today_start_utc = today_start_cst.astimezone(timezone.utc)
+
+    today_clicks = db.scalar(
+        select(func.count(OfferClick.id)).where(
+            OfferClick.shop_id == shop.id,
+            OfferClick.created_at >= today_start_utc,
+        )
+    ) or 0
+
+    total_clicks = db.scalar(
+        select(func.count(OfferClick.id)).where(
+            OfferClick.shop_id == shop.id,
+        )
+    ) or 0
+
     return ShopDetail(
         token=shop.token,
         name=shop.name or shop.token,
@@ -979,6 +1000,8 @@ def get_shop_detail(db: Session, token: str) -> ShopDetail | None:
         consecutive_failures=shop.consecutive_failures,
         source_health=asdict(source_health(shop)),
         offer_count=len(offers),
+        today_clicks=int(today_clicks),
+        total_clicks=int(total_clicks),
         products=products,
         offers=[_offer_public(x, median_price=medians.get(_median_key(x))) for x in offers],
     )

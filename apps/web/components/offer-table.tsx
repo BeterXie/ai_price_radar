@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowSquareOut, CaretDown, Clock, Package, Storefront, Tag, Warning } from "@phosphor-icons/react";
+import { ArrowSquareOut, CaretDown, Clock, Fire, Package, Storefront, Tag, Warning } from "@phosphor-icons/react";
 import type { GroupOffers, Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
 import { DELIVERY_TYPE_LABELS, PERIOD_LABELS, SCENARIO_LABELS, WARRANTY_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime, stockLabel } from "@/lib/format";
@@ -10,6 +10,17 @@ import { getGuideLinkLabel, resolveGuideHref } from "@/lib/guides/matcher";
 
 const OFFER_BATCH_SIZE = 30;
 const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+
+export function trackOfferClick(offerId: number) {
+  try {
+    fetch(`${publicApiBase}/api/v1/offers/${offerId}/click`, {
+      method: "POST",
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // Ignore network error on outbound link
+  }
+}
 
 function fulfillmentLabel(value: boolean | null) {
   if (value === true) return "自动发货";
@@ -27,8 +38,9 @@ function DecisionFacts({ offer }: { offer: Offer }) {
       <div><dt className="text-xs text-black/40">质保</dt><dd className="mt-1">{WARRANTY_LABELS[offer.warranty] || offer.warranty}</dd></div>
       <div><dt className="text-xs text-black/40">交付方式</dt><dd className="mt-1">{fulfillmentLabel(offer.auto_delivery)}</dd></div>
       <div><dt className="text-xs text-black/40">报价编号</dt><dd className="mt-1 mono font-medium">#{offer.id}</dd></div>
+      <div><dt className="text-xs text-black/40">累计访问数</dt><dd className="mt-1 font-medium">{offer.click_count || 0} 次</dd></div>
       <div><dt className="text-xs text-black/40">来源更新状态</dt><dd className="mt-1 font-medium">{offer.source_health.score} / 100 · {offer.source_health.label}</dd></div>
-      <div className="col-span-2 lg:col-span-2"><dt className="text-xs text-black/40">适用场景</dt><dd className="mt-1">{offer.use_scenarios.length ? offer.use_scenarios.map((item) => SCENARIO_LABELS[item] || item).join("、") : "未注明"}</dd></div>
+      <div className="col-span-2 lg:col-span-3"><dt className="text-xs text-black/40">适用场景</dt><dd className="mt-1">{offer.use_scenarios.length ? offer.use_scenarios.map((item) => SCENARIO_LABELS[item] || item).join("、") : "未注明"}</dd></div>
       <div className="col-span-2 lg:col-span-4"><dt className="text-xs text-black/40">状态说明</dt><dd className="mt-1 text-black/60">{offer.source_health.reasons.join("；")}</dd></div>
     </dl>
   );
@@ -59,7 +71,23 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
           <div><Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link><p className="mt-1 text-[11px] text-black/40"><span className="mono font-semibold text-black/60">#{offer.id}</span> · {offer.source_platform_label} · {offer.source_kind_label}</p></div>
           <span className="text-xs text-black/50">{stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}</span>
           <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
-          <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" aria-label={`前往 ${offer.shop_name} 查看报价`} className="inline-flex items-center gap-1 text-xs hover:opacity-60">查看原站 <ArrowSquareOut size={14} /></a>
+          <div className="flex items-center gap-2.5">
+            {offer.click_count !== undefined && offer.click_count > 0 ? (
+              <span className="text-[11px] text-black/50" title={`已访问 ${offer.click_count} 次`}>
+                {offer.click_count} 访问
+              </span>
+            ) : null}
+            <a
+              href={offer.source_url}
+              target="_blank"
+              rel="noreferrer nofollow"
+              onClick={() => trackOfferClick(offer.id)}
+              aria-label={`前往 ${offer.shop_name} 查看报价`}
+              className="inline-flex items-center gap-1 text-xs hover:opacity-60"
+            >
+              查看原站 <ArrowSquareOut size={14} />
+            </a>
+          </div>
         </div>
       ))}
     </div>
@@ -128,6 +156,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   const shownPrice = group?.lowest_price ?? offer.price;
   const shownCurrency = group?.lowest_price ? group.price_currency : offer.currency;
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
+  const clickCount = group?.click_count ?? offer.click_count ?? 0;
 
   return (
     <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className="group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]">
@@ -163,6 +192,17 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
             <span>{DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type}</span>
             <span>{PERIOD_LABELS[offer.service_period] || offer.service_period}</span>
             <span>{WARRANTY_LABELS[offer.warranty] || offer.warranty}</span>
+            <span
+              className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-1.5 py-0.5 font-medium text-black/60"
+              title={`累计访问热度：${clickCount} 次`}
+            >
+              <Fire
+                size={13}
+                className={clickCount > 0 ? "text-amber-600" : "text-black/30"}
+                weight={clickCount > 0 ? "fill" : "regular"}
+              />
+              {clickCount > 0 ? `${clickCount} 次访问` : "0 访问"}
+            </span>
           </div>
         </div>
 
@@ -211,7 +251,15 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
         {!group && (
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a href={offer.source_url} target="_blank" rel="noreferrer nofollow" className="button-primary tactile">去原站查看 <ArrowSquareOut size={16} /></a>
+            <a
+              href={offer.source_url}
+              target="_blank"
+              rel="noreferrer nofollow"
+              onClick={() => trackOfferClick(offer.id)}
+              className="button-primary tactile"
+            >
+              去原站查看 <ArrowSquareOut size={16} />
+            </a>
             <Link href={`/shops/${offer.shop_token}`} className="button-secondary tactile">查看店铺 <Storefront size={16} /></Link>
           </div>
         )}
