@@ -47,6 +47,16 @@ function DecisionFacts({ offer }: { offer: Offer }) {
 }
 
 function ShopOfferList({ offers }: { offers: Offer[] }) {
+  const [clickedMap, setClickedMap] = useState<Record<number, number>>({});
+
+  const handleTrackClick = (offerId: number, baseCount: number) => {
+    trackOfferClick(offerId);
+    setClickedMap((prev) => ({
+      ...prev,
+      [offerId]: (prev[offerId] ?? baseCount) + 1,
+    }));
+  };
+
   const sortedOffers = [...offers].sort((a, b) => {
     const priceA = a.price !== null && a.price !== undefined ? Number(a.price) : Infinity;
     const priceB = b.price !== null && b.price !== undefined ? Number(b.price) : Infinity;
@@ -66,30 +76,48 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
 
   return (
     <div className="mt-5 overflow-hidden rounded-[10px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-      {sortedOffers.map((offer) => (
-        <div key={offer.id} className="grid gap-2 border-b hairline px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_110px_90px_auto] sm:items-center">
-          <div><Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60"><Storefront size={15} />{offer.shop_name}</Link><p className="mt-1 text-[11px] text-black/40"><span className="mono font-semibold text-black/60">#{offer.id}</span> · {offer.source_platform_label} · {offer.source_kind_label}</p></div>
-          <span className="text-xs text-black/50">{stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}</span>
-          <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
-          <div className="flex items-center gap-2.5">
-            {offer.click_count !== undefined && offer.click_count > 0 ? (
-              <span className="text-[11px] text-black/50" title={`已访问 ${offer.click_count} 次`}>
-                {offer.click_count} 访问
+      {sortedOffers.map((offer) => {
+        const currentCount = clickedMap[offer.id] ?? (offer.click_count || 0);
+        return (
+          <div key={offer.id} className="grid gap-2 border-b hairline px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_110px_90px_auto] sm:items-center">
+            <div>
+              <Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60">
+                <Storefront size={15} />{offer.shop_name}
+              </Link>
+              <p className="mt-1 text-[11px] text-black/40">
+                <span className="mono font-semibold text-black/60">#{offer.id}</span> · {offer.source_platform_label} · {offer.source_kind_label}
+              </p>
+            </div>
+            <span className="text-xs text-black/50">
+              {stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}
+            </span>
+            <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
+            <div className="flex items-center gap-2.5 sm:justify-end">
+              <span
+                className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-1.5 py-0.5 text-[11px] font-medium text-black/60"
+                title={`已点击访问原站 ${currentCount} 次`}
+              >
+                <Fire
+                  size={12}
+                  className={currentCount > 0 ? "text-amber-600" : "text-black/30"}
+                  weight={currentCount > 0 ? "fill" : "regular"}
+                />
+                {currentCount} 次访问
               </span>
-            ) : null}
-            <a
-              href={offer.source_url}
-              target="_blank"
-              rel="noreferrer nofollow"
-              onClick={() => trackOfferClick(offer.id)}
-              aria-label={`前往 ${offer.shop_name} 查看报价`}
-              className="inline-flex items-center gap-1 text-xs hover:opacity-60"
-            >
-              查看原站 <ArrowSquareOut size={14} />
-            </a>
+              <a
+                href={offer.source_url}
+                target="_blank"
+                rel="noreferrer nofollow"
+                onClick={() => handleTrackClick(offer.id, offer.click_count || 0)}
+                aria-label={`前往 ${offer.shop_name} 查看报价`}
+                className="inline-flex items-center gap-1 text-xs hover:opacity-60"
+              >
+                查看原站 <ArrowSquareOut size={14} />
+              </a>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -156,7 +184,17 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   const shownPrice = group?.lowest_price ?? offer.price;
   const shownCurrency = group?.lowest_price ? group.price_currency : offer.currency;
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
-  const clickCount = group?.click_count ?? offer.click_count ?? 0;
+  const initialClickCount = (group ? group.click_count : offer.click_count) || 0;
+  const [clickCount, setClickCount] = useState(initialClickCount);
+
+  useEffect(() => {
+    setClickCount((group ? group.click_count : offer.click_count) || 0);
+  }, [group?.click_count, offer.click_count]);
+
+  const handleTrackOfferClick = (offerId: number) => {
+    trackOfferClick(offerId);
+    setClickCount((prev) => prev + 1);
+  };
 
   return (
     <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className="group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]">
@@ -201,7 +239,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
                 className={clickCount > 0 ? "text-amber-600" : "text-black/30"}
                 weight={clickCount > 0 ? "fill" : "regular"}
               />
-              {clickCount > 0 ? `${clickCount} 次访问` : "0 访问"}
+              {clickCount} 次访问
             </span>
           </div>
         </div>
@@ -255,11 +293,22 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
               href={offer.source_url}
               target="_blank"
               rel="noreferrer nofollow"
-              onClick={() => trackOfferClick(offer.id)}
+              onClick={() => handleTrackOfferClick(offer.id)}
               className="button-primary tactile"
             >
               去原站查看 <ArrowSquareOut size={16} />
             </a>
+            <span
+              className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-2 py-1 text-xs font-medium text-black/60"
+              title={`该商品已点击访问原站 ${clickCount} 次`}
+            >
+              <Fire
+                size={14}
+                className={clickCount > 0 ? "text-amber-600" : "text-black/30"}
+                weight={clickCount > 0 ? "fill" : "regular"}
+              />
+              {clickCount} 次访问
+            </span>
             <Link href={`/shops/${offer.shop_token}`} className="button-secondary tactile">查看店铺 <Storefront size={16} /></Link>
           </div>
         )}
