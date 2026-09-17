@@ -2,7 +2,15 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
-## [3.7.76] - 2026-09-17
+## [3.7.77] - 2026-09-17
+
+### Fixed
+- **QQ 机器人常驻 WebSocket Gateway 守护与实时对话能力**:
+  - 彻底解决用户向 QQ 机器人发送私聊消息时提示“无法对话，提示服务异常”的问题；
+  - 根本原因：腾讯 QQ 开放平台规定机器人必须与官方 WebSocket Gateway (`wss://api.sgroup.qq.com/websocket`) 保持实时长连接与心跳；未建立连接时腾讯服务端判定机器人离线，直接向用户展示“服务异常”；
+  - 实现纯 Python 原生 `QQGatewayService` (`extensions/bots/qq_gateway.py`)，接入 `websockets` 协议栈，自动维护已绑定 QQ 机器人的长连接、心跳重连与 IDENTIFY/RESUME 会话状态机；
+  - 实时监听 `C2C_MESSAGE_CREATE` 入向私聊消息与 `FRIEND_ADD` 好友添加事件，自动调用 `handle_chat_command` 指令路由并附带 `msg_id` 被动回复至用户 QQ 窗口；
+  - 在 FastAPI `lifespan` 生命周期中自动托管网关后台线程，平滑启动与优雅退出。
 
 ### Fixed
 - **全面接入腾讯官方 QQ Bot Connector 扫码协议**:

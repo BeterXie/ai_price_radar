@@ -11,7 +11,7 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.76"
+VERSION = "3.7.77"
 
 
 @asynccontextmanager
@@ -25,7 +25,22 @@ async def lifespan(_: FastAPI):
 
         with SessionLocal() as db:
             seed_default_community_skills(db)
+
+    try:
+        from extensions.bots.qq_gateway import qq_gateway_service
+
+        qq_gateway_service.start()
+    except Exception:
+        pass
+
     yield
+
+    try:
+        from extensions.bots.qq_gateway import qq_gateway_service
+
+        await qq_gateway_service.stop()
+    except Exception:
+        pass
 
 
 
