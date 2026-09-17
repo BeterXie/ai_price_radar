@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.89] - 2026-09-18
+
+### Fixed
+- **公开快照导出在生产环境失效**: 发布流程通过 `scripts/refresh_remote.sh` 以只读方式挂载仓库（`-v "$ROOT:/workspace:ro"`），而 `publish_catalog.py` 会把快照 JSON 写入 `apps/web/public/data`，因此导出必然抛出 `[Errno 30] Read-only file system`。现在该目录以可写方式单独挂载，并通过 `PUBLIC_DATA_DIR` 显式指向导出路径（更具体的挂载覆盖只读父目录）。
+- **Web 容器读取实时快照**: `web` 服务挂载 `apps/web/public/data`，不再只提供构建时烘焙进镜像的副本，`/data/latest.json` 与 `/data/v1/snapshots/<id>.json` 会跟随每次发布更新。
+
 ## [3.7.88] - 2026-09-18
 
 ### Security

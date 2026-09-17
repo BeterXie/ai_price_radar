@@ -33,6 +33,9 @@ services:
       BAIDU_SITE_VERIFICATION: ${BAIDU_SITE_VERIFICATION:-}
     volumes:
       - ./data/support:/app/public/support:ro
+      # Serve the live public snapshot feed exported by the importer instead of
+      # the copy baked into the image at build time.
+      - ./apps/web/public/data:/app/public/data:ro
     networks:
       default:
       pricememo_frontend:

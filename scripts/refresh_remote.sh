@@ -228,10 +228,19 @@ else
   fi
 fi
 
+# The repo is mounted read-only, but publish_catalog.py exports the public
+# snapshot JSON into apps/web/public/data. Mount that directory writable (the
+# more specific mount wins over the read-only parent) and point the exporter at
+# it, so the immutable snapshot files the API and Web serve are actually written.
+PUBLIC_DATA_DIR="$ROOT/apps/web/public/data"
+mkdir -p "$PUBLIC_DATA_DIR"
+
 docker run --rm --user 0 \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
+  -e PUBLIC_DATA_DIR=/workspace/apps/web/public/data \
   -v "$ROOT:/workspace:ro" \
+  -v "$PUBLIC_DATA_DIR:/workspace/apps/web/public/data" \
   -v "$PUBLISH_DB:/tmp/ldxp_publish.db:ro" \
   -w /workspace/pipeline \
   ai-price-radar-importer \
