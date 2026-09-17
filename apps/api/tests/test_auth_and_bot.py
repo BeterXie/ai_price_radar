@@ -311,8 +311,10 @@ def test_bot_chat_commands(client: TestClient, test_db):
 
     # 3. Products
     p_plus = Product(id=1, slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus", is_visible=True)
-    p_pro = Product(id=2, slug="claude-pro", platform="Anthropic", display_name="Claude Pro", is_visible=True)
-    test_db.add_all([p_plus, p_pro])
+    p_pro = Product(id=2, slug="claude-pro", platform="Anthropic", display_name="Claude Pro (5x)", is_visible=True)
+    p_pro20x = Product(id=3, slug="claude-pro-20x", platform="Claude", display_name="Claude Pro 20x", is_visible=True)
+    p_team = Product(id=4, slug="claude-team", platform="Claude", display_name="Claude Team", is_visible=True)
+    test_db.add_all([p_plus, p_pro, p_pro20x, p_team])
     test_db.flush()
 
     # 4. Raw products
@@ -385,6 +387,27 @@ def test_bot_chat_commands(client: TestClient, test_db):
     reply_pro = resp_pro.json()["reply"]
     assert "Claude Pro" in reply_pro
     assert "暂无可比且库存 > 1 的现货报价" in reply_pro
+
+    # B2. Test `claude` brand aggregation command
+    resp_claude = client.post("/api/v1/user/notifications/bot/command", json={"text": "claude"})
+    assert resp_claude.status_code == 200
+    reply_claude = resp_claude.json()["reply"]
+    assert "Claude 全系列最低报价一览" in reply_claude
+    assert "Claude Pro" in reply_claude
+    assert "Claude Pro 20x" in reply_claude
+    assert "Claude Team" in reply_claude
+
+    # B3. Test `openai` brand aggregation command
+    resp_openai = client.post("/api/v1/user/notifications/bot/command", json={"text": "openai"})
+    assert resp_openai.status_code == 200
+    reply_openai = resp_openai.json()["reply"]
+    assert "OpenAI / ChatGPT 全系列最低报价一览" in reply_openai
+    assert "ChatGPT Plus" in reply_openai
+
+    # B4. Test `20x` single product query
+    resp_20x = client.post("/api/v1/user/notifications/bot/command", json={"text": "20x"})
+    assert resp_20x.status_code == 200
+    assert "Claude Pro 20x" in resp_20x.json()["reply"]
 
     # C. Test `行情` command
     resp_mkt = client.post("/api/v1/user/notifications/bot/command", json={"text": "行情"})

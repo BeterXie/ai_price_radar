@@ -662,7 +662,11 @@ def classify_identity(
     if brand == "claude":
         if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
             return "claude-api-access", True
-        if contains(identity_text, ["claude pro", "claude会员", "claude 会员"]) or contains(tier_text, ["claude pro"]):
+        if contains(identity_text, ["team", "团队", "车位", "席位", "企业"]):
+            return "claude-team", True
+        if contains(identity_text, ["20x", "20X", "20倍", "max20x", "max 20x", "max-20x"]):
+            return "claude-pro-20x", True
+        if contains(identity_text, ["claude pro", "claude会员", "claude 会员", "5x", "5X", "5倍", "max5x", "max 5x"]) or contains(tier_text, ["claude pro"]):
             return "claude-pro", True
         return "claude-account", False
     if brand == "gemini":
@@ -878,7 +882,9 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("openai-api-credit", "OpenAI", "OpenAI API 额度", "API Key 与额度商品", "api", "聚合 OpenAI API 额度、余额和 Key 类商品。"),
         ("chatgpt-access-service", "OpenAI", "ChatGPT 手机接码", "接码、验证与开通服务", "service", "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。"),
         ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "已合并至 ChatGPT Plus。"),
-        ("claude-pro", "Claude", "Claude Pro", "个人会员订阅", "subscription", "聚合 Claude Pro 公开报价。"),
+        ("claude-pro", "Claude", "Claude Pro (5x)", "Pro 5x 个人会员订阅", "subscription", "聚合 Claude Pro (5x) 个人会员订阅公开报价。"),
+        ("claude-pro-20x", "Claude", "Claude Pro 20x", "Pro 20x 满血高配号", "subscription", "聚合明确标注为 Claude Pro 20x / Max 20x 的高倍用量公开报价。"),
+        ("claude-team", "Claude", "Claude Team", "Team 团队版席位与组织号", "subscription", "聚合 Claude Team 团队版席位、拼车与独享组织公开报价。"),
         ("claude-account", "Claude", "Claude 账号", "基础账号与访问类商品", "account", "聚合 Claude 基础账号与访问类公开报价。"),
         ("claude-api-access", "Claude", "Claude API", "API Key、Token 与额度商品", "api", "聚合 Claude API Key、Token 与额度类公开报价。"),
         ("gemini-advanced", "Gemini", "Gemini Advanced", "Google One AI 会员", "subscription", "聚合 Gemini Advanced 与 Google One AI 报价。"),

@@ -140,12 +140,30 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
     ],
   },
   "claude-pro": {
-    metaDescription: "比较 Claude Pro 公开报价、库存、交付方式、使用期限、质保与店铺更新时间。",
-    intro: "Claude Pro 页面只聚合明确的 Pro 订阅或账号商品，并把普通 Claude 账号与 API 访问分开。",
-    comparisonPoints: ["区分订阅充值、Pro 成品号、短期账号和共享使用。", "核对账号地区、登录验证、使用周期和质保条款。"],
+    metaDescription: "比较 Claude Pro (5x) 标准个人订阅公开报价、库存、交付方式、使用期限、质保与店铺更新时间。",
+    intro: "Claude Pro (5x) 页面聚合标准个人订阅版商品，满血 20x 款、团队版 Team、普通账号与 API 访问分开展示。",
+    comparisonPoints: ["区分官方直充、成品号、首登号与共享使用。", "核对 5x 个人会员订阅周期、账号归属和质保条款。"],
     faqs: [
+      { question: "Claude Pro 5x 和 20x 有什么区别？", answer: "Pro 5x 为标准个人会员用量；20x 为高配高并发用量款，已在对应独立页面进行深度比价。" },
       { question: "普通 Claude 账号会进入 Pro 最低价吗？", answer: "不会。没有明确 Pro 语境的账号会进入 Claude 账号分类。" },
-      { question: "Claude API 报价会在这里展示吗？", answer: "不会混入主报价。API 访问有独立目录。" },
+    ],
+  },
+  "claude-pro-20x": {
+    metaDescription: "比较明确标注 Claude Pro 20x / Max 20x 的高倍用量公开报价、交付形态、库存与质保。",
+    intro: "Claude Pro 20x 页面只聚合明确标注 20x 或高倍用量的高配版商品，与标准 Pro (5x) 及 Team 车位分开比较。",
+    comparisonPoints: ["确认 20x 权益、使用周期和账号归属是否在商品原文中写明。", "区分独享账号、代充、共享号池和短期使用权。", "价格明显偏低时重点核对限制条件和售后范围。"],
+    faqs: [
+      { question: "20x 和标准 5x 会混在一起吗？", answer: "不会。只有标题或明确商品信息确认 20x 倍率后才进入本页面。" },
+      { question: "最低价是否代表完整 20x 账号？", answer: "请同时查看交付形态；页面会把不可直接比较的号池和服务报价排除在主最低价之外。" },
+    ],
+  },
+  "claude-team": {
+    metaDescription: "比较 Claude Team 团队版席位与组织号公开报价，查看邀请方式、期限、库存、质保和来源。",
+    intro: "Claude Team 页面统一收纳明确的 Team、团队版席位、车位与独享组织类商品，避免把团队席位误当成个人 Pro。",
+    comparisonPoints: ["确认交付是团队邀请、现成席位还是包含管理权限的独享组织。", "核对席位有效期、退出或被移除后的处理方式，以及是否提供质保。"],
+    faqs: [
+      { question: "Claude Team 席位可以和个人 Pro 5x 直接比较吗？", answer: "不建议。两者的账号归属、管理权限和失效风险不同，应分别查看。" },
+      { question: "车位或组织号失效如何售后？", answer: "请在下单前查看商家的质保服务周期与补位条款。" },
     ],
   },
   "claude-account": {
@@ -260,7 +278,9 @@ const PRODUCT_OG_TITLES: Record<string, string> = {
   "openai-api-credit": "OpenAI API Credit",
   "chatgpt-access-service": "ChatGPT / Codex Services",
   "codex-access": "Codex Access",
-  "claude-pro": "Claude Pro",
+  "claude-pro": "Claude Pro (5x)",
+  "claude-pro-20x": "Claude Pro 20x",
+  "claude-team": "Claude Team",
   "claude-account": "Claude Account",
   "claude-api-access": "Claude API",
   "gemini-advanced": "Gemini Advanced",

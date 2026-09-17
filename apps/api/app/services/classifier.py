@@ -579,7 +579,11 @@ def _classify_identity(
     if brand == "claude":
         if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
             return "claude-api-access", True
-        if _contains(identity_text, ["claude pro", "claude会员", "claude 会员"]) or _contains(tier_text, ["claude pro"]):
+        if _contains(identity_text, ["team", "团队", "车位", "席位", "企业"]):
+            return "claude-team", True
+        if _contains(identity_text, ["20x", "20X", "20倍", "max20x", "max 20x", "max-20x"]):
+            return "claude-pro-20x", True
+        if _contains(identity_text, ["claude pro", "claude会员", "claude 会员", "5x", "5X", "5倍", "max5x", "max 5x"]) or _contains(tier_text, ["claude pro"]):
             return "claude-pro", True
         return "claude-account", False
 

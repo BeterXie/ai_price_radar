@@ -2,6 +2,20 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.78] - 2026-09-17
+
+### Added
+- **Claude 细分规格矩阵与精准同质可比体系**:
+  - 新增 `claude-pro-20x`（Claude Pro 20x 满血高配号）与 `claude-team`（Claude Team 团队版席位与组织号）商品分类；
+  - 将原 `claude-pro` 前台名称更新为 `Claude Pro (5x)`，严格限定为个人标准订阅版（$20/月），彻底解决原本 5x、20x 与车位混杂导致的报价失真问题；
+  - 编写并集成幂等数据迁移脚本 `scripts/migrate_claude_subdivision_v15.py`，支持存量 Claude 报价按标题语义重分类；
+  - 前端 Catalog 分类标签选项卡与 SEO 元数据同步补全。
+
+### Added
+- **品牌全系列最低报价聚合卡片**:
+  - 当用户在 QQ / Telegram 机器人中发送品牌词（`Claude`、`OpenAI`、`ChatGPT`、`Gemini`、`Grok` 等）时，自动生成该品牌下所有细分商品（如 Pro 5x、Pro 20x、Team、账号、API 额度）的最低可比较现货（`stock_count > 1`、`is_comparable=True`）聚合卡片；
+  - 保留单品型号（如 `plus`、`pro`、`20x`、`team`、`advanced` 等）的 Top 5 现货店铺深度比价路由。
+
 ## [3.7.77] - 2026-09-17
 
 ### Fixed

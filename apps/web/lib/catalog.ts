@@ -56,7 +56,9 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> 
     { label: "手机接码", slug: "chatgpt-access-service" },
   ],
   Claude: [
-    { label: "Claude Pro", slug: "claude-pro" },
+    { label: "Pro 5x", slug: "claude-pro" },
+    { label: "Pro 20x", slug: "claude-pro-20x" },
+    { label: "Team", slug: "claude-team" },
     { label: "Claude 账号", slug: "claude-account" },
     { label: "Claude API", slug: "claude-api-access" },
   ],
