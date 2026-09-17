@@ -1,5 +1,13 @@
+import sys
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
+
+# Ensure repo root is in sys.path so extensions.bots can be imported
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

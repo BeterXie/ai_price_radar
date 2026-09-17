@@ -176,50 +176,80 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           />
 
           <section className="pb-12">
-            <SectionIntro title="当前报价" description={<>相同商品会合并显示。当前筛选结果共 {catalog.total} 组报价，展开后可查看店铺、交付方式和商品原文。</>} />
-            <div className="mt-4">
-            <OfferGroupTable
-              key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
-              groups={catalog.items}
-              totalCount={catalog.total}
-              snapshotId={catalog.snapshot_id}
-              filterQuery={catalogQuery.toString()}
-              loadMorePath="/api/v1/catalog/groups"
-              showProduct
-            />
-            </div>
-            {catalog.items.length === 0 && activeBrand && productTabs.length > 0 && (
-              <div className="mt-6 rounded-2xl border border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-6">
-                <h3 className="text-sm font-semibold text-[color:var(--ink)]">
-                  {activeBrand} 包含的监测商品
-                </h3>
-                <p className="mt-1 text-xs text-[color:var(--muted)]">
-                  当前快照暂无可比现货报价，监控爬虫正在持续扫描相关店铺。点击可查看商品详情、订阅到价提醒或提交新店铺：
-                </p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {productTabs.map((tab) => (
-                    <Link
-                      key={tab.slug}
-                      href={`/products/${encodeURIComponent(tab.slug)}`}
-                      className="group flex flex-col justify-between rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm transition hover:border-[color:var(--brand)] hover:shadow-md"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <PlatformIcon platform={activeBrand} size={16} />
-                          <span className="font-semibold group-hover:text-[color:var(--brand)]">{tab.label}</span>
-                        </div>
-                        <p className="mt-1 text-xs text-[color:var(--muted)]">
-                          查看历史报价与到价提醒
-                        </p>
-                      </div>
-                      <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--brand-strong)] font-medium">
-                        <span>进入商品台账 →</span>
-                        <span className="text-[color:var(--muted)] font-normal">监控中</span>
-                      </div>
-                    </Link>
-                  ))}
+            {catalog.items.length > 0 ? (
+              <>
+                <SectionIntro title="当前报价" description={<>相同商品会合并显示。当前筛选结果共 {catalog.total} 组报价，展开后可查看店铺、交付方式和商品原文。</>} />
+                <div className="mt-4">
+                  <OfferGroupTable
+                    key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
+                    groups={catalog.items}
+                    totalCount={catalog.total}
+                    snapshotId={catalog.snapshot_id}
+                    filterQuery={catalogQuery.toString()}
+                    loadMorePath="/api/v1/catalog/groups"
+                    showProduct
+                  />
                 </div>
-              </div>
+              </>
+            ) : activeBrand && productTabs.length > 0 ? (
+              <>
+                <SectionIntro
+                  title={`${activeBrand} 监测商品`}
+                  description={<>当前快照暂无可比现货报价，监控爬虫正在持续扫描相关店铺。点击可查看各商品详情台账、历史报价趋势或订阅到价提醒：</>}
+                />
+                <div className="mt-4 rounded-2xl border border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-[color:var(--ink)]">
+                      {activeBrand} 包含的监测商品
+                    </h3>
+                    <Link
+                      href="/shops/submit"
+                      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--brand)] bg-[color:var(--brand)]/10 px-3 py-1 text-xs font-medium text-[color:var(--brand)] hover:bg-[color:var(--brand)]/20 transition"
+                    >
+                      <span>提交该品牌店铺报价</span>
+                      <span>→</span>
+                    </Link>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {productTabs.map((tab) => (
+                      <Link
+                        key={tab.slug}
+                        href={`/products/${encodeURIComponent(tab.slug)}`}
+                        className="group flex flex-col justify-between rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm transition hover:border-[color:var(--brand)] hover:shadow-md"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <PlatformIcon platform={activeBrand} size={16} />
+                            <span className="font-semibold group-hover:text-[color:var(--brand)]">{tab.label}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-[color:var(--muted)]">
+                            查看历史报价与到价提醒
+                          </p>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--brand-strong)] font-medium">
+                          <span>进入商品台账 →</span>
+                          <span className="text-[color:var(--muted)] font-normal">监控中</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <SectionIntro title="当前报价" description={<>相同商品会合并显示。当前筛选结果共 {catalog.total} 组报价，展开后可查看店铺、交付方式和商品原文。</>} />
+                <div className="mt-4">
+                  <OfferGroupTable
+                    key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
+                    groups={catalog.items}
+                    totalCount={catalog.total}
+                    snapshotId={catalog.snapshot_id}
+                    filterQuery={catalogQuery.toString()}
+                    loadMorePath="/api/v1/catalog/groups"
+                    showProduct
+                  />
+                </div>
+              </>
             )}
           </section>
           <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm /></div></section>

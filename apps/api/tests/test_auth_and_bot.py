@@ -466,6 +466,16 @@ def test_bot_chat_commands(client: TestClient, test_db):
     assert resp_20x.status_code == 200
     assert "Claude Pro 20x" in resp_20x.json()["reply"]
 
+    # B5. Test `cursor` brand aggregation command
+    resp_cursor = client.post("/api/v1/user/notifications/bot/command", json={"text": "cursor"})
+    assert resp_cursor.status_code == 200
+    assert "Cursor 全系列最低报价一览" in resp_cursor.json()["reply"]
+
+    # B6. Test `智谱` brand aggregation command
+    resp_zhipu = client.post("/api/v1/user/notifications/bot/command", json={"text": "智谱"})
+    assert resp_zhipu.status_code == 200
+    assert "智谱 (GLM) 全系列最低报价一览" in resp_zhipu.json()["reply"]
+
     # C. Test `行情` command
     resp_mkt = client.post("/api/v1/user/notifications/bot/command", json={"text": "行情"})
     assert resp_mkt.status_code == 200

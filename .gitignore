@@ -34,7 +34,5 @@ postgres_data/
 *.zip
 *.docx
 ~$*
-# Private extensions and standalone bot integrations (never push to open source)
-extensions/
 private_*/
 .DS_Store

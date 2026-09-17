@@ -2,6 +2,23 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.87] - 2026-09-18
+
+### Added
+- **机器人核心源码开源 (`extensions/`)**:
+  - 正式将 QQ 机器人、Telegram 管理员机器人及扩展组件全量开源至 `extensions/` 目录；
+  - 腾讯 QQ 机器人客户端 (`qq_bot.py`)：支持官方 Open API (C2C 与群聊推送) 与 Node 桥接；
+  - 腾讯免配置扫码 Connector 协议 (`qq_connector.py`)：支持手机 QQ 扫一扫零门槛快速授权与 AES-256-GCM 解密；
+  - 原生 WebSocket 长连接网关 (`qq_gateway.py`)：纯 Python 实现持久化网关监听与实时被动回复；
+  - Telegram 管理员报警客户端 (`telegram_bot.py`)：负责系统价格变动推送与管理指令交互；
+  - 智能比价指令解析引擎 (`chat_commands.py`)：自然语言比价匹配新增 Cursor 与智谱 (GLM) 全系列；
+  - 模块配置与运行说明文档 (`extensions/README.md`)。
+
+### Fixed
+- **商品目录空状态体验优化**:
+  - 优化品牌筛选在当前快照无在售报价时的展示逻辑：移除冗余的虚线空状态卡片，直接优雅展示「监测商品台账」列表与「提交该品牌店铺报价」快捷通道；
+  - `apps/api/app/seed.py` 内置 Cursor Pro、智谱清言会员、智谱 GLM API 与智谱账号基准演示数据。
+
 ## [3.7.86] - 2026-09-17
 
 ### Fixed

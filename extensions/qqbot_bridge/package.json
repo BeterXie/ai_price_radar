@@ -1,0 +1,14 @@
+{
+  "name": "dota-ai-decision-lab-qq-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Optional local install for the harness QQ Bot SDK. On machines with the deepseek-harness qqbot profile the runtime auto-detects that profile instead.",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@tencent-connect/qqbot-connector": "1.2.0",
+    "@tencent-connect/qqbot-nodejs": "1.0.4"
+  }
+}

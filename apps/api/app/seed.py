@@ -54,6 +54,10 @@ DEMO_OFFERS = [
     ("GEMINIX", "双子补给", "Gemini Advanced Google One AI 1个月", "gemini-advanced", "79.00", 6, "in_stock", False, 21),
     ("GROKX", "Grok 补给站", "SuperGrok 代充值 一个月", "grok-super", "159.00", 4, "in_stock", False, 16),
     ("XPREMIUM", "X 会员补给", "X Premium+ 12个月官方直充", "x-premium-plus", "1598.00", 3, "in_stock", False, 12),
+    ("CURSOR01", "Cursor 极客仓", "Cursor Pro 订阅会员 官方代充 1个月", "cursor-pro", "138.00", 8, "in_stock", False, 10),
+    ("ZHIPU01", "智谱官方特约", "智谱清言 会员月卡 官方直充", "zhipu-qingyan-vip", "30.00", 50, "in_stock", True, 8),
+    ("ZHIPU02", "大模型资源仓", "智谱开放平台 GLM-4 50元资源包", "zhipu-api-credit", "48.00", 20, "in_stock", True, 15),
+    ("ZHIPU03", "AI 开发者工坊", "智谱清言 / 开放平台 开发者基础账号", "zhipu-account", "5.00", 100, "in_stock", True, 5),
 ]
 
 
