@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.86] - 2026-09-17
+
+### Fixed
+- **数据管道与目录分类器同步 (Cursor & 智谱)**:
+  - 在 `pipeline/common.py` 数据处理管道中补充 `cursor` 与 `zhipu` 的 `BRAND_MARKERS`、`classify_identity` 映射以及 `ensure_products` 目录定义，使爬取到的 Cursor 与智谱商品能自动归类到对应的商品台账中；
+  - 爬虫调度脚本 `refresh_remote.sh` 补充智谱、清言、GLM 检索关键词；
+  - 优化产品列表 API 与前端展示：当品牌分类下暂无现货报价时，前台优雅展示该品牌下纳入监控的各商品卡片，方便用户直接查看商品详情与订阅降价通知。
+
 ## [3.7.85] - 2026-09-17
 
 ### Added

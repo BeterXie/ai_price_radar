@@ -158,6 +158,8 @@ BRAND_MARKERS = {
     "gemini": ["gemini", "google one ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
     "x": ["x premium", "xpremium", "twitter", "推特"],
+    "cursor": ["cursor"],
+    "zhipu": ["智谱", "智普", "清言", "chatglm", "glm"],
 }
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
 CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
@@ -693,6 +695,18 @@ def classify_identity(
         if contains(identity_text, ["premium", "twitter blue", "推特会员", "蓝v", "蓝标"]):
             return "x-premium", True
         return None, False
+    if brand == "cursor":
+        if contains(identity_text, ["business", "商业", "团队", "企业", "席位", "车位"]):
+            return "cursor-business", True
+        if contains(identity_text, ["pro", "会员", "订阅", "充值", "代充", "月卡", "激活", "额度", "ultra", "日卡"]):
+            return "cursor-pro", True
+        return "cursor-account", False
+    if brand == "zhipu":
+        if contains(identity_text, ["api", "key", "token", "额度", "开放平台", "资源包", "glm-4", "glm4", "glm"]):
+            return "zhipu-api-credit", True
+        if contains(identity_text, ["清言", "会员", "vip", "订阅", "充值", "代充", "包月"]):
+            return "zhipu-qingyan-vip", True
+        return "zhipu-account", False
 
     if contains(identity_text, CHATGPT_API_MARKERS):
         if contains(identity_text, ["中转", "倍率"]):
@@ -896,6 +910,12 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("x-premium-basic", "X", "X Premium Basic", "Basic 订阅与充值", "subscription", "聚合 X Premium Basic 订阅与充值公开报价。"),
         ("x-premium", "X", "X Premium", "Premium 订阅与充值", "subscription", "聚合 X Premium 订阅与充值公开报价。"),
         ("x-premium-plus", "X", "X Premium+", "Premium+ 订阅与充值", "subscription", "聚合 X Premium+ 订阅与充值公开报价。"),
+        ("cursor-pro", "Cursor", "Cursor Pro", "Pro 个人会员订阅", "subscription", "聚合 Cursor Pro 个人订阅与代充公开报价。"),
+        ("cursor-business", "Cursor", "Cursor Business", "Business 团队席位", "subscription", "聚合 Cursor Business 商业版与团队席位公开报价。"),
+        ("cursor-account", "Cursor", "Cursor 账号", "基础账号与访问类商品", "account", "聚合 Cursor 基础账号与新号公开报价。"),
+        ("zhipu-qingyan-vip", "智谱", "智谱清言会员", "清言会员与订阅充值", "subscription", "聚合智谱清言个人会员与权益公开报价。"),
+        ("zhipu-api-credit", "智谱", "智谱 GLM API", "BigModel API 额度与 Key", "api", "聚合智谱开放平台 GLM API 额度与资源包公开报价。"),
+        ("zhipu-account", "智谱", "智谱账号", "基础账号与开发者账号", "account", "聚合智谱清言与开放平台基础账号公开报价。"),
     ]
     existing = {x.slug: x for x in db.scalars(select(Product))}
     for slug, platform, name, subtitle, product_type, description in definitions:

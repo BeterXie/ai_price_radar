@@ -188,6 +188,39 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
               showProduct
             />
             </div>
+            {catalog.items.length === 0 && activeBrand && productTabs.length > 0 && (
+              <div className="mt-6 rounded-2xl border border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-6">
+                <h3 className="text-sm font-semibold text-[color:var(--ink)]">
+                  {activeBrand} 包含的监测商品
+                </h3>
+                <p className="mt-1 text-xs text-[color:var(--muted)]">
+                  当前快照暂无可比现货报价，监控爬虫正在持续扫描相关店铺。点击可查看商品详情、订阅到价提醒或提交新店铺：
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {productTabs.map((tab) => (
+                    <Link
+                      key={tab.slug}
+                      href={`/products/${encodeURIComponent(tab.slug)}`}
+                      className="group flex flex-col justify-between rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm transition hover:border-[color:var(--brand)] hover:shadow-md"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <PlatformIcon platform={activeBrand} size={16} />
+                          <span className="font-semibold group-hover:text-[color:var(--brand)]">{tab.label}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-[color:var(--muted)]">
+                          查看历史报价与到价提醒
+                        </p>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--brand-strong)] font-medium">
+                        <span>进入商品台账 →</span>
+                        <span className="text-[color:var(--muted)] font-normal">监控中</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
           <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm /></div></section>
           <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(catalog.snapshot_at)}</p>

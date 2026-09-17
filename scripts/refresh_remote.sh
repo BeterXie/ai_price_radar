@@ -10,7 +10,7 @@ CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
 MERCHANT_SOURCES="$DATA_DIR/merchant_sources.json"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.pricememo.yml)
 CRAWLER_CONTAINER_NAME="ai-price-radar-crawler-run-${MODE}"
-KEYWORDS=(gpt chatgpt "chatgpt plus" "chatgpt pro" "chatgpt team" "chatgpt business" "openai api" codex claude "claude pro" "claude api" anthropic gemini "gemini advanced" "google one ai" "gemini api" grok supergrok "xai api" "x.ai" cursor windsurf augment "github copilot" 账号 成品号 代充 直充 团队席位 车位 卡密 兑换码 API 额度 中转 自动发货 "open ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
+KEYWORDS=(gpt chatgpt "chatgpt plus" "chatgpt pro" "chatgpt team" "chatgpt business" "openai api" codex claude "claude pro" "claude api" anthropic gemini "gemini advanced" "google one ai" "gemini api" grok supergrok "xai api" "x.ai" cursor windsurf augment "github copilot" "智谱" "智谱清言" "清言" "glm" "chatglm" 账号 成品号 代充 直充 团队席位 车位 卡密 兑换码 API 额度 中转 自动发货 "open ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
 
 cleanup_crawler_container() {
   docker rm -f "$CRAWLER_CONTAINER_NAME" >/dev/null 2>&1 || true

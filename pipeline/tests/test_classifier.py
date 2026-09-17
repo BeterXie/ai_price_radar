@@ -433,3 +433,15 @@ def test_upsert_preserves_full_product_key_and_object_raw_json():
         assert raw.source_product_key == key
         assert raw.raw_json == {"description": "monthly account"}
 
+
+def test_cursor_and_zhipu_classification():
+    assert classify("Cursor Pro 官方代充 1个月").slug == "cursor-pro"
+    assert classify("Cursor Business 商业版 团队席位").slug == "cursor-business"
+    assert classify("Cursor 账号 独享首登成品号").slug == "cursor-account"
+    assert classify("智谱清言 会员连续包月").slug == "zhipu-qingyan-vip"
+    assert classify("智谱 GLM-4 API 额度 Key Token").slug == "zhipu-api-credit"
+    assert classify("智谱账号 开发者账号").slug == "zhipu-account"
+    assert classify("智普清言 会员直充").slug == "zhipu-qingyan-vip"
+    assert classify("智普 GLM API 资源包").slug == "zhipu-api-credit"
+
+

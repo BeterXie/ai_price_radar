@@ -710,6 +710,51 @@ def list_product_cards(
             tags=all_tags[:8],
         ))
 
+    existing_product_slugs = {c.slug for c in cards}
+    has_offer_filters = any([
+        filters.source_platform,
+        filters.delivery_type,
+        filters.service_period,
+        filters.warranty,
+        filters.auto_delivery is not None,
+        filters.updated_within_hours is not None,
+        filters.comparable is not None,
+        filters.exclude,
+        filters.in_stock,
+        filters.min_price is not None,
+        filters.max_price is not None,
+    ])
+    if (platform or product_slug) and not has_offer_filters and not q:
+        product_query = select(Product).where(Product.is_visible.is_(True))
+        if platform:
+            product_query = product_query.where(Product.platform == platform)
+        if product_slug:
+            product_query = product_query.where(Product.slug == product_slug)
+        for prod in db.scalars(product_query):
+            if prod.slug not in existing_product_slugs:
+                cards.append(ProductCard(
+                    slug=prod.slug,
+                    platform=prod.platform,
+                    brand=prod.platform,
+                    display_name=prod.display_name,
+                    subtitle=prod.subtitle,
+                    product_type=prod.product_type,
+                    price_currency=PRICE_CURRENCY,
+                    lowest_price=None,
+                    related_lowest_price=None,
+                    offer_count=0,
+                    in_stock_count=0,
+                    comparable_offer_count=0,
+                    trusted_offer_count=0,
+                    median_price=None,
+                    source_count=0,
+                    data_quality_score=0,
+                    data_quality_label="暂无报价",
+                    official_reference=asdict(reference) if (reference := official_reference_for(prod.slug)) else None,
+                    last_updated_at=None,
+                    tags=[],
+                ))
+
     if sort == "quality":
         cards.sort(key=lambda x: (x.data_quality_score, x.trusted_offer_count, x.source_count, -(x.lowest_price or Decimal("999999"))), reverse=True)
     elif sort == "updated":
