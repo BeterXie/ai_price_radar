@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -356,6 +356,7 @@ def _coupon_to_read(c: ShopCoupon) -> CouponRead:
         code=c.code,
         discount_amount=c.discount_amount,
         min_spend=c.min_spend,
+        shop_id=getattr(c, "shop_id", None),
         shop_name=c.shop_name,
         shop_url=c.shop_url,
         is_assigned=c.is_assigned,
@@ -431,11 +432,21 @@ def redeem_coupon(
                 coupon=None,
             )
 
-        # Find an unassigned coupon from the pool
+        # Find an unassigned coupon from the pool strictly for this shop
         query = select(ShopCoupon).where(
             ShopCoupon.is_assigned.is_(False),
             ShopCoupon.expires_at > now,
         )
+        if campaign.shop_id:
+            query = query.where(ShopCoupon.shop_id == campaign.shop_id)
+        elif campaign.shop_url:
+            query = query.where(
+                or_(
+                    ShopCoupon.shop_url == campaign.shop_url,
+                    ShopCoupon.shop_url.ilike(f"%{campaign.shop_url.strip()}%"),
+                )
+            )
+
         coupon = None
         if campaign.coupon_batch_id > 0:
             coupon = db.scalar(
@@ -444,7 +455,7 @@ def redeem_coupon(
                 .with_for_update(skip_locked=True)
                 .limit(1)
             )
-        # If no specific batch coupon found, fallback to unassigned general coupons
+        # If no specific batch coupon found, fallback to unassigned coupons of the same shop
         if not coupon:
             coupon = db.scalar(
                 query.order_by(ShopCoupon.id.asc())
@@ -452,7 +463,12 @@ def redeem_coupon(
                 .limit(1)
             )
         if not coupon:
-            return CouponClaimResponse(success=False, message="优惠券库存暂时不足，请稍后再试", coupon=None)
+            shop_label = campaign.shop_name or "该店铺"
+            return CouponClaimResponse(
+                success=False,
+                message=f"{shop_label}专属优惠券已被领完或库存不足",
+                coupon=None,
+            )
 
         coupon.is_assigned = True
         coupon.assigned_user_id = current_user.id
@@ -627,7 +643,7 @@ def claim_lucky_drop(
     db.refresh(coupon)
     return CouponClaimResponse(
         success=True,
-        message=f"🎉 恭喜获得彩头AI小铺【{coupon.name}】！已自动存入个人卡包。",
+        message=f"🎉 恭喜获得{coupon.shop_name or '店铺'}【{coupon.name}】！已自动存入个人卡包。",
         coupon=_coupon_to_read(coupon),
     )
 

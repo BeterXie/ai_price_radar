@@ -48,6 +48,10 @@ export function CouponsAdminPanel({
   // Sub-tabs
   const [activeSubTab, setActiveSubTab] = useState<"inventory" | "campaigns">("inventory");
 
+  // Platform shops for coupon/campaign binding
+  const [platformShops, setPlatformShops] = useState<{ id: number; name: string; token: string; source_url: string }[]>([]);
+  const [couponShopFilter, setCouponShopFilter] = useState<string>("all");
+
   // Coupon inventory
   const [coupons, setCoupons] = useState<ShopCoupon[]>([]);
   const [couponTotal, setCouponTotal] = useState(0);
@@ -64,10 +68,12 @@ export function CouponsAdminPanel({
 
   // Modals
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importSelectedShopId, setImportSelectedShopId] = useState<string>("default");
   const [importForm, setImportForm] = useState({
     name: "专享立减券",
     discount_amount: 5,
     min_spend: 15,
+    shop_id: 0,
     shop_name: "彩头AI",
     shop_url: "https://wzyp.cn/shop/pricememo",
     coupon_batch_id: 0,
@@ -83,10 +89,14 @@ export function CouponsAdminPanel({
   const [syncResult, setSyncResult] = useState<AdminCouponImportResponse | null>(null);
 
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
+  const [campaignSelectedShopId, setCampaignSelectedShopId] = useState<string>("");
   const [campaignForm, setCampaignForm] = useState<AdminCampaignCreate & { expires_days: number }>({
     campaign_code: "",
     title: "",
     coupon_batch_id: 0,
+    shop_id: null,
+    shop_name: "",
+    shop_url: "",
     max_per_user: 1,
     total_quota: 100,
     expires_days: 90,
@@ -97,6 +107,30 @@ export function CouponsAdminPanel({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(""), 3500);
+  };
+
+  // Fetch Platform Shops
+  const fetchPlatformShops = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/coupons/shops`, { credentials: "include", headers });
+      if (res.ok) {
+        const data = await res.json();
+        setPlatformShops(data);
+        // If importForm default shop not found, set to first shop or default
+        if (data.length > 0) {
+          const defaultShop = data.find((s: any) => s.token === "pricememo") || data[0];
+          setImportForm((prev) => ({
+            ...prev,
+            shop_id: defaultShop.id,
+            shop_name: defaultShop.name,
+            shop_url: defaultShop.source_url,
+          }));
+          setImportSelectedShopId(defaultShop.id.toString());
+        }
+      }
+    } catch {
+      // ignore
+    }
   };
 
   // Fetch Stats
@@ -159,6 +193,9 @@ export function CouponsAdminPanel({
         page_size: "20",
         status: couponStatus,
       });
+      if (couponShopFilter !== "all") {
+        q.set("shop_id", couponShopFilter);
+      }
       if (couponSearch.trim()) {
         q.set("search", couponSearch.trim());
       }
@@ -200,6 +237,7 @@ export function CouponsAdminPanel({
 
   useEffect(() => {
     fetchStats();
+    fetchPlatformShops();
   }, []);
 
   useEffect(() => {
@@ -208,7 +246,7 @@ export function CouponsAdminPanel({
     } else {
       fetchCampaigns();
     }
-  }, [activeSubTab, couponStatus]);
+  }, [activeSubTab, couponStatus, couponShopFilter]);
 
   // Delete Coupon
   const handleDeleteCoupon = async (id: number) => {
@@ -273,6 +311,7 @@ export function CouponsAdminPanel({
         name: importForm.name,
         discount_amount: Number(importForm.discount_amount),
         min_spend: Number(importForm.min_spend),
+        shop_id: importForm.shop_id > 0 ? importForm.shop_id : null,
         shop_name: importForm.shop_name,
         shop_url: importForm.shop_url,
         coupon_batch_id: Number(importForm.coupon_batch_id || 0),
@@ -353,6 +392,10 @@ export function CouponsAdminPanel({
   // Submit Create Campaign
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!campaignForm.shop_id && !campaignForm.shop_url && !campaignForm.shop_name) {
+      alert("必须选择或输入该活动口令归属的店铺！券是跟着店铺走的。");
+      return;
+    }
     setCreatingCampaign(true);
     try {
       const expiresAt = new Date();
@@ -362,6 +405,9 @@ export function CouponsAdminPanel({
         campaign_code: campaignForm.campaign_code.trim(),
         title: campaignForm.title.trim(),
         coupon_batch_id: Number(campaignForm.coupon_batch_id || 0),
+        shop_id: campaignForm.shop_id || null,
+        shop_name: campaignForm.shop_name || null,
+        shop_url: campaignForm.shop_url || null,
         max_per_user: Number(campaignForm.max_per_user || 1),
         total_quota: Number(campaignForm.total_quota || 100),
         expires_at: expiresAt.toISOString(),
@@ -377,10 +423,14 @@ export function CouponsAdminPanel({
       if (res.ok) {
         showToast("活动口令创建成功");
         setIsCampaignModalOpen(false);
+        setCampaignSelectedShopId("");
         setCampaignForm({
           campaign_code: "",
           title: "",
           coupon_batch_id: 0,
+          shop_id: null,
+          shop_name: "",
+          shop_url: "",
           max_per_user: 1,
           total_quota: 100,
           expires_days: 90,
@@ -724,29 +774,52 @@ export function CouponsAdminPanel({
         <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
           {/* Filter / Search Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line)] bg-[color:var(--panel)] px-5 py-3 text-xs">
-            <div className="flex items-center gap-1.5 overflow-x-auto">
-              {[
-                { id: "all", label: "全部券码" },
-                { id: "unassigned", label: "待领取 / 可用" },
-                { id: "assigned", label: "已领入卡包" },
-                { id: "used", label: "已核销" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setCouponStatus(tab.id as any);
-                    setCouponPage(1);
-                  }}
-                  className={`rounded-lg px-2.5 py-1 font-medium transition ${
-                    couponStatus === tab.id
-                      ? "bg-[color:var(--ink)] text-white"
-                      : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <div className="flex items-center gap-1.5">
+                {[
+                  { id: "all", label: "全部券码" },
+                  { id: "unassigned", label: "待领取 / 可用" },
+                  { id: "assigned", label: "已领入卡包" },
+                  { id: "used", label: "已核销" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setCouponStatus(tab.id as any);
+                      setCouponPage(1);
+                    }}
+                    className={`rounded-lg px-2.5 py-1 font-medium transition ${
+                      couponStatus === tab.id
+                        ? "bg-[color:var(--ink)] text-white"
+                        : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {platformShops.length > 0 && (
+                <div className="flex items-center gap-1 pl-2 border-l border-[color:var(--line)]">
+                  <span className="text-[color:var(--muted)] text-[11px]">店铺:</span>
+                  <select
+                    value={couponShopFilter}
+                    onChange={(e) => {
+                      setCouponShopFilter(e.target.value);
+                      setCouponPage(1);
+                    }}
+                    className="rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-2 py-1 text-xs text-[color:var(--ink)] focus:outline-none"
+                  >
+                    <option value="all">全部店铺</option>
+                    {platformShops.map((s) => (
+                      <option key={s.id} value={s.id.toString()}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <form
@@ -973,6 +1046,7 @@ export function CouponsAdminPanel({
                   <tr className="border-b border-[color:var(--line)] bg-[color:var(--subtle)] text-[color:var(--muted)] font-medium">
                     <th className="px-4 py-3">活动口令</th>
                     <th className="px-4 py-3">活动标题</th>
+                    <th className="px-4 py-3">归属店铺</th>
                     <th className="px-4 py-3">关联券批次 ID</th>
                     <th className="px-4 py-3">单人限领</th>
                     <th className="px-4 py-3">领取进度 / 配额</th>
@@ -1008,6 +1082,27 @@ export function CouponsAdminPanel({
                             </div>
                           </td>
                           <td className="px-4 py-3 font-semibold text-[color:var(--ink)]">{camp.title}</td>
+                          <td className="px-4 py-3">
+                            {camp.shop_name ? (
+                              camp.shop_url ? (
+                                <a
+                                  href={camp.shop_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-500/20 hover:underline"
+                                >
+                                  <span>{camp.shop_name}</span>
+                                  <ArrowSquareOut size={10} className="text-amber-700" />
+                                </a>
+                              ) : (
+                                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-500/20">
+                                  {camp.shop_name}
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-[color:var(--muted)]">未绑定</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 mono text-[color:var(--muted)]">
                             {camp.coupon_batch_id > 0 ? `批次 #${camp.coupon_batch_id}` : "全部未分配可用券"}
                           </td>
@@ -1059,7 +1154,7 @@ export function CouponsAdminPanel({
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-[color:var(--muted)]">
+                      <td colSpan={9} className="py-12 text-center text-[color:var(--muted)]">
                         {loadingCampaigns ? "正在加载口令活动..." : "暂无活动口令，点击右上角新建"}
                       </td>
                     </tr>
@@ -1148,26 +1243,63 @@ export function CouponsAdminPanel({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="space-y-3">
                 <div>
-                  <label className="block font-semibold mb-1 text-[color:var(--ink)]">所属店铺名</label>
-                  <input
-                    type="text"
-                    required
-                    value={importForm.shop_name}
-                    onChange={(e) => setImportForm({ ...importForm, shop_name: e.target.value })}
-                    className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-1.5 focus:outline-none"
-                  />
+                  <label className="block font-semibold mb-1 text-[color:var(--ink)]">
+                    选择归属店铺 (券跟着店铺走)
+                  </label>
+                  <select
+                    value={importSelectedShopId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setImportSelectedShopId(val);
+                      if (val === "custom") {
+                        setImportForm({ ...importForm, shop_id: 0, shop_name: "", shop_url: "" });
+                      } else {
+                        const s = platformShops.find((shop) => shop.id.toString() === val);
+                        if (s) {
+                          setImportForm({
+                            ...importForm,
+                            shop_id: s.id,
+                            shop_name: s.name,
+                            shop_url: s.source_url,
+                          });
+                        }
+                      }
+                    }}
+                    className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-1.5 focus:outline-none text-xs"
+                  >
+                    <option value="">-- 选择已有平台店铺 --</option>
+                    {platformShops.map((s) => (
+                      <option key={s.id} value={s.id.toString()}>
+                        {s.name} ({s.token})
+                      </option>
+                    ))}
+                    <option value="custom">✏️ 手动输入其他新店铺...</option>
+                  </select>
                 </div>
-                <div>
-                  <label className="block font-semibold mb-1 text-[color:var(--ink)]">店铺直达链接</label>
-                  <input
-                    type="url"
-                    required
-                    value={importForm.shop_url}
-                    onChange={(e) => setImportForm({ ...importForm, shop_url: e.target.value })}
-                    className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-1.5 focus:outline-none"
-                  />
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block font-semibold mb-1 text-[color:var(--ink)]">所属店铺名</label>
+                    <input
+                      type="text"
+                      required
+                      value={importForm.shop_name}
+                      onChange={(e) => setImportForm({ ...importForm, shop_name: e.target.value })}
+                      className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-1.5 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-[color:var(--ink)]">店铺直达链接</label>
+                    <input
+                      type="url"
+                      required
+                      value={importForm.shop_url}
+                      onChange={(e) => setImportForm({ ...importForm, shop_url: e.target.value })}
+                      className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-1.5 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1346,6 +1478,65 @@ LDXP-WXYZ-5678
                   onChange={(e) => setCampaignForm({ ...campaignForm, title: e.target.value })}
                   className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold mb-1 text-[color:var(--ink)]">
+                  活动所属店铺 (必选，券跟着店铺走)
+                </label>
+                <select
+                  required
+                  value={campaignSelectedShopId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCampaignSelectedShopId(val);
+                    if (val === "custom") {
+                      setCampaignForm({
+                        ...campaignForm,
+                        shop_id: null,
+                        shop_name: "",
+                        shop_url: "",
+                      });
+                    } else {
+                      const s = platformShops.find((shop) => shop.id.toString() === val);
+                      if (s) {
+                        setCampaignForm({
+                          ...campaignForm,
+                          shop_id: s.id,
+                          shop_name: s.name,
+                          shop_url: s.source_url,
+                        });
+                      }
+                    }
+                  }}
+                  className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2 text-xs focus:outline-none"
+                >
+                  <option value="">-- 请选择活动所属店铺 --</option>
+                  {platformShops.map((s) => (
+                    <option key={s.id} value={s.id.toString()}>
+                      {s.name} ({s.token})
+                    </option>
+                  ))}
+                  <option value="custom">✏️ 手动输入其他店铺...</option>
+                </select>
+                {campaignSelectedShopId === "custom" && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <input
+                      type="text"
+                      placeholder="店铺名称，如 彩头AI"
+                      value={campaignForm.shop_name || ""}
+                      onChange={(e) => setCampaignForm({ ...campaignForm, shop_name: e.target.value })}
+                      className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs focus:outline-none"
+                    />
+                    <input
+                      type="url"
+                      placeholder="店铺链接，如 https://wzyp.cn/shop/..."
+                      value={campaignForm.shop_url || ""}
+                      onChange={(e) => setCampaignForm({ ...campaignForm, shop_url: e.target.value })}
+                      className="w-full rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--surface)] px-2.5 py-1.5 text-xs focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

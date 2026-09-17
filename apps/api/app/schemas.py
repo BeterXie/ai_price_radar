@@ -903,6 +903,7 @@ class CouponRead(BaseModel):
     min_spend: Decimal
     shop_name: str
     shop_url: str
+    shop_id: int | None = None
     is_assigned: bool
     assigned_at: datetime | None = None
     expires_at: datetime
@@ -932,6 +933,9 @@ class CampaignRead(BaseModel):
     campaign_code: str
     title: str
     coupon_batch_id: int
+    shop_id: int | None = None
+    shop_url: str | None = None
+    shop_name: str | None = None
     max_per_user: int
     total_quota: int
     claimed_count: int
@@ -973,6 +977,7 @@ class AdminCouponImportRequest(BaseModel):
     expires_at: datetime | None = None
     shop_name: str = "彩头AI"
     shop_url: str = "https://wzyp.cn/shop/pricememo"
+    shop_id: int | None = None
     coupon_batch_id: int = 0
     codes_text: str = Field(min_length=1)
 
@@ -995,6 +1000,9 @@ class AdminCampaignCreate(BaseModel):
     campaign_code: str = Field(min_length=2, max_length=64)
     title: str = Field(min_length=2, max_length=120)
     coupon_batch_id: int = 0
+    shop_id: int | None = None
+    shop_url: str | None = None
+    shop_name: str | None = None
     max_per_user: int = 1
     total_quota: int = 100
     expires_at: datetime | None = None

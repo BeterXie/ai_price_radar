@@ -464,6 +464,7 @@ class ShopCoupon(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     coupon_batch_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
     campaign_id: Mapped[int | None] = mapped_column(ForeignKey("coupon_campaigns.id", ondelete="SET NULL"), nullable=True, index=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
@@ -479,6 +480,7 @@ class ShopCoupon(Base):
 
     assigned_user: Mapped[User | None] = relationship(back_populates="coupons")
     campaign: Mapped[CouponCampaign | None] = relationship()
+    shop: Mapped[Shop | None] = relationship()
 
 
 class CouponCampaign(Base):
@@ -488,12 +490,17 @@ class CouponCampaign(Base):
     campaign_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(120))
     coupon_batch_id: Mapped[int] = mapped_column(Integer, default=0)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id", ondelete="SET NULL"), nullable=True, index=True)
+    shop_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shop_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     max_per_user: Mapped[int] = mapped_column(Integer, default=1)
     total_quota: Mapped[int] = mapped_column(Integer, default=100)
     claimed_count: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    shop: Mapped[Shop | None] = relationship()
 
 
 class OfferClick(Base):

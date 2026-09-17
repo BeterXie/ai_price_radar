@@ -1108,6 +1108,7 @@ def _admin_coupon_to_read(c: ShopCoupon) -> CouponRead:
         code=c.code,
         discount_amount=c.discount_amount,
         min_spend=c.min_spend,
+        shop_id=getattr(c, "shop_id", None),
         shop_name=c.shop_name,
         shop_url=c.shop_url,
         is_assigned=c.is_assigned,
@@ -1126,6 +1127,9 @@ def _admin_campaign_to_read(c: CouponCampaign) -> CampaignRead:
         campaign_code=c.campaign_code,
         title=c.title,
         coupon_batch_id=c.coupon_batch_id,
+        shop_id=getattr(c, "shop_id", None),
+        shop_url=getattr(c, "shop_url", None),
+        shop_name=getattr(c, "shop_name", None),
         max_per_user=c.max_per_user,
         total_quota=c.total_quota,
         claimed_count=c.claimed_count,
@@ -1178,11 +1182,31 @@ def admin_update_coupon_settings(
     return _get_coupon_stats(db)
 
 
+@router.get("/coupons/shops")
+def admin_list_coupon_shops(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Return platform shops for coupon importing and campaign binding."""
+    shops = db.scalars(
+        select(Shop)
+        .where(Shop.is_visible.is_(True))
+        .order_by(Shop.name.asc(), Shop.id.asc())
+    ).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name or s.token,
+            "token": s.token,
+            "source_url": s.source_url,
+        }
+        for s in shops
+    ]
+
+
 @router.get("/coupons", response_model=AdminCouponPageOut)
 def admin_list_coupons(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     status: str = Query(default="all"),
+    shop_id: int | None = Query(default=None),
     search: str = Query(default=""),
     db: Session = Depends(get_db),
 ) -> AdminCouponPageOut:
@@ -1194,9 +1218,12 @@ def admin_list_coupons(
     elif status == "used":
         stmt = stmt.where(ShopCoupon.is_used.is_(True))
 
+    if shop_id is not None:
+        stmt = stmt.where(ShopCoupon.shop_id == shop_id)
+
     if search.strip():
         term = f"%{search.strip()}%"
-        stmt = stmt.where(or_(ShopCoupon.code.ilike(term), ShopCoupon.name.ilike(term)))
+        stmt = stmt.where(or_(ShopCoupon.code.ilike(term), ShopCoupon.name.ilike(term), ShopCoupon.shop_name.ilike(term)))
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     items = db.scalars(
@@ -1213,6 +1240,31 @@ def admin_list_coupons(
     )
 
 
+def _resolve_shop(
+    db: Session,
+    shop_id: int | None = None,
+    shop_url: str | None = None,
+    shop_name: str | None = None,
+) -> tuple[int | None, str, str]:
+    """Helper to match a platform shop by id, url, token, or name."""
+    shop = None
+    if shop_id:
+        shop = db.get(Shop, shop_id)
+    if not shop and shop_url:
+        cleaned_url = shop_url.strip()
+        shop = db.scalar(select(Shop).where(Shop.source_url == cleaned_url))
+        if not shop:
+            token_cand = cleaned_url.rstrip("/").split("/")[-1]
+            shop = db.scalar(select(Shop).where(or_(Shop.token == token_cand, Shop.token == cleaned_url)))
+    if not shop and shop_name:
+        shop = db.scalar(select(Shop).where(Shop.name == shop_name.strip()))
+
+    final_id = shop.id if shop else shop_id
+    final_name = (shop.name if shop and shop.name else (shop_name or "")).strip()
+    final_url = (shop.source_url if shop and shop.source_url else (shop_url or "")).strip()
+    return final_id, final_name, final_url
+
+
 @router.post("/coupons/import", response_model=AdminCouponImportResponse)
 def admin_import_coupons(
     payload: AdminCouponImportRequest,
@@ -1225,6 +1277,13 @@ def admin_import_coupons(
 
     now = datetime.now(timezone.utc)
     expires_at = payload.expires_at or (now + timedelta(days=30))
+
+    resolved_shop_id, resolved_shop_name, resolved_shop_url = _resolve_shop(
+        db,
+        shop_id=payload.shop_id,
+        shop_url=payload.shop_url,
+        shop_name=payload.shop_name,
+    )
 
     # Query existing codes in set
     existing_codes = set(
@@ -1246,8 +1305,9 @@ def admin_import_coupons(
             code=code,
             discount_amount=payload.discount_amount,
             min_spend=payload.min_spend,
-            shop_name=payload.shop_name.strip(),
-            shop_url=payload.shop_url.strip(),
+            shop_id=resolved_shop_id,
+            shop_name=resolved_shop_name or "专属店铺",
+            shop_url=resolved_shop_url,
             is_assigned=False,
             expires_at=expires_at,
         )
@@ -1255,11 +1315,12 @@ def admin_import_coupons(
         imported += 1
 
     db.commit()
+    shop_title = resolved_shop_name or "指定店铺"
     return AdminCouponImportResponse(
         success=True,
         imported_count=imported,
         skipped_count=skipped,
-        message=f"成功导入 {imported} 张券码，跳过 {skipped} 张重复券码",
+        message=f"成功为【{shop_title}】导入 {imported} 张券码，跳过 {skipped} 张重复券码",
     )
 
 
@@ -1273,6 +1334,12 @@ def admin_sync_ldxp_coupons(
         batches = _fetch_ldxp_batches(use_token)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"调用 LDXP 接口失败: {e}")
+
+    # Auto-resolve shop for LDXP
+    matched_shop = db.scalar(select(Shop).where(Shop.token == "pricememo"))
+    ldxp_shop_id = matched_shop.id if matched_shop else None
+    ldxp_shop_name = matched_shop.name if matched_shop else "彩头AI"
+    ldxp_shop_url = matched_shop.source_url if matched_shop else "https://wzyp.cn/shop/pricememo"
 
     imported = 0
     skipped = 0
@@ -1300,6 +1367,8 @@ def admin_sync_ldxp_coupons(
                 if item.get("status") == 1 and not existing.is_used:
                     existing.is_used = True
                     reconciled_used += 1
+                if existing.shop_id is None and ldxp_shop_id:
+                    existing.shop_id = ldxp_shop_id
                 skipped += 1
                 continue
 
@@ -1309,8 +1378,9 @@ def admin_sync_ldxp_coupons(
                 code=code_str,
                 discount_amount=discount,
                 min_spend=min_spend,
-                shop_name="彩头AI",
-                shop_url="https://wzyp.cn/shop/pricememo",
+                shop_id=ldxp_shop_id,
+                shop_name=ldxp_shop_name,
+                shop_url=ldxp_shop_url,
                 is_assigned=False,
                 expires_at=expires_at,
                 is_used=bool(item.get("status") == 1),
@@ -1362,10 +1432,20 @@ def admin_create_campaign(
     now = datetime.now(timezone.utc)
     expires_at = payload.expires_at or (now + timedelta(days=90))
 
+    resolved_shop_id, resolved_shop_name, resolved_shop_url = _resolve_shop(
+        db,
+        shop_id=payload.shop_id,
+        shop_url=payload.shop_url,
+        shop_name=payload.shop_name,
+    )
+
     campaign = CouponCampaign(
         campaign_code=code,
         title=payload.title.strip(),
         coupon_batch_id=payload.coupon_batch_id,
+        shop_id=resolved_shop_id,
+        shop_name=resolved_shop_name or None,
+        shop_url=resolved_shop_url or None,
         max_per_user=payload.max_per_user,
         total_quota=payload.total_quota,
         claimed_count=0,

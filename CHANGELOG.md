@@ -2,6 +2,18 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.84] - 2026-09-17
+
+### Added
+- **店铺专属优惠券绑定体系（券跟着店铺走）**:
+  - `ShopCoupon` 数据表新增 `shop_id` 外键与索引，`CouponCampaign` 新增 `shop_id`、`shop_url`、`shop_name` 字段与索引；
+  - 提供数据库双引擎迁移脚本 `scripts/migrate_coupon_shop_binding_v19.py`，自动回填现有券与活动为对应店铺专属；
+  - 后台批量导入券码支持选择已有平台店铺或录入店铺直达链接，自动匹配关联平台店铺并绑定店铺信息；
+  - 链动小铺（LDXP）一键同步自动绑定彩头AI官方店铺信息；
+  - 营销口令活动（Campaign）强制绑定所属店铺，活动仅发放该特定店铺的立减券；
+  - 口令兑换（`/api/v1/user/coupons/redeem`）严格按活动绑定的店铺范围发放券码，杜绝跨店铺滥发或挪用其他商家优惠券；
+  - 后台控制面板券码明细支持按“全部店铺 / 具体店铺”快速筛选，口令列表与券码明细增加直观的店铺徽章与直达链接。
+
 ## [3.7.83] - 2026-09-17
 
 ### Fixed

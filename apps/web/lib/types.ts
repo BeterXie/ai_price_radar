@@ -375,6 +375,7 @@ export type ShopCoupon = {
   code: string;
   discount_amount: number | string;
   min_spend: number | string;
+  shop_id?: number | null;
   shop_name: string;
   shop_url: string;
   is_assigned: boolean;
@@ -382,6 +383,8 @@ export type ShopCoupon = {
   expires_at: string;
   is_used: boolean;
   created_at: string;
+  coupon_batch_id?: number;
+  campaign_id?: number | null;
 };
 
 export type UserCouponListOut = {
@@ -426,6 +429,7 @@ export type AdminCouponImportRequest = {
   discount_amount: number;
   min_spend: number;
   expires_at?: string | null;
+  shop_id?: number | null;
   shop_name: string;
   shop_url: string;
   coupon_batch_id: number;
@@ -451,6 +455,9 @@ export type CampaignRead = {
   campaign_code: string;
   title: string;
   coupon_batch_id: number;
+  shop_id?: number | null;
+  shop_url?: string | null;
+  shop_name?: string | null;
   max_per_user: number;
   total_quota: number;
   claimed_count: number;
@@ -463,6 +470,9 @@ export type AdminCampaignCreate = {
   campaign_code: string;
   title: string;
   coupon_batch_id: number;
+  shop_id?: number | null;
+  shop_url?: string | null;
+  shop_name?: string | null;
   max_per_user: number;
   total_quota: number;
   expires_at?: string | null;
