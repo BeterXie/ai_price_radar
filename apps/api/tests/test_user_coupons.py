@@ -332,6 +332,7 @@ def test_admin_coupon_management(client: TestClient, test_db):
         camp_payload = {
             "campaign_code": "RADAR999",
             "title": "测试活动口令",
+            "shop_url": "https://wzyp.cn/shop/pricememo",
             "max_per_user": 1,
             "total_quota": 50,
         }

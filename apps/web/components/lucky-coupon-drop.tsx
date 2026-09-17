@@ -32,16 +32,28 @@ export function LuckyCouponDrop() {
   const [isSuccess, setIsSuccess] = useState<boolean | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
 
+    // Disabled paths must not render the overlay at all, and navigating to one
+    // has to tear down anything already on screen (an early return alone would
+    // leave the floating widget covering the account/admin page).
+    const isDisabledPath =
+      pathname.startsWith("/admin") || pathname.startsWith("/account");
+    if (isDisabledPath) {
+      setVisible(false);
+      setModalOpen(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function checkDrop() {
       try {
         if (typeof window === "undefined") return;
-        // Do not display on admin or account pages
-        if (pathname.startsWith("/admin") || pathname.startsWith("/account")) return;
 
         const lastDismissed = localStorage.getItem(STORAGE_KEY_DISMISSED);
         if (lastDismissed) {
@@ -121,10 +133,18 @@ export function LuckyCouponDrop() {
     }
   };
 
-  const handleCopy = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  const handleCopy = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setCopyFailed(false);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Clipboard permission can be denied; tell the user to copy manually
+      // instead of falsely reporting success.
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 4000);
+    }
   };
 
   if (!visible) return null;
@@ -160,10 +180,10 @@ export function LuckyCouponDrop() {
               <div className="pr-1">
                 <div className="flex items-center gap-1 text-[11px] font-bold text-amber-700">
                   <Sparkle size={12} weight="fill" />
-                  <span>彩头AI · 店铺立减券</span>
+                  <span>店铺立减券掉落中</span>
                 </div>
                 <p className="text-xs font-semibold text-[color:var(--ink)] leading-snug">
-                  发现满 15 减 5 元立减券！
+                  发现店铺立减券，点击查看！
                 </p>
               </div>
             </button>
@@ -191,7 +211,7 @@ export function LuckyCouponDrop() {
             <div className="flex items-start justify-between gap-3">
               <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-800">
                 <Gift size={14} weight="fill" />
-                <span>比价锦鲤福利 · 彩头AI直营小铺</span>
+                <span>比价锦鲤福利 · 合作店铺立减券</span>
               </div>
               <button
                 type="button"
@@ -205,10 +225,10 @@ export function LuckyCouponDrop() {
 
             <div>
               <h3 className="text-xl font-extrabold text-[color:var(--ink)] tracking-tight">
-                🎉 触发店铺专享满减券！
+                🎉 触发店铺立减券！
               </h3>
               <p className="text-xs text-[color:var(--muted)] mt-1 leading-relaxed">
-                感谢您对 Price Radar 的支持，彩头AI官方店铺为您提供独家立减优惠，购买即刻享受折扣。
+                感谢您对 Price Radar 的支持。领取后即可获得一张合作店铺的立减优惠券，具体店铺与面额以领取结果为准。
               </p>
             </div>
 
@@ -225,6 +245,11 @@ export function LuckyCouponDrop() {
                       </span>
                     </div>
                     <p className="text-xs font-bold text-[color:var(--ink)] mt-1">{claimedCoupon.name}</p>
+                    {claimedCoupon.shop_name && (
+                      <p className="text-[11px] text-[color:var(--muted)] mt-0.5">
+                        适用店铺：{claimedCoupon.shop_name}
+                      </p>
+                    )}
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 font-semibold">
                     已存入卡包
@@ -242,8 +267,16 @@ export function LuckyCouponDrop() {
                       onClick={() => handleCopy(claimedCoupon.code)}
                       className="button-secondary tactile p-1.5 rounded-lg text-xs hover:text-amber-700 inline-flex items-center gap-1"
                     >
-                      {copied ? <Check size={14} className="text-emerald-700" weight="bold" /> : <Copy size={14} />}
-                      <span className="text-[11px]">{copied ? "已复制" : "复制"}</span>
+                      {copied ? (
+                        <Check size={14} className="text-emerald-700" weight="bold" />
+                      ) : copyFailed ? (
+                        <WarningCircle size={14} className="text-rose-700" weight="fill" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                      <span className="text-[11px]">
+                        {copied ? "已复制" : copyFailed ? "请手动复制" : "复制"}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -256,15 +289,17 @@ export function LuckyCouponDrop() {
                 </div>
               </div>
             ) : (
-              /* Voucher Banner before claim */
+              /* Voucher banner before claim. The claim endpoint draws from the
+                 pool of unassigned coupons, so no fixed shop or amount is
+                 promised here — the details come back with the claim result. */
               <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg shrink-0">
-                    ¥5
+                    <Gift size={22} weight="fill" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-[color:var(--ink)]">满 15 元立减 5 元券</h4>
-                    <p className="text-[11px] text-[color:var(--muted)] mt-0.5">全店商品可用 · 限量领取</p>
+                    <h4 className="text-sm font-bold text-[color:var(--ink)]">店铺立减券（随机掉落）</h4>
+                    <p className="text-[11px] text-[color:var(--muted)] mt-0.5">面额与适用店铺以领取结果为准 · 限量领取</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -313,7 +348,7 @@ export function LuckyCouponDrop() {
                     rel="noreferrer"
                     className="button-primary tactile flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 text-center"
                   >
-                    <span>去彩头AI店铺下单</span>
+                    <span>去 {claimedCoupon.shop_name || "合作店铺"} 下单</span>
                     <ArrowSquareOut size={15} />
                   </a>
                   <button

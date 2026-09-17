@@ -33,6 +33,28 @@ class TelegramBotClient:
     def is_configured(self) -> bool:
         return bool(self.token and self.admin_chat_id)
 
+    def _payloads(self, text: str, parse_mode: str) -> list[dict[str, Any]]:
+        """Build one or more sendMessage payloads.
+
+        Telegram rejects any single message whose entities exceed 4096 chars, so
+        longer HTML reports are split on line boundaries with tags kept intact.
+        """
+        if parse_mode and parse_mode.upper() == "HTML":
+            from .formatter import split_telegram_html
+
+            chunks = split_telegram_html(text, limit=4000)
+        else:
+            chunks = [text]
+        return [
+            {
+                "chat_id": self.admin_chat_id,
+                "text": chunk,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": True,
+            }
+            for chunk in chunks
+        ]
+
     def send_admin_message(self, text: str, parse_mode: str = "HTML") -> bool:
         """Send message to administrator via sync HTTP request."""
         if not self.is_configured:
@@ -40,21 +62,17 @@ class TelegramBotClient:
             return False
 
         url = f"{self.base_url}/bot{self.token}/sendMessage"
-        payload = {
-            "chat_id": self.admin_chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-            "disable_web_page_preview": True,
-        }
-
+        all_ok = True
         try:
             with httpx.Client(timeout=self.timeout_seconds, proxy=self.proxy) as client:
-                resp = client.post(url, json=payload)
-                if resp.status_code == 200:
-                    logger.info("Telegram admin notification delivered successfully")
-                    return True
-                logger.error("Telegram API returned error %d: %s", resp.status_code, resp.text)
-                return False
+                for payload in self._payloads(text, parse_mode):
+                    resp = client.post(url, json=payload)
+                    if resp.status_code != 200:
+                        logger.error("Telegram API returned error %d: %s", resp.status_code, resp.text)
+                        all_ok = False
+            if all_ok:
+                logger.info("Telegram admin notification delivered successfully")
+            return all_ok
         except Exception as exc:
             logger.error("Failed to send Telegram notification: %s", exc)
             return False
@@ -66,21 +84,17 @@ class TelegramBotClient:
             return False
 
         url = f"{self.base_url}/bot{self.token}/sendMessage"
-        payload = {
-            "chat_id": self.admin_chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-            "disable_web_page_preview": True,
-        }
-
+        all_ok = True
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds, proxy=self.proxy) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    logger.info("Telegram admin notification delivered successfully (async)")
-                    return True
-                logger.error("Telegram API returned error %d: %s", resp.status_code, resp.text)
-                return False
+                for payload in self._payloads(text, parse_mode):
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code != 200:
+                        logger.error("Telegram API returned error %d: %s", resp.status_code, resp.text)
+                        all_ok = False
+            if all_ok:
+                logger.info("Telegram admin notification delivered successfully (async)")
+            return all_ok
         except Exception as exc:
             logger.error("Failed to send Telegram notification (async): %s", exc)
             return False

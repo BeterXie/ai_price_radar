@@ -71,6 +71,16 @@ def client(test_db):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def mock_auth(monkeypatch):
+    """Enable the dev-only mock QQ auth (QQ_MOCK_AUTH_ENABLED) for a test."""
+    monkeypatch.setenv("QQ_MOCK_AUTH_ENABLED", "true")
+    get_settings.cache_clear()
+    yield True
+    monkeypatch.delenv("QQ_MOCK_AUTH_ENABLED", raising=False)
+    get_settings.cache_clear()
+
+
 def test_email_login_flow(client: TestClient, test_db):
     email = "testuser@example.com"
 
@@ -131,7 +141,7 @@ def test_email_login_flow(client: TestClient, test_db):
     assert me_after.json()["authenticated"] is False
 
 
-def test_qq_mock_oauth_callback(client: TestClient, test_db):
+def test_qq_mock_oauth_callback(client: TestClient, test_db, mock_auth):
     resp = client.get("/api/v1/auth/qq/callback?mock=true", follow_redirects=False)
     assert resp.status_code == 303
     assert "/account?login_success=1" in resp.headers["location"]
@@ -143,6 +153,16 @@ def test_qq_mock_oauth_callback(client: TestClient, test_db):
     assert me.status_code == 200
     assert me.json()["authenticated"] is True
     assert me.json()["user"]["has_qq_bound"] is True
+
+
+def test_qq_mock_auth_disabled_by_default(client: TestClient, test_db):
+    """Without QQ_MOCK_AUTH_ENABLED the mock callback must fail closed."""
+    resp = client.get("/api/v1/auth/qq/callback?mock=true", follow_redirects=False)
+    assert resp.status_code == 303
+    assert "/?auth_error=qq_disabled" in resp.headers["location"]
+
+    scan_resp = client.get("/api/v1/auth/qq/scan-mock?session_id=whatever")
+    assert scan_resp.status_code == 404
 
 
 def test_user_center_and_qq_bot_binding(client: TestClient, test_db):
@@ -253,7 +273,7 @@ def test_price_change_event_and_formatter():
     dispatch_price_changes([drop_evt, hike_evt])
 
 
-def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db):
+def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db, mock_auth):
     # 1. Login user with QQ
     cb_resp = client.get("/api/v1/auth/qq/callback?mock=true", follow_redirects=False)
     assert cb_resp.status_code == 303
@@ -304,6 +324,14 @@ def test_bot_chat_commands(client: TestClient, test_db):
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
+
+    # 0. Login: command identity is derived from the authenticated user's
+    # binding; payload.sender_id is ignored by the endpoint.
+    bot_email = "botchat@example.com"
+    client.post("/api/v1/auth/email/code", json={"email": bot_email})
+    login_code = test_db.query(AuthCode).filter_by(email=bot_email).first().code
+    verify_resp = client.post("/api/v1/auth/email/verify", json={"email": bot_email, "code": login_code})
+    assert verify_resp.status_code == 200
 
     # 1. Snapshot
     snap = CatalogSnapshot(id=1, source="test", offer_count=3, published_at=now)
@@ -489,10 +517,10 @@ def test_bot_chat_commands(client: TestClient, test_db):
     assert "常用指令" in resp_help.json()["reply"]
 
     # E. Test User Binding & Preference commands
-    user = User(id=10, email="botpref@example.com", nickname="测试小哥")
-    test_db.add(user)
+    chat_user = test_db.query(User).filter_by(email=bot_email).first()
+    assert chat_user is not None
     binding = UserBotBinding(
-        user_id=user.id,
+        user_id=chat_user.id,
         channel="qq",
         target_id="qq_test_user_777",
         is_active=True,
@@ -502,10 +530,10 @@ def test_bot_chat_commands(client: TestClient, test_db):
     test_db.add(binding)
     test_db.commit()
 
-    # Send "我的"
+    # Send "我的" (no sender_id: identity comes from the logged-in user's binding)
     resp_my = client.post(
         "/api/v1/user/notifications/bot/command",
-        json={"text": "我的", "sender_id": "qq_test_user_777"},
+        json={"text": "我的"},
     )
     assert resp_my.status_code == 200
     assert "推送总状态: 🟢 开启中" in resp_my.json()["reply"]
@@ -513,7 +541,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     # Send "暂停推送"
     resp_pause = client.post(
         "/api/v1/user/notifications/bot/command",
-        json={"text": "暂停推送", "sender_id": "qq_test_user_777"},
+        json={"text": "暂停推送"},
     )
     assert "已为您暂停全部消息推送" in resp_pause.json()["reply"]
     test_db.refresh(binding)
@@ -522,7 +550,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     # Send "恢复推送"
     resp_resume = client.post(
         "/api/v1/user/notifications/bot/command",
-        json={"text": "恢复推送", "sender_id": "qq_test_user_777"},
+        json={"text": "恢复推送"},
     )
     assert "已为您恢复消息推送" in resp_resume.json()["reply"]
     test_db.refresh(binding)
@@ -531,7 +559,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     # Send "关闭降价"
     resp_drop_off = client.post(
         "/api/v1/user/notifications/bot/command",
-        json={"text": "关闭降价", "sender_id": "qq_test_user_777"},
+        json={"text": "关闭降价"},
     )
     assert "已关闭【降价通知】" in resp_drop_off.json()["reply"]
     test_db.refresh(binding)
@@ -540,22 +568,24 @@ def test_bot_chat_commands(client: TestClient, test_db):
     # Send "开启降价"
     resp_drop_on = client.post(
         "/api/v1/user/notifications/bot/command",
-        json={"text": "开启降价", "sender_id": "qq_test_user_777"},
+        json={"text": "开启降价"},
     )
     assert "已开启【降价通知】" in resp_drop_on.json()["reply"]
     test_db.refresh(binding)
     assert binding.notify_price_drop is True
 
-    # F. Test In-chat /bind command
-    start_res = start_qq_binding_session(user.id)
+    # F. Test In-chat /bind command: the sender identity is the logged-in
+    # user's own binding target, so /bind rebinds their own session to it.
+    start_res = start_qq_binding_session(chat_user.id)
     bind_code = start_res["bind_code"]
     resp_bind = client.post(
         "/api/v1/user/notifications/bot/command",
-        json={"text": f"/bind {bind_code}", "sender_id": "qq_chat_888888"},
+        json={"text": f"/bind {bind_code}"},
     )
     assert "绑定成功" in resp_bind.json()["reply"]
     test_db.refresh(binding)
-    assert binding.target_id == "qq_chat_888888"
+    assert binding.is_active is True
+    assert binding.target_id == "qq_test_user_777"
 
     # G. Test "降价" command with price history
     h1 = OfferHistory(offer_id=off1.id, price=Decimal("140.00"), stock_count=10, observed_at=now)
@@ -627,7 +657,7 @@ def test_qq_login_endpoint_disabled_when_not_configured(client: TestClient):
     assert "暂未开放" in resp.json()["detail"]
 
 
-def test_qq_connector_protocol():
+def test_qq_connector_protocol(monkeypatch):
     try:
         from extensions.bots.qq_connector import QQConnectorClient
     except ImportError:
@@ -635,18 +665,92 @@ def test_qq_connector_protocol():
     import secrets, base64
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+    # Offline stand-in for the Tencent connector endpoints so CI never hits
+    # the real network (offline runs, throttling or outages must not fail tests).
+    state: dict = {}
+
+    class _Resp:
+        def __init__(self, payload):
+            self.status_code = 200
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class _FakeConnectorHttp:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def post(self, url, json=None, headers=None):
+            if "create_bind_task" in url:
+                state["key"] = json["key"]
+                return _Resp({"retcode": 0, "data": {"task_id": "task-123"}})
+            if "poll_bind_result" in url:
+                state["polls"] = state.get("polls", 0) + 1
+                if state.get("corrupt"):
+                    return _Resp(
+                        {
+                            "retcode": 0,
+                            "data": {
+                                "status": 2,
+                                "bot_appid": "102030405",
+                                "bot_encrypt_secret": "bm90LXZhbGlkLWNpcGhlcnRleHQ=",
+                                "user_openid": "openid-test-abc",
+                            },
+                        }
+                    )
+                if state["polls"] == 1:
+                    return _Resp({"retcode": 0, "data": {"status": 1}})
+                raw_key = base64.b64decode(state["key"])
+                aes = AESGCM(raw_key)
+                nonce = secrets.token_bytes(12)
+                ct = aes.encrypt(nonce, b"qq_app_secret_test_987654321", None)
+                encrypted = base64.b64encode(nonce + ct).decode("ascii")
+                return _Resp(
+                    {
+                        "retcode": 0,
+                        "data": {
+                            "status": 2,
+                            "bot_appid": "102030405",
+                            "bot_encrypt_secret": encrypted,
+                            "user_openid": "openid-test-abc",
+                        },
+                    }
+                )
+            raise AssertionError(f"unexpected connector url: {url}")
+
+    monkeypatch.setattr("extensions.bots.qq_connector.httpx.Client", _FakeConnectorHttp)
+
     connector = QQConnectorClient()
     # 1. Test starting bind task
     res = connector.start_bind_task()
-    assert res.get("task_id")
+    assert res.get("task_id") == "task-123"
     assert res.get("key")
     assert "q.qq.com/qqbot/openclaw/connect.html" in res.get("qrcode_url", "")
 
-    # 2. Test polling bind task
+    # 2. Test polling bind task (pending -> completed with decrypted secret)
     poll_res = connector.poll_bind_task(res["task_id"], res["key"])
     assert poll_res.get("status") == "PENDING"
 
-    # 3. Test AES-256-GCM decryption
+    poll_done = connector.poll_bind_task(res["task_id"], res["key"])
+    assert poll_done.get("status") == "COMPLETED"
+    assert poll_done.get("app_id") == "102030405"
+    assert poll_done.get("app_secret") == "qq_app_secret_test_987654321"
+    assert poll_done.get("user_openid") == "openid-test-abc"
+
+    # 3. A corrupted secret must surface ERROR, never COMPLETED with empty credentials
+    state["corrupt"] = True
+    poll_corrupt = connector.poll_bind_task(res["task_id"], res["key"])
+    assert poll_corrupt.get("status") == "ERROR"
+    assert "app_secret" not in poll_corrupt
+
+    # 4. Test AES-256-GCM decryption directly
     raw_key = secrets.token_bytes(32)
     key_b64 = base64.b64encode(raw_key).decode("ascii")
     aes = AESGCM(raw_key)

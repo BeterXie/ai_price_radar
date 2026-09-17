@@ -378,7 +378,13 @@ def query_lowest_price(db: Session, raw_query: str) -> str:
         msg = f"📦【{matched_product.display_name}】当前暂无可比且库存 > 1 的现货报价。\n"
         if any_public_offer:
             msg += "（部分低价店铺目前仅剩1件或暂时售罄）\n"
-        msg += f"💡 已为您关注，一旦有货或降价将自动通知！\n🔗 官网实时监控: {SITE_BASE_URL}/products/{matched_product.slug}"
+        # Do not claim a subscription was created here: this path has no user
+        # identity, so point the user at the place that can actually subscribe.
+        msg += (
+            f"🔔 想在有货或降价时收到通知？请到官网关注该商品：\n"
+            f"   {SITE_BASE_URL}/products/{matched_product.slug}\n"
+            f"🔗 官网实时监控: {SITE_BASE_URL}/products/{matched_product.slug}"
+        )
         return msg
 
     best_offer, best_shop = offers_with_shop[0]
@@ -828,7 +834,9 @@ def handle_chat_command(
             return toggle_user_preference(session, sender_id, text, channel)
 
     # 7. Search prefix (e.g. 查 plus, 搜 claude, 价格 gpt)
-    search_match = re.match(r"^(?:查|搜|找|查询|搜索|价格|比价)\s*(.+)$", text, re.IGNORECASE)
+    # Longer prefixes must come first, otherwise "查询 plus" would match "查"
+    # and leave the query term as "询 plus".
+    search_match = re.match(r"^(?:查询|搜索|价格|比价|查|搜|找)\s*(.+)$", text, re.IGNORECASE)
     query_term = search_match.group(1).strip() if search_match else text
 
     # 8. Check brand queries first (e.g. claude, openai, chatgpt, gemini, grok)

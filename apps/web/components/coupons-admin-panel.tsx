@@ -205,6 +205,16 @@ export function CouponsAdminPanel({
       });
       if (res.ok) {
         const data: AdminCouponPageOut = await res.json();
+        // Deleting the last row of the last page leaves the fetch on an empty
+        // page; fall back to the new last page instead of showing nothing.
+        if (data.items.length === 0 && data.total > 0 && page > 1) {
+          const lastPage = Math.max(1, Math.ceil(data.total / (data.page_size || 50)));
+          if (lastPage !== page) {
+            setLoadingCoupons(false);
+            await fetchCoupons(Math.min(page, lastPage));
+            return;
+          }
+        }
         setCoupons(data.items);
         setCouponTotal(data.total);
         setCouponPage(data.page);
@@ -301,6 +311,26 @@ export function CouponsAdminPanel({
   // Submit Import
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Coupons without a resolvable shop fall into the site-wide pool on
+    // redemption, so require either a platform shop or a valid link.
+    if (!importForm.shop_id && !importForm.shop_url?.trim()) {
+      setImportResult({
+        success: false,
+        imported_count: 0,
+        skipped_count: 0,
+        message: "请选择平台店铺，或填写有效店铺链接后再导入。",
+      });
+      return;
+    }
+    if (importForm.shop_url?.trim() && !/^https?:\/\/\S+$/i.test(importForm.shop_url.trim())) {
+      setImportResult({
+        success: false,
+        imported_count: 0,
+        skipped_count: 0,
+        message: "店铺链接必须是有效的 http(s) 地址。",
+      });
+      return;
+    }
     setImporting(true);
     setImportResult(null);
     try {
@@ -357,12 +387,13 @@ export function CouponsAdminPanel({
     setSyncing(true);
     setSyncResult(null);
     try {
-      const q = new URLSearchParams();
-      if (syncToken.trim()) q.set("token", syncToken.trim());
-      const res = await fetch(`${apiBase}/api/v1/admin/coupons/sync-ldxp?${q.toString()}`, {
+      // The merchant token goes in the body, never the URL, so it cannot leak
+      // into reverse-proxy or access logs.
+      const res = await fetch(`${apiBase}/api/v1/admin/coupons/sync-ldxp`, {
         method: "POST",
         credentials: "include",
-        headers,
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ token: syncToken.trim() }),
       });
       const data: AdminCouponImportResponse = await res.json();
       if (res.ok) {
@@ -394,6 +425,17 @@ export function CouponsAdminPanel({
     e.preventDefault();
     if (!campaignForm.shop_id && !campaignForm.shop_url && !campaignForm.shop_name) {
       alert("必须选择或输入该活动口令归属的店铺！券是跟着店铺走的。");
+      return;
+    }
+    // A custom shop that cannot be resolved server-side would produce a
+    // shop-less campaign whose redemptions fall back to the site-wide pool.
+    // Require a link so the binding can always be resolved by URL.
+    if (!campaignForm.shop_id && !campaignForm.shop_url?.trim()) {
+      alert("手动指定的店铺必须填写店铺链接，否则无法确定发券范围。");
+      return;
+    }
+    if (campaignForm.shop_url?.trim() && !/^https?:\/\/\S+$/i.test(campaignForm.shop_url.trim())) {
+      alert("店铺链接必须是有效的 http(s) 地址。");
       return;
     }
     setCreatingCampaign(true);

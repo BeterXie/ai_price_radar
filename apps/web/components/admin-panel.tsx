@@ -119,6 +119,10 @@ const REPORT_KIND_LABELS: Record<string, string> = {
 export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("settings");
   const [key, setKey] = useState("");
+  // The key accepted by the API. Child panels mount on this value, so typing a
+  // partial key no longer fires 401 requests, and verifying a new key remounts
+  // (and therefore reloads) the user/coupon panels.
+  const [verifiedKey, setVerifiedKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -165,6 +169,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [savingCommunityNotice, setSavingCommunityNotice] = useState<boolean>(false);
   const [error, setError] = useState(previewState === "error" ? "管理数据暂时无法加载。输入密钥后可以重新连接。" : "");
   const headers = { "X-Admin-Key": key };
+  // Child panels must use a verified credential, and remount when it changes.
+  const verifiedHeaders = { "X-Admin-Key": verifiedKey };
   const hasScrolledToIntakeRef = useRef(false);
 
   useEffect(() => {
@@ -310,8 +316,12 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       ]);
       if (!statsResponse.ok || !offersResponse.ok || !reportsResponse.ok || !intakesResponse.ok) {
         setError("管理密钥无效，或 API 无法访问。密钥仍保留在当前页面，可以修改后重试。");
+        setVerifiedKey("");
         return;
       }
+      // Mark this key as verified so the child panels mount/reload with a
+      // working credential instead of one typed character at a time.
+      setVerifiedKey(key);
       setStats(await statsResponse.json());
       if (settingsResponse && settingsResponse.ok) {
         const settingsData = await settingsResponse.json();
@@ -1304,30 +1314,30 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       )}
 
       {/* Tab: 用户管理 */}
-      {key && (
+      {verifiedKey && (
         <div style={{ display: activeTab === "users" ? "block" : "none" }}>
-          <UsersAdminPanel apiBase={API} headers={headers} />
+          <UsersAdminPanel key={verifiedKey} apiBase={API} headers={verifiedHeaders} />
         </div>
       )}
 
       {/* Tab: 优惠券与营销 */}
-      {key && (
+      {verifiedKey && (
         <div style={{ display: activeTab === "coupons" ? "block" : "none" }}>
-          <CouponsAdminPanel apiBase={API} headers={headers} />
+          <CouponsAdminPanel key={verifiedKey} apiBase={API} headers={verifiedHeaders} />
         </div>
       )}
 
       {/* Tab 3: 社区玩法与文章 */}
-      {key && (
+      {verifiedKey && (
         <div style={{ display: activeTab === "skills" ? "block" : "none" }}>
-          <SkillsAdminPanel apiBase={API} headers={headers} />
+          <SkillsAdminPanel key={verifiedKey} apiBase={API} headers={verifiedHeaders} />
         </div>
       )}
 
       {/* Tab 4: 公网来源发现 */}
-      {key && (
+      {verifiedKey && (
         <div style={{ display: activeTab === "discovery" ? "block" : "none" }}>
-          <SourceDiscoveryPanel apiBase={API} headers={headers} />
+          <SourceDiscoveryPanel key={verifiedKey} apiBase={API} headers={verifiedHeaders} />
         </div>
       )}
 

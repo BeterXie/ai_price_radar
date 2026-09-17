@@ -724,12 +724,17 @@ def list_product_cards(
         filters.min_price is not None,
         filters.max_price is not None,
     ])
-    if (platform or product_slug) and not has_offer_filters and not q:
+    # Supplement zero-offer product cards only when no query/filter narrows the
+    # result set. A tag filter is applied per-offer below, so a product with no
+    # matching offers must not reappear here as a zero-offer card.
+    if (platform or product_slug) and not has_offer_filters and not q and not tag:
         product_query = select(Product).where(Product.is_visible.is_(True))
         if platform:
             product_query = product_query.where(Product.platform == platform)
         if product_slug:
             product_query = product_query.where(Product.slug == product_slug)
+        if product_type:
+            product_query = product_query.where(Product.product_type == product_type)
         for prod in db.scalars(product_query):
             if prod.slug not in existing_product_slugs:
                 cards.append(ProductCard(
@@ -933,12 +938,15 @@ def get_group_offers(
     offers = list(db.scalars(stmt.order_by(*_group_offer_ordering())).unique())
     if not offers:
         current_snapshot = get_current_snapshot(db)
-        fallback_stmt = (
+        # Keep the same filters in the fallback: a group legitimately excluded by
+        # the caller's filters must yield an empty list, not unfiltered offers.
+        fallback_stmt = _apply_offer_filters(
             _base_public_offer_query(db, snapshot=current_snapshot)
             .where(
                 Offer.product_id == product_id,
                 fingerprint_condition,
-            )
+            ),
+            filters,
         )
         if currency:
             fallback_stmt = fallback_stmt.where(Offer.currency == currency.upper())

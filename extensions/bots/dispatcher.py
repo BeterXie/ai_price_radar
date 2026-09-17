@@ -83,15 +83,39 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                     continue
 
                 for sub, user in sub_rows:
-                    # Condition: price drop or target_price reached
+                    # `sub.notify_email` / `sub.notify_bot` gate the channels; the
+                    # per-event drop/hike toggles live on the bot binding and are
+                    # applied per binding below.
                     target_met = sub.target_price is not None and new_price <= sub.target_price
-                    should_alert = is_drop or target_met
-                    if not should_alert:
+                    if not (is_drop or target_met):
                         continue
+
+                    if is_drop:
+                        subject_prefix = "降价提醒"
+                        headline = f"您关注的「{prod_name}」降价至 ¥{new_price:.2f}！"
+                        mail_intro = "您在 PriceMemo 关注的商品有最新降价动态："
+                        change_line = f"📉 最新价格：¥{new_price:.2f} (原价 ¥{old_price:.2f}，直降 ¥{abs(diff):.2f})"
+                        bot_headline = f"您关注的「{prod_name}」降价啦！"
+                        bot_change = (
+                            f"📉 最新现货价：¥{new_price:.2f}\n"
+                            f"🏷️ 历史变动：¥{old_price:.2f} → ¥{new_price:.2f} (降 ¥{abs(diff):.2f})"
+                        )
+                    else:
+                        subject_prefix = "到价提醒"
+                        headline = f"您关注的「{prod_name}」已达到您的目标价 ¥{new_price:.2f}！"
+                        mail_intro = "您在 PriceMemo 关注的商品已达到您设定的目标价："
+                        change_line = f"🎯 当前价格：¥{new_price:.2f} (此前 ¥{old_price:.2f})"
+                        bot_headline = f"您关注的「{prod_name}」已达目标价！"
+                        bot_change = (
+                            f"🎯 当前价格：¥{new_price:.2f}\n"
+                            f"🏷️ 上次价格：¥{old_price:.2f}"
+                        )
 
                     # Channel A: Email
                     if sub.notify_email and user.email:
-                        email_key = f"sub-alert:{user.id}:{slug}:{int(new_price * 100)}"
+                        # Key the dedupe on the actual price transition so a later,
+                        # separate move to the same price is not suppressed.
+                        email_key = f"sub-alert:{user.id}:{slug}:{int(old_price * 100)}:{int(new_price * 100)}"
                         existing = db_session.scalar(
                             select(NotificationOutbox.id).where(NotificationOutbox.dedupe_key == email_key)
                         )
@@ -101,12 +125,12 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                                 NotificationOutbox(
                                     event_type="price_subscription_alert",
                                     recipient=user.email,
-                                    subject=f"【PriceMemo 降价提醒】您关注的「{prod_name}」降价至 ¥{new_price:.2f}！",
+                                    subject=f"【PriceMemo {subject_prefix}】{headline}",
                                     text_body=(
                                         f"尊敬的 {user.nickname or '用户'}，您好！\n\n"
-                                        f"您在 PriceMemo 关注的商品有最新降价动态：\n\n"
+                                        f"{mail_intro}\n\n"
                                         f"📦 商品名称：{prod_name}\n"
-                                        f"📉 最新价格：¥{new_price:.2f} (原价 ¥{old_price:.2f}，直降 ¥{abs(diff):.2f})\n"
+                                        f"{change_line}\n"
                                         f"🏪 店铺商家：{shop_name}\n"
                                         f"🎯 您的目标价：{'¥' + str(sub.target_price) if sub.target_price else '任意降价'}\n\n"
                                         f"🛒 直达查看比价详情：{site_url}/products/{slug}\n"
@@ -129,31 +153,36 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                                 UserBotBinding.is_active == True,
                             )
                         )
+                        # Respect the binding's own drop/hike toggles so a user who
+                        # turned hikes off never receives a hike-flavored message.
                         if binding and binding.target_id:
-                            bot_msg = (
-                                f"🔔【PriceMemo 降价提醒】\n"
-                                f"您关注的「{prod_name}」降价啦！\n"
-                                f"------------------------------------\n"
-                                f"📉 最新现货价：¥{new_price:.2f}\n"
-                                f"🏷️ 历史变动：¥{old_price:.2f} → ¥{new_price:.2f} (降 ¥{abs(diff):.2f})\n"
-                                f"🏪 报价店铺：{shop_name}\n"
-                                f"🎯 您的期望价：{'¥' + str(sub.target_price) if sub.target_price else '任意降价'}\n"
-                                f"------------------------------------\n"
-                                f"🔗 比价详情：{site_url}/products/{slug}\n"
-                                f"🛒 直达店铺：{prod_url}"
+                            wants_event = (
+                                binding.notify_price_drop if is_drop else binding.notify_price_hike
                             )
-                            app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
-                            app_secret = binding.bot_token or None
-                            try:
-                                qq_client = QQBotClient()
-                                qq_client.send_c2c_message(
-                                    binding.target_id,
-                                    bot_msg,
-                                    app_id=app_id,
-                                    app_secret=app_secret,
+                            if wants_event:
+                                bot_msg = (
+                                    f"🔔【PriceMemo {subject_prefix}】\n"
+                                    f"{bot_headline}\n"
+                                    f"------------------------------------\n"
+                                    f"{bot_change}\n"
+                                    f"🏪 报价店铺：{shop_name}\n"
+                                    f"🎯 您的期望价：{'¥' + str(sub.target_price) if sub.target_price else '任意降价'}\n"
+                                    f"------------------------------------\n"
+                                    f"🔗 比价详情：{site_url}/products/{slug}\n"
+                                    f"🛒 直达店铺：{prod_url}"
                                 )
-                            except Exception as q_err:
-                                logger.warning("Failed sending QQ Bot alert: %s", q_err)
+                                app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
+                                app_secret = binding.bot_token or None
+                                try:
+                                    qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
+                                    qq_client.send_c2c_message(
+                                        binding.target_id,
+                                        bot_msg,
+                                        app_id=app_id,
+                                        app_secret=app_secret,
+                                    )
+                                except Exception as q_err:
+                                    logger.warning("Failed sending QQ Bot alert: %s", q_err)
 
             db_session.commit()
 
@@ -172,8 +201,7 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
             logger.error("Failed dispatching price change report to Telegram: %s", exc)
 
     # 3. Dispatch to General Active QQ Bot Bindings
-    qq = QQBotClient()
-    if qq.is_configured and db_session is not None:
+    if db_session is not None:
         try:
             from app.models import UserBotBinding
 
@@ -186,22 +214,35 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                 )
             )
 
-            if bindings:
-                qq_text = render_qq_report(events, site_base_url=site_url)
-                sent_count = 0
-                for binding in bindings:
-                    if not binding.target_id or binding.bot_token:
-                        # Skip if already handled via ClawBot targeted alert
-                        continue
-                    has_drops = any(getattr(e, "is_drop", False) for e in events)
-                    has_hikes = any(not getattr(e, "is_drop", False) for e in events)
-                    should_send = (has_drops and binding.notify_price_drop) or (
-                        has_hikes and binding.notify_price_hike
-                    )
-                    if should_send:
-                        if qq.send_c2c_message(binding.target_id, qq_text):
-                            sent_count += 1
-                if sent_count:
-                    logger.info("Dispatched general price report to %d QQ Bot user(s)", sent_count)
+            sent_count = 0
+            for binding in bindings:
+                if not binding.target_id:
+                    continue
+
+                # Each binding only receives the events matching its own toggles,
+                # so a drop-only subscriber never sees hike rows (and vice versa).
+                allowed_events = [
+                    e
+                    for e in events
+                    if (getattr(e, "is_drop", False) and binding.notify_price_drop)
+                    or (not getattr(e, "is_drop", False) and binding.notify_price_hike)
+                ]
+                if not allowed_events:
+                    continue
+
+                app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
+                app_secret = binding.bot_token or None
+                # Build the client from this binding's credentials: Connector-based
+                # bindings hold their own app_id/app_secret and may exist with no
+                # global QQ_BOT_APP_ID/SECRET configured.
+                qq = QQBotClient(app_id=app_id, app_secret=app_secret)
+                if not qq.is_configured:
+                    continue
+
+                qq_text = render_qq_report(allowed_events, site_base_url=site_url)
+                if qq.send_c2c_message(binding.target_id, qq_text, app_id=app_id, app_secret=app_secret):
+                    sent_count += 1
+            if sent_count:
+                logger.info("Dispatched general price report to %d QQ Bot user(s)", sent_count)
         except Exception as exc:
             logger.error("Failed dispatching general price change report to QQ Bot users: %s", exc)

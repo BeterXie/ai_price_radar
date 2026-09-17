@@ -447,6 +447,9 @@ async function sendMessage(body) {
 }
 
 const outboxDir = path.join(stateDir, "outbox");
+// Concurrent HTTP requests with the same idempotency key must share one send,
+// otherwise both miss the cache, both send, and both compete for the same .tmp file.
+const inFlightSends = new Map();
 async function idempotentSend(body) {
   if (!body.idempotency_key) return sendMessage(body);
   const digest = crypto
@@ -460,12 +463,26 @@ async function idempotentSend(body) {
   } catch {
     // First send for this idempotency key.
   }
-  const result = await sendMessage(body);
-  await mkdir(outboxDir, { recursive: true });
-  const temp = `${file}.tmp`;
-  await writeFile(temp, JSON.stringify(result));
-  await rename(temp, file);
-  return result;
+
+  const pending = inFlightSends.get(digest);
+  if (pending) return pending;
+
+  const task = (async () => {
+    try {
+      const result = await sendMessage(body);
+      await mkdir(outboxDir, { recursive: true });
+      const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+      await writeFile(temp, JSON.stringify(result));
+      await rename(temp, file);
+      return result;
+    } finally {
+      // Always release the in-flight slot, including on failure, so a retry
+      // after an error is not permanently blocked.
+      inFlightSends.delete(digest);
+    }
+  })();
+  inFlightSends.set(digest, task);
+  return task;
 }
 
 async function ensureConnector() {
@@ -598,9 +615,20 @@ function cancelQrBinding(sessionId) {
   return qrPayload(session, false);
 }
 
+// IPv6 literals must be bracketed in a URL authority, otherwise parsing
+// "http://::1:18081" throws and takes the whole request (and process) down.
+const baseAuthority = host.includes(":") ? `[${host}]` : host;
+
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || "/", `http://${host}:${port}`);
   try {
+    let url;
+    try {
+      url = new URL(req.url || "/", `http://${baseAuthority}:${port}`);
+    } catch (urlError) {
+      log("error", "invalid_request_url", { url: req.url, error: String(urlError?.message) });
+      sendJson(res, 400, { error: "invalid request url" });
+      return;
+    }
     if (!authorized(req)) {
       sendJson(res, 401, { error: "unauthorized" });
       return;
@@ -669,22 +697,42 @@ server.listen(port, host, () => {
   log("info", "bridge_http_listening", { host, port, sdkIndex });
 });
 
+let reloadInFlight = null;
+let reloadPending = false;
+
 async function reloadAccounts() {
-  let signature = "missing";
-  try {
-    const stat = await fs.promises.stat(accountsPath);
-    signature = `${stat.mtimeMs}:${stat.size}`;
-  } catch {
-    // The Python store creates accounts.json after the first QR login.
+  // Serialize reloads: an overlapping poll must never start a second
+  // startFromAccounts while the previous one is still awaiting stopBot,
+  // which would leave duplicate connections that stopBot cannot manage.
+  if (reloadInFlight) {
+    reloadPending = true;
+    return reloadInFlight;
   }
-  if (signature === accountFileSignature) return;
-  try {
-    await startFromAccounts();
-    accountFileSignature = signature;
-  } catch (error) {
-    setStatus("DEGRADED", String(error?.message || error));
-    log("error", "account_reload_failed", { error: String(error?.stack || error) });
-  }
+  reloadInFlight = (async () => {
+    try {
+      do {
+        reloadPending = false;
+        let signature = "missing";
+        try {
+          const stat = await fs.promises.stat(accountsPath);
+          signature = `${stat.mtimeMs}:${stat.size}`;
+        } catch {
+          // The Python store creates accounts.json after the first QR login.
+        }
+        if (signature === accountFileSignature) continue;
+        try {
+          await startFromAccounts();
+          accountFileSignature = signature;
+        } catch (error) {
+          setStatus("DEGRADED", String(error?.message || error));
+          log("error", "account_reload_failed", { error: String(error?.stack || error) });
+        }
+      } while (reloadPending);
+    } finally {
+      reloadInFlight = null;
+    }
+  })();
+  return reloadInFlight;
 }
 
 await reloadAccounts();

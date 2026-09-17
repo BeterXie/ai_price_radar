@@ -445,3 +445,20 @@ def test_cursor_and_zhipu_classification():
     assert classify("智普 GLM API 资源包").slug == "zhipu-api-credit"
 
 
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        # Keep these in sync with apps/api/tests/test_classifier.py: the pipeline
+        # and the API must route the same title to the same product slug.
+        ("Cursor Team 团队版席位 独享组织", "cursor-business"),
+        ("Cursor 日卡 体验版", "cursor-pro"),
+        ("Cursor 直充月卡 官方代充", "cursor-pro"),
+        ("Cursor 年卡 个人会员", "cursor-pro"),
+        ("智谱 BigModel API 资源包", "zhipu-api-credit"),
+        ("智谱清言 VIP 月卡", "zhipu-qingyan-vip"),
+    ],
+)
+def test_cursor_zhipu_rules_match_the_api_classifier(title: str, expected: str):
+    assert classify(title).slug == expected
+
+

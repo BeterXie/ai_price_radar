@@ -88,24 +88,57 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
         else:
             team.is_visible = True
 
-        session.commit()
+        session.flush()
+        if not dry_run:
+            session.commit()
+        else:
+            # Roll back product creation/renames performed above so --dry-run
+            # never leaves the database modified.
+            session.rollback()
+            pro_5x = session.query(Product).filter(Product.slug == "claude-pro").first()
+            pro_20x = session.query(Product).filter(Product.slug == "claude-pro-20x").first()
+            team = session.query(Product).filter(Product.slug == "claude-team").first()
 
         # 4. Reclassify offers across claude-pro, claude-pro-20x, claude-team
         claude_product_ids = [p.id for p in [pro_5x, pro_20x, team] if p]
+        # Also scan `claude-account`: the legacy classifier only routed titles
+        # containing "claude pro"/"claude会员" into subscriptions, so 20x/Team
+        # offers currently live under the account product and must be migrated out.
+        account_product = session.query(Product).filter(Product.slug == "claude-account").first()
+        if account_product is not None:
+            claude_product_ids.append(account_product.id)
         offers = session.query(Offer).filter(Offer.product_id.in_(claude_product_ids)).all()
-        print(f"[INFO] Scanning {len(offers)} offers across Claude subscription products...")
+        print(f"[INFO] Scanning {len(offers)} offers across Claude subscription/account products...")
 
         count_5x = 0
         count_20x = 0
         count_team = 0
+        count_skipped_locked = 0
 
         team_pattern = re.compile(r"team|团队|车位|席位|企业", re.IGNORECASE)
         pattern_20x = re.compile(r"20x|20倍|max20x|max\s*20x", re.IGNORECASE)
+        subscription_evidence = re.compile(
+            r"max\s*20x|20x|20倍|team|团队|车位|席位|组织|订阅|subscription", re.IGNORECASE
+        )
 
         for offer in offers:
             raw = offer.raw_product
             title = raw.original_name if raw else ""
             category = raw.original_category if raw else ""
+
+            # Respect manual locks: the pipeline treats offers tagged
+            # `manual_override` (or confidence 100) as human-corrected; do not
+            # silently overwrite an administrator's classification.
+            tags = offer.tags or []
+            if "manual_override" in tags or (offer.classification_confidence or 0) >= 100:
+                count_skipped_locked += 1
+                continue
+
+            # Account offers are only migrated when they clearly match the new
+            # subscription tiers; everything else stays an account product.
+            if account_product is not None and offer.product_id == account_product.id:
+                if not subscription_evidence.search(title):
+                    continue
 
             # Check title first (primary intent)
             if team_pattern.search(title):
@@ -116,6 +149,9 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
                 target = team
             elif pattern_20x.search(category) and not re.search(r"5x|5倍|pro", title, re.IGNORECASE):
                 target = pro_20x
+            elif account_product is not None and offer.product_id == account_product.id:
+                # Matched subscription evidence but no tier keyword: keep as-is
+                continue
             else:
                 target = pro_5x
 
@@ -137,8 +173,13 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
             print(f"  - Claude Pro (5x): {count_5x}")
             print(f"  - Claude Pro 20x: {count_20x}")
             print(f"  - Claude Team:    {count_team}")
+            if count_skipped_locked:
+                print(f"  - Skipped (manually locked): {count_skipped_locked}")
         else:
+            session.rollback()
             print(f"[DRY RUN] Would set 5x: {count_5x}, 20x: {count_20x}, Team: {count_team}.")
+            if count_skipped_locked:
+                print(f"[DRY RUN] Skipped (manually locked): {count_skipped_locked}")
 
     finally:
         session.close()

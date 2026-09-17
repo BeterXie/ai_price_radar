@@ -621,16 +621,22 @@ def _classify_identity(
         return None, False
 
     if brand == "cursor":
-        if _contains(identity_text, ["business", "商业", "企业", "team", "团队", "席位"]):
+        if _contains(identity_text, ["business", "商业", "企业", "team", "团队", "席位", "车位"]):
             return "cursor-business", True
-        if _contains(identity_text, ["pro", "会员", "订阅", "充值", "代充", "直充", "月卡", "年卡"]) or _contains(tier_text, ["cursor pro"]):
+        if _contains(
+            identity_text,
+            ["pro", "会员", "订阅", "充值", "代充", "直充", "月卡", "年卡", "激活", "额度", "ultra", "日卡"],
+        ) or _contains(tier_text, ["cursor pro"]):
             return "cursor-pro", True
         return "cursor-account", False
 
     if brand == "zhipu":
-        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度", "开放平台", "bigmodel", "glm-4", "glm4", "glm"]):
+        if _contains(
+            identity_text,
+            ["api", "api key", "apikey", "token", "额度", "开放平台", "bigmodel", "资源包", "glm-4", "glm4", "glm"],
+        ):
             return "zhipu-api-credit", True
-        if _contains(identity_text, ["vip", "会员", "清言会员", "清言vip", "订阅", "代充", "直充", "充值", "月卡"]):
+        if _contains(identity_text, ["vip", "会员", "清言会员", "清言vip", "订阅", "代充", "直充", "充值", "月卡", "包月"]):
             return "zhipu-qingyan-vip", True
         return "zhipu-account", False
 

@@ -5,6 +5,31 @@ import Link from "next/link";
 import { Megaphone, X, ArrowRight } from "@phosphor-icons/react";
 import type { SiteNotice } from "@/lib/types";
 
+/**
+ * Stable identity for the *version* of a notice. Admins often keep the same
+ * title while updating the body or link, so dismissing must be keyed on the
+ * whole content, not on a title prefix — otherwise users who closed the old
+ * version would never see the update.
+ */
+function noticeVersionKey(notice: SiteNotice): string {
+  const parts = [
+    notice.badge ?? "",
+    notice.title ?? "",
+    notice.content ?? "",
+    notice.link_url ?? "",
+    notice.link_text ?? "",
+  ];
+  const raw = parts.join("\u0000");
+  // Compact, dependency-free hash; collisions across notice versions are
+  // acceptable here because a miss only re-shows the notice once.
+  let hash = 5381;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ raw.charCodeAt(index);
+    hash |= 0;
+  }
+  return `${(hash >>> 0).toString(36)}-${raw.length}`;
+}
+
 export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
   const [visible, setVisible] = useState(false);
 
@@ -14,9 +39,11 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
       return;
     }
     try {
-      const noticeKey = notice.title.slice(0, 30);
-      const dismissedKey = `apr:notice:dismissed:${noticeKey}`;
-      if (localStorage.getItem(dismissedKey)) return;
+      const dismissedKey = `apr:notice:dismissed:${noticeVersionKey(notice)}`;
+      if (localStorage.getItem(dismissedKey)) {
+        setVisible(false);
+        return;
+      }
       setVisible(true);
     } catch {
       setVisible(true);
@@ -25,8 +52,9 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
 
   const dismiss = () => {
     try {
-      const noticeKey = notice?.title ? notice.title.slice(0, 30) : "default";
-      localStorage.setItem(`apr:notice:dismissed:${noticeKey}`, "1");
+      if (notice) {
+        localStorage.setItem(`apr:notice:dismissed:${noticeVersionKey(notice)}`, "1");
+      }
     } catch {
       // Storage might be disabled
     }
@@ -50,12 +78,12 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
           <span className="hidden text-[color:var(--muted)] md:inline">
             — {notice.content}
           </span>
-          {(notice.link_url || (notice as any).linkUrl) && (notice.link_text || (notice as any).linkText) && (
+          {notice.link_url && notice.link_text && (
             <Link
-              href={notice.link_url || (notice as any).linkUrl}
+              href={notice.link_url}
               className="inline-flex shrink-0 items-center gap-1 font-semibold text-[color:var(--info)] hover:underline"
             >
-              {notice.link_text || (notice as any).linkText}
+              {notice.link_text}
               <ArrowRight size={13} weight="bold" />
             </Link>
           )}

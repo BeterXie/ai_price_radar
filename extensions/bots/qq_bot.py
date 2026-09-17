@@ -83,7 +83,7 @@ class QQBotClient:
 
         # Mode A: Via Node bridge if bridge_url is set
         if self.bridge_url:
-            return self._send_via_bridge(target_openid, text, account_id=app_id)
+            return self._send_via_bridge(target_openid, text, account_id=app_id, msg_id=msg_id)
 
         # Mode B: Direct Open API
         effective_app_id = (app_id or self.app_id).strip()
@@ -161,7 +161,13 @@ class QQBotClient:
             return False
 
 
-    def _send_via_bridge(self, target_openid: str, text: str, account_id: str | None = None) -> bool:
+    def _send_via_bridge(
+        self,
+        target_openid: str,
+        text: str,
+        account_id: str | None = None,
+        msg_id: str | None = None,
+    ) -> bool:
         """Dispatch via local bridge HTTP endpoint."""
         url = f"{self.bridge_url}/send"
         headers = {}
@@ -174,6 +180,11 @@ class QQBotClient:
         }
         if account_id:
             payload["account_id"] = account_id
+        if msg_id:
+            # Keep the passive-reply linkage so the message is not treated as an
+            # unsolicited active send (subject to active-message quotas).
+            payload["msg_id"] = msg_id
+            payload["msg_seq"] = int(time.time() * 1000) % 65535 + 1
         try:
             with httpx.Client(timeout=self.timeout_seconds) as client:
                 resp = client.post(url, json=payload, headers=headers)

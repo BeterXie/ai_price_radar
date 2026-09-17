@@ -103,6 +103,11 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
       setPrompt(null);
       return;
     }
+    // Disabling the community notice (e.g. an admin toggles it off) must both
+    // cancel a queued timer and remove an already-visible community prompt.
+    if (!isCommunityEnabled) {
+      setPrompt((current) => (current === "community" ? null : current));
+    }
 
     try {
       if (!sessionStorage.getItem(storageKeys.sessionStarted)) {
@@ -160,7 +165,7 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
     } catch {
       return;
     }
-  }, [pathname, rememberPrompt]);
+  }, [pathname, rememberPrompt, isCommunityEnabled]);
 
   useEffect(() => {
     if (!SUPPORT_AVAILABLE) return;

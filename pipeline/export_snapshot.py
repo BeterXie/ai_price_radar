@@ -6,20 +6,49 @@ import os
 import statistics
 import tempfile
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "apps" / "web" / "public" / "data"
+DEFAULT_OUTPUT_DIR = Path(
+    os.getenv("PUBLIC_DATA_DIR", "").strip()
+    or (Path(__file__).resolve().parent.parent / "apps" / "web" / "public" / "data")
+)
 DEFAULT_PUBLIC_BASE_URL = os.getenv("PUBLIC_SITE_URL", "https://ai.pricememo.cn")
+
+# Mirrors apps/api/app/services/source_platform.py so exported JSON never
+# contains offers the public catalog hides.
+DISABLED_SOURCE_PLATFORMS: set[str] = {"dujiao_next"}
+# Mirrors services/pricing.py: prices below this absolute floor are not trusted.
+MIN_TRUSTED_PRICE_CNY = Decimal("1.00")
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Normalize naive datetimes (SQLite returns naive even for tz-aware columns)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _fresh_cutoff() -> datetime | None:
+    """Staleness cutoff mirroring the public catalog (STALE_OFFER_HOURS)."""
+    hours = os.getenv("STALE_OFFER_HOURS", "").strip()
+    if not hours:
+        return None
+    try:
+        return datetime.now(timezone.utc) - timedelta(hours=float(hours))
+    except ValueError:
+        return None
 
 OFFICIAL_REFERENCES: dict[str, dict[str, Any]] = {
     "chatgpt-plus": {
@@ -100,9 +129,9 @@ def _calc_data_quality(total_offers: int, source_count: int, comparable_count: i
         return 0, "数据不足"
     trusted_ratio = trusted_count / comparable_count if comparable_count else 0
     freshness = 0
-    if latest_dt is not None:
+    latest_utc = _as_utc(latest_dt)
+    if latest_utc is not None:
         now = datetime.now(timezone.utc)
-        latest_utc = latest_dt if latest_dt.tzinfo is not None else latest_dt.replace(tzinfo=timezone.utc)
         age_hours = max(0.0, (now - latest_utc).total_seconds() / 3600.0)
         freshness = 30 if age_hours <= 6 else 22 if age_hours <= 24 else 12 if age_hours <= 72 else 0
     score = round(45 * trusted_ratio + min(25, source_count * 5) + freshness)
@@ -116,8 +145,13 @@ def export_public_snapshot(
     snapshot_id: int | None = None,
     output_dir: Path | str | None = None,
     public_base_url: str | None = None,
+    allow_historical: bool = False,
 ) -> dict[str, Any]:
-    """Export public immutable snapshot JSON and update latest.json pointer."""
+    """Export public immutable snapshot JSON and update latest.json pointer.
+
+    Only the current published snapshot may update the latest.json pointer, so a
+    re-export of a historical archive cannot roll the public feed backwards.
+    """
     target_dir = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     base_url = (public_base_url or DEFAULT_PUBLIC_BASE_URL).rstrip("/")
 
@@ -135,14 +169,30 @@ def export_public_snapshot(
         )
     if not snapshot:
         raise ValueError(f"CatalogSnapshot {snapshot_id or 'latest'} not found")
+    if snapshot.published_at is None:
+        raise ValueError(f"CatalogSnapshot {snapshot.id} is not published; refusing to export it publicly")
     snapshot_id = snapshot.id
+
+    current_snapshot = db.scalar(
+        select(CatalogSnapshot)
+        .where(CatalogSnapshot.published_at.is_not(None))
+        .order_by(CatalogSnapshot.id.desc())
+        .limit(1)
+    )
+    is_current_snapshot = bool(current_snapshot and current_snapshot.id == snapshot_id)
+    if snapshot_id and not is_current_snapshot and not allow_historical:
+        raise ValueError(
+            f"CatalogSnapshot {snapshot_id} is not the current published snapshot "
+            f"(current: {current_snapshot.id if current_snapshot else 'none'}); "
+            "pass allow_historical=True to archive-export without touching latest.json"
+        )
 
     products = db.scalars(
         select(Product).where(Product.is_visible == True).order_by(Product.id)
     ).all()
 
     now_utc = datetime.now(timezone.utc)
-    published_dt = snapshot.published_at or snapshot.created_at or now_utc
+    published_dt = _as_utc(snapshot.published_at or snapshot.created_at) or now_utc
     age_hours = (now_utc - published_dt).total_seconds() / 3600.0
     is_stale = age_hours > 2.0
 
@@ -168,15 +218,29 @@ def export_public_snapshot(
                     Shop.status != "closed",
                     Offer.price.is_not(None),
                     Offer.price > 0,
+                    # Keep parity with the public catalog: hidden offers must not
+                    # reappear through the exported feed.
+                    or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
                 )
             )
         )
+        if DISABLED_SOURCE_PLATFORMS:
+            stmt = stmt.where(
+                or_(Shop.platform.is_(None), Shop.platform.notin_(DISABLED_SOURCE_PLATFORMS))
+            )
+        cutoff = _fresh_cutoff()
+        if cutoff is not None:
+            stmt = stmt.where(Offer.observed_at >= cutoff)
         rows = db.execute(stmt).all()
+
+        # Export CNY figures only; other currencies must not be mixed into
+        # CNY-denominated lowest/median/trusted metrics.
+        cny_rows = [r for r in rows if (r[0].currency or "CNY").upper() == "CNY"]
 
         offer_count = len(rows)
         total_offers_count += offer_count
 
-        in_stock_rows = [r for r in rows if r[0].stock_status == "in_stock"]
+        in_stock_rows = [r for r in cny_rows if r[0].stock_status == "in_stock"]
         in_stock_count = len(in_stock_rows)
         total_in_stock_count += in_stock_count
 
@@ -192,15 +256,16 @@ def export_public_snapshot(
             dt: statistics.median(p_list) for dt, p_list in delivery_prices.items() if p_list
         }
 
-        # Trusted offers (comparable, in_stock, price >= 0.4 * median)
+        # Trusted offers (comparable, in_stock, price >= 0.4 * median AND >= 1 CNY floor)
         trusted_rows = []
         for r in comparable_rows:
             p_val = float(r[0].price)
             med = delivery_medians.get(r[0].delivery_type or "unknown")
-            if med is None or p_val >= (med * 0.4):
+            if (med is None or p_val >= (med * 0.4)) and r[0].price >= MIN_TRUSTED_PRICE_CNY:
                 trusted_rows.append(r)
         trusted_count = len(trusted_rows)
         total_trusted_count += trusted_count
+        trusted_offer_ids = {r[0].id for r in trusted_rows}
 
         # Prices
         trusted_prices = [float(r[0].price) for r in trusted_rows]
@@ -238,12 +303,9 @@ def export_public_snapshot(
 
         top_5_offers = []
         for offer, shop, raw in top_5_rows:
-            risk_flags = list(offer.risk_flags or [])
-            is_trusted = (
-                offer.is_comparable
-                and offer.stock_status == "in_stock"
-                and "low_price_warning" not in risk_flags
-            )
+            # Reuse the same trusted set the aggregate metrics were computed from
+            # so summary and detail can never disagree.
+            is_trusted = offer.id in trusted_offer_ids
             top_5_offers.append({
                 "id": offer.id,
                 "shop_token": shop.token,
@@ -252,6 +314,7 @@ def export_public_snapshot(
                 "source_url": offer.source_url or raw.source_url or shop.source_url,
                 "original_name": raw.original_name,
                 "price": float(offer.price),
+                "currency": (offer.currency or "CNY"),
                 "stock_status": offer.stock_status,
                 "stock_count": offer.stock_count,
                 "delivery_type": offer.delivery_type,
@@ -291,7 +354,7 @@ def export_public_snapshot(
     snapshot_data = {
         "schema_version": "price-radar.v1",
         "snapshot_id": str(snapshot_id),
-        "generated_at": snapshot.created_at.isoformat() if snapshot.created_at else now_utc.isoformat(),
+        "generated_at": (_as_utc(snapshot.created_at) or now_utc).isoformat(),
         "published_at": published_dt.isoformat(),
         "stale": is_stale,
         "ranking_policy_version": "available-non-shared-first.v1",
@@ -306,18 +369,22 @@ def export_public_snapshot(
         "products": product_snapshots,
     }
 
-    # Write immutable snapshot file
+    # Write immutable snapshot file. Consumers cache these URLs for a year, so an
+    # existing file must never be replaced with different content.
     snapshot_file = snapshots_dir / f"{snapshot_id}.json"
-    temp_snapshot = snapshots_dir / f".tmp_{snapshot_id}_{os.getpid()}.json"
-    with open(temp_snapshot, "w", encoding="utf-8") as f:
-        json.dump(snapshot_data, f, ensure_ascii=False, indent=2)
-    temp_snapshot.replace(snapshot_file)
+    if snapshot_file.exists():
+        logger.info("Snapshot file %s already exists; keeping existing immutable content", snapshot_file)
+    else:
+        temp_snapshot = snapshots_dir / f".tmp_{snapshot_id}_{os.getpid()}.json"
+        with open(temp_snapshot, "w", encoding="utf-8") as f:
+            json.dump(snapshot_data, f, ensure_ascii=False, indent=2)
+        temp_snapshot.replace(snapshot_file)
 
-    # Write latest.json pointer
+    # Write latest.json pointer (only for the current published snapshot)
     latest_pointer = {
         "schema_version": "price-radar.v1",
         "snapshot_id": str(snapshot_id),
-        "generated_at": snapshot.created_at.isoformat() if snapshot.created_at else now_utc.isoformat(),
+        "generated_at": (_as_utc(snapshot.created_at) or now_utc).isoformat(),
         "published_at": published_dt.isoformat(),
         "stale": is_stale,
         "ranking_policy_version": "available-non-shared-first.v1",
@@ -325,11 +392,17 @@ def export_public_snapshot(
         "product_count": len(product_snapshots),
     }
 
-    latest_file = target_dir / "latest.json"
-    temp_latest = target_dir / f".tmp_latest_{os.getpid()}.json"
-    with open(temp_latest, "w", encoding="utf-8") as f:
-        json.dump(latest_pointer, f, ensure_ascii=False, indent=2)
-    temp_latest.replace(latest_file)
+    if is_current_snapshot or allow_historical:
+        latest_file = target_dir / "latest.json"
+        temp_latest = target_dir / f".tmp_latest_{os.getpid()}.json"
+        with open(temp_latest, "w", encoding="utf-8") as f:
+            json.dump(latest_pointer, f, ensure_ascii=False, indent=2)
+        temp_latest.replace(latest_file)
+    else:
+        logger.warning(
+            "Snapshot %d is not the current published snapshot; latest.json left untouched",
+            snapshot_id,
+        )
 
     logger.info("Exported public snapshot %d to %s", snapshot_id, snapshot_file)
     return latest_pointer
@@ -343,6 +416,11 @@ if __name__ == "__main__":
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL", ""))
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--public-base-url", default=None)
+    parser.add_argument(
+        "--allow-historical",
+        action="store_true",
+        help="Allow exporting a non-current snapshot for archiving; latest.json is left untouched",
+    )
     args = parser.parse_args()
 
     if not args.database_url:
@@ -355,6 +433,7 @@ if __name__ == "__main__":
             snapshot_id=args.snapshot_id,
             output_dir=args.output_dir,
             public_base_url=args.public_base_url,
+            allow_historical=args.allow_historical,
         )
         print(json.dumps(pointer, ensure_ascii=False, indent=2))
     finally:

@@ -56,6 +56,20 @@ def _migrate_sqlite(conn) -> None:
             logger.info("Adding column user_id to offer_clicks table")
             conn.execute(text("ALTER TABLE offer_clicks ADD COLUMN user_id INTEGER"))
 
+    # 3b. offers table columns (click tracking added in v17)
+    if "offers" in tables:
+        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(offers)")).fetchall()}
+        if "click_count" not in existing_cols:
+            logger.info("Adding column click_count to offers table")
+            conn.execute(text("ALTER TABLE offers ADD COLUMN click_count INTEGER DEFAULT 0 NOT NULL"))
+
+    # 3c. auth_codes table columns (verify attempt counting)
+    if "auth_codes" in tables:
+        existing_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(auth_codes)")).fetchall()}
+        if "attempts" not in existing_cols:
+            logger.info("Adding column attempts to auth_codes table")
+            conn.execute(text("ALTER TABLE auth_codes ADD COLUMN attempts INTEGER DEFAULT 0 NOT NULL"))
+
     # 4. admin_broadcasts table
     if "admin_broadcasts" not in tables:
         logger.info("Creating table admin_broadcasts")
@@ -91,6 +105,8 @@ def _migrate_postgres(conn) -> None:
         "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT DEFAULT '';",
         "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;",
         "ALTER TABLE offer_clicks ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;",
+        "ALTER TABLE offers ADD COLUMN IF NOT EXISTS click_count INTEGER DEFAULT 0 NOT NULL;",
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0 NOT NULL;",
         """
         CREATE TABLE IF NOT EXISTS admin_broadcasts (
             id SERIAL PRIMARY KEY,

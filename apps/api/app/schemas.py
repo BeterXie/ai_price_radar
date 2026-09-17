@@ -983,6 +983,12 @@ class AdminCouponImportRequest(BaseModel):
     codes_text: str = Field(min_length=1)
 
 
+class AdminCouponSyncRequest(BaseModel):
+    # Merchant API token; sent in the body (not the URL) so it never lands in
+    # access logs or reverse-proxy logs.
+    token: str = Field(default="", max_length=200)
+
+
 class AdminCouponImportResponse(BaseModel):
     success: bool
     imported_count: int

@@ -21,16 +21,19 @@ import type { CatalogResponse, ProductCard } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
 import {
   normalizeWatchThreshold,
-  readWatchlist,
+  readAnonymousWatchlist,
+  readUserWatchlist,
   WATCHLIST_EVENT,
   type WatchItem,
-  writeWatchlist,
+  writeAnonymousWatchlist,
+  writeUserWatchlist,
 } from "@/components/watch-button";
 import {
   deleteUserSubscription,
   fetchAuthMe,
   fetchUserSubscriptions,
   saveUserSubscription,
+  updateUserSubscription,
   type UserSubscriptionItem,
 } from "@/lib/auth-client";
 import { LoginModal } from "@/components/login-modal";
@@ -39,6 +42,7 @@ const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 export function WatchlistClient({ previewState }: { previewState?: "empty" | "loading" | "error" }) {
   const [authenticated, setAuthenticated] = useState<boolean>(false);
+  const [userId, setUserId] = useState<number | null>(null);
   const [userNickname, setUserNickname] = useState<string>("");
   const [emailBound, setEmailBound] = useState<boolean>(false);
   const [botBound, setBotBound] = useState<boolean>(false);
@@ -52,6 +56,11 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
 
   // Threshold draft inputs to allow smooth typing before persisting
   const [thresholdDrafts, setThresholdDrafts] = useState<Record<string, string>>({});
+  // Slugs whose product card request finished without data (non-2xx, network
+  // error or empty result) so the row can offer a retry instead of spinning.
+  const [productLoadFailed, setProductLoadFailed] = useState<Set<string>>(new Set());
+  // Bumped by the retry button to re-run the product fetch effect.
+  const [productReloadNonce, setProductReloadNonce] = useState(0);
 
   // 1. Initial Load: Check Auth & fetch either Cloud Subscriptions or Local Items
   const loadData = useCallback(async () => {
@@ -60,6 +69,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
       const auth = await fetchAuthMe();
       if (auth.authenticated && auth.user) {
         setAuthenticated(true);
+        setUserId(auth.user.id);
         setUserNickname(auth.user.nickname || "用户");
 
         // Fetch cloud subscriptions
@@ -67,30 +77,37 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
         setEmailBound(cloudData.email_bound);
         setBotBound(cloudData.bot_bound);
 
-        // Check if there are local items to migrate
-        const local = readWatchlist();
+        // One-time migration of *anonymous* items only. The per-user cache is a
+        // mirror of the server list, so anything extra it holds is stale (e.g.
+        // removed from another device) and must never be written back.
+        const local = readAnonymousWatchlist();
         const existingCloudSlugs = new Set(cloudData.items.map((i) => i.product_slug));
         const toMigrate = local.filter((item) => !existingCloudSlugs.has(item.slug));
 
         if (toMigrate.length > 0) {
-          await Promise.all(
-            toMigrate.map((item) =>
-              saveUserSubscription({
-                product_slug: item.slug,
-                target_price: item.threshold || null,
-                notify_email: true,
-                notify_bot: true,
-              }).catch(() => null)
-            )
+          const results = await Promise.all(
+            toMigrate.map(async (item) => {
+              try {
+                await saveUserSubscription({
+                  product_slug: item.slug,
+                  target_price: item.threshold || null,
+                  notify_email: true,
+                  notify_bot: true,
+                });
+                return true;
+              } catch {
+                return false;
+              }
+            })
           );
+          const succeeded = results.filter(Boolean).length;
+          // Retain only the items that failed so nothing is silently lost.
+          writeAnonymousWatchlist(toMigrate.filter((_, index) => !results[index]));
+
           const refreshed = await fetchUserSubscriptions();
           setSubscriptions(refreshed.items);
-          setActionNotice({
-            type: "success",
-            text: `已自动将您浏览器中暂存的 ${toMigrate.length} 个关注商品同步至云端！`,
-          });
-          // sync local with refreshed
-          writeWatchlist(
+          writeUserWatchlist(
+            auth.user.id,
             refreshed.items.map((sub) => ({
               slug: sub.product_slug,
               name: sub.product_name,
@@ -99,10 +116,26 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
               added_at: sub.created_at,
             }))
           );
+          const failedCount = toMigrate.length - succeeded;
+          if (succeeded > 0) {
+            setActionNotice({
+              type: failedCount > 0 ? "warning" : "success",
+              text:
+                failedCount > 0
+                  ? `已同步 ${succeeded} 个关注商品至云端，${failedCount} 个失败（已保留在本地，可稍后重试）。`
+                  : `已自动将您浏览器中暂存的 ${succeeded} 个关注商品同步至云端！`,
+            });
+          } else {
+            setActionNotice({
+              type: "warning",
+              text: `同步失败，${failedCount} 个本地关注商品仍保留在浏览器中，请稍后重试。`,
+            });
+          }
         } else {
           setSubscriptions(cloudData.items);
-          // keep local storage in sync
-          writeWatchlist(
+          // The server list is authoritative; the cache is refreshed from it.
+          writeUserWatchlist(
+            auth.user.id,
             cloudData.items.map((sub) => ({
               slug: sub.product_slug,
               name: sub.product_name,
@@ -114,22 +147,30 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
         }
       } else {
         setAuthenticated(false);
-        setLocalItems(readWatchlist());
+        setUserId(null);
+        setLocalItems(readAnonymousWatchlist());
       }
     } catch {
-      // Fallback to local
+      // Auth or the subscription fetch failed: stay in anonymous mode instead
+      // of pretending the user is signed out with an empty cloud list.
       setAuthenticated(false);
-      setLocalItems(readWatchlist());
+      setUserId(null);
+      setLocalItems(readAnonymousWatchlist());
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Initial load runs once. Storage listeners live in their own effect so the
+  // state updates made by loadData cannot retrigger it in a loop.
   useEffect(() => {
     void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
     const handleStorageChange = () => {
       if (!authenticated) {
-        setLocalItems(readWatchlist());
+        setLocalItems(readAnonymousWatchlist());
       }
     };
     window.addEventListener(WATCHLIST_EVENT, handleStorageChange);
@@ -138,7 +179,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
       window.removeEventListener(WATCHLIST_EVENT, handleStorageChange);
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, [loadData, authenticated]);
+  }, [authenticated]);
 
   // Unified items list
   const displayItems = useMemo(() => {
@@ -167,8 +208,13 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   // Load live product cards for price & inventory details
   useEffect(() => {
     let active = true;
+    const slugs = displayItems.map((item) => item.slug);
     async function loadProducts() {
-      if (displayItems.length === 0) return;
+      if (displayItems.length === 0) {
+        setProductLoadFailed(new Set());
+        return;
+      }
+      setProductLoadFailed(new Set());
       const results = await Promise.all(
         displayItems.map(async (item) => {
           try {
@@ -192,13 +238,19 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
               .map((product) => [product.slug, product])
           )
         );
+        // Track which rows ended with no data so they can show a retry state
+        // instead of a permanent "loading" spinner.
+        const loadedSlugs = new Set(
+          results.filter((value): value is ProductCard => Boolean(value)).map((product) => product.slug)
+        );
+        setProductLoadFailed(new Set(slugs.filter((slug) => !loadedSlugs.has(slug))));
       }
     }
     void loadProducts();
     return () => {
       active = false;
     };
-  }, [displayItems.map((i) => i.slug).join(",")]);
+  }, [displayItems.map((i) => i.slug).join(","), productReloadNonce]);
 
   // Atom feed URL for RSS readers
   const feedUrl = useMemo(() => {
@@ -219,7 +271,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
 
     const normalized = normalizeWatchThreshold(draft);
     if (normalized === null) {
-      // Invalid number input, reset draft
+      // Invalid number input: drop the draft so the saved value is shown again.
       setThresholdDrafts((prev) => {
         const copy = { ...prev };
         delete copy[slug];
@@ -230,19 +282,31 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
 
     if (authenticated) {
       try {
-        await saveUserSubscription({
-          product_slug: slug,
-          target_price: normalized || null,
-        });
+        // Merge with the stored config; the endpoint replaces the whole record.
+        const updated = await updateUserSubscription(slug, { target_price: normalized || null });
         setSubscriptions((prev) =>
-          prev.map((s) => (s.product_slug === slug ? { ...s, target_price: normalized || null } : s))
+          prev.map((s) => (s.product_slug === slug ? { ...s, ...updated } : s))
         );
+        // Only clear the draft on success, and only if the user has not typed
+        // something newer while the request was in flight.
+        setThresholdDrafts((prev) => {
+          if (prev[slug] !== draft) return prev;
+          const copy = { ...prev };
+          delete copy[slug];
+          return copy;
+        });
       } catch (err: any) {
-        setActionNotice({ type: "warning", text: err.message || "更新目标价失败" });
+        // Restore the persisted value so the UI matches the server state.
+        setThresholdDrafts((prev) => {
+          const copy = { ...prev };
+          delete copy[slug];
+          return copy;
+        });
+        setActionNotice({ type: "warning", text: err.message || "更新目标价失败，已恢复为上次保存的值" });
       }
     } else {
       const next = localItems.map((item) => (item.slug === slug ? { ...item, threshold: normalized } : item));
-      if (writeWatchlist(next)) setLocalItems(next);
+      if (writeAnonymousWatchlist(next)) setLocalItems(next);
     }
   };
 
@@ -259,12 +323,9 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
       });
     }
     try {
-      await saveUserSubscription({
-        product_slug: slug,
-        notify_email: !currentVal,
-      });
+      const updated = await updateUserSubscription(slug, { notify_email: !currentVal });
       setSubscriptions((prev) =>
-        prev.map((s) => (s.product_slug === slug ? { ...s, notify_email: !currentVal } : s))
+        prev.map((s) => (s.product_slug === slug ? { ...s, ...updated } : s))
       );
     } catch (err: any) {
       setActionNotice({ type: "warning", text: err.message || "更新提醒渠道失败" });
@@ -284,12 +345,9 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
       });
     }
     try {
-      await saveUserSubscription({
-        product_slug: slug,
-        notify_bot: !currentVal,
-      });
+      const updated = await updateUserSubscription(slug, { notify_bot: !currentVal });
       setSubscriptions((prev) =>
-        prev.map((s) => (s.product_slug === slug ? { ...s, notify_bot: !currentVal } : s))
+        prev.map((s) => (s.product_slug === slug ? { ...s, ...updated } : s))
       );
     } catch (err: any) {
       setActionNotice({ type: "warning", text: err.message || "更新提醒渠道失败" });
@@ -302,12 +360,20 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
       try {
         await deleteUserSubscription(slug);
         setSubscriptions((prev) => prev.filter((s) => s.product_slug !== slug));
+        if (userId !== null) {
+          writeUserWatchlist(
+            userId,
+            readUserWatchlist(userId).filter((item) => item.slug !== slug)
+          );
+        }
       } catch (err: any) {
+        // Keep the item visible so the user can retry; the server still has it.
         setActionNotice({ type: "warning", text: err.message || "删除关注失败" });
+        return;
       }
     }
-    const nextLocal = readWatchlist().filter((item) => item.slug !== slug);
-    writeWatchlist(nextLocal);
+    const nextLocal = readAnonymousWatchlist().filter((item) => item.slug !== slug);
+    writeAnonymousWatchlist(nextLocal);
     setLocalItems(nextLocal);
   };
 
@@ -600,6 +666,17 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
                         {" · "}
                         <span>{relativeTime(product.last_updated_at)} 更新</span>
                       </>
+                    ) : productLoadFailed.has(item.slug) ? (
+                      <span className="text-amber-700">
+                        观测数据加载失败，
+                        <button
+                          type="button"
+                          className="underline hover:text-[color:var(--ink)]"
+                          onClick={() => setProductReloadNonce((value) => value + 1)}
+                        >
+                          点此重试
+                        </button>
+                      </span>
                     ) : (
                       "正在加载观测数据…"
                     )}

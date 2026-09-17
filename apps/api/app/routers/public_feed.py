@@ -10,12 +10,21 @@ from fastapi.responses import FileResponse, JSONResponse
 
 router = APIRouter(tags=["public-feed"])
 
+# Set PUBLIC_DATA_DIR to the shared export directory in containers. The API image
+# does not include apps/web, so the host-path probes below only help for local runs.
+PUBLIC_DATA_DIR_ENV = "PUBLIC_DATA_DIR"
+
+
 def _get_candidate_data_dirs() -> list[Path]:
-    dirs: list[Path] = [
+    dirs: list[Path] = []
+    configured = os.getenv(PUBLIC_DATA_DIR_ENV, "").strip()
+    if configured:
+        dirs.append(Path(configured))
+    dirs.extend([
         Path("/workspace/apps/web/public/data"),
         Path("/opt/ai-price-radar-v3/apps/web/public/data"),
         Path("./data"),
-    ]
+    ])
     cur = Path(__file__).resolve()
     for p in cur.parents:
         dirs.append(p / "apps" / "web" / "public" / "data")
@@ -28,6 +37,9 @@ def _find_data_dir() -> Path:
     for candidate in _get_candidate_data_dirs():
         if candidate.is_dir():
             return candidate
+    configured = os.getenv(PUBLIC_DATA_DIR_ENV, "").strip()
+    if configured:
+        return Path(configured)
     return Path("./data")
 
 

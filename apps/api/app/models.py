@@ -421,6 +421,7 @@ class AuthCode(Base):
     purpose: Mapped[str] = mapped_column(String(30), default="login")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

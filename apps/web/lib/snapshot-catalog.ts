@@ -8,6 +8,36 @@ type CachedSnapshot = {
 let memoryCache: CachedSnapshot | null = null;
 const CACHE_TTL_MS = 15_000; // 15 seconds memory cache
 
+/**
+ * Applies the same ordering the API uses for `sort=quality` (see
+ * apps/api/app/services/catalog.py `list_product_cards`): data quality score,
+ * then trusted offer count, then source count, then lowest price ascending.
+ * Without this the snapshot path would fall back to the exporter's Product.id
+ * order and disagree with the API fallback for the same request.
+ */
+export function sortByQuality(cards: ProductCard[]): ProductCard[] {
+  const priceOf = (card: ProductCard): number => {
+    const value =
+      card.lowest_price !== null && card.lowest_price !== undefined
+        ? Number(card.lowest_price)
+        : Number.NaN;
+    return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+  };
+
+  return [...cards].sort((a, b) => {
+    if (b.data_quality_score !== a.data_quality_score) {
+      return b.data_quality_score - a.data_quality_score;
+    }
+    if (b.trusted_offer_count !== a.trusted_offer_count) {
+      return b.trusted_offer_count - a.trusted_offer_count;
+    }
+    if (b.source_count !== a.source_count) {
+      return b.source_count - a.source_count;
+    }
+    return priceOf(a) - priceOf(b);
+  });
+}
+
 async function loadLatestSnapshot(): Promise<any | null> {
   const now = Date.now();
   if (memoryCache && now - memoryCache.cachedAt < CACHE_TTL_MS) {
@@ -73,7 +103,7 @@ export async function getSnapshotCatalog(): Promise<CatalogResponse | null> {
     }));
 
     return {
-      items,
+      items: sortByQuality(items),
       total: snapshot.total || items.length,
       offer_count: snapshot.offer_count || 0,
       in_stock_count: snapshot.in_stock_count || 0,

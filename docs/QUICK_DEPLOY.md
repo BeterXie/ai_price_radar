@@ -104,6 +104,11 @@ $BaiduVerificationName = Split-Path -Leaf $BaiduVerificationFile
 $BaiduVerificationHash = (Get-FileHash -LiteralPath $BaiduVerificationFile -Algorithm SHA256).Hash
 Write-Output "Baidu verification file: $BaiduVerificationName ($BaiduVerificationHash)"
 
+# Next.js bakes rewrites() into routes-manifest.json at build time, so the
+# internal API base must be set here. The web container reaches the API as
+# `api:8000` on the compose network; without this the fallback would point at
+# the web container itself and /api/* proxying would fail.
+$env:INTERNAL_API_BASE_URL = "http://api:8000"
 npm --prefix apps/web run build
 
 if (rg -a -l "http://localhost:8000" apps/web/.next/static) {

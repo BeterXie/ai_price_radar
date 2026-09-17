@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     qq_app_id: str = ""
     qq_app_key: str = ""
     qq_redirect_uri: str = ""
+    # Dev/test-only switch for mock QQ auth (mock login callback & scan-mock).
+    # Never enable in production: it allows creating sessions without QQ authorization.
+    qq_mock_auth_enabled: bool = False
+    # Dev-only switch to print email login codes to the console when mail is unconfigured.
+    dev_print_auth_codes: bool = False
     session_secret_key: str = "pricememo-auth-secret-key-change-in-production"
     session_cookie_name: str = "pm_session"
     session_max_age_days: int = Field(default=30, ge=1, le=365)

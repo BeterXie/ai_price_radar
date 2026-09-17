@@ -49,6 +49,22 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const scopeQuery = new URLSearchParams(detailQuery);
   if (searchQuery) scopeQuery.set("q", searchQuery);
   const filters = filterValues(rawParams);
+  // Any narrowing (keyword / platform / price / stock …) makes an empty result
+  // ambiguous: it may just mean "no match for these filters", not "no offers".
+  // `comparable` defaults to "true" and is therefore only a filter when "false".
+  const hasActiveFilters = Boolean(
+    searchQuery ||
+      activeSourcePlatform ||
+      filters.delivery_type ||
+      filters.period ||
+      filters.warranty ||
+      filters.auto_delivery ||
+      filters.updated_within_hours ||
+      filters.min_price ||
+      filters.max_price ||
+      filters.in_stock ||
+      filters.comparable === "false"
+  );
   const catalogHref = (brand = "") => {
     const next = new URLSearchParams(scopeQuery);
     next.delete("platform");
@@ -194,8 +210,14 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             ) : activeBrand && productTabs.length > 0 ? (
               <>
                 <SectionIntro
-                  title={`${activeBrand} 监测商品`}
-                  description={<>当前快照暂无可比现货报价，监控爬虫正在持续扫描相关店铺。点击可查看各商品详情台账、历史报价趋势或订阅到价提醒：</>}
+                  title={hasActiveFilters ? `${activeBrand} 筛选结果` : `${activeBrand} 监测商品`}
+                  description={
+                    hasActiveFilters ? (
+                      <>当前筛选条件下没有匹配的报价。可调整或清除下方筛选条件重新查看；也可以直接浏览该品牌下的监测商品台账：</>
+                    ) : (
+                      <>当前快照暂无可比现货报价，监控爬虫正在持续扫描相关店铺。点击可查看各商品详情台账、历史报价趋势或订阅到价提醒：</>
+                    )
+                  }
                 />
                 <div className="mt-4 rounded-2xl border border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">

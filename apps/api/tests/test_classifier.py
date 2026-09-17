@@ -253,6 +253,30 @@ def test_stock_normalization():
 
 
 @pytest.mark.parametrize(
+    ("title", "slug"),
+    [
+        # Keep these in sync with pipeline/tests/test_classifier.py: the API and
+        # the pipeline must route the same title to the same product slug.
+        ("Cursor Pro 官方代充 1个月", "cursor-pro"),
+        ("Cursor Business 商业版 团队席位", "cursor-business"),
+        ("Cursor Team 团队版席位 独享组织", "cursor-business"),
+        ("Cursor 账号 独享首登成品号", "cursor-account"),
+        ("Cursor 日卡 体验版", "cursor-pro"),
+        ("Cursor 直充月卡 官方代充", "cursor-pro"),
+        ("智谱清言 会员连续包月", "zhipu-qingyan-vip"),
+        ("智谱 GLM-4 API 额度 Key Token", "zhipu-api-credit"),
+        ("智谱账号 开发者账号", "zhipu-account"),
+        ("智普清言 会员直充", "zhipu-qingyan-vip"),
+        ("智普 GLM API 资源包", "zhipu-api-credit"),
+        ("智谱 BigModel API 资源包", "zhipu-api-credit"),
+        ("智谱清言 VIP 月卡", "zhipu-qingyan-vip"),
+    ],
+)
+def test_cursor_and_zhipu_match_the_pipeline_classifier(title: str, slug: str):
+    assert classify_product(title).slug == slug
+
+
+@pytest.mark.parametrize(
     ("value", "count", "expected"),
     [
         ("unavailable", 0, "unavailable"),

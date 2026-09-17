@@ -104,12 +104,23 @@ class QQConnectorClient:
                     encrypted_secret = data.get("bot_encrypt_secret", "")
                     user_openid = str(data.get("user_openid", "")).strip()
 
-                    app_secret = ""
-                    if encrypted_secret and key_b64:
-                        try:
-                            app_secret = self.decrypt_secret(encrypted_secret, key_b64)
-                        except Exception as dec_err:
-                            logger.error("Failed decrypting bot secret: %s", dec_err)
+                    # Only report COMPLETED with a fully valid credential set;
+                    # callers persist the binding as active on COMPLETED, so a
+                    # half-decrypted result must surface as an error instead.
+                    if not encrypted_secret or not key_b64:
+                        logger.error("poll_bind_task completed but secret/key missing")
+                        return {"status": "ERROR", "message": "credential payload incomplete"}
+                    if not bot_appid or not user_openid:
+                        logger.error("poll_bind_task completed but app_id/user_openid missing")
+                        return {"status": "ERROR", "message": "credential payload incomplete"}
+
+                    try:
+                        app_secret = self.decrypt_secret(encrypted_secret, key_b64)
+                    except Exception as dec_err:
+                        logger.error("Failed decrypting bot secret: %s", dec_err)
+                        return {"status": "ERROR", "message": f"secret decryption failed: {dec_err}"}
+                    if not app_secret:
+                        return {"status": "ERROR", "message": "secret decryption failed"}
 
                     return {
                         "status": "COMPLETED",

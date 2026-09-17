@@ -2,6 +2,38 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.88] - 2026-09-18
+
+### Security
+- **封堵 QQ 模拟登录后门**: `mock=true` 与 `/qq/scan-mock` 改由 `QQ_MOCK_AUTH_ENABLED` 显式开关控制（默认关闭）；`QQ_AUTH_ENABLED=false` 时回调拒绝认证，不再静默创建真实会话；
+- **OAuth state 校验**: 登录入口将随机 state 绑定到 HttpOnly Cookie（10 分钟），回调在交换授权码前做常数时间比对，防止授权码被植入他人账号；
+- **绑定接口越权修复**: 手动绑定校验会话归属当前用户并拒绝已被他人绑定的 target；`/notifications/bot/command` 改为 `require_current_user` 且忽略请求体 `sender_id`；绑定码一次性消费，解绑时撤销待绑定授权；
+- **验证码防爆破**: `auth_codes` 新增 `attempts`（连续 5 次失败失效）+ 验证接口 IP 滑动窗口限流 + 原子消费验证码；
+- **凭据治理**: 移除源码中硬编码的 LDXP 商户 token（`admin.py`、`sync_ldxp_coupons.py`），改为 `LDXP_MERCHANT_TOKEN` 环境变量注入，缺失时明确失败；同步接口 token 由 Query 改为请求体；
+- **日志脱敏**: 生产日志不再记录登录验证码，明文打印需显式开启 `DEV_PRINT_AUTH_CODES`；
+- **机器人凭据权限**: `qq_bot_login.mjs` 以 0600 写凭据文件、0700 限制状态目录。
+
+### Fixed
+- **优惠券并发竞态**: 活动兑换先锁活动行再校验额度，`claimed_count` 改为原子条件 UPDATE；直兑券改为条件更新；幸运掉券增加用户级锁与进程内互斥，24 小时限领与每日额度不可再被并发绕过；
+- **点击计数与防抖**: 报价点击改为 SQL 原子自增，防抖检查与写入置于同一临界区；
+- **在线时长记账统一**: 新增 `settle_session_activity`，心跳 / 点击 / 退出共用同一基线结算增量，修复时长重复累加与活跃用户少计；
+- **启动迁移补列**: 幂等补齐 `offers.click_count` 与 `auth_codes.attempts`；
+- **快照导出对齐公开目录**: 沿用可见性过滤（禁用来源、隐藏报价、过期报价）、可信价 1 元下限、仅 CNY 参与人民币指标、`top_5_offers` 与汇总共用可信集合；
+- **快照不可变**: 已存在的快照文件不再覆盖，仅当前已发布快照更新 `latest.json`（历史归档需 `--allow-historical`）；
+- **公开数据端点可用性**: 新增 `PUBLIC_DATA_DIR` 并在 compose 共享 `apps/web/public/data` 卷，修复容器内 `/data/*` 必然 404；
+- **Next.js API 代理**: 统一 `INTERNAL_API_BASE_URL`（默认 `http://api:8000`）并在构建阶段传入，修正 rewrites 指向 web 容器自身的问题；
+- **路由与 Schema**: 删除与 Route Handler 冲突的 `public/` 副本；Schema 用 `oneOf` 区分快照与指针；`/data/*` 补齐 ETag / If-None-Match 与 304 转发；修复 `/data/v1/snapshots/<id>.json` 被清洗成 `<id>json`；
+- **机器人网关**: 同步 IO 全部经 `asyncio.to_thread` 卸载；心跳增加 ACK 跟踪与接收超时，半开连接可检测重连；凭据变更重建任务；
+- **投递语义**: 广播 / 通用推送仅统计确认送达；Connector 扫码用户不再被跳过；涨价事件不再渲染降价文案；涨跌开关按事件过滤；去重键改为价格变动标识；
+- **消息健壮性**: Telegram HTML 字段转义 + 超长报告分批；聊天指令长前缀优先匹配；桥接幂等键合并并发请求、账号重载串行化、IPv6 host 生成合法 URL；
+- **关注清单缓存隔离**: 云端缓存按用户 ID 存储、匿名数据独立、迁移失败项保留重试，不再把缓存回写云端；订阅更新合并完整配置，切换渠道不再清空其他设置；
+- **管理后台**: 子模块改用已验证密钥挂载并在验证后重新加载；用户搜索改为提交态驱动；用户详情请求按序号防乱序覆盖；券按可使用/已核销/已过期区分；
+- **登录体验**: 弹窗补齐焦点管理与 Esc 关闭；发码期间锁定邮箱，验证使用请求时邮箱；导航栏通过 `AUTH_CHANGE_EVENT` 同步所有登录入口；
+- **部署脚本**: `migrate_claude_subdivision_v15.py` 的 `--dry-run` 不再写库并尊重人工锁定；v18/v19 迁移正确解析 `sqlite://` URL，且不再把外部店铺活动绑到 pricememo。
+
+### Changed
+- 版本号统一为 `3.7.88`（`VERSION`、`app/main.py`、`apps/web/package.json`、版本测试）。
+
 ## [3.7.87] - 2026-09-18
 
 ### Added

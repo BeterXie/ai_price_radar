@@ -5,7 +5,7 @@
 // scans it with phone QQ the AppID/AppSecret are persisted to the QQ state
 // directory and this process exits 0.
 
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -39,7 +39,14 @@ if (!Array.isArray(credentials) || credentials.length === 0) {
   process.exit(1);
 }
 
-await mkdir(stateDir, { recursive: true });
+// Restrict the state directory and credential files: accounts.json holds every
+// account's plaintext app_secret, so other local users must not be able to read it.
+await mkdir(stateDir, { recursive: true, mode: 0o700 });
+try {
+  await chmod(stateDir, 0o700);
+} catch {
+  // Best effort: some filesystems (e.g. mounted object stores) do not support chmod.
+}
 const rows = [];
 try {
   const existing = JSON.parse(await readFile(accountsPath, "utf8"));
@@ -65,6 +72,18 @@ for (const credential of credentials) {
 }
 
 const temp = `${accountsPath}.tmp`;
-await writeFile(temp, JSON.stringify(rows, null, 2));
+// writeFile's mode only applies when the file is created, so also chmod the
+// temp file explicitly; a pre-existing 0644 temp would otherwise survive.
+await writeFile(temp, JSON.stringify(rows, null, 2), { mode: 0o600 });
+try {
+  await chmod(temp, 0o600);
+} catch {
+  // Best effort on filesystems without POSIX permissions.
+}
 await rename(temp, accountsPath);
+try {
+  await chmod(accountsPath, 0o600);
+} catch {
+  // Best effort on filesystems without POSIX permissions.
+}
 console.log(`✅ QQ Bot bound: ${rows.map((item) => item.app_id).join(", ")}`);

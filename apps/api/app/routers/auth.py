@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 from typing import Any
@@ -26,6 +27,10 @@ from ..services.auth import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+# Cookie-bound CSRF state for the QQ login/link flow.
+QQ_OAUTH_STATE_COOKIE = "qq_oauth_state"
+QQ_OAUTH_STATE_MAX_AGE = 600
 
 
 def _user_to_read(user: User) -> UserRead:
@@ -83,13 +88,13 @@ def verify_email_code(
     response: Response,
     db: Session = Depends(get_db),
 ) -> AuthSessionResponse:
-    user, error_msg = verify_email_login_code(db, payload.email, payload.code)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg or "验证失败")
-
     from .public import _client_address
 
     client_ip = _client_address(request)
+    user, error_msg = verify_email_login_code(db, payload.email, payload.code, client_ip=client_ip)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg or "验证失败")
+
     ua = request.headers.get("user-agent", "")
     session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
     _set_auth_cookie(response, session.token)
@@ -101,10 +106,26 @@ def verify_email_code(
     )
 
 
+def _set_oauth_state_cookie(response: Response, state: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=QQ_OAUTH_STATE_COOKIE,
+        value=state,
+        max_age=QQ_OAUTH_STATE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=settings.web_origin.startswith("https://"),
+        path="/api/v1/auth",
+    )
+
+
+def _clear_oauth_state_cookie(response: Response) -> None:
+    response.delete_cookie(key=QQ_OAUTH_STATE_COOKIE, path="/api/v1/auth")
+
+
 @router.get("/qq/login")
 def qq_login_redirect(request: Request) -> Any:
     settings = get_settings()
-    state = secrets.token_hex(16)
 
     # If QQ Auth is not configured or disabled:
     if not settings.qq_auth_enabled or not settings.qq_app_id:
@@ -113,8 +134,12 @@ def qq_login_redirect(request: Request) -> Any:
             detail="QQ快捷登录暂未开放",
         )
 
+    state = secrets.token_hex(16)
     auth_url = build_qq_auth_url(state, settings)
-    return RedirectResponse(url=auth_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    resp = RedirectResponse(url=auth_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    # Bind the state to this browser so the callback can reject forged links.
+    _set_oauth_state_cookie(resp, state)
+    return resp
 
 
 @router.get("/qq/callback")
@@ -132,11 +157,17 @@ def qq_oauth_callback(
 
     client_ip = _client_address(request)
     ua = request.headers.get("user-agent", "")
+    is_bind_flow = bool(state and state.startswith("bind_"))
 
-    # Handle local dev / mock mode
+    # Mock mode is dev/test-only and requires the explicit QQ_MOCK_AUTH_ENABLED flag.
+    # When QQ auth is disabled (and mock auth is not explicitly enabled) the callback
+    # must fail closed instead of silently minting real sessions.
     if mock == "true" or not settings.qq_auth_enabled:
+        if not settings.qq_mock_auth_enabled:
+            return RedirectResponse(url="/?auth_error=qq_disabled", status_code=status.HTTP_303_SEE_OTHER)
+
         mock_openid = f"mock_qq_{secrets.token_hex(8)}"
-        if state and state.startswith("bind_"):
+        if is_bind_flow:
             from ..services.bot_binding import complete_qq_binding
 
             bind_session_id = state[5:]
@@ -159,10 +190,21 @@ def qq_oauth_callback(
     if not code:
         return RedirectResponse(url="/?auth_error=missing_code", status_code=status.HTTP_303_SEE_OTHER)
 
+    # CSRF protection for the login/link flow: the state must match the cookie that
+    # /qq/login bound to this browser, preventing an attacker from having their own
+    # authorization code linked to a logged-in victim's account. Bind flows carry an
+    # unguessable, one-time, 5-minute binding session id (only ever shown to the
+    # logged-in user) and complete on the scanning phone, so they are validated by
+    # the binding session itself rather than the browser cookie.
+    if not is_bind_flow:
+        cookie_state = request.cookies.get(QQ_OAUTH_STATE_COOKIE, "")
+        if not state or not cookie_state or not hmac.compare_digest(state, cookie_state):
+            return RedirectResponse(url="/?auth_error=state_mismatch", status_code=status.HTTP_303_SEE_OTHER)
+
     try:
         identity = exchange_qq_oauth(code, settings)
         openid = identity["openid"]
-        if state and state.startswith("bind_"):
+        if is_bind_flow:
             from ..services.bot_binding import complete_qq_binding
 
             bind_session_id = state[5:]
@@ -187,6 +229,7 @@ def qq_oauth_callback(
         session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
         _set_auth_cookie(redir, session.token)
+        _clear_oauth_state_cookie(redir)
         return redir
     except Exception as exc:
         logger.error("QQ OAuth callback error: %s", exc)
@@ -198,7 +241,11 @@ def qq_scan_mock(
     session_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
-    """Mock endpoint for phone scanning test in dev mode."""
+    """Mock endpoint for phone scanning test in dev mode (requires QQ_MOCK_AUTH_ENABLED)."""
+    settings = get_settings()
+    if not settings.qq_mock_auth_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
     from ..services.bot_binding import complete_qq_binding
 
     mock_openid = f"mock_qq_{secrets.token_hex(6)}"

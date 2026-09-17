@@ -3,12 +3,15 @@ from __future__ import annotations
 import logging
 import re
 import secrets
+import threading
+import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
@@ -18,6 +21,32 @@ from ..models import AuthCode, NotificationOutbox, User, UserActionLog, UserSess
 logger = logging.getLogger(__name__)
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+MAX_VERIFY_ATTEMPTS = 5
+_VERIFY_RATE_WINDOW_SECONDS = 60
+_VERIFY_RATE_MAX_REQUESTS = 20
+_verify_rate_lock = threading.Lock()
+_verify_rate_buckets: dict[str, deque[float]] = {}
+
+
+def _check_verify_rate_limit(client_ip: str) -> bool:
+    """Simple in-process sliding-window limiter for verification attempts."""
+    if not client_ip:
+        return True
+    now = time.monotonic()
+    with _verify_rate_lock:
+        bucket = _verify_rate_buckets.setdefault(client_ip, deque())
+        while bucket and now - bucket[0] > _VERIFY_RATE_WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= _VERIFY_RATE_MAX_REQUESTS:
+            return False
+        bucket.append(now)
+        # Opportunistic cleanup to bound memory
+        if len(_verify_rate_buckets) > 10000:
+            stale = [k for k, v in _verify_rate_buckets.items() if not v or now - v[-1] > 3600]
+            for k in stale:
+                _verify_rate_buckets.pop(k, None)
+        return True
 
 
 def utcnow() -> datetime:
@@ -83,22 +112,51 @@ def get_user_by_session_token(db: Session, token: str) -> User | None:
     return session.user
 
 
+def settle_session_activity(
+    db: Session,
+    user: User,
+    session: UserSession | None,
+    now: datetime | None = None,
+) -> None:
+    """Settle online-duration accounting against the session's last activity time.
+
+    All activity entry points (heartbeat, clicks, logout) must go through this
+    helper so that seconds are only ever accumulated once, from a single
+    baseline (session.last_active_at), and idle gaps never count as online time.
+    """
+    if user is None:
+        return
+    now = now or utcnow()
+    if session is not None:
+        baseline = session.last_active_at or session.created_at
+    else:
+        baseline = user.last_active_at
+    if baseline is not None:
+        delta = int((now - ensure_utc(baseline)).total_seconds())
+        # Cap delta between 5s and 120s to avoid bogus spikes / idle gaps
+        if 5 <= delta <= 120:
+            user.total_duration_seconds = (user.total_duration_seconds or 0) + delta
+    if session is not None:
+        session.last_active_at = now
+    user.last_active_at = now
+
+
 def delete_user_session(db: Session, token: str) -> None:
     if not token:
         return
     session = db.scalar(select(UserSession).where(UserSession.token == token))
     if session:
         now = utcnow()
-        duration = int((ensure_utc(session.last_active_at or now) - ensure_utc(session.created_at)).total_seconds())
-        if duration > 0 and session.user:
-            session.user.total_duration_seconds = (session.user.total_duration_seconds or 0) + duration
+        if session.user:
+            # Only settle the (small) interval not yet accumulated by heartbeats;
+            # the rest of the session span was already counted incrementally.
+            settle_session_activity(db, session.user, session, now=now)
             log = UserActionLog(
                 user_id=session.user_id,
                 action_type="logout",
                 action_name="用户退出登录",
                 ip_address=session.ip_address or "",
                 user_agent=session.user_agent or "",
-                extra_data={"duration_seconds": duration},
                 created_at=now,
             )
             db.add(log)
@@ -172,46 +230,77 @@ def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
 
     settings = get_settings()
     if not mail_is_configured(settings):
-        logger.warning(
-            "[PriceMemo Dev Auth] 未配置邮件服务 (Resend/SMTP)，已在控制台打印验证码:\n"
-            "--------------------------------------------------\n"
-            "  目标邮箱: %s\n"
-            "  登录验证码: %s (10分钟有效)\n"
-            "--------------------------------------------------",
-            email,
-            code,
-        )
-        print(f"\n[PriceMemo Dev Auth] >>> 邮箱: {email} | 验证码: {code} <<<\n", flush=True)
+        if settings.dev_print_auth_codes:
+            logger.warning(
+                "[PriceMemo Dev Auth] 未配置邮件服务 (Resend/SMTP)，已在控制台打印验证码:\n"
+                "--------------------------------------------------\n"
+                "  目标邮箱: %s\n"
+                "  登录验证码: %s (10分钟有效)\n"
+                "--------------------------------------------------",
+                email,
+                code,
+            )
+            print(f"\n[PriceMemo Dev Auth] >>> 邮箱: {email} | 验证码: {code} <<<\n", flush=True)
+        else:
+            logger.warning(
+                "Mail service is not configured and dev_print_auth_codes is disabled; "
+                "login code for %s was enqueued but cannot be delivered.",
+                email,
+            )
     else:
-        logger.info("Enqueued login code for %s (code: %s)", email, code)
+        # Never log the code itself in production logs.
+        logger.info("Enqueued login code for %s", email)
     return True, 60, "验证码已发送至您的邮箱，请查收"
 
 
-def verify_email_login_code(db: Session, raw_email: str, code: str) -> tuple[User | None, str]:
+def verify_email_login_code(
+    db: Session,
+    raw_email: str,
+    code: str,
+    client_ip: str = "",
+) -> tuple[User | None, str]:
     email = normalize_email(raw_email)
     clean_code = code.strip()
     if not clean_code:
         return None, "请输入验证码"
+    if not _check_verify_rate_limit(client_ip):
+        return None, "尝试过于频繁，请稍后再试"
 
     now = utcnow()
-    auth_codes = list(
-        db.scalars(
-            select(AuthCode)
-            .where(
-                AuthCode.email == email,
-                AuthCode.code == clean_code,
-                AuthCode.purpose == "login",
-                AuthCode.used == False,
-            )
-            .order_by(AuthCode.id.desc())
-            .limit(1)
+    # Load the latest active code for this email regardless of the entered value,
+    # so failed guesses can be counted and throttled per code.
+    auth_code = db.scalar(
+        select(AuthCode)
+        .where(
+            AuthCode.email == email,
+            AuthCode.purpose == "login",
+            AuthCode.used == False,
         )
+        .order_by(AuthCode.id.desc())
+        .limit(1)
     )
-    auth_code = auth_codes[0] if auth_codes else None
     if auth_code is None or ensure_utc(auth_code.expires_at) <= now:
         return None, "验证码无效或已过期"
 
-    auth_code.used = True
+    if auth_code.code != clean_code:
+        # Count the failed attempt; invalidate the code once the limit is reached.
+        attempts = (auth_code.attempts or 0) + 1
+        db.execute(
+            update(AuthCode)
+            .where(AuthCode.id == auth_code.id, AuthCode.used == False)
+            .values(attempts=attempts, used=(attempts >= MAX_VERIFY_ATTEMPTS))
+        )
+        db.commit()
+        return None, "验证码错误或已失效"
+
+    # Atomic consumption: only one concurrent request can flip used=False -> True.
+    consumed = db.execute(
+        update(AuthCode)
+        .where(AuthCode.id == auth_code.id, AuthCode.used == False)
+        .values(used=True)
+    )
+    if consumed.rowcount != 1:
+        return None, "验证码无效或已过期"
 
     # Find or create User
     user = db.scalar(select(User).where(User.email == email))

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, EnvelopeSimple, Sparkle } from "@phosphor-icons/react";
 import type { AuthSessionState } from "@/lib/types";
@@ -12,6 +12,9 @@ interface LoginModalProps {
   onSuccess: (session: AuthSessionState) => void;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState("");
@@ -21,6 +24,13 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const emailInputRef = useRef<HTMLInputElement | null>(null);
+  const codeInputRef = useRef<HTMLInputElement | null>(null);
+  // The email the pending code was requested for. Verification must use it,
+  // not whatever is currently typed into the (still editable) input.
+  const requestedEmailRef = useRef<string>("");
 
   useEffect(() => {
     setMounted(true);
@@ -34,6 +44,56 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     return () => clearInterval(timer);
   }, [countdown]);
 
+  // Focus management: move focus into the dialog on open, keep Tab inside it,
+  // close on Escape, and restore focus to the trigger on close.
+  useEffect(() => {
+    if (!isOpen || !mounted) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+
+    const focusTarget = step === "code" ? codeInputRef.current : emailInputRef.current;
+    (focusTarget || dialogRef.current)?.focus?.();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const container = dialogRef.current;
+      if (!container) return;
+      const focusable = Array.from(
+        container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [isOpen, mounted, step, onClose]);
+
+  const handleBackToEmail = useCallback(() => {
+    // Reset before showing the email step so a late response from the previous
+    // request cannot drive the new flow.
+    requestedEmailRef.current = "";
+    setStep("email");
+    setCode("");
+    setError(null);
+    setInfo(null);
+  }, []);
+
   if (!isOpen || !mounted) return null;
 
   const handleSendCode = async (e?: React.FormEvent) => {
@@ -46,9 +106,16 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     setError(null);
     setInfo(null);
     setLoading(true);
+    const requestEmail = cleanEmail;
     try {
-      const res = await requestEmailLoginCode(cleanEmail);
+      const res = await requestEmailLoginCode(requestEmail);
+      // Ignore a response if the user already switched back to the email step.
+      if (requestedEmailRef.current !== "" && requestedEmailRef.current !== requestEmail) {
+        return;
+      }
       if (res.success) {
+        // Freeze the email this code belongs to and verify against it later.
+        requestedEmailRef.current = requestEmail;
         setStep("code");
         setCountdown(res.retry_after || 60);
         setInfo(res.message || "验证码已发送至您的邮箱");
@@ -71,8 +138,9 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     }
     setError(null);
     setLoading(true);
+    const verifyEmail = requestedEmailRef.current || email.trim();
     try {
-      const session = await verifyEmailLoginCode(email.trim(), code.trim());
+      const session = await verifyEmailLoginCode(verifyEmail, code.trim());
       if (session.authenticated) {
         onSuccess(session);
         onClose();
@@ -102,7 +170,9 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
 
       {/* Modal Dialog Card adhering to PriceMemo paper design system */}
       <div
-        className="relative w-full max-w-md my-auto rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 sm:p-8 shadow-2xl text-[color:var(--ink)] z-10 transition-all"
+        ref={dialogRef}
+        tabIndex={-1}
+        className="relative w-full max-w-md my-auto rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 sm:p-8 shadow-2xl text-[color:var(--ink)] z-10 transition-all focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -147,14 +217,20 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
             </label>
             <div className="relative">
               <input
+                ref={emailInputRef}
                 type="email"
                 placeholder="name@example.com"
                 value={email}
-                disabled={step === "code" && countdown > 0}
+                disabled={step === "code" || loading}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] text-sm text-[color:var(--ink)] placeholder-[color:var(--muted)] focus:outline-none focus:border-[color:var(--focus)] focus:ring-1 focus:ring-[color:var(--focus)] transition disabled:opacity-60 disabled:bg-[color:var(--subtle)]"
               />
             </div>
+            {step === "code" && requestedEmailRef.current && (
+              <p className="mt-1.5 text-[11px] text-[color:var(--muted)]">
+                验证码已发送至 {requestedEmailRef.current}，请使用该邮箱收到的验证码登录。
+              </p>
+            )}
           </div>
 
           {step === "code" && (
@@ -173,13 +249,13 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                 </button>
               </div>
               <input
+                ref={codeInputRef}
                 type="text"
                 placeholder="123456"
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] text-base text-[color:var(--ink)] placeholder-[color:var(--muted)] focus:outline-none focus:border-[color:var(--focus)] focus:ring-1 focus:ring-[color:var(--focus)] tracking-widest text-center font-mono font-bold transition"
-                autoFocus
               />
             </div>
           )}
@@ -204,10 +280,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setStep("email");
-                    setCode("");
-                  }}
+                  onClick={handleBackToEmail}
                   className="w-full py-2 text-xs font-medium text-[color:var(--muted)] hover:text-[color:var(--ink)] transition text-center"
                 >
                   更换其他邮箱

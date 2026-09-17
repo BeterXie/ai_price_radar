@@ -52,6 +52,9 @@ class QQGatewayService:
         self.bot_client = QQBotClient()
         self._monitor_task: asyncio.Task | None = None
         self._bot_tasks: dict[str, asyncio.Task] = {}
+        # app_id -> credential secret the running task was started with, so a
+        # re-bind that rotates bot_token rebuilds the connection.
+        self._bot_credentials: dict[str, str] = {}
 
     def start(self) -> None:
         """Start the gateway monitor in background asyncio loop."""
@@ -72,6 +75,7 @@ class QQGatewayService:
         for app_id, task in list(self._bot_tasks.items()):
             task.cancel()
         self._bot_tasks.clear()
+        self._bot_credentials.clear()
         print(">>> [QQBotGateway] Service stopped <<<", flush=True)
         logger.info("QQGatewayService stopped.")
 
@@ -79,30 +83,36 @@ class QQGatewayService:
         """Periodically scan active QQ bots and maintain their connection tasks."""
         while self.running:
             try:
-                bot_enabled = _is_bot_enabled()
+                bot_enabled = await asyncio.to_thread(_is_bot_enabled)
                 if not bot_enabled:
                     # Cancel any active connections when bot is turned off
                     for app_id, task in list(self._bot_tasks.items()):
                         task.cancel()
                     self._bot_tasks.clear()
+                    self._bot_credentials.clear()
                     await asyncio.sleep(15.0)
                     continue
 
                 # Query distinct active (app_id, bot_token)
                 active_bots: dict[str, str] = {}
                 try:
-                    with SessionLocal() as db:
-                        bindings = db.scalars(
-                            select(UserBotBinding).where(
-                                UserBotBinding.channel == "qq",
-                                UserBotBinding.is_active == True,
-                            )
-                        ).all()
-                        for b in bindings:
-                            app_id = (b.extra_meta or {}).get("app_id") if b.extra_meta else None
-                            app_secret = b.bot_token
-                            if app_id and app_secret:
-                                active_bots[str(app_id).strip()] = str(app_secret).strip()
+                    def _load_active_bots() -> dict[str, str]:
+                        found: dict[str, str] = {}
+                        with SessionLocal() as db:
+                            bindings = db.scalars(
+                                select(UserBotBinding).where(
+                                    UserBotBinding.channel == "qq",
+                                    UserBotBinding.is_active == True,
+                                )
+                            ).all()
+                            for b in bindings:
+                                app_id = (b.extra_meta or {}).get("app_id") if b.extra_meta else None
+                                app_secret = b.bot_token
+                                if app_id and app_secret:
+                                    found[str(app_id).strip()] = str(app_secret).strip()
+                        return found
+
+                    active_bots = await asyncio.to_thread(_load_active_bots)
                 except Exception as db_err:
                     logger.error("Error querying active QQ bot bindings: %s", db_err)
 
@@ -112,12 +122,25 @@ class QQGatewayService:
                 if env_app_id and env_app_secret and env_app_id not in active_bots:
                     active_bots[env_app_id] = env_app_secret
 
-                # Launch tasks for newly discovered or disconnected bots
+                # Launch tasks for newly discovered or disconnected bots, and
+                # rebuild when the stored credential has changed (re-bind).
                 current_app_ids = set(active_bots.keys())
                 for app_id, secret in active_bots.items():
                     existing_task = self._bot_tasks.get(app_id)
+                    credential_changed = (
+                        app_id in self._bot_credentials
+                        and self._bot_credentials[app_id] != secret
+                    )
+                    if credential_changed and existing_task is not None:
+                        logger.info(
+                            "QQ Bot [%s] credentials changed; restarting gateway task", app_id
+                        )
+                        existing_task.cancel()
+                        del self._bot_tasks[app_id]
+                        existing_task = None
                     if existing_task is None or existing_task.done():
                         logger.info("Launching QQ Bot Gateway task for app_id: %s", app_id)
+                        self._bot_credentials[app_id] = secret
                         self._bot_tasks[app_id] = asyncio.create_task(
                             self._run_bot_gateway(app_id, secret)
                         )
@@ -128,6 +151,7 @@ class QQGatewayService:
                         logger.info("Cancelling QQ Bot Gateway task for removed app_id: %s", app_id)
                         self._bot_tasks[app_id].cancel()
                         del self._bot_tasks[app_id]
+                        self._bot_credentials.pop(app_id, None)
 
             except asyncio.CancelledError:
                 break
@@ -141,13 +165,18 @@ class QQGatewayService:
         session_id: str | None = None
         last_seq: int | None = None
         backoff = 1.0
+        # Set when the heartbeat loop did not see an ACK in time; forces the
+        # receive loop to drop the connection and reconnect.
+        ack_state: dict[str, float | bool] = {"acked": True, "last_sent": 0.0}
 
         while self.running:
             ws = None
             heartbeat_task = None
             try:
-                # 1. Fetch access token
-                token = self.bot_client._get_access_token(app_id, app_secret)
+                # 1. Fetch access token (blocking HTTP -> worker thread)
+                token = await asyncio.to_thread(
+                    self.bot_client._get_access_token, app_id, app_secret
+                )
                 if not token:
                     logger.warning("Cannot get token for QQ bot %s, retrying in %.1fs...", app_id, backoff)
                     await asyncio.sleep(backoff)
@@ -172,18 +201,25 @@ class QQGatewayService:
 
                 interval_ms = hello_payload.get("d", {}).get("heartbeat_interval", 45000)
                 interval_sec = max(interval_ms / 1000.0, 5.0)
+                ack_state["acked"] = True
 
-                # 3. Start Heartbeat background task
+                # 3. Start Heartbeat background task: only send the next beat once
+                # the previous one was acknowledged, so a half-open connection is
+                # detected instead of silently heartbeating forever.
                 async def _heartbeat_loop(ws_conn: websockets.ClientConnection):
-                    try:
-                        while True:
-                            await asyncio.sleep(interval_sec * 0.9)
-                            hb_msg = json.dumps({"op": 1, "d": last_seq})
-                            await ws_conn.send(hb_msg)
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception as hb_err:
-                        logger.debug("Heartbeat error [%s]: %s", app_id, hb_err)
+                    while True:
+                        await asyncio.sleep(interval_sec * 0.9)
+                        if not ack_state["acked"]:
+                            logger.warning(
+                                "QQ Gateway [%s] heartbeat not acknowledged; closing connection",
+                                app_id,
+                            )
+                            await ws_conn.close()
+                            return
+                        ack_state["acked"] = False
+                        ack_state["last_sent"] = time.time()
+                        hb_msg = json.dumps({"op": 1, "d": last_seq})
+                        await ws_conn.send(hb_msg)
 
                 heartbeat_task = asyncio.create_task(_heartbeat_loop(ws))
 
@@ -213,9 +249,19 @@ class QQGatewayService:
 
                 backoff = 1.0  # Reset backoff on successful handshake
 
-                # 5. Event processing loop
+                # 5. Event processing loop (recv timeout detects dead gateways)
                 while self.running:
-                    raw_msg = await ws.recv()
+                    try:
+                        raw_msg = await asyncio.wait_for(
+                            ws.recv(), timeout=max(interval_sec * 3.0, 30.0)
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "QQ Gateway [%s] received no data for %.0fs; reconnecting",
+                            app_id,
+                            max(interval_sec * 3.0, 30.0),
+                        )
+                        break
                     payload = json.loads(raw_msg)
                     op = payload.get("op")
                     s = payload.get("s")
@@ -247,14 +293,16 @@ class QQGatewayService:
                             if user_openid and raw_content:
                                 print(f">>> [QQBotGateway] Inbound message: '{raw_content}' from {user_openid} <<<", flush=True)
                                 logger.info("Received QQ C2C message [%s]: '%s'", user_openid[:6] + "...", raw_content[:20])
-                                # Execute command router
-                                reply_text = handle_chat_command(
+                                # Command routing hits the DB and the reply hits the
+                                # network: both must run off the event loop.
+                                reply_text = await asyncio.to_thread(
+                                    handle_chat_command,
                                     raw_text=raw_content,
                                     sender_id=user_openid,
                                     channel="qq",
                                 )
-                                # Passive reply back
-                                ok = self.bot_client.send_c2c_message(
+                                ok = await asyncio.to_thread(
+                                    self.bot_client.send_c2c_message,
                                     target_openid=user_openid,
                                     text=reply_text,
                                     app_id=app_id,
@@ -280,12 +328,14 @@ class QQGatewayService:
                             if group_openid:
                                 print(f">>> [QQBotGateway] Group message in {group_openid[:6]}... by {member_openid[:6] if member_openid else 'unknown'}...: '{cleaned_content}' <<<", flush=True)
                                 logger.info("Received QQ Group message [%s]: '%s'", group_openid[:6] + "...", cleaned_content[:20])
-                                reply_text = handle_chat_command(
+                                reply_text = await asyncio.to_thread(
+                                    handle_chat_command,
                                     raw_text=cleaned_content,
                                     sender_id=member_openid or "",
                                     channel="qq",
                                 )
-                                ok = self.bot_client.send_group_message(
+                                ok = await asyncio.to_thread(
+                                    self.bot_client.send_group_message,
                                     group_openid=group_openid,
                                     text=reply_text,
                                     app_id=app_id,
@@ -313,7 +363,8 @@ class QQGatewayService:
                                     "------------------------------------\n"
                                     "🌐 官网: https://ai.pricememo.cn"
                                 )
-                                self.bot_client.send_c2c_message(
+                                await asyncio.to_thread(
+                                    self.bot_client.send_c2c_message,
                                     target_openid=user_openid,
                                     text=welcome_text,
                                     app_id=app_id,
@@ -321,7 +372,7 @@ class QQGatewayService:
                                 )
 
                     elif op == 11:  # HEARTBEAT_ACK
-                        pass
+                        ack_state["acked"] = True
 
                     elif op == 7:  # RECONNECT
                         logger.info("QQ Gateway requested RECONNECT for [%s]", app_id)

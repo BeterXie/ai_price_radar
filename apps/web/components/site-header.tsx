@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Bell, GithubLogo, List, Storefront, Tag, User, X } from "@phosphor-icons/react";
 import { PlatformIcon } from "@/components/platform-icon";
-import { fetchAuthMe } from "@/lib/auth-client";
+import { fetchAuthMe, AUTH_CHANGE_EVENT } from "@/lib/auth-client";
 import type { AuthSessionState } from "@/lib/types";
 import { initUserHeartbeat } from "@/lib/analytics";
 import { LoginModal } from "@/components/login-modal";
@@ -31,21 +31,46 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
   const [session, setSession] = useState<AuthSessionState | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  // Load the session from any login entry point (header modal, account page,
+  // QQ callback). AUTH_CHANGE_EVENT is dispatched by auth-client on every
+  // successful login/logout so the header never shows a stale "登录" button.
   useEffect(() => {
-    let cleanupHb: (() => void) | null = null;
-    fetchAuthMe()
-      .then((s) => {
-        setSession(s);
-        if (s?.authenticated) {
-          cleanupHb = initUserHeartbeat();
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
 
+    const load = () => {
+      fetchAuthMe()
+        .then((s) => {
+          if (!cancelled) setSession(s);
+        })
+        .catch(() => {
+          if (!cancelled) setSession({ authenticated: false, user: null, token: null });
+        });
+    };
+
+    load();
+    window.addEventListener(AUTH_CHANGE_EVENT, load);
     return () => {
-      if (cleanupHb) cleanupHb();
+      cancelled = true;
+      window.removeEventListener(AUTH_CHANGE_EVENT, load);
     };
   }, []);
+
+  // Heartbeat runs in its own effect keyed to the authentication state, so it
+  // is always torn down when the user logs out or the header unmounts.
+  const isAuthenticated = Boolean(session?.authenticated);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let mounted = true;
+    // Defer one tick so a login that happens during unmount cannot start an
+    // orphaned timer (React Strict Mode double-invokes effects as well).
+    const handle = window.setTimeout(() => {
+      if (mounted) initUserHeartbeat();
+    }, 0);
+    return () => {
+      mounted = false;
+      window.clearTimeout(handle);
+    };
+  }, [isAuthenticated]);
 
   const closeMenu = () => {
     if (menuRef.current) menuRef.current.open = false;
@@ -149,9 +174,6 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
         onClose={() => setShowLoginModal(false)}
         onSuccess={(s) => {
           setSession(s);
-          if (s?.authenticated) {
-            initUserHeartbeat();
-          }
         }}
       />
     </header>

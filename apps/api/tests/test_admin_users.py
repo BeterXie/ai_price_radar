@@ -1,6 +1,8 @@
+import sys
+import types
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -198,6 +200,28 @@ def test_user_heartbeat_and_click_tracking():
         assert user.total_duration_seconds >= 120
 
 
+def _fake_qq_bot_module(sent_targets: list[str] | None = None):
+    """Build a stand-in extensions.bots.qq_bot module that always delivers."""
+    module = types.ModuleType("extensions.bots.qq_bot")
+    sent = sent_targets if sent_targets is not None else []
+
+    class QQBotClient:
+        def __init__(self, app_id=None, app_secret=None, **kwargs):
+            self.app_id = app_id or "test-app-id"
+            self.app_secret = app_secret or "test-app-secret"
+
+        @property
+        def is_configured(self) -> bool:
+            return True
+
+        def send_c2c_message(self, target_openid, text, app_id=None, app_secret=None, msg_id=None) -> bool:
+            sent.append(target_openid)
+            return True
+
+    module.QQBotClient = QQBotClient
+    return module
+
+
 def test_admin_broadcast_notifications():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -233,7 +257,9 @@ def test_admin_broadcast_notifications():
             content="Cursor 与 智谱 AI 比价已上线！",
             channels=["email", "bot"],
         )
-        broadcast = admin_create_broadcast(payload=payload, db=db)
+        sent_targets: list[str] = []
+        with patch.dict(sys.modules, {"extensions.bots.qq_bot": _fake_qq_bot_module(sent_targets)}):
+            broadcast = admin_create_broadcast(payload=payload, db=db)
         assert broadcast.id is not None
         assert broadcast.title == "全新品牌上线测试"
         assert broadcast.target_user_count == 3
@@ -251,6 +277,41 @@ def test_admin_broadcast_notifications():
         assert len(history) == 1
         assert history[0].title == "全新品牌上线测试"
         assert history[0].email_sent_count == 2
+
+
+def test_admin_broadcast_counts_only_delivered_bot_messages():
+    """Undeliverable bot messages must not be reported as sent."""
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    module = types.ModuleType("extensions.bots.qq_bot")
+
+    class UndeliverableQQBotClient:
+        def __init__(self, app_id=None, app_secret=None, **kwargs):
+            pass
+
+        @property
+        def is_configured(self) -> bool:
+            return False
+
+        def send_c2c_message(self, *args, **kwargs) -> bool:
+            return False
+
+    module.QQBotClient = UndeliverableQQBotClient
+
+    with Session(engine) as db:
+        user = User(email="bot@example.com", nickname="Bot User", is_active=True)
+        db.add(user)
+        db.commit()
+        db.add(UserBotBinding(user_id=user.id, channel="qq", target_id="unreachable_target", is_active=True))
+        db.commit()
+
+        payload = AdminBroadcastCreate(title="投递失败测试", content="内容", channels=["bot"])
+        with patch.dict(sys.modules, {"extensions.bots.qq_bot": module}):
+            broadcast = admin_create_broadcast(payload=payload, db=db)
+
+        assert broadcast.bot_sent_count == 0
+        assert broadcast.target_user_count == 0
 
 
 def test_cursor_and_zhipu_classifier():

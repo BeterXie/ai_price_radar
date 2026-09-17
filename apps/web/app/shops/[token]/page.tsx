@@ -103,7 +103,7 @@ export default async function ShopPage({ params }: { params: Promise<{ token: st
             <span>采集方式：{shop.source_kind_label}</span>
             <span className="flex items-center gap-1.5 font-medium text-amber-700">
               <Fire size={17} weight="fill" className="text-amber-500" />
-              当日商品点击：{shop.today_clicks || 0} 次
+              当日总点击：{shop.today_clicks || 0} 次
             </span>
             <span className="flex items-center gap-1.5 font-medium text-black/70">
               <Eye size={17} />

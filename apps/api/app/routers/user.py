@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
 import logging
+import threading
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -39,10 +40,12 @@ from ..schemas import (
     UserTrackClickRequest,
 )
 from ..security import get_current_user, get_token_from_request, require_current_user
+from ..services.auth import settle_session_activity
 from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
     complete_qq_binding,
+    complete_qq_binding_for_user,
     get_user_bindings,
     start_qq_binding_session,
     unbind_user_channel,
@@ -53,6 +56,15 @@ from ..services.notification_hub import handle_inbound_chat_message
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/user", tags=["user"])
+
+# Serializes lucky-drop claims within this process so per-user and global daily
+# limits cannot be raced by concurrent requests (single-instance deployment).
+_CLAIM_DROP_LOCK = threading.Lock()
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE wildcard characters so codes match literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _is_bot_enabled(db: Session) -> bool:
@@ -284,9 +296,9 @@ def manual_confirm_qq_binding(
     """Fallback manual binding endpoint: bind by entering QQ ID / OpenID with the code."""
     if not _is_bot_enabled(db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="机器人功能已由管理员暂时关闭")
-    binding = complete_qq_binding(db, bind_code, target_id)
+    binding, error = complete_qq_binding_for_user(db, current_user, bind_code, target_id)
     if binding is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="绑定码无效或已失效")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error or "绑定码无效或已失效")
     return {"success": True, "binding": _binding_to_read(binding)}
 
 
@@ -321,20 +333,23 @@ def unbind_qq_bot(
 @router.post("/notifications/bot/command", response_model=BotCommandResponse)
 def execute_bot_command(
     payload: BotCommandRequest,
-    current_user: User | None = Depends(get_current_user),
+    current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> BotCommandResponse:
-    """Execute or simulate a bot chat command (e.g. plus, pro, 行情, 我的, 暂停推送)."""
-    sender_id = payload.sender_id
-    if not sender_id and current_user:
-        bindings = get_user_bindings(db, current_user.id)
-        bound = next((b for b in bindings if b.channel == payload.channel), None)
-        if bound:
-            sender_id = bound.target_id
-        elif current_user.qq_openid and payload.channel == "qq":
-            sender_id = current_user.qq_openid
-        else:
-            sender_id = f"user_{current_user.id}"
+    """Execute or simulate a bot chat command (e.g. plus, pro, 行情, 我的, 暂停推送).
+
+    Identity is always derived from the authenticated user's own bindings;
+    payload.sender_id is intentionally ignored (an anonymous caller must never
+    be able to impersonate another user by supplying a known target id).
+    """
+    bindings = get_user_bindings(db, current_user.id)
+    bound = next((b for b in bindings if b.channel == payload.channel), None)
+    if bound:
+        sender_id = bound.target_id
+    elif current_user.qq_openid and payload.channel == "qq":
+        sender_id = current_user.qq_openid
+    else:
+        sender_id = f"user_{current_user.id}"
 
     reply = handle_inbound_chat_message(
         text=payload.text,
@@ -406,14 +421,19 @@ def redeem_coupon(
 
     now = datetime.now(timezone.utc)
 
-    # 1. Check if it matches a marketing campaign code (case-insensitive)
+    # 1. Check if it matches a marketing campaign code (case-insensitive, literal match)
     campaign = db.scalar(
         select(CouponCampaign).where(
-            CouponCampaign.campaign_code.ilike(raw_code),
+            CouponCampaign.campaign_code.ilike(_escape_like(raw_code), escape="\\"),
             CouponCampaign.is_active.is_(True),
         )
     )
     if campaign:
+        # Lock the campaign row (Postgres) so quota / per-user checks and the
+        # claim below happen inside one serialized critical section per campaign.
+        campaign = db.scalar(
+            select(CouponCampaign).where(CouponCampaign.id == campaign.id).with_for_update()
+        )
         if _ensure_utc(campaign.expires_at) < now:
             return CouponClaimResponse(success=False, message="该活动口令已过期", coupon=None)
         if campaign.claimed_count >= campaign.total_quota:
@@ -447,7 +467,7 @@ def redeem_coupon(
             query = query.where(
                 or_(
                     ShopCoupon.shop_url == campaign.shop_url,
-                    ShopCoupon.shop_url.ilike(f"%{campaign.shop_url.strip()}%"),
+                    ShopCoupon.shop_url.ilike(f"%{_escape_like(campaign.shop_url.strip())}%", escape="\\"),
                 )
             )
 
@@ -478,7 +498,19 @@ def redeem_coupon(
         coupon.assigned_user_id = current_user.id
         coupon.assigned_at = now
         coupon.campaign_id = campaign.id
-        campaign.claimed_count += 1
+        # Atomic quota increment; loses the coupon claim if another request took
+        # the last slot between the check above and this update.
+        quota_taken = db.execute(
+            update(CouponCampaign)
+            .where(
+                CouponCampaign.id == campaign.id,
+                CouponCampaign.claimed_count < CouponCampaign.total_quota,
+            )
+            .values(claimed_count=CouponCampaign.claimed_count + 1)
+        )
+        if quota_taken.rowcount != 1:
+            db.rollback()
+            return CouponClaimResponse(success=False, message="该活动口令名额已被领完", coupon=None)
         db.commit()
         db.refresh(coupon)
         return CouponClaimResponse(
@@ -503,9 +535,21 @@ def redeem_coupon(
         if _ensure_utc(direct_coupon.expires_at) < now:
             return CouponClaimResponse(success=False, message="该优惠券码已过期", coupon=None)
 
-        direct_coupon.is_assigned = True
-        direct_coupon.assigned_user_id = current_user.id
-        direct_coupon.assigned_at = now
+        # Atomic claim: only one concurrent request can flip is_assigned=False.
+        claimed = db.execute(
+            update(ShopCoupon)
+            .where(
+                ShopCoupon.id == direct_coupon.id,
+                ShopCoupon.is_assigned.is_(False),
+            )
+            .values(
+                is_assigned=True,
+                assigned_user_id=current_user.id,
+                assigned_at=now,
+            )
+        )
+        if claimed.rowcount != 1:
+            return CouponClaimResponse(success=False, message="该优惠券码已被其他用户兑换", coupon=None)
         db.commit()
         db.refresh(direct_coupon)
         return CouponClaimResponse(
@@ -583,78 +627,83 @@ def claim_lucky_drop(
     if not _get_setting_bool(db, "coupon_drop_enabled", default=True):
         return CouponClaimResponse(success=False, message="优惠券掉落活动已暂时关闭", coupon=None)
 
-    now = datetime.now(timezone.utc)
-    cooldown_cutoff = now - timedelta(hours=24)
+    with _CLAIM_DROP_LOCK:
+        now = datetime.now(timezone.utc)
+        cooldown_cutoff = now - timedelta(hours=24)
 
-    # Daily global drop limit check
-    daily_limit = _get_setting_int(db, "coupon_daily_drop_limit", default=100)
-    if daily_limit > 0:
-        today_claimed = (
-            db.scalar(
-                select(func.count(ShopCoupon.id)).where(
-                    ShopCoupon.assigned_at >= cooldown_cutoff
+        # Serialize per-user claims (Postgres row lock on the user) so the 24h
+        # frequency check cannot be raced by concurrent requests of the same user.
+        db.execute(select(User.id).where(User.id == current_user.id).with_for_update())
+
+        # Daily global drop limit check
+        daily_limit = _get_setting_int(db, "coupon_daily_drop_limit", default=100)
+        if daily_limit > 0:
+            today_claimed = (
+                db.scalar(
+                    select(func.count(ShopCoupon.id)).where(
+                        ShopCoupon.assigned_at >= cooldown_cutoff
+                    )
                 )
+                or 0
             )
-            or 0
+            if today_claimed >= daily_limit:
+                return CouponClaimResponse(
+                    success=False,
+                    message="今日专享优惠券发放已达上限，感谢支持，明天继续掉落哦~",
+                    coupon=None,
+                )
+
+        # Frequency check: Has user claimed a drop in last 24h?
+        recent_coupon = db.scalar(
+            select(ShopCoupon)
+            .where(
+                ShopCoupon.assigned_user_id == current_user.id,
+                ShopCoupon.campaign_id.is_(None),
+                ShopCoupon.assigned_at >= cooldown_cutoff,
+            )
+            .order_by(ShopCoupon.assigned_at.desc())
+            .limit(1)
         )
-        if today_claimed >= daily_limit:
+        if recent_coupon:
             return CouponClaimResponse(
                 success=False,
-                message="今日专享优惠券发放已达上限，感谢支持，明天继续掉落哦~",
+                message="您在 24 小时内已领取过专属立减券啦，已在您的卡包中生效！",
+                coupon=_coupon_to_read(recent_coupon),
+            )
+
+        # Find an available unassigned valid coupon with row-level lock
+        coupon = db.scalar(
+            select(ShopCoupon)
+            .where(
+                ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.expires_at > now,
+            )
+            .order_by(ShopCoupon.id.asc())
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if not coupon:
+            return CouponClaimResponse(
+                success=False,
+                message="今日专享优惠券已被抢光啦，感谢支持，明天继续掉落哦~",
                 coupon=None,
             )
 
-    # Frequency check: Has user claimed a drop in last 24h?
-    recent_coupon = db.scalar(
-        select(ShopCoupon)
-        .where(
-            ShopCoupon.assigned_user_id == current_user.id,
-            ShopCoupon.campaign_id.is_(None),
-            ShopCoupon.assigned_at >= cooldown_cutoff,
+        coupon.is_assigned = True
+        coupon.assigned_user_id = current_user.id
+        coupon.assigned_at = now
+        db.add(
+            UserActionLog(
+                user_id=current_user.id,
+                action_type="coupon_claim",
+                action_name=f"领取优惠券: {coupon.name}",
+                target_id=str(coupon.id),
+                extra_data={"code": coupon.code, "shop_name": coupon.shop_name, "discount": str(coupon.discount_amount)},
+                created_at=now,
+            )
         )
-        .order_by(ShopCoupon.assigned_at.desc())
-        .limit(1)
-    )
-    if recent_coupon:
-        return CouponClaimResponse(
-            success=False,
-            message="您在 24 小时内已领取过专属立减券啦，已在您的卡包中生效！",
-            coupon=_coupon_to_read(recent_coupon),
-        )
-
-    # Find an available unassigned valid coupon with row-level lock
-    coupon = db.scalar(
-        select(ShopCoupon)
-        .where(
-            ShopCoupon.is_assigned.is_(False),
-            ShopCoupon.expires_at > now,
-        )
-        .order_by(ShopCoupon.id.asc())
-        .with_for_update(skip_locked=True)
-        .limit(1)
-    )
-    if not coupon:
-        return CouponClaimResponse(
-            success=False,
-            message="今日专享优惠券已被抢光啦，感谢支持，明天继续掉落哦~",
-            coupon=None,
-        )
-
-    coupon.is_assigned = True
-    coupon.assigned_user_id = current_user.id
-    coupon.assigned_at = now
-    db.add(
-        UserActionLog(
-            user_id=current_user.id,
-            action_type="coupon_claim",
-            action_name=f"领取优惠券: {coupon.name}",
-            target_id=str(coupon.id),
-            extra_data={"code": coupon.code, "shop_name": coupon.shop_name, "discount": str(coupon.discount_amount)},
-            created_at=now,
-        )
-    )
-    db.commit()
-    db.refresh(coupon)
+        db.commit()
+        db.refresh(coupon)
     return CouponClaimResponse(
         success=True,
         message=f"🎉 恭喜获得{coupon.shop_name or '店铺'}【{coupon.name}】！已自动存入个人卡包。",
@@ -672,19 +721,9 @@ def user_heartbeat(
     token = get_token_from_request(request)
     session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
 
-    # Calculate delta from last active time to accumulate online seconds safely
-    if current_user.last_active_at:
-        last_dt = current_user.last_active_at
-        if last_dt.tzinfo is None:
-            last_dt = last_dt.replace(tzinfo=timezone.utc)
-        delta = int((now - last_dt).total_seconds())
-        # Cap delta between 5s and 120s to avoid bogus spikes
-        if 5 <= delta <= 120:
-            current_user.total_duration_seconds = (current_user.total_duration_seconds or 0) + delta
-
-    current_user.last_active_at = now
-    if session:
-        session.last_active_at = now
+    # Settle online seconds from the session's own activity baseline so that
+    # clicks and logout cannot double- or under-count the same interval.
+    settle_session_activity(db, current_user, session, now=now)
 
     db.commit()
     return UserHeartbeatResponse(
@@ -708,9 +747,18 @@ def user_track_click(
     now = datetime.now(timezone.utc)
 
     user_id = current_user.id if current_user else None
+    session = None
     if current_user:
-        current_user.button_click_count = (current_user.button_click_count or 0) + 1
-        current_user.last_active_at = now
+        token = get_token_from_request(request)
+        session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+        # Settle online seconds from the same baseline the heartbeat uses, then
+        # atomically bump the click counter (read-modify-write loses updates).
+        settle_session_activity(db, current_user, session, now=now)
+        db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(button_click_count=User.button_click_count + 1)
+        )
 
     log = UserActionLog(
         user_id=user_id,
@@ -725,6 +773,8 @@ def user_track_click(
     )
     db.add(log)
     db.commit()
+    if current_user:
+        db.refresh(current_user)
     return {
         "status": "ok",
         "recorded": True,

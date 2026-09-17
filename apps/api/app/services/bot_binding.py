@@ -244,6 +244,14 @@ def bind_current_user_qq(db: Session, user: User) -> UserBotBinding | None:
     return binding
 
 
+def _find_pending_binding(bind_code_or_session: str) -> tuple[str, dict[str, Any]] | None:
+    for sid, sess in _PENDING_BINDINGS.items():
+        if sess["bind_code"] == bind_code_or_session or sid == bind_code_or_session:
+            if sess["expires_at"] > time.time():
+                return sid, sess
+    return None
+
+
 def complete_qq_binding(
     db: Session,
     bind_code_or_session: str,
@@ -253,18 +261,20 @@ def complete_qq_binding(
     channel: str = "qq",
 ) -> UserBotBinding | None:
     """Invoked when QQ Bot receives `/bind <code>` or bridge confirms binding."""
-    found_key = None
-    target_session = None
-
-    for sid, sess in _PENDING_BINDINGS.items():
-        if sess["bind_code"] == bind_code_or_session or sid == bind_code_or_session:
-            if sess["expires_at"] > time.time():
-                found_key = sid
-                target_session = sess
-                break
-
-    if not target_session:
+    found = _find_pending_binding(bind_code_or_session)
+    if not found:
         return None
+    found_key, target_session = found
+
+    # One-time consumption: an already-completed session must never mutate the
+    # binding again (replaying an old code must not redirect notifications).
+    if target_session.get("status") == "BOUND":
+        return db.scalar(
+            select(UserBotBinding).where(
+                UserBotBinding.user_id == target_session["user_id"],
+                UserBotBinding.channel == channel,
+            )
+        )
 
     user_id = target_session["user_id"]
     binding = db.scalar(
@@ -307,8 +317,65 @@ def complete_qq_binding(
     return binding
 
 
+def complete_qq_binding_for_user(
+    db: Session,
+    user: User,
+    bind_code: str,
+    target_id: str,
+    channel: str = "qq",
+) -> tuple[UserBotBinding | None, str]:
+    """Manual confirm entry for the logged-in owner of the binding session.
+
+    Unlike complete_qq_binding (trusted bot/connector callbacks), this path
+    validates that the pending session belongs to the caller and that the
+    requested target is not already bound to a different account.
+    Returns (binding, error_message).
+    """
+    target_id = (target_id or "").strip()
+    if not target_id:
+        return None, "请输入要绑定的 QQ 标识"
+
+    found = _find_pending_binding(bind_code)
+    if not found:
+        return None, "绑定码无效或已失效"
+    _found_key, session = found
+    if session.get("user_id") != user.id:
+        # Never let one user complete another user's pending binding session.
+        return None, "绑定码无效或已失效"
+    if session.get("status") == "BOUND":
+        existing = db.scalar(
+            select(UserBotBinding).where(
+                UserBotBinding.user_id == user.id,
+                UserBotBinding.channel == channel,
+            )
+        )
+        if existing is not None:
+            return existing, ""
+
+    collision = db.scalar(
+        select(UserBotBinding).where(
+            UserBotBinding.channel == channel,
+            UserBotBinding.target_id == target_id,
+            UserBotBinding.user_id != user.id,
+        )
+    )
+    if collision is not None:
+        return None, "该 QQ 已被其他账号绑定"
+
+    binding = complete_qq_binding(db, bind_code, target_id, channel=channel)
+    if binding is None:
+        return None, "绑定码无效或已失效"
+    return binding, ""
+
+
 
 def unbind_user_channel(db: Session, user_id: int, channel: str = "qq") -> bool:
+    # Revoke any pending binding sessions for this user so stale codes
+    # cannot re-establish a binding after the user explicitly unbound.
+    for sid, sess in list(_PENDING_BINDINGS.items()):
+        if sess.get("user_id") == user_id:
+            _PENDING_BINDINGS.pop(sid, None)
+
     result = db.execute(
         delete(UserBotBinding).where(
             UserBotBinding.user_id == user_id,

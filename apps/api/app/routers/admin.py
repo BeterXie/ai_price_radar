@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, case, cast, delete, func, nullslast, or_, select, update
@@ -44,6 +45,7 @@ from ..schemas import (
     AdminCouponPageOut,
     AdminCouponSettingsUpdate,
     AdminCouponStats,
+    AdminCouponSyncRequest,
     AdminOfferUpdate,
     AdminReportUpdate,
     AdminSettingsOut,
@@ -1093,7 +1095,11 @@ def admin_toggle_skill_visibility(
     return skill
 
 
-DEFAULT_LDXP_TOKEN = "182d5854-1b08-4c93-aa06-33189b3971a3"
+# Merchant API token comes exclusively from the environment; never ship a
+# credential as a source-code default.
+DEFAULT_LDXP_TOKEN = os.getenv("LDXP_MERCHANT_TOKEN", "").strip()
+
+_LDXP_MAX_PAGES = 100
 
 
 def _fetch_ldxp_batches(token: str) -> list[dict]:
@@ -1104,10 +1110,20 @@ def _fetch_ldxp_batches(token: str) -> list[dict]:
         "token": token,
         "Content-Type": "application/x-www-form-urlencoded",
     }
-    resp = requests.post(url, headers=headers, data="current=1&pageSize=50", timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("data", {}).get("list", []) if data.get("code") == 1 else []
+    page_size = 50
+    all_batches: list[dict] = []
+    # Walk every page so batches beyond the first page are imported too.
+    for page in range(1, _LDXP_MAX_PAGES + 1):
+        resp = requests.post(url, headers=headers, data=f"current={page}&pageSize={page_size}", timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 1:
+            break
+        page_list = data.get("data", {}).get("list", []) or []
+        all_batches.extend(page_list)
+        if len(page_list) < page_size:
+            break
+    return all_batches
 
 
 def _fetch_ldxp_codes(token: str, coupon_id: int) -> list[dict]:
@@ -1118,10 +1134,25 @@ def _fetch_ldxp_codes(token: str, coupon_id: int) -> list[dict]:
         "token": token,
         "Content-Type": "application/x-www-form-urlencoded",
     }
-    resp = requests.post(url, headers=headers, data=f"coupon_id={coupon_id}&current=1&pageSize=100", timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("data", {}).get("list", []) if data.get("code") == 1 else []
+    page_size = 100
+    all_codes: list[dict] = []
+    # Walk every page so coupon codes beyond the first 100 are imported too.
+    for page in range(1, _LDXP_MAX_PAGES + 1):
+        resp = requests.post(
+            url,
+            headers=headers,
+            data=f"coupon_id={coupon_id}&current={page}&pageSize={page_size}",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 1:
+            break
+        page_list = data.get("data", {}).get("list", []) or []
+        all_codes.extend(page_list)
+        if len(page_list) < page_size:
+            break
+    return all_codes
 
 
 def _admin_coupon_to_read(c: ShopCoupon) -> CouponRead:
@@ -1282,10 +1313,15 @@ def _resolve_shop(
     if not shop and shop_name:
         shop = db.scalar(select(Shop).where(Shop.name == shop_name.strip()))
 
-    final_id = shop.id if shop else shop_id
+    final_id = shop.id if shop else None
     final_name = (shop.name if shop and shop.name else (shop_name or "")).strip()
     final_url = (shop.source_url if shop and shop.source_url else (shop_url or "")).strip()
     return final_id, final_name, final_url
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE wildcard characters so codes match literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 @router.post("/coupons/import", response_model=AdminCouponImportResponse)
@@ -1307,6 +1343,12 @@ def admin_import_coupons(
         shop_url=payload.shop_url,
         shop_name=payload.shop_name,
     )
+    # Unbound coupons would fall into the site-wide pool; require a resolvable shop.
+    if resolved_shop_id is None and not resolved_shop_url:
+        raise HTTPException(
+            status_code=400,
+            detail="无法确定优惠券的店铺范围：请选择平台店铺，或提供有效的店铺链接",
+        )
 
     # Query existing codes in set
     existing_codes = set(
@@ -1349,10 +1391,15 @@ def admin_import_coupons(
 
 @router.post("/coupons/sync-ldxp", response_model=AdminCouponImportResponse)
 def admin_sync_ldxp_coupons(
-    token: str = Query(default=""),
+    payload: AdminCouponSyncRequest,
     db: Session = Depends(get_db),
 ) -> AdminCouponImportResponse:
-    use_token = token.strip() or DEFAULT_LDXP_TOKEN
+    use_token = payload.token.strip() or DEFAULT_LDXP_TOKEN
+    if not use_token:
+        raise HTTPException(
+            status_code=400,
+            detail="未配置商户令牌：请在环境变量 LDXP_MERCHANT_TOKEN 中配置，或在请求体中提供 token",
+        )
     try:
         batches = _fetch_ldxp_batches(use_token)
     except Exception as e:
@@ -1448,7 +1495,9 @@ def admin_create_campaign(
     db: Session = Depends(get_db),
 ) -> CampaignRead:
     code = payload.campaign_code.strip()
-    existing = db.scalar(select(CouponCampaign).where(CouponCampaign.campaign_code.ilike(code)))
+    existing = db.scalar(
+        select(CouponCampaign).where(CouponCampaign.campaign_code.ilike(_escape_like(code), escape="\\"))
+    )
     if existing:
         raise HTTPException(status_code=409, detail="该口令已存在")
 
@@ -1461,6 +1510,13 @@ def admin_create_campaign(
         shop_url=payload.shop_url,
         shop_name=payload.shop_name,
     )
+    # A campaign without any shop binding would silently fall back to the
+    # site-wide coupon pool when redeemed; reject it instead.
+    if resolved_shop_id is None and not resolved_shop_url:
+        raise HTTPException(
+            status_code=400,
+            detail="无法确定活动的店铺范围：请选择平台店铺，或提供有效的店铺链接",
+        )
 
     campaign = CouponCampaign(
         campaign_code=code,
@@ -1712,11 +1768,13 @@ def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminU
         )
     )
     session_items: list[AdminUserSessionItem] = []
-    latest_dur = 0
+    latest_dur: int | None = None
     for s in sessions:
         s_end = s.last_active_at or s.created_at
         dur = max(0, int((_ensure_utc_dt(s_end) - _ensure_utc_dt(s.created_at)).total_seconds()))
-        if not latest_dur:
+        # 0 is a valid duration for the latest session (just logged in, no
+        # heartbeat yet); only the first row may set latest_dur.
+        if latest_dur is None:
             latest_dur = dur
         session_items.append(
             AdminUserSessionItem(
@@ -1730,7 +1788,7 @@ def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminU
             )
         )
 
-    # Coupons
+    # Coupons: full aggregation for the counts (unlimited) + a capped list for display
     user_coupons = list(
         db.scalars(
             select(ShopCoupon)
@@ -1739,8 +1797,14 @@ def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminU
             .limit(50)
         )
     )
-    c_active = sum(1 for c in user_coupons if not c.is_used and _ensure_utc_dt(c.expires_at) > now)
-    c_used = sum(1 for c in user_coupons if c.is_used)
+    coupon_agg = db.execute(
+        select(
+            func.count(ShopCoupon.id).label("total"),
+            func.count(case((and_(ShopCoupon.is_used.is_(False), ShopCoupon.expires_at > now), 1))).label("active"),
+            func.count(case((ShopCoupon.is_used.is_(True), 1))).label("used"),
+        ).where(ShopCoupon.assigned_user_id == user.id)
+    ).one()
+    c_total, c_active, c_used = int(coupon_agg[0] or 0), int(coupon_agg[1] or 0), int(coupon_agg[2] or 0)
 
     # Action logs
     action_logs = list(
@@ -1795,11 +1859,11 @@ def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminU
         last_login_at=user.last_login_at,
         last_login_ip=user.last_login_ip or (sessions[0].ip_address if sessions else ""),
         last_active_at=user.last_active_at,
-        session_duration_seconds=latest_dur,
-        total_duration_seconds=max(user.total_duration_seconds or 0, latest_dur),
+        session_duration_seconds=latest_dur or 0,
+        total_duration_seconds=max(user.total_duration_seconds or 0, latest_dur or 0),
         is_online=bool(user.last_active_at and _ensure_utc_dt(user.last_active_at) >= fifteen_mins_ago),
         button_click_count=user.button_click_count or 0,
-        coupon_count=len(user_coupons),
+        coupon_count=c_total,
         active_coupon_count=c_active,
         used_coupon_count=c_used,
     )
@@ -1953,22 +2017,36 @@ def admin_create_broadcast(
             f"🔗 访问官网：{site_url}"
         )
         for b in active_bindings:
-            target_user_ids.add(b.user_id)
-            bot_count += 1
             try:
                 from extensions.bots.qq_bot import QQBotClient
-                qq_client = QQBotClient()
-                if qq_client.is_configured:
-                    app_id = (b.extra_meta or {}).get("app_id") if isinstance(b.extra_meta, dict) else None
-                    app_secret = b.bot_token or None
-                    qq_client.send_c2c_message(
-                        b.target_id,
-                        bot_msg,
-                        app_id=app_id,
-                        app_secret=app_secret,
+
+                # Build the client from this binding's own credentials first:
+                # Connector deployments keep per-user app_id/app_secret in the
+                # binding (extra_meta.app_id / bot_token) and may have no global
+                # QQ_BOT_APP_ID/SECRET configured at all.
+                app_id = (b.extra_meta or {}).get("app_id") if isinstance(b.extra_meta, dict) else None
+                app_secret = b.bot_token or None
+                qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
+                if not qq_client.is_configured:
+                    logger.warning(
+                        "Broadcast %s: binding %s has no usable QQ credentials, skipped",
+                        broadcast.id,
+                        b.id,
                     )
+                    continue
+                sent = qq_client.send_c2c_message(b.target_id, bot_msg, app_id=app_id, app_secret=app_secret)
+                if sent:
+                    bot_count += 1
+                    target_user_ids.add(b.user_id)
+                else:
+                    logger.warning("Broadcast %s: failed sending bot message to target %s", broadcast.id, b.target_id)
             except Exception as b_err:
-                logger.debug("Failed sending broadcast message to bot target %s: %s", b.target_id, b_err)
+                logger.warning(
+                    "Broadcast %s: error sending to bot target %s: %s",
+                    broadcast.id,
+                    b.target_id,
+                    b_err,
+                )
 
     broadcast.target_user_count = len(target_user_ids)
     broadcast.email_sent_count = email_count

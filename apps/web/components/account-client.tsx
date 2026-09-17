@@ -48,10 +48,12 @@ export function AccountClient() {
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [redeemMsg, setRedeemMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copyFailedCode, setCopyFailedCode] = useState<string | null>(null);
 
   // Binding states
   const [bindSession, setBindSession] = useState<QQBotBindingStartResponse | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrError, setQrError] = useState(false);
   const [bindStarting, setBindStarting] = useState(false);
   const [manualTargetId, setManualTargetId] = useState("");
   const [bindError, setBindError] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export function AccountClient() {
 
   // Generate QR Code data URL when session starts
   useEffect(() => {
+    setQrError(false);
     if (!bindSession?.qrcode_url) {
       setQrDataUrl(null);
       return;
@@ -102,36 +105,53 @@ export function AccountClient() {
       })
       .catch((err) => {
         console.error("Failed to render QR Code:", err);
+        if (!cancelled) setQrError(true);
       });
     return () => {
       cancelled = true;
     };
   }, [bindSession?.qrcode_url]);
 
-  // Poll binding session
+  // Poll binding session. Polling is sequential (no overlapping requests) and
+  // ignores responses once the session has been replaced or cleared, so an old
+  // EXPIRED/BOUND reply can never wipe a freshly created session.
   useEffect(() => {
     if (!bindSession) return;
 
-    const interval = setInterval(async () => {
+    let cancelled = false;
+    const sessionId = bindSession.session_id;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
       try {
-        const res = await checkQQBotBinding(bindSession.session_id);
+        const res = await checkQQBotBinding(sessionId);
+        if (cancelled) return;
         if (res.status === "BOUND") {
-          clearInterval(interval);
           setBindSession(null);
           setBindSuccess("🎉 恭喜！手机 QQ 扫码绑定成功！已为您开启价格变动通知。");
           loadData();
-        } else if (res.status === "EXPIRED") {
-          clearInterval(interval);
+          return;
+        }
+        if (res.status === "EXPIRED") {
           setBindError("二维码已过期，请重新点击刷新");
           setBindSession(null);
+          return;
         }
       } catch {
         // transient error, continue polling
       }
-    }, 2000);
+      if (!cancelled) {
+        timer = setTimeout(poll, 2000);
+      }
+    };
 
-    pollTimerRef.current = interval;
-    return () => clearInterval(interval);
+    timer = setTimeout(poll, 2000);
+    pollTimerRef.current = timer;
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (pollTimerRef.current === timer) pollTimerRef.current = null;
+    };
   }, [bindSession]);
 
   const handleLogout = async () => {
@@ -164,6 +184,9 @@ export function AccountClient() {
     try {
       const res = await bindCurrentLoggedInQQ();
       if (res.success) {
+        // Switching binding method must stop the hidden QR session, otherwise
+        // it keeps polling and can report EXPIRED after this binding succeeded.
+        setBindSession(null);
         setBindSuccess("🎉 已成功一键绑定您当前登录的 QQ！");
         loadData();
       }
@@ -225,27 +248,49 @@ export function AccountClient() {
     if (!trimmed) return;
     setRedeemLoading(true);
     setRedeemMsg(null);
+    let redeemed = false;
     try {
       const res = await redeemCoupon(trimmed);
       if (res.success) {
+        redeemed = true;
         setRedeemMsg({ type: "success", text: res.message });
         setRedeemCode("");
-        const updated = await fetchUserCoupons();
-        setCoupons(updated.items || []);
+        // Card-pack refresh is a separate concern: a failure here must not
+        // turn a successful redemption into an error (the coupon and quota
+        // are already allocated server-side).
+        try {
+          const updated = await fetchUserCoupons();
+          setCoupons(updated.items || []);
+        } catch {
+          setRedeemMsg({
+            type: "success",
+            text: `${res.message}（卡包刷新失败，请手动刷新页面查看）`,
+          });
+        }
       } else {
         setRedeemMsg({ type: "error", text: res.message });
       }
     } catch (err: any) {
-      setRedeemMsg({ type: "error", text: err.message || "兑换失败，请稍后重试" });
+      if (!redeemed) {
+        setRedeemMsg({ type: "error", text: err.message || "兑换失败，请稍后重试" });
+      }
     } finally {
       setRedeemLoading(false);
     }
   };
 
-  const handleCopy = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2500);
+  const handleCopy = async (code: string) => {
+    try {
+      // Clipboard write can reject (permissions, insecure context); only
+      // report success once it actually resolved.
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      setCopyFailedCode(null);
+      setTimeout(() => setCopiedCode(null), 2500);
+    } catch {
+      setCopyFailedCode(code);
+      setTimeout(() => setCopyFailedCode(null), 4000);
+    }
   };
 
   if (loading) {
@@ -431,10 +476,25 @@ export function AccountClient() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {coupons.map((coupon) => (
+              {coupons.map((coupon) => {
+                const isExpired =
+                  Boolean(coupon.expires_at) &&
+                  new Date(coupon.expires_at as string).getTime() < Date.now();
+                const isUsable = !coupon.is_used && !isExpired;
+                const statusLabel = coupon.is_used ? "已核销" : isExpired ? "已过期" : "可使用";
+                const statusClass = coupon.is_used
+                  ? "bg-zinc-500/15 border-zinc-500/30 text-zinc-600"
+                  : isExpired
+                    ? "bg-rose-500/15 border-rose-500/30 text-rose-700"
+                    : "bg-emerald-500/15 border-emerald-500/30 text-emerald-800";
+                return (
                 <div
                   key={coupon.id}
-                  className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.04] to-amber-500/[0.12] p-4 flex flex-col justify-between gap-3 shadow-xs"
+                  className={`relative overflow-hidden rounded-xl border p-4 flex flex-col justify-between gap-3 shadow-xs ${
+                    isUsable
+                      ? "border-amber-500/30 bg-gradient-to-br from-amber-500/[0.04] to-amber-500/[0.12]"
+                      : "border-[color:var(--line)] bg-[color:var(--subtle)]/30 opacity-70"
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -450,8 +510,8 @@ export function AccountClient() {
                       </h4>
                     </div>
 
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 shrink-0">
-                      可使用
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${statusClass}`}>
+                      {statusLabel}
                     </span>
                   </div>
 
@@ -472,19 +532,34 @@ export function AccountClient() {
                         ) : (
                           <Copy size={14} />
                         )}
-                        <span className="text-[11px]">{copiedCode === coupon.code ? "已复制" : "复制"}</span>
+                        <span className="text-[11px]">
+                          {copiedCode === coupon.code
+                            ? "已复制"
+                            : copyFailedCode === coupon.code
+                              ? "复制失败"
+                              : "复制"}
+                        </span>
                       </button>
                     </div>
 
-                    <a
-                      href={coupon.shop_url || "https://wzyp.cn/shop/pricememo"}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="button-primary tactile px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto"
-                    >
-                      <span>去店铺使用</span>
-                      <ArrowSquareOut size={12} />
-                    </a>
+                    {isUsable ? (
+                      <a
+                        href={coupon.shop_url || "https://wzyp.cn/shop/pricememo"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="button-primary tactile px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto"
+                      >
+                        <span>去店铺使用</span>
+                        <ArrowSquareOut size={12} />
+                      </a>
+                    ) : (
+                      <span
+                        className="px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto border border-[color:var(--line)] text-[color:var(--muted)] cursor-not-allowed"
+                        title={coupon.is_used ? "该券已核销，无法再次使用" : "该券已过期"}
+                      >
+                        <span>{coupon.is_used ? "已核销" : "已过期"}</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="text-[10px] text-[color:var(--muted)] flex items-center justify-between">
@@ -492,7 +567,8 @@ export function AccountClient() {
                     <span>有效期至：{new Date(coupon.expires_at).toLocaleDateString()}</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -663,10 +739,20 @@ export function AccountClient() {
                     <div className="p-3 bg-white rounded-xl border border-[color:var(--line)]">
                       {qrDataUrl ? (
                         <img src={qrDataUrl} alt="QQ 扫码绑定二维码" className="w-48 h-48 object-contain" />
-                      ) : (
+                      ) : qrError ? (
+                        <div className="w-48 h-48 flex flex-col items-center justify-center text-[color:var(--muted)] text-xs gap-2 px-3 text-center">
+                          <span>二维码生成失败</span>
+                          <span className="text-[10px]">请点击下方按钮重新生成，或使用绑定码手动绑定</span>
+                        </div>
+                      ) : bindSession.qrcode_url ? (
                         <div className="w-48 h-48 flex flex-col items-center justify-center text-[color:var(--muted)] text-xs gap-2">
                           <div className="w-6 h-6 border-2 border-[color:var(--ink)] border-t-transparent rounded-full animate-spin" />
                           <span>正在渲染二维码...</span>
+                        </div>
+                      ) : (
+                        <div className="w-48 h-48 flex flex-col items-center justify-center text-[color:var(--muted)] text-xs gap-2 px-3 text-center">
+                          <span>当前未提供扫码入口</span>
+                          <span className="text-[10px]">请使用下方绑定码在机器人私聊中完成绑定</span>
                         </div>
                       )}
                     </div>

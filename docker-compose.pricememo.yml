@@ -4,8 +4,12 @@ services:
       context: ./apps/api
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    environment:
+      # Shared read-only export directory served by the /data/* feed endpoints.
+      PUBLIC_DATA_DIR: /app/public-data
     volumes:
       - ./extensions:/app/extensions:ro
+      - ./apps/web/public/data:/app/public-data:ro
     networks:
       default:
       detector_control:
@@ -21,6 +25,9 @@ services:
       args:
         ALPINE_REPOSITORY_HOST: mirrors.aliyun.com
     environment:
+      # Runtime value for server-side fetches; the build-time value is baked
+      # into the standalone bundle produced by the deploy script.
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://api:8000}
       INDEXNOW_KEY: ${INDEXNOW_KEY:-}
       BING_SITE_VERIFICATION: ${BING_SITE_VERIFICATION:-}
       BAIDU_SITE_VERIFICATION: ${BAIDU_SITE_VERIFICATION:-}
@@ -44,6 +51,11 @@ services:
       dockerfile: pipeline/Dockerfile
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+    environment:
+      # Write exports into the shared volume that the API serves as /data/*.
+      PUBLIC_DATA_DIR: /app/public-data
+    volumes:
+      - ./apps/web/public/data:/app/public-data
 
   crawler:
     profiles: ["crawler"]

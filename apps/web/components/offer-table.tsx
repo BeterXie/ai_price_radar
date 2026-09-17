@@ -11,15 +11,31 @@ import { getGuideLinkLabel, resolveGuideHref } from "@/lib/guides/matcher";
 const OFFER_BATCH_SIZE = 30;
 const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
-export function trackOfferClick(offerId: number) {
+/**
+ * Records an outbound click and resolves with the server's reply.
+ *
+ * The caller must only bump its displayed counter when `recorded` is true:
+ * the API debounces repeated clicks from the same IP for 60s and reports
+ * `recorded: false` (with the true count) in that case.
+ */
+export async function trackOfferClick(
+  offerId: number
+): Promise<{ recorded: boolean; clickCount: number } | null> {
   try {
-    fetch(`${publicApiBase}/api/v1/offers/${offerId}/click`, {
+    const response = await fetch(`${publicApiBase}/api/v1/offers/${offerId}/click`, {
       method: "POST",
       credentials: "include",
       keepalive: true,
-    }).catch(() => {});
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { recorded?: boolean; click_count?: number };
+    return {
+      recorded: Boolean(data?.recorded),
+      clickCount: typeof data?.click_count === "number" ? data.click_count : 0,
+    };
   } catch {
     // Ignore network error on outbound link
+    return null;
   }
 }
 
@@ -51,11 +67,15 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
   const [clickedMap, setClickedMap] = useState<Record<number, number>>({});
 
   const handleTrackClick = (offerId: number, baseCount: number) => {
-    trackOfferClick(offerId);
-    setClickedMap((prev) => ({
-      ...prev,
-      [offerId]: (prev[offerId] ?? baseCount) + 1,
-    }));
+    void trackOfferClick(offerId).then((result) => {
+      // Only count clicks the server actually recorded; debounced duplicates
+      // and failed requests must not inflate the displayed total.
+      if (!result || !result.recorded) return;
+      setClickedMap((prev) => ({
+        ...prev,
+        [offerId]: result.clickCount || (prev[offerId] ?? baseCount) + 1,
+      }));
+    });
   };
 
   const sortedOffers = [...offers].sort((a, b) => {
@@ -158,14 +178,23 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         setDescription("");
       }
       if (group && productSlug && group.offer_count > 1) {
+        // Re-apply the list's active filters and snapshot to the detail request:
+        // without them the expanded group shows offers the user filtered out,
+        // and a newly published snapshot could mix summary and detail data.
+        const detailParams = new URLSearchParams(filterQuery);
+        if (snapshotId) {
+          detailParams.set("snapshot", String(snapshotId));
+        }
+        const detailQuery = detailParams.toString();
         requests.push(
-          fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}`)
+          fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}${detailQuery ? `?${detailQuery}` : ""}`)
             .then((response) => response.ok ? response.json() : Promise.reject(new Error(`API ${response.status}`)))
             .then((data: GroupOffers) => {
               if (data.items && data.items.length > 0) {
                 setShopOffers(data.items);
               } else {
-                setShopOffers([offer]);
+                // Group exists but nothing matches the active filters.
+                setShopOffers([]);
               }
             })
             .catch(() => {
@@ -193,8 +222,11 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   }, [group?.click_count, offer.click_count]);
 
   const handleTrackOfferClick = (offerId: number) => {
-    trackOfferClick(offerId);
-    setClickCount((prev) => prev + 1);
+    void trackOfferClick(offerId).then((result) => {
+      if (!result || !result.recorded) return;
+      // Prefer the authoritative server count; fall back to an increment.
+      setClickCount((prev) => (result.clickCount > 0 ? result.clickCount : prev + 1));
+    });
   };
 
   return (
@@ -282,7 +314,15 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         {group && (
           <section className="mt-6 border-t hairline pt-5">
             <h4 className="text-sm font-semibold">全部店铺报价</h4>
-            {shopOffers ? <ShopOfferList offers={shopOffers} /> : <p className="mt-3 text-sm text-black/45">{loading ? "正在加载店铺报价…" : "展开后加载店铺报价。"}</p>}
+            {shopOffers ? (
+              shopOffers.length > 0 ? (
+                <ShopOfferList offers={shopOffers} />
+              ) : (
+                <p className="mt-3 text-sm text-black/45">当前筛选条件下该同款分组没有可展示的报价，请调整筛选条件后再试。</p>
+              )
+            ) : (
+              <p className="mt-3 text-sm text-black/45">{loading ? "正在加载店铺报价…" : "展开后加载店铺报价。"}</p>
+            )}
           </section>
         )}
 

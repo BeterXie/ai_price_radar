@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowClockwise,
   ArrowSquareOut,
@@ -104,6 +104,9 @@ export function UsersAdminPanel({
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [searchQuery, setSearchQuery] = useState("");
+  // The keyword actually applied to requests; updated only on submit/clear so a
+  // pending debounce or a setPage(1) cannot resend a stale query.
+  const [appliedQuery, setAppliedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("last_login");
   const [order, setOrder] = useState<"desc" | "asc">("desc");
@@ -117,6 +120,9 @@ export function UsersAdminPanel({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState<"sessions" | "coupons" | "logs" | "bot">("sessions");
   const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null);
+  // Monotonic request id so an out-of-order detail response cannot overwrite a
+  // newer selection (e.g. open A, close, open B, A resolves late).
+  const detailRequestSeqRef = useRef(0);
 
   // Broadcast Notification Modal
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
@@ -213,12 +219,14 @@ export function UsersAdminPanel({
 
   useEffect(() => {
     void fetchStats();
-    void fetchUsers();
   }, []);
 
+  // Refetch is driven by the *committed* query (appliedQuery) rather than the
+  // raw input value, so clearing search or re-submitting cannot fire a request
+  // that still carries the previous keyword.
   useEffect(() => {
     void fetchUsers();
-  }, [page, limit, statusFilter, sortBy, order]);
+  }, [page, limit, statusFilter, sortBy, order, appliedQuery]);
 
   async function fetchStats() {
     setLoadingStats(true);
@@ -244,8 +252,8 @@ export function UsersAdminPanel({
       params.set("status", statusFilter);
       params.set("sort_by", sortBy);
       params.set("order", order);
-      if (searchQuery.trim()) {
-        params.set("q", searchQuery.trim());
+      if (appliedQuery.trim()) {
+        params.set("q", appliedQuery.trim());
       }
 
       const res = await fetch(`${apiBase}/api/v1/admin/users?${params.toString()}`, { headers });
@@ -265,19 +273,40 @@ export function UsersAdminPanel({
     setSelectedUserId(userId);
     setLoadingDetail(true);
     setDetailTab("sessions");
+    // Drop the previous user's detail immediately so a slow/out-of-order
+    // response can never be shown against a different account.
+    setUserDetail(null);
+    const requestSeq = ++detailRequestSeqRef.current;
     try {
       const res = await fetch(`${apiBase}/api/v1/admin/users/${userId}`, { headers });
+      if (requestSeq !== detailRequestSeqRef.current) {
+        // A newer selection superseded this request.
+        return;
+      }
       if (res.ok) {
         const data: AdminUserDetailOut = await res.json();
+        if (requestSeq !== detailRequestSeqRef.current) return;
         setUserDetail(data);
       } else {
         showToast("获取用户详情失败");
       }
     } catch {
-      showToast("网络请求异常");
+      if (requestSeq === detailRequestSeqRef.current) {
+        showToast("网络请求异常");
+      }
     } finally {
-      setLoadingDetail(false);
+      if (requestSeq === detailRequestSeqRef.current) {
+        setLoadingDetail(false);
+      }
     }
+  }
+
+  function closeUserDetail() {
+    // Invalidate any in-flight detail request when the panel closes.
+    detailRequestSeqRef.current += 1;
+    setSelectedUserId(null);
+    setUserDetail(null);
+    setLoadingDetail(false);
   }
 
   async function toggleUserStatus(userId: number, currentActive: boolean) {
@@ -314,7 +343,10 @@ export function UsersAdminPanel({
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPage(1);
-    void fetchUsers();
+    // Reset both at once: changing appliedQuery triggers the fetch effect, so
+    // no manual fetchUsers() call is needed (and calling it here would fire
+    // another request with the pre-update page value).
+    setAppliedQuery(searchQuery);
   }
 
   function showToast(msg: string) {
@@ -483,8 +515,8 @@ export function UsersAdminPanel({
                 type="button"
                 onClick={() => {
                   setSearchQuery("");
+                  setAppliedQuery("");
                   setPage(1);
-                  setTimeout(() => void fetchUsers(), 50);
                 }}
                 className="text-xs text-[color:var(--muted)] hover:text-[color:var(--ink)] underline"
               >
@@ -817,10 +849,7 @@ export function UsersAdminPanel({
         >
           <div
             className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => {
-              setSelectedUserId(null);
-              setUserDetail(null);
-            }}
+            onClick={closeUserDetail}
           />
 
           <div
@@ -866,10 +895,7 @@ export function UsersAdminPanel({
 
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedUserId(null);
-                  setUserDetail(null);
-                }}
+                onClick={closeUserDetail}
                 className="grid h-8 w-8 place-items-center rounded-lg text-[color:var(--muted)] hover:bg-[color:var(--subtle)] hover:text-[color:var(--ink)]"
               >
                 <X size={18} weight="bold" />
@@ -1005,6 +1031,10 @@ export function UsersAdminPanel({
                             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
                               已核销
                             </span>
+                          ) : c.expires_at && new Date(c.expires_at).getTime() < Date.now() ? (
+                            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+                              已过期
+                            </span>
                           ) : (
                             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
                               未使用 (可用)
@@ -1130,10 +1160,7 @@ export function UsersAdminPanel({
 
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedUserId(null);
-                  setUserDetail(null);
-                }}
+                onClick={closeUserDetail}
                 className="tactile rounded-lg border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-4 py-1.5 text-xs font-semibold text-[color:var(--ink)] hover:border-[color:var(--ink)]"
               >
                 关闭

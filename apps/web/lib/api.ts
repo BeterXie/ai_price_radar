@@ -53,6 +53,8 @@ async function apiFetch<T>(path: string, retries = 2, init?: RequestInit): Promi
 export async function getProducts(query = ""): Promise<CatalogResponse> {
   const clean = query.trim();
   if (!clean || clean === "sort=quality") {
+    // getSnapshotCatalog applies the same quality ordering as the API path,
+    // so the two branches return consistent ordering for the same request.
     const snapshotData = await getSnapshotCatalog().catch(() => null);
     if (snapshotData && snapshotData.items.length > 0) {
       return snapshotData;

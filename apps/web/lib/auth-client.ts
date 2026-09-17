@@ -10,6 +10,17 @@ import type {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
+/**
+ * Broadcast whenever the signed-in session changes (login, logout, QQ callback)
+ * so shell components such as the site header refresh without a page reload.
+ */
+export const AUTH_CHANGE_EVENT = "ai-price-radar:auth-change";
+
+function broadcastAuthChange(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+}
+
 async function jsonFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -49,14 +60,42 @@ export async function requestEmailLoginCode(email: string): Promise<{ success: b
 }
 
 export async function verifyEmailLoginCode(email: string, code: string): Promise<AuthSessionState> {
-  return jsonFetch<AuthSessionState>("/api/v1/auth/email/verify", {
+  const session = await jsonFetch<AuthSessionState>("/api/v1/auth/email/verify", {
     method: "POST",
     body: JSON.stringify({ email, code }),
   });
+  if (session?.authenticated) {
+    broadcastAuthChange();
+  }
+  return session;
 }
 
 export async function logout(): Promise<void> {
   await jsonFetch("/api/v1/auth/logout", { method: "POST" });
+  // Drop the per-account watchlist cache so the next visitor to this browser
+  // cannot see the previous user's list.
+  clearCurrentUserWatchlistCache();
+  broadcastAuthChange();
+}
+
+/**
+ * Removes cached watchlist entries for the account that just logged out.
+ * Kept here (rather than importing the component) to avoid a circular import.
+ */
+function clearCurrentUserWatchlistCache(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const prefix = "ai-price-radar:watchlist:v1:user:";
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith(prefix)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+    window.dispatchEvent(new Event("ai-price-radar:watchlist-change"));
+  } catch {
+    // Storage may be unavailable (private mode); nothing to clean.
+  }
 }
 
 export async function fetchUserProfile(): Promise<UserProfileResponse> {
@@ -128,15 +167,45 @@ export async function fetchUserSubscriptions(): Promise<UserSubscriptionListResp
   return jsonFetch<UserSubscriptionListResponse>("/api/v1/user/subscriptions");
 }
 
-export async function saveUserSubscription(payload: {
+export interface UserSubscriptionSaveInput {
   product_slug: string;
   target_price?: string | null;
   notify_email?: boolean;
   notify_bot?: boolean;
-}): Promise<UserSubscriptionItem> {
+}
+
+/**
+ * Create or update a subscription.
+ *
+ * The API endpoint is a full replace (missing fields fall back to server
+ * defaults of target_price=null / notify_email=true / notify_bot=true), so a
+ * partial update would silently reset the other settings. Callers that only
+ * change one field should call {@link updateUserSubscription}, which merges the
+ * current values first.
+ */
+export async function saveUserSubscription(payload: UserSubscriptionSaveInput): Promise<UserSubscriptionItem> {
   return jsonFetch<UserSubscriptionItem>("/api/v1/user/subscriptions", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Partial update helper: reads the current subscription list and re-submits the
+ * complete configuration so toggling one channel cannot wipe the target price
+ * or the other channel.
+ */
+export async function updateUserSubscription(
+  productSlug: string,
+  changes: Omit<UserSubscriptionSaveInput, "product_slug">
+): Promise<UserSubscriptionItem> {
+  const current = await fetchUserSubscriptions();
+  const existing = current.items.find((item) => item.product_slug === productSlug);
+  return saveUserSubscription({
+    product_slug: productSlug,
+    target_price: changes.target_price !== undefined ? changes.target_price : (existing?.target_price ?? null),
+    notify_email: changes.notify_email !== undefined ? changes.notify_email : (existing?.notify_email ?? true),
+    notify_bot: changes.notify_bot !== undefined ? changes.notify_bot : (existing?.notify_bot ?? true),
   });
 }
 

@@ -535,7 +535,7 @@ export type AdminUserActionLogItem = {
   target_id: string;
   page: string;
   ip_address: string;
-  extra_data: Record<string, any>;
+  extra_data: Record<string, unknown>;
   created_at: string;
 };
 
