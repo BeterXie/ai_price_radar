@@ -79,6 +79,7 @@ from ..schemas import (
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
+from ..services.credential_crypto import decrypt_bot_token
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
     admin_create_community_skill,
@@ -2025,7 +2026,7 @@ def admin_create_broadcast(
                 # binding (extra_meta.app_id / bot_token) and may have no global
                 # QQ_BOT_APP_ID/SECRET configured at all.
                 app_id = (b.extra_meta or {}).get("app_id") if isinstance(b.extra_meta, dict) else None
-                app_secret = b.bot_token or None
+                app_secret = decrypt_bot_token(b.bot_token) or None
                 qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
                 if not qq_client.is_configured:
                     logger.warning(
