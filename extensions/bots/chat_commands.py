@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, contains_eager
 from app.database import SessionLocal
 from app.models import CatalogSnapshot, Offer, OfferHistory, Product, Shop, User, UserBotBinding
 from app.services.bot_binding import complete_qq_binding
+from app.services.rate_limit import consume_rate_limit
 from app.services.catalog import (
     _base_public_offer_query,
     _is_trusted_offer,
@@ -778,6 +779,16 @@ def handle_chat_command(
             return "⚠️ 未能识别您的账号标识，无法完成绑定。"
 
         def _do_bind(s: Session) -> str:
+            sender_ok = consume_rate_limit(
+                s, "qq-bind-sender", f"{channel}:{sender_id}", limit=8, window_seconds=300
+            )
+            global_ok = consume_rate_limit(
+                s, "qq-bind-global", channel, limit=300, window_seconds=300
+            )
+            s.commit()
+            if not sender_ok or not global_ok:
+                return "⚠️ 绑定尝试过于频繁，请稍后重新生成绑定码后再试。"
+
             b = complete_qq_binding(s, code, sender_id)
             if b:
                 return "🎉 绑定成功！您的 QQ 已成功连接至 PriceMemo，降价提醒已自动开启。"
