@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -11,11 +12,13 @@ from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..models import User, UserBotBinding
+from .credential_crypto import encrypt_bot_token
 
 logger = logging.getLogger(__name__)
 
 # In-memory temporary binding tokens: token -> {user_id, expires_at, qrcode_url, ...}
 _PENDING_BINDINGS: dict[str, dict[str, Any]] = {}
+_PENDING_BINDINGS_LOCK = threading.RLock()
 
 
 def utcnow() -> datetime:
@@ -25,10 +28,11 @@ def utcnow() -> datetime:
 def start_qq_binding_session(user_id: int) -> dict[str, Any]:
     """Generate a temporary QR session and code for the user to bind their QQ."""
     now = time.time()
-    # Clean up expired
-    expired = [k for k, v in _PENDING_BINDINGS.items() if v["expires_at"] < now]
-    for k in expired:
-        _PENDING_BINDINGS.pop(k, None)
+    # Clean up expired sessions under the same lock used by bind completion.
+    with _PENDING_BINDINGS_LOCK:
+        expired = [k for k, v in _PENDING_BINDINGS.items() if v["expires_at"] < now]
+        for k in expired:
+            _PENDING_BINDINGS.pop(k, None)
 
     # 6-digit verification code
     bind_code = f"{secrets.randbelow(900000) + 100000}"
@@ -75,17 +79,18 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
 
             qrcode_url = build_qq_auth_url(f"bind_{session_id}", settings)
 
-    _PENDING_BINDINGS[session_id] = {
-        "user_id": user_id,
-        "bind_code": bind_code,
-        "qrcode_url": qrcode_url,
-        "qq_task_id": qq_task_id,
-        "qq_key": qq_key,
-        "bridge_session_id": bridge_session_id,
-        "expires_at": expires_at,
-        "status": "WAITING",
-        "target_id": None,
-    }
+    with _PENDING_BINDINGS_LOCK:
+        _PENDING_BINDINGS[session_id] = {
+            "user_id": user_id,
+            "bind_code": bind_code,
+            "qrcode_url": qrcode_url,
+            "qq_task_id": qq_task_id,
+            "qq_key": qq_key,
+            "bridge_session_id": bridge_session_id,
+            "expires_at": expires_at,
+            "status": "WAITING",
+            "target_id": None,
+        }
 
     return {
         "session_id": session_id,
@@ -96,23 +101,30 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
     }
 
 
-def check_qq_binding_session(session_id: str, db: Session | None = None) -> dict[str, Any]:
-    session = _PENDING_BINDINGS.get(session_id)
-    if not session:
-        return {"status": "EXPIRED", "message": "绑定会话不存在或已失效"}
-    if time.time() > session["expires_at"]:
-        _PENDING_BINDINGS.pop(session_id, None)
-        return {"status": "EXPIRED", "message": "二维码已过期，请点击刷新"}
+def check_qq_binding_session(
+    session_id: str,
+    db: Session | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    with _PENDING_BINDINGS_LOCK:
+        session = _PENDING_BINDINGS.get(session_id)
+        # Deliberately make an ownership mismatch indistinguishable from an
+        # expired/unknown id to avoid leaking another user's binding state.
+        if not session or (user_id is not None and session.get("user_id") != user_id):
+            return {"status": "EXPIRED", "message": "绑定会话不存在或已失效"}
+        if time.time() > session["expires_at"]:
+            _PENDING_BINDINGS.pop(session_id, None)
+            return {"status": "EXPIRED", "message": "二维码已过期，请点击刷新"}
 
-    # If already marked BOUND
-    if session.get("status") == "BOUND":
-        return {
+        # If already marked BOUND
+        if session.get("status") == "BOUND":
+            return {
             "status": "BOUND",
             "bind_code": session["bind_code"],
             "qrcode_url": session.get("qrcode_url", ""),
             "target_id": session.get("target_id"),
-            "message": "绑定成功",
-        }
+                "message": "绑定成功",
+            }
 
     # Check QQ Connector status if session originated from QQ Connector
     qq_task_id = session.get("qq_task_id")
@@ -245,10 +257,11 @@ def bind_current_user_qq(db: Session, user: User) -> UserBotBinding | None:
 
 
 def _find_pending_binding(bind_code_or_session: str) -> tuple[str, dict[str, Any]] | None:
-    for sid, sess in _PENDING_BINDINGS.items():
-        if sess["bind_code"] == bind_code_or_session or sid == bind_code_or_session:
-            if sess["expires_at"] > time.time():
-                return sid, sess
+    with _PENDING_BINDINGS_LOCK:
+        for sid, sess in _PENDING_BINDINGS.items():
+            if sess["bind_code"] == bind_code_or_session or sid == bind_code_or_session:
+                if sess["expires_at"] > time.time():
+                    return sid, sess
     return None
 
 
@@ -277,6 +290,22 @@ def complete_qq_binding(
         )
 
     user_id = target_session["user_id"]
+    collision = db.scalar(
+        select(UserBotBinding).where(
+            UserBotBinding.channel == channel,
+            UserBotBinding.target_id == target_id,
+            UserBotBinding.user_id != user_id,
+        )
+    )
+    if collision is not None:
+        logger.warning(
+            "Refused binding collision for channel=%s target=%s user_id=%s",
+            channel,
+            target_id,
+            user_id,
+        )
+        return None
+
     binding = db.scalar(
         select(UserBotBinding).where(
             UserBotBinding.user_id == user_id,
@@ -289,7 +318,7 @@ def complete_qq_binding(
             user_id=user_id,
             channel=channel,
             target_id=target_id,
-            bot_token=bot_token,
+            bot_token=encrypt_bot_token(bot_token),
             extra_meta=extra_meta or {},
             is_active=True,
             notify_price_drop=True,
@@ -301,7 +330,7 @@ def complete_qq_binding(
     else:
         binding.target_id = target_id
         if bot_token:
-            binding.bot_token = bot_token
+            binding.bot_token = encrypt_bot_token(bot_token)
         if extra_meta:
             binding.extra_meta = extra_meta
         binding.is_active = True
@@ -372,9 +401,10 @@ def complete_qq_binding_for_user(
 def unbind_user_channel(db: Session, user_id: int, channel: str = "qq") -> bool:
     # Revoke any pending binding sessions for this user so stale codes
     # cannot re-establish a binding after the user explicitly unbound.
-    for sid, sess in list(_PENDING_BINDINGS.items()):
-        if sess.get("user_id") == user_id:
-            _PENDING_BINDINGS.pop(sid, None)
+    with _PENDING_BINDINGS_LOCK:
+        for sid, sess in list(_PENDING_BINDINGS.items()):
+            if sess.get("user_id") == user_id:
+                _PENDING_BINDINGS.pop(sid, None)
 
     result = db.execute(
         delete(UserBotBinding).where(
