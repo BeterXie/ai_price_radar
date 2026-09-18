@@ -23,6 +23,7 @@ from ..services.auth import (
     send_email_login_code,
     verify_email_login_code,
 )
+from ..services.rate_limit import consume_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,26 @@ def _clear_auth_cookie(response: Response) -> None:
 @router.post("/email/code", response_model=EmailCodeResponse)
 def request_email_code(
     payload: EmailCodeRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> EmailCodeResponse:
+    from .public import _client_address
+
+    client_ip = _client_address(request)
+    if not consume_rate_limit(
+        db,
+        "email-code-send",
+        client_ip,
+        limit=20,
+        window_seconds=600,
+    ):
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="验证码请求过于频繁，请稍后再试",
+        )
+    # Persist the limiter independently from the mail enqueue path.
+    db.commit()
     success, retry_after, message = send_email_login_code(db, payload.email)
     if not success and retry_after > 0:
         return EmailCodeResponse(success=False, retry_after=retry_after, message=message)
@@ -97,12 +116,15 @@ def verify_email_code(
 
     ua = request.headers.get("user-agent", "")
     session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
-    _set_auth_cookie(response, session.token)
+    raw_token = getattr(session, "raw_token", "")
+    if not raw_token:
+        raise RuntimeError("new session did not expose its transient bearer token")
+    _set_auth_cookie(response, raw_token)
 
     return AuthSessionResponse(
         authenticated=True,
         user=_user_to_read(user),
-        token=session.token,
+        token=None,
     )
 
 
@@ -184,7 +206,10 @@ def qq_oauth_callback(
             user = find_or_create_qq_user(db, openid=mock_openid, nickname="QQ体验用户")
         session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
-        _set_auth_cookie(redir, session.token)
+        raw_token = getattr(session, "raw_token", "")
+        if not raw_token:
+            raise RuntimeError("new session did not expose its transient bearer token")
+        _set_auth_cookie(redir, raw_token)
         return redir
 
     if not code:
@@ -285,11 +310,10 @@ def get_me(
 ) -> AuthSessionResponse:
     if current_user is None:
         return AuthSessionResponse(authenticated=False, user=None, token=None)
-    token = get_token_from_request(request) if request else None
     return AuthSessionResponse(
         authenticated=True,
         user=_user_to_read(current_user),
-        token=token,
+        token=None,
     )
 
 
