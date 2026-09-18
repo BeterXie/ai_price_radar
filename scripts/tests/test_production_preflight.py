@@ -12,6 +12,10 @@ def _valid_env() -> dict[str, str]:
         "RESEND_API_KEY": "re_" + "d" * 32,
         "RESEND_FROM": "notice@example.com",
         "DATABASE_URL": "postgresql+psycopg://price_radar:password@db:5432/price_radar",
+        "SESSION_SECRET_KEY": "s" * 48,
+        "QQ_MOCK_AUTH_ENABLED": "false",
+        "DEV_PRINT_AUTH_CODES": "false",
+        "EXPOSE_API_DOCS": "false",
         "SEED_DEMO_DATA": "false",
         "PUBLIC_SITE_URL": "https://ai.example.com",
         "WEB_ORIGIN": "https://ai.example.com",
@@ -92,3 +96,21 @@ def test_production_preflight_requires_complete_author_support_configuration():
     env["NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL"] = "https://ai.pricememo.cn/support/wechat.jpg"
     env["NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL"] = "https://ai.pricememo.cn/support/alipay.jpg"
     assert validate_production_env(env) == []
+
+
+def test_production_preflight_rejects_unsafe_auth_debug_settings():
+    env = _valid_env()
+    env["QQ_MOCK_AUTH_ENABLED"] = "true"
+    env["DEV_PRINT_AUTH_CODES"] = "true"
+    env["EXPOSE_API_DOCS"] = "true"
+    errors = validate_production_env(env)
+    assert any("QQ_MOCK_AUTH_ENABLED" in error for error in errors)
+    assert any("DEV_PRINT_AUTH_CODES" in error for error in errors)
+    assert any("EXPOSE_API_DOCS" in error for error in errors)
+
+
+def test_production_preflight_rejects_default_session_secret():
+    env = _valid_env()
+    env["SESSION_SECRET_KEY"] = "pricememo-auth-secret-key-change-in-production"
+    errors = validate_production_env(env)
+    assert any("SESSION_SECRET_KEY" in error for error in errors)
