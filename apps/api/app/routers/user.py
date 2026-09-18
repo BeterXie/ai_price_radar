@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 import logging
 import threading
 from typing import Any
@@ -40,7 +41,7 @@ from ..schemas import (
     UserTrackClickRequest,
 )
 from ..security import get_current_user, get_token_from_request, require_current_user
-from ..services.auth import settle_session_activity
+from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
@@ -52,6 +53,7 @@ from ..services.bot_binding import (
     update_binding_preferences,
 )
 from ..services.notification_hub import handle_inbound_chat_message
+from ..services.rate_limit import consume_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -719,7 +721,7 @@ def user_heartbeat(
 ) -> UserHeartbeatResponse:
     now = datetime.now(timezone.utc)
     token = get_token_from_request(request)
-    session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+    session = get_session_by_token(db, token) if token else None
 
     # Settle online seconds from the session's own activity baseline so that
     # clicks and logout cannot double- or under-count the same interval.
@@ -743,14 +745,37 @@ def user_track_click(
     from .public import _client_address
 
     client_ip = _client_address(request)
-    ua = request.headers.get("user-agent", "")
+    ua = (request.headers.get("user-agent", "") or "")[:500]
     now = datetime.now(timezone.utc)
+
+    extra_payload = json.dumps(
+        payload.extra_data or {},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(extra_payload) > 4096:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="extra_data is too large",
+        )
+    if not consume_rate_limit(
+        db,
+        "user-track-click",
+        client_ip,
+        limit=60,
+        window_seconds=60,
+    ):
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="tracking requests are too frequent",
+        )
 
     user_id = current_user.id if current_user else None
     session = None
     if current_user:
         token = get_token_from_request(request)
-        session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+        session = get_session_by_token(db, token) if token else None
         # Settle online seconds from the same baseline the heartbeat uses, then
         # atomically bump the click counter (read-modify-write loses updates).
         settle_session_activity(db, current_user, session, now=now)
