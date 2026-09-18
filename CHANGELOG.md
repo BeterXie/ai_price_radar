@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.90] - 2026-09-18
+
+### Fixed
+- **网站图标（标签栏 Favicon 与顶部导航栏 Logo）在生产环境展示异常**:
+  - **标签栏 Favicon 全尺寸补齐**: 将标准多尺寸 `favicon.ico` 同步放置到 `apps/web/app/favicon.ico` 与 `apps/web/public/favicon.ico`，并在 `layout.tsx` 的 `generateMetadata()` 中显式配置 `icons` 元数据（含 `/favicon.ico`、`/icon.svg`、`/icon.png` 512×512、`/apple-icon.png` 180×180 和 `shortcut`），彻底解决因仅声明 512×512 尺寸导致 Chrome、Edge、微信等浏览器标签栏退化为空白图标的问题；
+  - **静态资源双向镜像**: 同步补齐 `public/` 目录下的 `icon.svg`、`icon.png`、`apple-icon.png`，确保客户端无论走 App Router 元数据解析还是直接 HTTP 请求根路径静态图标均 100% 命中；
+  - **顶部 Logo 避免代理阻断**: 为 `site-header.tsx` 中的 `<Image src="/brand/logo-icon.png" ... />` 增加 `unoptimized` 属性，直接以内联方式渲染静态图片，避开 Alpine Docker 容器因缺少原生 `sharp` 模块而在 `/_next/image` 中返回 `Content-Disposition: attachment` 与沙箱 CSP 导致的部分浏览器（如移动端 WebView、Safari）拒绝渲染的问题。
+
 ## [3.7.89] - 2026-09-18
 
 ### Fixed

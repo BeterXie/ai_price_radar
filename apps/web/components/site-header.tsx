@@ -85,6 +85,7 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
             width={36}
             height={36}
             priority
+            unoptimized
             className="h-9 w-9 object-contain transition-transform group-hover:scale-105"
           />
           <span className="min-w-0">
