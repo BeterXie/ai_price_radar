@@ -11,7 +11,7 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.90"
+VERSION = "3.7.91"
 
 
 @asynccontextmanager
@@ -51,6 +51,9 @@ app = FastAPI(
     title=settings.app_name,
     version=VERSION,
     lifespan=lifespan,
+    docs_url="/docs" if settings.expose_api_docs else None,
+    redoc_url="/redoc" if settings.expose_api_docs else None,
+    openapi_url="/openapi.json" if settings.expose_api_docs else None,
 )
 app.add_middleware(
     CORSMiddleware,
