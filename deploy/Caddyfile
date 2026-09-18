@@ -3,6 +3,9 @@
 
     @api path /api/* /docs* /openapi.json /health
     handle @api {
+        request_body {
+            max_size 2MB
+        }
         reverse_proxy api:8000
     }
 
@@ -15,5 +18,7 @@
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
     }
 }
