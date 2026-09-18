@@ -269,7 +269,7 @@ def get_qq_binding_status(
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return check_qq_binding_session(session_id, db=db)
+    return check_qq_binding_session(session_id, db=db, user_id=current_user.id)
 
 
 @router.post("/notifications/qq/bind-current")
