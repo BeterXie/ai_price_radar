@@ -3,7 +3,16 @@ ai.pricememo.cn {
 
     @api path /api/* /docs* /openapi.json /health
     handle @api {
-        reverse_proxy ai-radar-api:8000
+        reverse_proxy ai-radar-api:8000 {
+            lb_try_duration 5s
+            lb_try_interval 200ms
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+                keepalive 300s
+                keepalive_idle_conns 100
+            }
+        }
     }
 
     @demos path /demos/*
@@ -13,11 +22,29 @@ ai.pricememo.cn {
             Content-Security-Policy "frame-ancestors 'self'"
             Cache-Control "no-cache, must-revalidate"
         }
-        reverse_proxy ai-radar-web:3000
+        reverse_proxy ai-radar-web:3000 {
+            lb_try_duration 5s
+            lb_try_interval 200ms
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+                keepalive 300s
+                keepalive_idle_conns 100
+            }
+        }
     }
 
     handle {
-        reverse_proxy ai-radar-web:3000
+        reverse_proxy ai-radar-web:3000 {
+            lb_try_duration 5s
+            lb_try_interval 200ms
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+                keepalive 300s
+                keepalive_idle_conns 100
+            }
+        }
     }
 
     header {

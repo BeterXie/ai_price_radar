@@ -10,4 +10,6 @@ ExecStart=/usr/bin/bash /opt/ai-price-radar-v3/scripts/refresh_remote.sh invento
 ExecStopPost=-/usr/bin/docker rm -f ai-price-radar-crawler-run-inventory
 Nice=10
 IOSchedulingClass=idle
+CPUQuota=85%
+MemoryMax=1000M
 TimeoutStartSec=1h

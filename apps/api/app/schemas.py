@@ -952,6 +952,11 @@ class CouponDropStatus(BaseModel):
     remaining_stock: int
 
 
+class CouponDropTrackRequest(BaseModel):
+    page: str = ""
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+
+
 class AdminCouponStats(BaseModel):
     total_coupons: int
     assigned_coupons: int
@@ -962,6 +967,7 @@ class AdminCouponStats(BaseModel):
     drop_probability: int
     dynamic_drop: bool
     daily_drop_limit: int
+    drop_trigger_count: int = 0
 
 
 class AdminCouponSettingsUpdate(BaseModel):

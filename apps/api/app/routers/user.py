@@ -26,6 +26,7 @@ from ..schemas import (
     BotCommandResponse,
     CouponClaimResponse,
     CouponDropStatus,
+    CouponDropTrackRequest,
     CouponRead,
     CouponRedeemRequest,
     QQBotBindingStartResponse,
@@ -709,6 +710,52 @@ def claim_lucky_drop(
         message=f"🎉 恭喜获得{coupon.shop_name or '店铺'}【{coupon.name}】！已自动存入个人卡包。",
         coupon=_coupon_to_read(coupon),
     )
+
+
+@router.post("/coupons/record-drop-trigger")
+def record_coupon_drop_trigger(
+    payload: CouponDropTrackRequest,
+    request: Request,
+    current_user: User | None = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Record an easter egg drop trigger event from the frontend (supports anonymous or logged-in visitors)."""
+    from .public import _client_address
+
+    client_ip = _client_address(request)
+    ua = request.headers.get("user-agent", "")
+    now = datetime.now(timezone.utc)
+
+    user_id = current_user.id if current_user else None
+
+    # 1. Log to UserActionLog
+    log = UserActionLog(
+        user_id=user_id,
+        action_type="coupon_drop_trigger",
+        action_name="前台优惠券彩蛋触发",
+        target_id="lucky_coupon_drop",
+        page=payload.page or "",
+        ip_address=client_ip,
+        user_agent=ua,
+        extra_data=payload.extra_data or {},
+        created_at=now,
+    )
+    db.add(log)
+
+    # 2. Increment SystemSetting counter
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "coupon_drop_trigger_count"))
+    if not setting:
+        setting = SystemSetting(key="coupon_drop_trigger_count", value="1")
+        db.add(setting)
+    else:
+        try:
+            cnt = int((setting.value or "").strip() or "0") + 1
+        except (ValueError, TypeError):
+            cnt = 1
+        setting.value = str(cnt)
+
+    db.commit()
+    return {"status": "ok", "success": True}
 
 
 @router.post("/heartbeat", response_model=UserHeartbeatResponse)

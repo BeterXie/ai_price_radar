@@ -415,6 +415,7 @@ export type AdminCouponStats = {
   drop_probability: number;
   dynamic_drop: boolean;
   daily_drop_limit: number;
+  drop_trigger_count: number;
 };
 
 export type AdminCouponSettingsUpdate = {

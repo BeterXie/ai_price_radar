@@ -536,13 +536,17 @@ export function CouponsAdminPanel({
       )}
 
       {/* 1. Metric Overview Cards */}
-      <section className="data-strip sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+      <section className="data-strip sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <div className="data-cell">
           <div className="flex items-center justify-between">
             <p className="data-label">可掉落库存</p>
             {stats && getStockStatusBadge(stats.unassigned_coupons)}
           </div>
           <p className="data-value text-amber-600">{stats?.unassigned_coupons ?? "-"}</p>
+        </div>
+        <div className="data-cell">
+          <p className="data-label">彩蛋触发次数</p>
+          <p className="data-value text-indigo-600">{stats?.drop_trigger_count ?? "-"}</p>
         </div>
         <div className="data-cell">
           <p className="data-label">已发放/领取</p>
@@ -616,7 +620,7 @@ export function CouponsAdminPanel({
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-[color:var(--muted)]">
-                  开启后，普通访客在浏览商品比价等页面 10 秒后，将有机会触发立减券掉落彩蛋弹窗。
+                  开启后，普通访客在浏览除首页外的商品比价等页面且存在真实点击后 10 秒，将有机会触发立减券掉落彩蛋弹窗（每分钟最多触发一次概率判定）。
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">

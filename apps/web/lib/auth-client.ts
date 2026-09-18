@@ -236,5 +236,12 @@ export async function fetchCouponDropStatus(): Promise<CouponDropStatus> {
   return jsonFetch<CouponDropStatus>("/api/v1/user/coupons/drop-status");
 }
 
+export async function recordCouponDropTrigger(page?: string): Promise<{ success: boolean }> {
+  return jsonFetch<{ success: boolean }>("/api/v1/user/coupons/record-drop-trigger", {
+    method: "POST",
+    body: JSON.stringify({ page: page || "" }),
+  });
+}
+
 
 

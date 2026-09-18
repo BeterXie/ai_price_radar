@@ -431,3 +431,40 @@ def test_redeem_campaign_fallback_and_independent_campaign_quotas(client: TestCl
     assert res2.json()["coupon"]["campaign_id"] == 2
 
 
+def test_record_coupon_drop_trigger_and_stats(client: TestClient, test_db):
+    from app.models import UserActionLog
+    from app.routers.admin import _get_coupon_stats
+
+    # 1. Anonymous visitor triggers drop
+    res_anon = client.post(
+        "/api/v1/user/coupons/record-drop-trigger",
+        json={"page": "/products/claude-3-5-sonnet", "extra_data": {"platform": "web"}},
+    )
+    assert res_anon.status_code == 200
+    assert res_anon.json()["success"] is True
+
+    # 2. Logged-in user triggers drop
+    user = User(id=99, email="coupon_tester@example.com", nickname="彩蛋测试员")
+    test_db.add(user)
+    test_db.commit()
+    headers = _login_user(test_db, user, client)
+
+    res_user = client.post(
+        "/api/v1/user/coupons/record-drop-trigger",
+        json={"page": "/compare/chatgpt-vs-claude"},
+        headers=headers,
+    )
+    assert res_user.status_code == 200
+    assert res_user.json()["success"] is True
+
+    # 3. Verify UserActionLogs
+    logs = test_db.query(UserActionLog).filter_by(action_type="coupon_drop_trigger").all()
+    assert len(logs) == 2
+    assert any(l.user_id is None and l.page == "/products/claude-3-5-sonnet" for l in logs)
+    assert any(l.user_id == 99 and l.page == "/compare/chatgpt-vs-claude" for l in logs)
+
+    # 4. Verify stats reflects drop_trigger_count == 2
+    stats = _get_coupon_stats(test_db)
+    assert stats.drop_trigger_count == 2
+
+

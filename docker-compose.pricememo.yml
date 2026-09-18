@@ -68,8 +68,12 @@ services:
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     init: true
-    mem_limit: 1g
-    shm_size: 1gb
+    mem_limit: 800m
+    cpus: 1.0
+    shm_size: 256m
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
     environment:
       HOME: /home/crawler
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright

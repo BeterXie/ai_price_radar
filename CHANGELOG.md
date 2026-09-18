@@ -2,6 +2,23 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.91] - 2026-09-18
+
+### Added
+- **前台优惠券彩蛋触发次数统计**:
+  - `POST /api/v1/user/coupons/record-drop-trigger`: 支持匿名与已登录用户上报彩蛋触发动作，记录客户端 IP、User-Agent、触发页面与时间到 `UserActionLog`；
+  - `SystemSetting(key="coupon_drop_trigger_count")`: 持久化维护累计触发总数；
+  - `AdminCouponStats`: 新增 `drop_trigger_count` 字段，并在管理后台优惠券面板数据概览中增加 **「彩蛋触发次数」** 指标卡片。
+
+### Changed
+- **前台彩蛋概率触发门槛升级与防刷频控**:
+  - 排除首页（`/`）彩蛋倒计时，杜绝访问首页挂机或无互动的自动弹出；
+  - 增加非首页真实页面点击门槛：仅在用户于非首页页面（商品比价、分类等）产生真实点击动作（`isTrusted`）后，才开始进入概率判定流程；
+  - 增加频控限制：客户端与会话级限制每分钟至多触发一次概率判定（`EVAL_COOLDOWN_MS = 60_000`），避免高频切页刷取。
+- **生产服务资源与调度调优**:
+  - 调整 `ai-price-radar-inventory` 定时周期为 20 分钟并配置 CPU/内存限额；
+  - 优化 Caddy 代理重试与反向代理连接池保活策略。
+
 ## [3.7.90] - 2026-09-18
 
 ### Fixed

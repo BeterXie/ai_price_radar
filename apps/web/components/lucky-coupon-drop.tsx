@@ -15,12 +15,15 @@ import {
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
-import { fetchAuthMe, claimLuckyDrop, fetchCouponDropStatus } from "@/lib/auth-client";
+import { fetchAuthMe, claimLuckyDrop, fetchCouponDropStatus, recordCouponDropTrigger } from "@/lib/auth-client";
 import type { ShopCoupon } from "@/lib/types";
 import { LoginModal } from "@/components/login-modal";
 
 const STORAGE_KEY_DISMISSED = "apr:coupon_drop_dismissed_v1";
-const COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours
+const STORAGE_KEY_NON_HOME_CLICKED = "apr:coupon_drop_non_home_click_v1";
+const STORAGE_KEY_LAST_EVAL = "apr:coupon_drop_last_eval_time_v1";
+const COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours after dismiss
+const EVAL_COOLDOWN_MS = 60 * 1000; // At most 1 probability evaluation per minute
 
 export function LuckyCouponDrop() {
   const pathname = usePathname();
@@ -37,10 +40,10 @@ export function LuckyCouponDrop() {
   useEffect(() => {
     let cancelled = false;
     let timer: number | undefined;
+    let clickCleanup: (() => void) | undefined;
 
     // Disabled paths must not render the overlay at all, and navigating to one
-    // has to tear down anything already on screen (an early return alone would
-    // leave the floating widget covering the account/admin page).
+    // has to tear down anything already on screen.
     const isDisabledPath =
       pathname.startsWith("/admin") || pathname.startsWith("/account");
     if (isDisabledPath) {
@@ -51,47 +54,128 @@ export function LuckyCouponDrop() {
       };
     }
 
-    async function checkDrop() {
-      try {
-        if (typeof window === "undefined") return;
+    // Easter egg is disabled on homepage ("除首页外其他页面存在真实页面点击动作以后才能正常触发概率")
+    const isHomePage = pathname === "/" || pathname === "";
+    if (isHomePage) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
+    // If already visible or opened in modal, keep displaying without re-rolling
+    if (visible || modalOpen) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const pageEnteredAt = Date.now();
+
+    async function evaluateDrop() {
+      if (cancelled || typeof window === "undefined") return;
+
+      try {
+        // 1. Check dismiss cooldown (12h)
         const lastDismissed = localStorage.getItem(STORAGE_KEY_DISMISSED);
         if (lastDismissed) {
           const diff = Date.now() - parseInt(lastDismissed, 10);
           if (diff < COOLDOWN_MS) return;
         }
 
-        // Query backend drop status & dynamic probability based on stock
+        // 2. Frequency limit: At most 1 probability evaluation per minute
+        const lastEval =
+          sessionStorage.getItem(STORAGE_KEY_LAST_EVAL) ||
+          localStorage.getItem(STORAGE_KEY_LAST_EVAL);
+        if (lastEval) {
+          const diff = Date.now() - parseInt(lastEval, 10);
+          if (diff < EVAL_COOLDOWN_MS) {
+            return;
+          }
+        }
+
+        // Mark current evaluation time immediately so rapid navigation doesn't bypass limit
+        const nowStr = Date.now().toString();
+        try {
+          sessionStorage.setItem(STORAGE_KEY_LAST_EVAL, nowStr);
+          localStorage.setItem(STORAGE_KEY_LAST_EVAL, nowStr);
+        } catch {
+          // ignore
+        }
+
+        // 3. Query backend drop status & dynamic probability based on stock
         const dropStatus = await fetchCouponDropStatus().catch(() => null);
         if (cancelled) return;
-        if (!dropStatus || !dropStatus.enabled || !dropStatus.has_stock || dropStatus.probability <= 0) {
+        if (
+          !dropStatus ||
+          !dropStatus.enabled ||
+          !dropStatus.has_stock ||
+          dropStatus.probability <= 0
+        ) {
           return;
         }
 
-        // Dynamic roll (0 to 100)
+        // 4. Dynamic probability roll (0 to 100)
         const roll = Math.random() * 100;
         if (roll > dropStatus.probability) {
           return;
         }
 
-        // Delay 10 seconds after page load before displaying the floating lucky egg
-        timer = window.setTimeout(() => {
-          if (!cancelled) {
-            setVisible(true);
-          }
-        }, 10_000);
+        // 5. Trigger egg! Show floating egg and record trigger count in backend
+        if (!cancelled) {
+          setVisible(true);
+          void recordCouponDropTrigger(pathname).catch(() => {});
+        }
       } catch {
         return;
       }
     }
 
-    checkDrop();
+    function scheduleDropEvaluation() {
+      if (timer) window.clearTimeout(timer);
+      // Wait until at least 10s after entering page (or at least 3s buffer if already past 10s)
+      const elapsed = Date.now() - pageEnteredAt;
+      const delay = Math.max(3000, 10_000 - elapsed);
+      timer = window.setTimeout(() => {
+        void evaluateDrop();
+      }, delay);
+    }
+
+    // Check if real click action on non-home page was already registered in session
+    let hasNonHomeClick = false;
+    try {
+      hasNonHomeClick = sessionStorage.getItem(STORAGE_KEY_NON_HOME_CLICKED) === "1";
+    } catch {
+      // ignore
+    }
+
+    if (hasNonHomeClick) {
+      // Threshold already met; schedule drop evaluation after browsing delay
+      scheduleDropEvaluation();
+    } else {
+      // Threshold not met yet: listen for real user click event on this non-home page
+      const handleUserClick = (e: MouseEvent) => {
+        if (!e.isTrusted) return;
+        try {
+          sessionStorage.setItem(STORAGE_KEY_NON_HOME_CLICKED, "1");
+        } catch {
+          // ignore
+        }
+        window.removeEventListener("click", handleUserClick, true);
+        scheduleDropEvaluation();
+      };
+
+      window.addEventListener("click", handleUserClick, { capture: true, passive: true });
+      clickCleanup = () => {
+        window.removeEventListener("click", handleUserClick, true);
+      };
+    }
 
     return () => {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
+      if (clickCleanup) clickCleanup();
     };
-  }, [pathname]);
+  }, [pathname, visible, modalOpen]);
 
 
   const handleDismiss = () => {

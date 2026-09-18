@@ -1200,6 +1200,17 @@ def _get_coupon_stats(db: Session) -> AdminCouponStats:
     used = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_used.is_(True))) or 0
     campaigns = db.scalar(select(func.count(CouponCampaign.id))) or 0
 
+    trigger_setting_count = get_setting_int(db, "coupon_drop_trigger_count", default=0)
+    log_count = (
+        db.scalar(
+            select(func.count(UserActionLog.id)).where(
+                UserActionLog.action_type == "coupon_drop_trigger"
+            )
+        )
+        or 0
+    )
+    drop_trigger_count = max(trigger_setting_count, log_count)
+
     return AdminCouponStats(
         total_coupons=total,
         assigned_coupons=assigned,
@@ -1210,6 +1221,7 @@ def _get_coupon_stats(db: Session) -> AdminCouponStats:
         drop_probability=get_setting_int(db, "coupon_drop_probability", default=20),
         dynamic_drop=get_setting_bool(db, "coupon_dynamic_drop", default=True),
         daily_drop_limit=get_setting_int(db, "coupon_daily_drop_limit", default=100),
+        drop_trigger_count=drop_trigger_count,
     )
 
 

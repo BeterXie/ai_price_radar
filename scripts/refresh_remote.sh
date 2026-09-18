@@ -236,6 +236,8 @@ PUBLIC_DATA_DIR="$ROOT/apps/web/public/data"
 mkdir -p "$PUBLIC_DATA_DIR"
 
 docker run --rm --user 0 \
+  --cpus 1.0 \
+  --memory 600m \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
   -e PUBLIC_DATA_DIR=/workspace/apps/web/public/data \
