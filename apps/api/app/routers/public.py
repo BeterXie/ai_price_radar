@@ -48,7 +48,8 @@ from ..services.community_skills import (
     record_community_skill_copy,
 )
 from ..services.source_intake import enqueue_submission_notifications
-from ..services.auth import settle_session_activity
+from ..services.auth import get_session_by_token, settle_session_activity
+from ..services.rate_limit import consume_rate_limit
 from ..services.catalog import (
     OfferFilters,
     get_catalog_group_page,
@@ -885,7 +886,7 @@ def _settle_click_user_activity(db: Session, request: Request, current_user: Use
     if not current_user:
         return
     token = get_token_from_request(request)
-    session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+    session = get_session_by_token(db, token) if token else None
     settle_session_activity(db, current_user, session, now=now)
     db.execute(
         update(User)
@@ -906,6 +907,12 @@ def record_offer_click(
         raise HTTPException(status_code=404, detail="offer not found")
 
     client_ip = _client_address(request)
+    if not consume_rate_limit(
+        db, "public-outbound-click", client_ip, limit=120, window_seconds=60
+    ):
+        db.commit()
+        raise HTTPException(status_code=429, detail="click tracking is rate limited")
+    db.commit()
     ip_hash = hashlib.sha256(f"click:{client_ip}".encode()).hexdigest()[:32]
     user_agent = (request.headers.get("user-agent") or "")[:500]
     now = datetime.now(timezone.utc)
@@ -982,6 +989,12 @@ def record_shop_click(
         raise HTTPException(status_code=404, detail="shop not found")
 
     client_ip = _client_address(request)
+    if not consume_rate_limit(
+        db, "public-outbound-click", client_ip, limit=120, window_seconds=60
+    ):
+        db.commit()
+        raise HTTPException(status_code=429, detail="click tracking is rate limited")
+    db.commit()
     ip_hash = hashlib.sha256(f"shop_click:{client_ip}".encode()).hexdigest()[:32]
     user_agent = (request.headers.get("user-agent") or "")[:500]
     now = datetime.now(timezone.utc)
