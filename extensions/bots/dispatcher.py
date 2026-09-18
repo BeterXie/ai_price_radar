@@ -38,6 +38,7 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
     if db_session is not None:
         try:
             from app.models import NotificationOutbox, Offer, Product, User, UserBotBinding, UserProductSubscription
+            from app.services.credential_crypto import decrypt_bot_token
 
             # Cache product slugs from offer_id if not present
             offer_slug_cache: dict[int, str] = {}
@@ -172,7 +173,7 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                                     f"🛒 直达店铺：{prod_url}"
                                 )
                                 app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
-                                app_secret = binding.bot_token or None
+                                app_secret = decrypt_bot_token(binding.bot_token) or None
                                 try:
                                     qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
                                     qq_client.send_c2c_message(
@@ -231,7 +232,7 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                     continue
 
                 app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
-                app_secret = binding.bot_token or None
+                app_secret = decrypt_bot_token(binding.bot_token) or None
                 # Build the client from this binding's credentials: Connector-based
                 # bindings hold their own app_id/app_secret and may exist with no
                 # global QQ_BOT_APP_ID/SECRET configured.
