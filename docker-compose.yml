@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-price_radar}
       POSTGRES_USER: ${POSTGRES_USER:-price_radar}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,8 +21,8 @@ services:
       context: ./apps/api
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-replace-with-a-long-random-string}
+      DATABASE_URL: ${DATABASE_URL:?required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?required}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3000}
@@ -30,10 +30,10 @@ services:
       REPORT_RATE_LIMIT_WINDOW_SECONDS: ${REPORT_RATE_LIMIT_WINDOW_SECONDS:-3600}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       SHOP_INTAKE_ADMIN_EMAILS: ${SHOP_INTAKE_ADMIN_EMAILS:-admin@example.invalid}
-      SHOP_INTAKE_AUTO_APPROVE: ${SHOP_INTAKE_AUTO_APPROVE:-true}
-      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
-      DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
-      DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
+      SHOP_INTAKE_AUTO_APPROVE: ${SHOP_INTAKE_AUTO_APPROVE:-false}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:?required}
+      DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:?required}
+      DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:?required}
       DISCOVERY_ENABLED: ${DISCOVERY_ENABLED:-true}
       DISCOVERY_MAX_RAW_URLS: ${DISCOVERY_MAX_RAW_URLS:-2000}
       DISCOVERY_MAX_NEW_CANDIDATES: ${DISCOVERY_MAX_NEW_CANDIDATES:-1000}
@@ -54,6 +54,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?required}
+      QQ_MOCK_AUTH_ENABLED: ${QQ_MOCK_AUTH_ENABLED:-false}
+      DEV_PRINT_AUTH_CODES: ${DEV_PRINT_AUTH_CODES:-false}
+      EXPOSE_API_DOCS: ${EXPOSE_API_DOCS:-false}
     depends_on:
       db:
         condition: service_healthy
@@ -72,7 +76,7 @@ services:
     command: ["python", "-m", "app.notification_worker"]
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+      DATABASE_URL: ${DATABASE_URL:?required}
       SHOP_INTAKE_ADMIN_EMAILS: ${SHOP_INTAKE_ADMIN_EMAILS:-admin@example.invalid}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
@@ -100,8 +104,8 @@ services:
       - /tmp:size=16m,mode=1777
     environment:
       DETECTOR_API_URL: http://api:8000
-      DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
-      DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
+      DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:?required}
+      DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:?required}
       DETECTOR_POLL_SECONDS: ${DETECTOR_POLL_SECONDS:-5}
       DISCOVERY_CLAIM_LIMIT: ${DISCOVERY_CLAIM_LIMIT:-5}
       DISCOVERY_LEASE_SECONDS: ${DISCOVERY_LEASE_SECONDS:-900}
@@ -167,9 +171,9 @@ services:
       context: .
       dockerfile: pipeline/Dockerfile
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+      DATABASE_URL: ${DATABASE_URL:?required}
       INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
-      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:?required}
     volumes:
       - ./:/workspace
     working_dir: /workspace/pipeline
