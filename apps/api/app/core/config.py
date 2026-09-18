@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     # Dev-only switch to print email login codes to the console when mail is unconfigured.
     dev_print_auth_codes: bool = False
     session_secret_key: str = "pricememo-auth-secret-key-change-in-production"
+    expose_api_docs: bool = True
     session_cookie_name: str = "pm_session"
     session_max_age_days: int = Field(default=30, ge=1, le=365)
 
