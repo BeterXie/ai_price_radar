@@ -98,6 +98,8 @@ class QQGatewayService:
                 try:
                     def _load_active_bots() -> dict[str, str]:
                         found: dict[str, str] = {}
+                        from app.services.credential_crypto import decrypt_bot_token
+
                         with SessionLocal() as db:
                             bindings = db.scalars(
                                 select(UserBotBinding).where(
@@ -107,7 +109,7 @@ class QQGatewayService:
                             ).all()
                             for b in bindings:
                                 app_id = (b.extra_meta or {}).get("app_id") if b.extra_meta else None
-                                app_secret = b.bot_token
+                                app_secret = decrypt_bot_token(b.bot_token)
                                 if app_id and app_secret:
                                     found[str(app_id).strip()] = str(app_secret).strip()
                         return found
