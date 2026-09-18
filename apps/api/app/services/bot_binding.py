@@ -273,78 +273,94 @@ def complete_qq_binding(
     extra_meta: dict | None = None,
     channel: str = "qq",
 ) -> UserBotBinding | None:
-    """Invoked when QQ Bot receives `/bind <code>` or bridge confirms binding."""
-    found = _find_pending_binding(bind_code_or_session)
-    if not found:
+    """Atomically consume a pending bind session within this API process."""
+    target_id = (target_id or "").strip()
+    if not target_id:
         return None
-    found_key, target_session = found
 
-    # One-time consumption: an already-completed session must never mutate the
-    # binding again (replaying an old code must not redirect notifications).
-    if target_session.get("status") == "BOUND":
-        return db.scalar(
+    with _PENDING_BINDINGS_LOCK:
+        found = _find_pending_binding(bind_code_or_session)
+        if not found:
+            return None
+        _found_key, target_session = found
+
+        # One-time consumption: an already-completed session must never mutate
+        # the binding again (replaying an old code cannot redirect notices).
+        if target_session.get("status") == "BOUND":
+            return db.scalar(
+                select(UserBotBinding).where(
+                    UserBotBinding.user_id == target_session["user_id"],
+                    UserBotBinding.channel == channel,
+                )
+            )
+
+        user_id = target_session["user_id"]
+        collision = db.scalar(
             select(UserBotBinding).where(
-                UserBotBinding.user_id == target_session["user_id"],
+                UserBotBinding.channel == channel,
+                UserBotBinding.target_id == target_id,
+                UserBotBinding.user_id != user_id,
+            )
+        )
+        if collision is not None:
+            logger.warning(
+                "Refused binding collision for channel=%s target=%s user_id=%s",
+                channel,
+                target_id,
+                user_id,
+            )
+            return None
+
+        binding = db.scalar(
+            select(UserBotBinding).where(
+                UserBotBinding.user_id == user_id,
                 UserBotBinding.channel == channel,
             )
         )
+        now = utcnow()
+        if binding is None:
+            binding = UserBotBinding(
+                user_id=user_id,
+                channel=channel,
+                target_id=target_id,
+                bot_token=encrypt_bot_token(bot_token),
+                extra_meta=extra_meta or {},
+                is_active=True,
+                notify_price_drop=True,
+                notify_price_hike=True,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(binding)
+        else:
+            binding.target_id = target_id
+            if bot_token:
+                binding.bot_token = encrypt_bot_token(bot_token)
+            if extra_meta:
+                binding.extra_meta = extra_meta
+            binding.is_active = True
+            binding.updated_at = now
 
-    user_id = target_session["user_id"]
-    collision = db.scalar(
-        select(UserBotBinding).where(
-            UserBotBinding.channel == channel,
-            UserBotBinding.target_id == target_id,
-            UserBotBinding.user_id != user_id,
-        )
-    )
-    if collision is not None:
-        logger.warning(
-            "Refused binding collision for channel=%s target=%s user_id=%s",
+        # Mark the in-memory authorization consumed before releasing the lock.
+        # Roll it back only if the database write itself fails.
+        target_session["status"] = "BOUND"
+        target_session["target_id"] = target_id
+        try:
+            db.commit()
+            db.refresh(binding)
+        except Exception:
+            db.rollback()
+            target_session["status"] = "WAITING"
+            target_session["target_id"] = None
+            raise
+
+        logger.info(
+            "Successfully bound user %d to %s target %s",
+            user_id,
             channel,
             target_id,
-            user_id,
         )
-        return None
-
-    binding = db.scalar(
-        select(UserBotBinding).where(
-            UserBotBinding.user_id == user_id,
-            UserBotBinding.channel == channel,
-        )
-    )
-    now = utcnow()
-    if binding is None:
-        binding = UserBotBinding(
-            user_id=user_id,
-            channel=channel,
-            target_id=target_id,
-            bot_token=encrypt_bot_token(bot_token),
-            extra_meta=extra_meta or {},
-            is_active=True,
-            notify_price_drop=True,
-            notify_price_hike=True,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(binding)
-    else:
-        binding.target_id = target_id
-        if bot_token:
-            binding.bot_token = encrypt_bot_token(bot_token)
-        if extra_meta:
-            binding.extra_meta = extra_meta
-        binding.is_active = True
-        binding.updated_at = now
-
-
-    db.commit()
-    db.refresh(binding)
-
-    target_session["status"] = "BOUND"
-    target_session["target_id"] = target_id
-    logger.info("Successfully bound user %d to %s target %s", user_id, channel, target_id)
-    return binding
-
+        return binding
 
 def complete_qq_binding_for_user(
     db: Session,
