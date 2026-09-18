@@ -253,7 +253,10 @@ def qq_oauth_callback(
             )
         session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
-        _set_auth_cookie(redir, session.token)
+        raw_token = getattr(session, "raw_token", "")
+        if not raw_token:
+            raise RuntimeError("new session did not expose its transient bearer token")
+        _set_auth_cookie(redir, raw_token)
         _clear_oauth_state_cookie(redir)
         return redir
     except Exception as exc:
