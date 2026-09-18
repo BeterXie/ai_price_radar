@@ -59,6 +59,8 @@ export async function requestEmailLoginCode(email: string): Promise<{ success: b
   });
 }
 
+// Authentication is cookie-only. The API intentionally never exposes the
+// HttpOnly session bearer token to browser JavaScript.
 export async function verifyEmailLoginCode(email: string, code: string): Promise<AuthSessionState> {
   const session = await jsonFetch<AuthSessionState>("/api/v1/auth/email/verify", {
     method: "POST",
