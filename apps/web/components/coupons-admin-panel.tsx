@@ -68,14 +68,14 @@ export function CouponsAdminPanel({
 
   // Modals
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importSelectedShopId, setImportSelectedShopId] = useState<string>("default");
+  const [importSelectedShopId, setImportSelectedShopId] = useState<string>("");
   const [importForm, setImportForm] = useState({
     name: "专享立减券",
     discount_amount: 5,
     min_spend: 15,
     shop_id: 0,
-    shop_name: "彩头AI",
-    shop_url: "https://wzyp.cn/shop/pricememo",
+    shop_name: "",
+    shop_url: "",
     coupon_batch_id: 0,
     expires_days: 30,
     codes_text: "",
@@ -116,17 +116,6 @@ export function CouponsAdminPanel({
       if (res.ok) {
         const data = await res.json();
         setPlatformShops(data);
-        // If importForm default shop not found, set to first shop or default
-        if (data.length > 0) {
-          const defaultShop = data.find((s: any) => s.token === "pricememo") || data[0];
-          setImportForm((prev) => ({
-            ...prev,
-            shop_id: defaultShop.id,
-            shop_name: defaultShop.name,
-            shop_url: defaultShop.source_url,
-          }));
-          setImportSelectedShopId(defaultShop.id.toString());
-        }
       }
     } catch {
       // ignore
@@ -1292,9 +1281,10 @@ export function CouponsAdminPanel({
               <div className="space-y-3">
                 <div>
                   <label className="block font-semibold mb-1 text-[color:var(--ink)]">
-                    选择归属店铺 (券跟着店铺走)
+                    归属店铺（必选）
                   </label>
                   <select
+                    required
                     value={importSelectedShopId}
                     onChange={(e) => {
                       const val = e.target.value;

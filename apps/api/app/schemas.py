@@ -992,8 +992,8 @@ class AdminCouponImportRequest(BaseModel):
     discount_amount: Decimal = Decimal("5.00")
     min_spend: Decimal = Decimal("15.00")
     expires_at: datetime | None = None
-    shop_name: str = "彩头AI"
-    shop_url: str = "https://wzyp.cn/shop/pricememo"
+    shop_name: str = ""
+    shop_url: str = ""
     shop_id: int | None = None
     coupon_batch_id: int = 0
     codes_text: str = Field(min_length=1)

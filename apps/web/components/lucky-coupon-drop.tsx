@@ -314,6 +314,9 @@ export function LuckyCouponDrop() {
               <p className="text-xs text-[color:var(--muted)] mt-1 leading-relaxed">
                 感谢您对 Price Radar 的支持。领取后即可获得一张合作店铺的立减优惠券，具体店铺与面额以领取结果为准。
               </p>
+              <p className="text-[10px] text-[color:var(--muted)] mt-1.5">
+                优惠券由对应店铺提供，不影响 PriceMemo 的报价排序。
+              </p>
             </div>
 
             {/* Coupon Preview / Claim Result */}
@@ -336,7 +339,7 @@ export function LuckyCouponDrop() {
                     )}
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 font-semibold">
-                    已存入卡包
+                    已保存
                   </span>
                 </div>
 
@@ -368,7 +371,7 @@ export function LuckyCouponDrop() {
                 <div className="text-[10px] text-[color:var(--muted)] flex items-center justify-between">
                   <span>有效期至：{new Date(claimedCoupon.expires_at).toLocaleDateString()}</span>
                   <Link href="/account" className="text-amber-700 hover:underline">
-                    查看我的卡包 →
+                    查看我的优惠券 →
                   </Link>
                 </div>
               </div>

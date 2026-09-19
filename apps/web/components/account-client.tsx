@@ -394,29 +394,18 @@ export function AccountClient() {
         </div>
       </section>
 
-      {/* 2. My Exclusive Coupon Wallet Section */}
+      {/* 2. Coupon Wallet Section */}
       <section className="surface-panel p-6 sm:p-8 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-800">
+            <Gift size={18} weight="fill" />
+          </div>
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-800 text-xs font-semibold mb-2">
-              <Gift size={14} weight="fill" />
-              <span>彩头AI · 直营店铺卡券包</span>
-            </div>
-            <h3 className="text-lg font-bold text-[color:var(--ink)]">我的专属卡包</h3>
-            <p className="text-xs sm:text-sm text-[color:var(--muted)] mt-1">
-              已领取的店铺专享立减券，下单直接抵扣现金。可复制 10 位券码并在彩头AI店铺结算时填入使用。
+            <h3 className="text-lg font-bold text-[color:var(--ink)]">我的优惠券</h3>
+            <p className="text-xs sm:text-sm text-[color:var(--muted)] mt-1 leading-6">
+              已领取的优惠券会按适用店铺独立保存；活动口令和彩蛋领取的优惠券也会自动进入这里。使用前请以对应店铺的结算规则为准。
             </p>
           </div>
-
-          <a
-            href="https://wzyp.cn/shop/pricememo"
-            target="_blank"
-            rel="noreferrer"
-            className="button-secondary tactile inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold self-start sm:self-center"
-          >
-            <span>直达彩头AI店铺</span>
-            <ArrowSquareOut size={14} />
-          </a>
         </div>
 
         {/* Redeem Input Box */}
@@ -425,7 +414,7 @@ export function AccountClient() {
             <div className="relative flex-1 w-full">
               <input
                 type="text"
-                placeholder="输入活动口令兑换专属券 (例如 RADAR888 或 10位券码)"
+                placeholder="输入活动口令或优惠券码（例如 RADAR888）"
                 value={redeemCode}
                 onChange={(e) => setRedeemCode(e.target.value)}
                 className="field text-xs sm:text-sm py-2 px-3.5 rounded-xl w-full"
@@ -440,6 +429,9 @@ export function AccountClient() {
               <span>{redeemLoading ? "兑换中..." : "立即兑换"}</span>
             </button>
           </form>
+          <p className="mt-2.5 text-[11px] leading-5 text-[color:var(--muted)]">
+            优惠券由对应店铺提供，不影响 PriceMemo 的报价排序；具体抵扣、退款和使用限制以店铺结算页为准。
+          </p>
 
           {redeemMsg && (
             <div
@@ -461,17 +453,17 @@ export function AccountClient() {
 
         {/* Coupons List */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs font-semibold tracking-wider text-[color:var(--muted)] uppercase">
-            <span>已持有的优惠券 ({coupons.length})</span>
-            <span className="text-[11px] text-[color:var(--muted)] lowercase">每单限用一张</span>
+          <div className="flex items-center justify-between gap-3 text-xs font-semibold tracking-wider text-[color:var(--muted)] uppercase">
+            <span>已领取的优惠券 ({coupons.length})</span>
+            <span className="text-[11px] text-[color:var(--muted)] normal-case tracking-normal font-medium">使用规则以对应店铺为准</span>
           </div>
 
           {coupons.length === 0 ? (
             <div className="p-8 rounded-xl border border-dashed border-[color:var(--line)] text-center text-[color:var(--muted)] space-y-2">
               <Ticket size={32} className="mx-auto text-[color:var(--muted)] opacity-60" />
-              <p className="text-xs font-medium">卡包暂无可用优惠券</p>
+              <p className="text-xs font-medium">暂时还没有优惠券</p>
               <p className="text-[11px] max-w-sm mx-auto opacity-75">
-                在网站浏览比价时会随机掉落锦鲤立减券，或在上方输入活动口令（如 RADAR888）直接兑换！
+                浏览商品时可能遇到优惠券彩蛋，也可以在上方输入活动口令进行兑换。
               </p>
             </div>
           ) : (
@@ -481,6 +473,8 @@ export function AccountClient() {
                   Boolean(coupon.expires_at) &&
                   new Date(coupon.expires_at as string).getTime() < Date.now();
                 const isUsable = !coupon.is_used && !isExpired;
+                const hasShopUrl = Boolean(coupon.shop_url?.trim());
+                const shopLabel = coupon.shop_name?.trim() || "未指定店铺";
                 const statusLabel = coupon.is_used ? "已核销" : isExpired ? "已过期" : "可使用";
                 const statusClass = coupon.is_used
                   ? "bg-zinc-500/15 border-zinc-500/30 text-zinc-600"
@@ -496,23 +490,27 @@ export function AccountClient() {
                       : "border-[color:var(--line)] bg-[color:var(--subtle)]/30 opacity-70"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-baseline gap-1 text-amber-700">
-                        <span className="text-xs font-bold">¥</span>
-                        <span className="text-2xl font-black tracking-tight">{coupon.discount_amount}</span>
-                        <span className="text-xs font-semibold ml-1.5 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30">
-                          满 {coupon.min_spend} 元可用
-                        </span>
-                      </div>
-                      <h4 className="text-xs sm:text-sm font-bold text-[color:var(--ink)] mt-1.5">
-                        {coupon.name}
-                      </h4>
+                  <div className="flex items-center justify-between gap-3 border-b border-amber-500/15 pb-2.5">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold tracking-[.06em] text-[color:var(--muted)] uppercase">适用店铺</p>
+                      <p className="mt-0.5 truncate text-xs font-bold text-[color:var(--ink)]" title={shopLabel}>{shopLabel}</p>
                     </div>
-
                     <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${statusClass}`}>
                       {statusLabel}
                     </span>
+                  </div>
+
+                  <div>
+                    <div className="flex items-baseline gap-1 text-amber-700">
+                      <span className="text-xs font-bold">¥</span>
+                      <span className="text-2xl font-black tracking-tight">{coupon.discount_amount}</span>
+                      <span className="text-xs font-semibold ml-1.5 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30">
+                        满 {coupon.min_spend} 元可用
+                      </span>
+                    </div>
+                    <h4 className="text-xs sm:text-sm font-bold text-[color:var(--ink)] mt-1.5">
+                      {coupon.name}
+                    </h4>
                   </div>
 
                   <div className="pt-2.5 border-t border-amber-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
@@ -542,9 +540,9 @@ export function AccountClient() {
                       </button>
                     </div>
 
-                    {isUsable ? (
+                    {isUsable && hasShopUrl ? (
                       <a
-                        href={coupon.shop_url || "https://wzyp.cn/shop/pricememo"}
+                        href={coupon.shop_url}
                         target="_blank"
                         rel="noreferrer"
                         className="button-primary tactile px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto"
@@ -552,6 +550,13 @@ export function AccountClient() {
                         <span>去店铺使用</span>
                         <ArrowSquareOut size={12} />
                       </a>
+                    ) : isUsable ? (
+                      <span
+                        className="px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto border border-[color:var(--line)] text-[color:var(--muted)] cursor-not-allowed"
+                        title="该优惠券暂未配置店铺跳转链接"
+                      >
+                        <span>店铺链接未配置</span>
+                      </span>
                     ) : (
                       <span
                         className="px-3 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 self-start sm:self-auto border border-[color:var(--line)] text-[color:var(--muted)] cursor-not-allowed"
@@ -562,8 +567,8 @@ export function AccountClient() {
                     )}
                   </div>
 
-                  <div className="text-[10px] text-[color:var(--muted)] flex items-center justify-between">
-                    <span>适用：{coupon.shop_name || "彩头AI"} 官方店铺</span>
+                  <div className="text-[10px] text-[color:var(--muted)] flex flex-wrap items-center justify-between gap-2">
+                    <span>仅限 {shopLabel} 使用</span>
                     <span>有效期至：{new Date(coupon.expires_at).toLocaleDateString()}</span>
                   </div>
                 </div>

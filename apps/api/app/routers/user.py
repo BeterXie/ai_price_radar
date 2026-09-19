@@ -453,7 +453,7 @@ def redeem_coupon(
         if user_claimed_count >= campaign.max_per_user:
             return CouponClaimResponse(
                 success=False,
-                message=f"您已参与过该活动（每人限领 {campaign.max_per_user} 张），已保存在您的卡包中",
+                message=f"您已参与过该活动（每人限领 {campaign.max_per_user} 张），优惠券已保存在“我的优惠券”中",
                 coupon=None,
             )
 
