@@ -451,7 +451,6 @@ class QQBindingSession(Base):
     __table_args__ = (
         UniqueConstraint("bind_code", name="uq_qq_binding_sessions_bind_code"),
         Index("ix_qq_binding_sessions_user_status", "user_id", "status"),
-        Index("ix_qq_binding_sessions_expires_at", "expires_at"),
     )
 
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
