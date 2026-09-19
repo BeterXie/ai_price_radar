@@ -2,6 +2,17 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.92] - 2026-09-19
+
+### Security
+- **账号体系与机器人凭据加固 (Security Hardening)**:
+  - 会话机制升级: 引入 `SESSION_SECRET_KEY`，旧版会话令牌平滑自动哈希迁移；
+  - 机器人凭据 AES-GCM 加密存储: 新增 `credential_crypto.py`，支持 `BOT_SECRET_ENCRYPTION_KEY` 对敏感凭据静态加密（AEAD enc:v1:）；
+  - QQ 机器人绑定原子性与防误报修复: 保证多线程与跨数据库（SQLite / PostgreSQL）下的绑定认领原子性，防止并发误报与重放；
+  - 隐私保护数据清理: 增加 `privacy.py` 自动清理超期访问日志（默认 90 天）；
+  - 生产安全预检强化: `production_preflight.py` 增加 `SESSION_SECRET_KEY`、`API_DOCS_ENABLED`、`QQ_MOCK_AUTH_ENABLED` 等合规检查项；
+  - 依赖升级: 修复 pytest PYSEC-2026-1845 依赖漏洞，升级 Node/Python 关键生态依赖。
+
 ## [3.7.91] - 2026-09-18
 
 ### Added
