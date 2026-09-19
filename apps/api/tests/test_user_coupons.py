@@ -302,11 +302,14 @@ def test_admin_coupon_management(client: TestClient, test_db):
         assert res_patch.json()["drop_probability"] == 35
         assert res_patch.json()["dynamic_drop"] is False
 
-        # 3. Batch import coupons
+        # 3. Batch import coupons. Shop binding is mandatory so coupons
+        # cannot silently fall into a site-wide/default storefront pool.
         import_payload = {
             "name": "满15减5元专享立减券",
             "discount_amount": 5.0,
             "min_spend": 15.0,
+            "shop_name": "测试店铺",
+            "shop_url": "https://example.com/test-shop",
             "codes_text": "IMPORT1001\nIMPORT1002\nIMPORT1003,IMPORT1001",  # Contains duplicate
         }
         res_import = client.post("/api/v1/admin/coupons/import", json=import_payload)
