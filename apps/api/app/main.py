@@ -19,14 +19,22 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     from .services.db_migration import ensure_db_schema
     ensure_db_schema(engine)
+    from .database import SessionLocal
+    from .services.auth import migrate_legacy_session_tokens
+    from .services.credential_crypto import migrate_bot_credentials
+    from .services.privacy import cleanup_privacy_data
+
     if settings.seed_demo_data:
         seed()
     else:
-        from .database import SessionLocal
         from .services.community_skills import seed_default_community_skills
-
         with SessionLocal() as db:
             seed_default_community_skills(db)
+
+    with SessionLocal() as db:
+        migrate_legacy_session_tokens(db)
+        migrate_bot_credentials(db)
+        cleanup_privacy_data(db)
 
     try:
         from extensions.bots.qq_gateway import qq_gateway_service
@@ -51,6 +59,9 @@ app = FastAPI(
     title=settings.app_name,
     version=VERSION,
     lifespan=lifespan,
+    docs_url="/docs" if settings.api_docs_enabled else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if settings.api_docs_enabled else None,
 )
 app.add_middleware(
     CORSMiddleware,

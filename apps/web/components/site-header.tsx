@@ -43,7 +43,7 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           if (!cancelled) setSession(s);
         })
         .catch(() => {
-          if (!cancelled) setSession({ authenticated: false, user: null, token: null });
+          if (!cancelled) setSession({ authenticated: false, user: null });
         });
     };
 

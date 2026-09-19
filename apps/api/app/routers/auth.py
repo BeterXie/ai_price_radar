@@ -183,7 +183,9 @@ def qq_oauth_callback(
             from ..services.bot_binding import complete_qq_binding
 
             bind_session_id = state[5:]
-            complete_qq_binding(db, bind_session_id, mock_openid)
+            binding = complete_qq_binding(db, bind_session_id, mock_openid)
+            if binding is None:
+                return RedirectResponse(url="/account?bind_error=1", status_code=status.HTTP_303_SEE_OTHER)
             return RedirectResponse(url="/account?bind_success=1", status_code=status.HTTP_303_SEE_OTHER)
 
         if current_user is not None:
@@ -220,7 +222,9 @@ def qq_oauth_callback(
             from ..services.bot_binding import complete_qq_binding
 
             bind_session_id = state[5:]
-            complete_qq_binding(db, bind_session_id, openid)
+            binding = complete_qq_binding(db, bind_session_id, openid)
+            if binding is None:
+                return RedirectResponse(url="/account?bind_error=1", status_code=status.HTTP_303_SEE_OTHER)
             return RedirectResponse(url="/account?bind_success=1", status_code=status.HTTP_303_SEE_OTHER)
 
         if current_user is not None:

@@ -3,6 +3,18 @@
 import React, { useState } from "react";
 import { Check, Copy } from "@phosphor-icons/react";
 
+function safeLinkHref(value: string): string | null {
+  const href = value.trim();
+  if (!href) return null;
+  if (href.startsWith("/") && !href.startsWith("//")) return href;
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? href : null;
+  } catch {
+    return null;
+  }
+}
+
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -94,8 +106,19 @@ export function MarkdownView({ content = "" }: { content: string }) {
       }
       const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
       if (linkMatch) {
+        const href = safeLinkHref(linkMatch[2]);
+        if (!href) {
+          return <span key={i}>{linkMatch[1]}</span>;
+        }
+        const external = /^https?:\/\//i.test(href);
         return (
-          <a key={i} href={linkMatch[2]} target="_blank" rel="noreferrer" className="text-[color:var(--brand-strong)] underline underline-offset-2 hover:opacity-80">
+          <a
+            key={i}
+            href={href}
+            target={external ? "_blank" : undefined}
+            rel={external ? "noopener noreferrer" : undefined}
+            className="text-[color:var(--brand-strong)] underline underline-offset-2 hover:opacity-80"
+          >
             {linkMatch[1]}
           </a>
         );

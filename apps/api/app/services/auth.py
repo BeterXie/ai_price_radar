@@ -85,6 +85,19 @@ def get_issued_session_token(session: UserSession) -> str:
     return raw_token
 
 
+def migrate_legacy_session_tokens(db: Session) -> int:
+    """Hash legacy 64-character plaintext session rows without invalidating clients."""
+    changed = 0
+    for session in db.scalars(select(UserSession)).all():
+        stored = session.token or ""
+        if len(stored) == 64 and all(ch in "0123456789abcdef" for ch in stored.casefold()):
+            session.token = _session_token_digest(stored)
+            changed += 1
+    if changed:
+        db.commit()
+    return changed
+
+
 def create_user_session(
     db: Session,
     user: User,

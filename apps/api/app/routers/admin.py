@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -79,6 +80,7 @@ from ..schemas import (
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
+from ..services.credential_crypto import decrypt_secret
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
     admin_create_community_skill,
@@ -1790,7 +1792,7 @@ def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminU
             latest_dur = dur
         session_items.append(
             AdminUserSessionItem(
-                token=s.token[:8] + "..." if len(s.token) > 12 else s.token,
+                token=hashlib.sha256(s.token.encode("utf-8")).hexdigest()[:8] + "...",
                 ip_address=s.ip_address or "",
                 user_agent=s.user_agent or "",
                 created_at=s.created_at,
@@ -2037,7 +2039,7 @@ def admin_create_broadcast(
                 # binding (extra_meta.app_id / bot_token) and may have no global
                 # QQ_BOT_APP_ID/SECRET configured at all.
                 app_id = (b.extra_meta or {}).get("app_id") if isinstance(b.extra_meta, dict) else None
-                app_secret = b.bot_token or None
+                app_secret = decrypt_secret(b.bot_token) or None
                 qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
                 if not qq_client.is_configured:
                     logger.warning(

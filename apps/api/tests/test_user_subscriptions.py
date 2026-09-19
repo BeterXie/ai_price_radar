@@ -92,7 +92,7 @@ def test_user_subscriptions_crud(client: TestClient, test_db):
     from datetime import timedelta
 
     # 2. Seed User and Session
-    token = "test_token_sub_12345678901234567890"
+    token = "a" * 64  # legacy plaintext session row; lookup remains compatible until expiry
     user = User(id=1, email="subscriber@test.com", nickname="关注小明", is_active=True)
     session = UserSession(token=token, user_id=user.id, expires_at=now + timedelta(days=7))
     test_db.add_all([user, session])

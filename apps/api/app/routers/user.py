@@ -254,7 +254,7 @@ def start_qq_binding(
 ) -> QQBotBindingStartResponse:
     if not _is_bot_enabled(db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="机器人功能已由管理员暂时关闭")
-    res = start_qq_binding_session(current_user.id)
+    res = start_qq_binding_session(db, current_user.id)
     return QQBotBindingStartResponse(
         session_id=res["session_id"],
         bind_code=res["bind_code"],

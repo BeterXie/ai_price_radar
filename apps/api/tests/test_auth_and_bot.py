@@ -31,6 +31,7 @@ from app.models import (
     UserSession,
 )
 from app.services.bot_binding import check_qq_binding_session, complete_qq_binding, start_qq_binding_session
+from app.services.credential_crypto import decrypt_secret, encrypt_secret
 from app.services.notification_hub import PriceChangeEvent, create_price_change_event, dispatch_price_changes
 
 try:
@@ -583,7 +584,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
 
     # F. Test In-chat /bind command: the sender identity is the logged-in
     # user's own binding target, so /bind rebinds their own session to it.
-    start_res = start_qq_binding_session(chat_user.id)
+    start_res = start_qq_binding_session(test_db, chat_user.id)
     bind_code = start_res["bind_code"]
     resp_bind = client.post(
         "/api/v1/user/notifications/bot/command",
@@ -770,3 +771,11 @@ def test_qq_connector_protocol(monkeypatch):
     assert decrypted == "qq_app_secret_test_987654321"
 
 
+
+
+def test_bot_secret_encryption_roundtrip():
+    secret = "test-bot-secret-value"
+    encrypted = encrypt_secret(secret)
+    assert encrypted.startswith("enc:v1:")
+    assert secret not in encrypted
+    assert decrypt_secret(encrypted) == secret

@@ -446,6 +446,28 @@ class UserBotBinding(Base):
     user: Mapped[User] = relationship(back_populates="bot_bindings")
 
 
+class QQBindingSession(Base):
+    __tablename__ = "qq_binding_sessions"
+    __table_args__ = (
+        UniqueConstraint("bind_code", name="uq_qq_binding_sessions_bind_code"),
+        Index("ix_qq_binding_sessions_user_status", "user_id", "status"),
+        Index("ix_qq_binding_sessions_expires_at", "expires_at"),
+    )
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    bind_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    qrcode_url: Mapped[str] = mapped_column(Text, default="")
+    qq_task_id: Mapped[str] = mapped_column(String(255), default="")
+    qq_key: Mapped[str] = mapped_column(Text, default="")
+    bridge_session_id: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(20), default="WAITING", index=True)
+    target_id: Mapped[str] = mapped_column(String(128), default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class UserProductSubscription(Base):
     __tablename__ = "user_product_subscriptions"
     __table_args__ = (
