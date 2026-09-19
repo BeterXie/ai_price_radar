@@ -39,10 +39,13 @@ TARGET_BRAND_MARKERS = (
     "gemini",
     "googleoneai",
     "supergrok",
+    "supergro",
+    "groksuper",
     "grok",
     "xai",
     "xpremium",
     "twitterblue",
+    "cursor",
 )
 IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登")
 NON_TARGET_PLUS_MARKERS = ("百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps")
@@ -688,7 +691,11 @@ class BrowserShopScanner:
             normalized_identity = normalize_identity(identity)
             hit = [kw for kw in normalized_keywords if normalize_identity(kw) in normalized_identity]
             if not hit:
-                continue
+                matched_brands = [b for b in TARGET_BRAND_MARKERS if b in normalized_identity]
+                if matched_brands:
+                    hit = matched_brands
+                else:
+                    continue
 
             extend = item.get("extend") if isinstance(item.get("extend"), dict) else {}
             listed_price = safe_float(

@@ -241,6 +241,14 @@ def test_description_cannot_supply_missing_brand_context():
         ("X Premium 12个月，包含同时长 SuperGrok", "Grok 充值", "x-premium"),
         ("SuperGrok 年卡，附赠 X Premium+", "Grok", "grok-super"),
         ("高级会员直充一个月", "Claude", "claude-account"),
+        ("Codex 美区卡自助接收验证码 美国TM实体卡 有效期内无限接码", "接码服务", "chatgpt-access-service"),
+        ("Super Grok稳定特殊渠道周卡 成品号", "Grok", "grok-super"),
+        ("Super Grok 稳定正规渠道季卡 成品号", "Grok", "grok-super"),
+        ("Super Grok 稳定特殊渠道月卡 直充月卡 质保激活", "Grok", "grok-super"),
+        ("Super gro 稳定正规渠道 季卡 直充季卡 质保订阅", "Grok", "grok-super"),
+        ("Super Grok Heavy 特殊渠道 直充月卡 质保激活", "Grok", "grok-super"),
+        ("Super Grok Heavy 特殊渠道 季卡 成品号", "Grok", "grok-super"),
+        ("OpenAI Team 独立车位 / ChatGPT Team 团队版席位 自动拉", "Team", "chatgpt-k12"),
     ],
 )
 def test_target_brand_products_are_classified(title: str, category: str, slug: str):
@@ -303,6 +311,9 @@ def test_stock_status_negations_take_priority(value, count, expected):
         ("ChatGPT Plus半成品未接码", "GPT Plus", "chatgpt-plus", "semi_finished_account", True),
         ("Codex中转站 API额度", "GPT-plus", None, "relay_api", False),
         ("GPT Team团队邀请车位", "GPT Team", "chatgpt-k12", "team_seat", True),
+        ("Codex 美区卡自助接收验证码 美国TM实体卡 有效期内无限接码", "接码服务", "chatgpt-access-service", "verification_service", True),
+        ("Super Grok 稳定特殊渠道月卡 直充月卡 质保激活", "Grok", "grok-super", "subscription_recharge", True),
+        ("Super Grok Heavy 特殊渠道 季卡 成品号", "Grok", "grok-super", "finished_account", True),
     ],
 )
 def test_delivery_form_controls_comparability(title: str, category: str, slug: str | None, delivery_type: str, comparable: bool):

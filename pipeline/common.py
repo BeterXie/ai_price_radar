@@ -156,7 +156,7 @@ BRAND_MARKERS = {
     ],
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai"],
-    "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai"],
+    "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai", "super gro"],
     "x": ["x premium", "xpremium", "twitter", "推特"],
     "cursor": ["cursor"],
     "zhipu": ["智谱", "智普", "清言", "chatglm", "glm"],
@@ -195,7 +195,7 @@ CATEGORY_COMMERCE_MARKERS = [
 ]
 CHATGPT_SERVICE_MARKERS = [
     "代接码", "代接马", "手机接码", "实卡接码", "一次性接码", "接码服务", "接码卡密", "纯接码", "接马服务",
-    "短信代接", "代接短信", "接验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成",
+    "短信代接", "代接短信", "接验证码", "接收验证码", "接收验证", "自助接收验证码", "短信验证", "手机验证", "提链", "扫码对接", "二维码生成",
     "cyber认证", "persona认证",
     "提炼", "代提链", "直卡支付链接", "支付链接", "卡头开通plus必备", "开通plus必备", "提炼cdk",
     "实卡号码", "无限接马", "无限接码", "一次性接马"
@@ -682,7 +682,10 @@ def classify_identity(
             return "grok-api-access", True
         if contains(tier_text, ["中转站", "周限", "速刷"]):
             return None, False
-        if contains(identity_text, ["supergrok", "super grok", "grok super", "groksuper"]) or contains(tier_text, ["supergrok", "super grok", "grok super", "groksuper"]):
+        if (
+            contains(identity_text, ["supergrok", "super grok", "grok super", "groksuper", "supergro", "super gro", "heavy"])
+            or contains(tier_text, ["supergrok", "super grok", "grok super", "groksuper", "supergro", "super gro", "heavy"])
+        ):
             return "grok-super", True
         return "grok-account", False
     if brand == "x":

@@ -2,6 +2,22 @@
 
 All notable changes to AI Price Radar are documented in this file.
 
+## [3.7.94] - 2026-09-19
+
+### Added
+- **新增链动小铺优质店铺种子与自动化收录**:
+  - 在 `crawler/ldxp/seeds.txt` 与 `config/discovery/general_seeds.txt` 中收录 `Ai2You智友社` (`282D9KDL`) 与 `吾爱API的小店` (`ODI7TT6O`)；
+  - 在 `source_intakes` 中将两家店铺预置为已审核批准状态。
+
+### Changed
+- **爬虫扫描抓取关键词扩充与品牌回退保障**:
+  - 将 `crawler/ldxp/ldxp_gpt_crawler.py` 的默认关键词 `DEFAULT_KEYWORDS` 由 `["gpt", "chatgpt"]` 扩充为覆盖全量核心品类（`grok`, `supergrok`, `codex`, `claude`, `gemini`, `cursor`, `team`, `接码` 等）；
+  - 在 `crawler/ldxp/ldxp_crawler/browser_scanner.py` 中增加受支持品牌回退机制，确保命中目标品牌但未命中窄词的商品不会被扫描器过滤抛弃；
+- **分类器别名容错与接码/SuperGrok归一化强化**:
+  - `apps/api/app/services/classifier.py` 与 `pipeline/common.py` 增强 Grok 别名支持（`super gro` 漏打字母别名识别，`heavy` 高配识别归入 `grok-super`）；
+  - 增强 `Codex 美区卡自助接收验证码` / `接收验证码` 归入 `chatgpt-access-service`（交付形式 `verification_service`）；
+  - 强化 OpenAI Team / ChatGPT Team 车位归入 `chatgpt-k12`（交付形式 `team_seat`）。
+
 ## [3.7.93] - 2026-09-19
 
 ### Changed

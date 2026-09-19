@@ -35,7 +35,19 @@ from ldxp_crawler.source_discovery.platform_16688 import Platform16688Adapter
 from ldxp_crawler.source_discovery.seed import SeedAdapter
 from ldxp_crawler.utils import extract_shop_token, merge_unique
 
-DEFAULT_KEYWORDS = ["gpt", "chatgpt"]
+DEFAULT_KEYWORDS = [
+    "gpt",
+    "chatgpt",
+    "openai",
+    "codex",
+    "claude",
+    "gemini",
+    "grok",
+    "supergrok",
+    "cursor",
+    "team",
+    "接码",
+]
 BLOCK_STATUSES = {"blocked", "challenge_required", "rate_limited"}
 PUBLIC_VALIDATION_FAILURE_REASONS = {
     "network_error": "来源暂时无法访问",
