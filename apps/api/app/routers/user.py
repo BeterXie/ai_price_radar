@@ -41,7 +41,7 @@ from ..schemas import (
     UserTrackClickRequest,
 )
 from ..security import get_current_user, get_token_from_request, require_current_user
-from ..services.auth import settle_session_activity
+from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
@@ -270,7 +270,7 @@ def get_qq_binding_status(
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return check_qq_binding_session(session_id, db=db)
+    return check_qq_binding_session(session_id, db=db, user_id=current_user.id)
 
 
 @router.post("/notifications/qq/bind-current")
@@ -720,8 +720,16 @@ def record_coupon_drop_trigger(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Record an easter egg drop trigger event from the frontend (supports anonymous or logged-in visitors)."""
-    from .public import _client_address
+    from .public import _client_address, _enforce_client_rate_limit
 
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace="coupon-drop-telemetry",
+        max_requests=30,
+        window_seconds=60,
+        detail="too many telemetry requests",
+    )
     client_ip = _client_address(request)
     ua = request.headers.get("user-agent", "")
     now = datetime.now(timezone.utc)
@@ -766,7 +774,7 @@ def user_heartbeat(
 ) -> UserHeartbeatResponse:
     now = datetime.now(timezone.utc)
     token = get_token_from_request(request)
-    session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+    session = get_session_by_token(db, token) if token else None
 
     # Settle online seconds from the session's own activity baseline so that
     # clicks and logout cannot double- or under-count the same interval.
@@ -787,8 +795,16 @@ def user_track_click(
     current_user: User | None = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    from .public import _client_address
+    from .public import _client_address, _enforce_client_rate_limit
 
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace="user-click-telemetry",
+        max_requests=120,
+        window_seconds=60,
+        detail="too many click events",
+    )
     client_ip = _client_address(request)
     ua = request.headers.get("user-agent", "")
     now = datetime.now(timezone.utc)
@@ -797,7 +813,7 @@ def user_track_click(
     session = None
     if current_user:
         token = get_token_from_request(request)
-        session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+        session = get_session_by_token(db, token) if token else None
         # Settle online seconds from the same baseline the heartbeat uses, then
         # atomically bump the click counter (read-modify-write loses updates).
         settle_session_activity(db, current_user, session, now=now)

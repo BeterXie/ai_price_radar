@@ -48,7 +48,7 @@ from ..services.community_skills import (
     record_community_skill_copy,
 )
 from ..services.source_intake import enqueue_submission_notifications
-from ..services.auth import settle_session_activity
+from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.catalog import (
     OfferFilters,
     get_catalog_group_page,
@@ -130,9 +130,17 @@ def _client_address(request: Request) -> str:
     return str(peer_ip)
 
 
-def _enforce_report_rate_limit(request: Request, db: Session) -> None:
+def _enforce_client_rate_limit(
+    request: Request,
+    db: Session,
+    *,
+    namespace: str,
+    max_requests: int,
+    window_seconds: int,
+    detail: str,
+) -> None:
     client_key = hashlib.sha256(
-        f"{settings.admin_api_key}:{_client_address(request)}".encode()
+        f"{settings.admin_api_key}:{namespace}:{_client_address(request)}".encode()
     ).hexdigest()
     if db.get_bind().dialect.name == "postgresql":
         lock_key = int(client_key[:16], 16)
@@ -141,7 +149,7 @@ def _enforce_report_rate_limit(request: Request, db: Session) -> None:
         db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
 
     now = datetime.now(timezone.utc)
-    window = timedelta(seconds=settings.report_rate_limit_window_seconds)
+    window = timedelta(seconds=window_seconds)
     rate = db.get(ReportRateLimit, client_key)
     if rate is None:
         db.add(ReportRateLimit(client_key=client_key, window_started_at=now, request_count=1))
@@ -155,14 +163,25 @@ def _enforce_report_rate_limit(request: Request, db: Session) -> None:
         rate.window_started_at = now
         rate.request_count = 1
         return
-    if rate.request_count >= settings.report_rate_limit_count:
+    if rate.request_count >= max_requests:
         retry_after = max(1, math.ceil((window - elapsed).total_seconds()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="too many reports",
+            detail=detail,
             headers={"Retry-After": str(retry_after)},
         )
     rate.request_count += 1
+
+
+def _enforce_report_rate_limit(request: Request, db: Session) -> None:
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace="public-report",
+        max_requests=settings.report_rate_limit_count,
+        window_seconds=settings.report_rate_limit_window_seconds,
+        detail="too many reports",
+    )
 
 
 @router.get("/products", response_model=CatalogResponse)
@@ -885,7 +904,7 @@ def _settle_click_user_activity(db: Session, request: Request, current_user: Use
     if not current_user:
         return
     token = get_token_from_request(request)
-    session = db.scalar(select(UserSession).where(UserSession.token == token)) if token else None
+    session = get_session_by_token(db, token) if token else None
     settle_session_activity(db, current_user, session, now=now)
     db.execute(
         update(User)

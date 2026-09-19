@@ -30,7 +30,7 @@ from app.models import (
     UserBotBinding,
     UserSession,
 )
-from app.services.bot_binding import complete_qq_binding, start_qq_binding_session
+from app.services.bot_binding import check_qq_binding_session, complete_qq_binding, start_qq_binding_session
 from app.services.notification_hub import PriceChangeEvent, create_price_change_event, dispatch_price_changes
 
 try:
@@ -115,8 +115,13 @@ def test_email_login_flow(client: TestClient, test_db):
     auth_data = verify_good.json()
     assert auth_data["authenticated"] is True
     assert auth_data["user"]["email"] == email
-    token = auth_data["token"]
+    assert "token" not in auth_data
+    token = client.cookies.get("pm_session")
     assert token is not None
+    stored_session = test_db.query(UserSession).first()
+    assert stored_session is not None
+    assert stored_session.token != token
+    assert len(stored_session.token) == 43
 
     # Check /me with cookie
     me_resp = client.get("/api/v1/auth/me")
@@ -185,6 +190,8 @@ def test_user_center_and_qq_bot_binding(client: TestClient, test_db):
     assert "bind_code" in bind_data
     session_id = bind_data["session_id"]
     bind_code = bind_data["bind_code"]
+    assert len(bind_code) == 8
+    assert check_qq_binding_session(session_id, db=test_db, user_id=999999)["status"] == "EXPIRED"
 
     # Check status
     st = client.get(f"/api/v1/user/notifications/qq/status?session_id={session_id}")

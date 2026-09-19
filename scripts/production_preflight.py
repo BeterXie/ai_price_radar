@@ -17,6 +17,7 @@ PLACEHOLDERS = {
     "admin@example.invalid",
     "re_xxxxxxxxx",
     "onboarding@resend.dev",
+    "pricememo-auth-secret-key-change-in-production",
 }
 EMAIL_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 EMAIL_RE = re.compile(rf"[A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*@(?:{EMAIL_LABEL}\.)+{EMAIL_LABEL}")
@@ -55,6 +56,7 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
     smtp_host = env.get("SMTP_HOST", "").strip()
     smtp_from = env.get("SMTP_FROM", "").strip()
     database_url = env.get("DATABASE_URL", "")
+    session_secret_key = env.get("SESSION_SECRET_KEY", "")
 
     if not password or password in PLACEHOLDERS or len(password) < 16:
         errors.append("POSTGRES_PASSWORD must be changed and contain at least 16 characters")
@@ -97,6 +99,11 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
         errors.append("Configure RESEND_API_KEY/RESEND_FROM or SMTP_HOST/SMTP_FROM for production mail delivery")
     if not database_url or any(value in database_url for value in PLACEHOLDERS):
         errors.append("DATABASE_URL must contain the production database credentials")
+    if not session_secret_key or session_secret_key in PLACEHOLDERS or len(session_secret_key.encode()) < 32:
+        errors.append("SESSION_SECRET_KEY must contain at least 32 random bytes")
+    for unsafe_flag in ("QQ_MOCK_AUTH_ENABLED", "DEV_PRINT_AUTH_CODES"):
+        if env.get(unsafe_flag, "").casefold() in {"true", "1", "yes", "on"}:
+            errors.append(f"{unsafe_flag} must be disabled in production")
     if env.get("SEED_DEMO_DATA", "").casefold() not in {"false", "0", "no"}:
         errors.append("SEED_DEMO_DATA must be false")
     for key in ("PUBLIC_SITE_URL", "WEB_ORIGIN", "NEXT_PUBLIC_API_BASE_URL", "SITE_ADDRESS"):

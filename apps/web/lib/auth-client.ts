@@ -48,7 +48,7 @@ export async function fetchAuthMe(): Promise<AuthSessionState> {
   try {
     return await jsonFetch<AuthSessionState>("/api/v1/auth/me");
   } catch {
-    return { authenticated: false, user: null, token: null };
+    return { authenticated: false, user: null };
   }
 }
 

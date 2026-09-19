@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,6 +18,31 @@ logger = logging.getLogger(__name__)
 
 # In-memory temporary binding tokens: token -> {user_id, expires_at, qrcode_url, ...}
 _PENDING_BINDINGS: dict[str, dict[str, Any]] = {}
+_PENDING_BINDINGS_LOCK = threading.Lock()
+_BIND_ATTEMPT_LOCK = threading.Lock()
+_BIND_ATTEMPTS: dict[str, deque[float]] = {}
+_BIND_ATTEMPT_WINDOW_SECONDS = 300
+_BIND_ATTEMPT_MAX = 10
+
+
+def _allow_binding_attempt(target_id: str) -> bool:
+    """Limit bot-side bind-code guesses per authoritative QQ sender id."""
+    key = (target_id or "").strip()
+    if not key:
+        return False
+    now = time.monotonic()
+    with _BIND_ATTEMPT_LOCK:
+        bucket = _BIND_ATTEMPTS.setdefault(key, deque())
+        while bucket and now - bucket[0] > _BIND_ATTEMPT_WINDOW_SECONDS:
+            bucket.popleft()
+        if len(bucket) >= _BIND_ATTEMPT_MAX:
+            return False
+        bucket.append(now)
+        if len(_BIND_ATTEMPTS) > 10000:
+            stale = [k for k, values in _BIND_ATTEMPTS.items() if not values or now - values[-1] > 3600]
+            for stale_key in stale:
+                _BIND_ATTEMPTS.pop(stale_key, None)
+        return True
 
 
 def utcnow() -> datetime:
@@ -30,8 +57,8 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
     for k in expired:
         _PENDING_BINDINGS.pop(k, None)
 
-    # 6-digit verification code
-    bind_code = f"{secrets.randbelow(900000) + 100000}"
+    # 8-digit verification code; sender-based throttling further limits guessing.
+    bind_code = f"{secrets.randbelow(90_000_000) + 10_000_000}"
     session_id = secrets.token_hex(16)
     expires_at = now + 300  # 5 minutes for QR code
 
@@ -75,17 +102,18 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
 
             qrcode_url = build_qq_auth_url(f"bind_{session_id}", settings)
 
-    _PENDING_BINDINGS[session_id] = {
-        "user_id": user_id,
-        "bind_code": bind_code,
-        "qrcode_url": qrcode_url,
-        "qq_task_id": qq_task_id,
-        "qq_key": qq_key,
-        "bridge_session_id": bridge_session_id,
-        "expires_at": expires_at,
-        "status": "WAITING",
-        "target_id": None,
-    }
+    with _PENDING_BINDINGS_LOCK:
+        _PENDING_BINDINGS[session_id] = {
+            "user_id": user_id,
+            "bind_code": bind_code,
+            "qrcode_url": qrcode_url,
+            "qq_task_id": qq_task_id,
+            "qq_key": qq_key,
+            "bridge_session_id": bridge_session_id,
+            "expires_at": expires_at,
+            "status": "WAITING",
+            "target_id": None,
+        }
 
     return {
         "session_id": session_id,
@@ -96,13 +124,18 @@ def start_qq_binding_session(user_id: int) -> dict[str, Any]:
     }
 
 
-def check_qq_binding_session(session_id: str, db: Session | None = None) -> dict[str, Any]:
-    session = _PENDING_BINDINGS.get(session_id)
-    if not session:
-        return {"status": "EXPIRED", "message": "绑定会话不存在或已失效"}
-    if time.time() > session["expires_at"]:
-        _PENDING_BINDINGS.pop(session_id, None)
-        return {"status": "EXPIRED", "message": "二维码已过期，请点击刷新"}
+def check_qq_binding_session(
+    session_id: str,
+    db: Session | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    with _PENDING_BINDINGS_LOCK:
+        session = _PENDING_BINDINGS.get(session_id)
+        if not session or (user_id is not None and session.get("user_id") != user_id):
+            return {"status": "EXPIRED", "message": "绑定会话不存在或已失效"}
+        if time.time() > session["expires_at"]:
+            _PENDING_BINDINGS.pop(session_id, None)
+            return {"status": "EXPIRED", "message": "二维码已过期，请点击刷新"}
 
     # If already marked BOUND
     if session.get("status") == "BOUND":
@@ -259,24 +292,51 @@ def complete_qq_binding(
     bot_token: str = "",
     extra_meta: dict | None = None,
     channel: str = "qq",
+    expected_user_id: int | None = None,
 ) -> UserBotBinding | None:
     """Invoked when QQ Bot receives `/bind <code>` or bridge confirms binding."""
-    found = _find_pending_binding(bind_code_or_session)
-    if not found:
+    if not _allow_binding_attempt(target_id):
+        logger.warning("QQ bind attempt rate limit reached for target %s", target_id)
         return None
-    found_key, target_session = found
 
-    # One-time consumption: an already-completed session must never mutate the
-    # binding again (replaying an old code must not redirect notifications).
-    if target_session.get("status") == "BOUND":
+    with _PENDING_BINDINGS_LOCK:
+        found = _find_pending_binding(bind_code_or_session)
+        if not found:
+            return None
+        _found_key, target_session = found
+        if expected_user_id is not None and target_session.get("user_id") != expected_user_id:
+            return None
+        if target_session.get("status") == "BOUND":
+            existing_user_id = target_session["user_id"]
+            already_bound = True
+        elif target_session.get("status") == "CLAIMING":
+            return None
+        else:
+            target_session["status"] = "CLAIMING"
+            existing_user_id = target_session["user_id"]
+            already_bound = False
+
+    if already_bound:
         return db.scalar(
             select(UserBotBinding).where(
-                UserBotBinding.user_id == target_session["user_id"],
+                UserBotBinding.user_id == existing_user_id,
                 UserBotBinding.channel == channel,
             )
         )
 
-    user_id = target_session["user_id"]
+    user_id = existing_user_id
+    collision = db.scalar(
+        select(UserBotBinding).where(
+            UserBotBinding.channel == channel,
+            UserBotBinding.target_id == target_id,
+            UserBotBinding.user_id != user_id,
+        )
+    )
+    if collision is not None:
+        with _PENDING_BINDINGS_LOCK:
+            if target_session.get("status") == "CLAIMING":
+                target_session["status"] = "WAITING"
+        return None
     binding = db.scalar(
         select(UserBotBinding).where(
             UserBotBinding.user_id == user_id,
@@ -308,11 +368,21 @@ def complete_qq_binding(
         binding.updated_at = now
 
 
-    db.commit()
-    db.refresh(binding)
+    try:
+        db.commit()
+        db.refresh(binding)
+    except Exception:
+        db.rollback()
+        with _PENDING_BINDINGS_LOCK:
+            if target_session.get("status") == "CLAIMING":
+                target_session["status"] = "WAITING"
+        raise
 
-    target_session["status"] = "BOUND"
-    target_session["target_id"] = target_id
+    with _PENDING_BINDINGS_LOCK:
+        target_session["status"] = "BOUND"
+        target_session["target_id"] = target_id
+    with _BIND_ATTEMPT_LOCK:
+        _BIND_ATTEMPTS.pop((target_id or "").strip(), None)
     logger.info("Successfully bound user %d to %s target %s", user_id, channel, target_id)
     return binding
 
@@ -362,7 +432,13 @@ def complete_qq_binding_for_user(
     if collision is not None:
         return None, "该 QQ 已被其他账号绑定"
 
-    binding = complete_qq_binding(db, bind_code, target_id, channel=channel)
+    binding = complete_qq_binding(
+        db,
+        bind_code,
+        target_id,
+        channel=channel,
+        expected_user_id=user.id,
+    )
     if binding is None:
         return None, "绑定码无效或已失效"
     return binding, ""
@@ -372,9 +448,10 @@ def complete_qq_binding_for_user(
 def unbind_user_channel(db: Session, user_id: int, channel: str = "qq") -> bool:
     # Revoke any pending binding sessions for this user so stale codes
     # cannot re-establish a binding after the user explicitly unbound.
-    for sid, sess in list(_PENDING_BINDINGS.items()):
-        if sess.get("user_id") == user_id:
-            _PENDING_BINDINGS.pop(sid, None)
+    with _PENDING_BINDINGS_LOCK:
+        for sid, sess in list(_PENDING_BINDINGS.items()):
+            if sess.get("user_id") == user_id:
+                _PENDING_BINDINGS.pop(sid, None)
 
     result = db.execute(
         delete(UserBotBinding).where(

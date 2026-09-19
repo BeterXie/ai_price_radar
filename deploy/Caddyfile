@@ -1,6 +1,14 @@
 {$SITE_ADDRESS} {
     encode zstd gzip
 
+    @telemetry path /api/v1/user/track-click /api/v1/user/coupons/record-drop-trigger
+    handle @telemetry {
+        request_body {
+            max_size 16KB
+        }
+        reverse_proxy api:8000
+    }
+
     @api path /api/* /docs* /openapi.json /health
     handle @api {
         reverse_proxy api:8000
@@ -15,5 +23,7 @@
         X-Content-Type-Options nosniff
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
 }

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import logging
 import re
 import secrets
@@ -61,6 +64,27 @@ def ensure_utc(dt: datetime | None) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _session_token_digest(raw_token: str) -> str:
+    """Return a non-reversible, URL-safe digest for database storage."""
+    digest = hashlib.sha256(raw_token.encode("utf-8")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def get_session_by_token(db: Session, raw_token: str) -> UserSession | None:
+    """Resolve raw session tokens while allowing existing plaintext rows to expire naturally."""
+    if not raw_token or len(raw_token) != 64:
+        return None
+    digest = _session_token_digest(raw_token)
+    return db.scalar(select(UserSession).where(UserSession.token.in_((digest, raw_token))))
+
+
+def get_issued_session_token(session: UserSession) -> str:
+    raw_token = getattr(session, "_raw_token", "")
+    if not raw_token:
+        raise RuntimeError("raw session token is only available immediately after issuance")
+    return raw_token
+
+
 def create_user_session(
     db: Session,
     user: User,
@@ -69,11 +93,12 @@ def create_user_session(
     user_agent: str = "",
 ) -> UserSession:
     settings = settings or get_settings()
-    token = secrets.token_hex(32)
+    raw_token = secrets.token_hex(32)
+    stored_token = _session_token_digest(raw_token)
     now = utcnow()
     expires_at = now + timedelta(days=settings.session_max_age_days)
     session = UserSession(
-        token=token,
+        token=stored_token,
         user_id=user.id,
         ip_address=ip_address,
         user_agent=user_agent,
@@ -97,14 +122,15 @@ def create_user_session(
     db.add(log)
     db.commit()
     db.refresh(session)
+    session._raw_token = raw_token
     return session
 
 
 def get_user_by_session_token(db: Session, token: str) -> User | None:
-    if not token or len(token) < 32:
+    session = get_session_by_token(db, token)
+    if session is None:
         return None
     now = utcnow()
-    session = db.scalar(select(UserSession).where(UserSession.token == token))
     if session is None or ensure_utc(session.expires_at) <= now:
         return None
     if not session.user or not session.user.is_active:
@@ -142,9 +168,7 @@ def settle_session_activity(
 
 
 def delete_user_session(db: Session, token: str) -> None:
-    if not token:
-        return
-    session = db.scalar(select(UserSession).where(UserSession.token == token))
+    session = get_session_by_token(db, token)
     if session:
         now = utcnow()
         if session.user:
@@ -366,7 +390,7 @@ def exchange_qq_oauth(code: str, settings: Settings | None = None) -> dict[str, 
         except Exception:
             # Handle callback( { ... } );
             text_match = re.search(r"\{.*\}", me_resp.text)
-            me_data = eval(text_match.group(0)) if text_match else {}
+            me_data = json.loads(text_match.group(0)) if text_match else {}
 
         openid = me_data.get("openid")
         if not openid:

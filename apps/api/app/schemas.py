@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
+import json
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
@@ -830,7 +831,6 @@ class EmailVerifyRequest(BaseModel):
 class AuthSessionResponse(BaseModel):
     authenticated: bool
     user: UserRead | None = None
-    token: str | None = None
 
 
 class UserBotBindingRead(BaseModel):
@@ -953,8 +953,18 @@ class CouponDropStatus(BaseModel):
 
 
 class CouponDropTrackRequest(BaseModel):
-    page: str = ""
+    page: str = Field(default="", max_length=200)
     extra_data: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("extra_data")
+    @classmethod
+    def validate_extra_data(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(value) > 20:
+            raise ValueError("extra_data contains too many keys")
+        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > 4096:
+            raise ValueError("extra_data is too large")
+        return value
 
 
 class AdminCouponStats(BaseModel):
@@ -1123,6 +1133,16 @@ class UserTrackClickRequest(BaseModel):
     page: str = Field(default="", max_length=200)
     target_url: str = Field(default="", max_length=500)
     extra_data: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("extra_data")
+    @classmethod
+    def validate_extra_data(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(value) > 20:
+            raise ValueError("extra_data contains too many keys")
+        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > 4096:
+            raise ValueError("extra_data is too large")
+        return value
 
 
 class UserHeartbeatResponse(BaseModel):

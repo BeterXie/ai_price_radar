@@ -157,15 +157,17 @@ def test_user_heartbeat_and_click_tracking():
         db.refresh(user)
 
         session = create_user_session(db, user, ip_address="192.168.1.100", user_agent="Mozilla/5.0")
+        raw_session_token = getattr(session, "_raw_token")
         assert user.last_login_ip == "192.168.1.100"
         assert session.ip_address == "192.168.1.100"
+        assert session.token != raw_session_token
 
         user.last_active_at = now - timedelta(seconds=30)
         db.commit()
 
         # Mock request
         mock_request = MagicMock()
-        mock_request.cookies = {"pricememo_session": session.token}
+        mock_request.cookies = {"pricememo_session": raw_session_token}
         mock_request.headers = {"user-agent": "Mozilla/5.0"}
         mock_request.client.host = "192.168.1.100"
 
@@ -195,7 +197,7 @@ def test_user_heartbeat_and_click_tracking():
         assert log.page == "/products/chatgpt-plus"
 
         # 3. Test logout accumulates duration
-        delete_user_session(db, session.token)
+        delete_user_session(db, raw_session_token)
         db.refresh(user)
         assert user.total_duration_seconds >= 120
 

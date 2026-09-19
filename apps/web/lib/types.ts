@@ -342,7 +342,6 @@ export type User = {
 export type AuthSessionState = {
   authenticated: boolean;
   user: User | null;
-  token: string | null;
 };
 
 export type UserBotBinding = {

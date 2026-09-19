@@ -20,6 +20,7 @@ from ..services.auth import (
     delete_user_session,
     exchange_qq_oauth,
     find_or_create_qq_user,
+    get_issued_session_token,
     send_email_login_code,
     verify_email_login_code,
 )
@@ -71,8 +72,20 @@ def _clear_auth_cookie(response: Response) -> None:
 @router.post("/email/code", response_model=EmailCodeResponse)
 def request_email_code(
     payload: EmailCodeRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> EmailCodeResponse:
+    from .public import _enforce_client_rate_limit
+
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace="auth-email-code",
+        max_requests=20,
+        window_seconds=600,
+        detail="验证码请求过于频繁，请稍后再试",
+    )
+    db.commit()
     success, retry_after, message = send_email_login_code(db, payload.email)
     if not success and retry_after > 0:
         return EmailCodeResponse(success=False, retry_after=retry_after, message=message)
@@ -97,12 +110,11 @@ def verify_email_code(
 
     ua = request.headers.get("user-agent", "")
     session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
-    _set_auth_cookie(response, session.token)
+    _set_auth_cookie(response, get_issued_session_token(session))
 
     return AuthSessionResponse(
         authenticated=True,
         user=_user_to_read(user),
-        token=session.token,
     )
 
 
@@ -184,7 +196,7 @@ def qq_oauth_callback(
             user = find_or_create_qq_user(db, openid=mock_openid, nickname="QQ体验用户")
         session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
-        _set_auth_cookie(redir, session.token)
+        _set_auth_cookie(redir, get_issued_session_token(session))
         return redir
 
     if not code:
@@ -228,7 +240,7 @@ def qq_oauth_callback(
             )
         session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
         redir = RedirectResponse(url="/account?login_success=1", status_code=status.HTTP_303_SEE_OTHER)
-        _set_auth_cookie(redir, session.token)
+        _set_auth_cookie(redir, get_issued_session_token(session))
         _clear_oauth_state_cookie(redir)
         return redir
     except Exception as exc:
@@ -281,15 +293,12 @@ def qq_scan_mock(
 @router.get("/me", response_model=AuthSessionResponse)
 def get_me(
     current_user: User | None = Depends(get_current_user),
-    request: Request = None,
 ) -> AuthSessionResponse:
     if current_user is None:
-        return AuthSessionResponse(authenticated=False, user=None, token=None)
-    token = get_token_from_request(request) if request else None
+        return AuthSessionResponse(authenticated=False, user=None)
     return AuthSessionResponse(
         authenticated=True,
         user=_user_to_read(current_user),
-        token=token,
     )
 
 
