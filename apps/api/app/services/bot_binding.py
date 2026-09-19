@@ -386,6 +386,7 @@ def complete_qq_binding(
             QQBindingSession.expires_at > now,
         )
         .values(status="CLAIMING", updated_at=now)
+        .execution_options(synchronize_session=False)
     )
     if not claimed.rowcount:
         db.rollback()
