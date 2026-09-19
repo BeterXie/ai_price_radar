@@ -52,10 +52,11 @@ def utcnow() -> datetime:
 def start_qq_binding_session(user_id: int) -> dict[str, Any]:
     """Generate a temporary QR session and code for the user to bind their QQ."""
     now = time.time()
-    # Clean up expired
-    expired = [k for k, v in _PENDING_BINDINGS.items() if v["expires_at"] < now]
-    for k in expired:
-        _PENDING_BINDINGS.pop(k, None)
+    # Clean up expired under the same lock used for claims/status checks.
+    with _PENDING_BINDINGS_LOCK:
+        expired = [k for k, v in _PENDING_BINDINGS.items() if v["expires_at"] < now]
+        for k in expired:
+            _PENDING_BINDINGS.pop(k, None)
 
     # 8-digit verification code; sender-based throttling further limits guessing.
     bind_code = f"{secrets.randbelow(90_000_000) + 10_000_000}"
@@ -161,7 +162,7 @@ def check_qq_binding_session(
                 app_id = res.get("app_id") or ""
                 app_secret = res.get("app_secret") or ""
                 user_openid = res.get("user_openid") or ""
-                complete_qq_binding(
+                binding = complete_qq_binding(
                     db,
                     session_id,
                     target_id=user_openid,
@@ -169,6 +170,11 @@ def check_qq_binding_session(
                     extra_meta={"app_id": app_id, "user_openid": user_openid},
                     channel="qq",
                 )
+                if binding is None:
+                    return {
+                        "status": "EXPIRED",
+                        "message": "绑定校验失败或该 QQ 已绑定其他账号，请重新生成二维码",
+                    }
                 try:
                     from extensions.bots.qq_bot import QQBotClient
 
@@ -213,7 +219,7 @@ def check_qq_binding_session(
                     target_id = creds.get("user_openid") or creds.get("app_id") or "qq_bound_user"
                     app_id = creds.get("app_id") or ""
                     app_secret = creds.get("app_secret") or ""
-                    complete_qq_binding(
+                    binding = complete_qq_binding(
                         db,
                         session_id,
                         target_id,
@@ -221,6 +227,11 @@ def check_qq_binding_session(
                         extra_meta={"app_id": app_id, "user_openid": target_id},
                         channel="qq",
                     )
+                    if binding is None:
+                        return {
+                            "status": "EXPIRED",
+                            "message": "绑定校验失败或该 QQ 已绑定其他账号，请重新生成二维码",
+                        }
                     return {
 
                         "status": "BOUND",
