@@ -5,7 +5,9 @@ import { SITE_URL } from "@/lib/site";
 
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
-export const revalidate = 300;
+// The sitemap reflects API-backed catalog, source, shop, and skill data. Keep
+// it runtime-generated so a production image can build without a live API.
+export const dynamic = "force-dynamic";
 
 const GUIDE_LAST_MODIFIED = new Date("2026-08-03");
 const API_PAGE_SIZE = 100;
