@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-static";
 export const revalidate = 3600;
 
-const DOC = `# AI Price Radar (PriceMemo) Snapshot Feed API
+const DOC = `# AI Price Memory (PriceMemo) Snapshot Feed API
 
-AI Price Radar provides a read-only public snapshot feed for autonomous agents, automated scripts, and developers.
+AI Price Memory provides a read-only public snapshot feed for autonomous agents, automated scripts, and developers.
 
 Instead of scraping HTML or polling internal dynamic search routes, clients should consume this immutable snapshot feed.
 
@@ -53,7 +53,7 @@ Instead of scraping HTML or polling internal dynamic search routes, clients shou
 
 ## Disclaimer
 
-AI Price Radar is an independent data aggregation and price comparison tool. Always verify final prices, inventory, delivery methods, and warranties on the merchant platform before purchase.
+AI Price Memory is an independent data aggregation and price comparison tool. Always verify final prices, inventory, delivery methods, and warranties on the merchant platform before purchase.
 `;
 
 export function GET() {

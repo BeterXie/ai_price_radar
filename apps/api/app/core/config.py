@@ -11,7 +11,7 @@ from .email import normalize_email
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    app_name: str = "AI Price Radar API"
+    app_name: str = "AI Price Memory API"
     database_url: str = "sqlite:///./price_radar.db"
     admin_api_key: str = ""
     web_origin: str = "http://localhost:3000"

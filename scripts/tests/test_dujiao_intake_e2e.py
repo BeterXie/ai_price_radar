@@ -16,8 +16,7 @@ from app.core.config import get_settings  # noqa: E402
 from app.database import Base as ApiBase, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import SourceIntake  # noqa: E402
-from connectors import CONNECTORS  # noqa: E402
-from publish_catalog import approved_intake_sources, publish_sources  # noqa: E402
+from publish_catalog import approved_intake_sources  # noqa: E402
 from common import session_for  # noqa: E402
 
 
@@ -75,38 +74,17 @@ def test_dujiao_submission_detection_approval_and_atomic_publication(tmp_path, m
         assert approved.status_code == 200
         assert approved.json()["status"] == "approved"
 
-        def loader(source):
-            assert str(source).rstrip("/") == "https://dujiao.example"
-            yield {
-                "token": "dujiao-example",
-                "shop_name": "Dujiao Example",
-                "shop_url": "https://dujiao.example",
-                "source_platform": "dujiao_next",
-                "source_kind": "public_api",
-                "product_key": "chatgpt-plus",
-                "product_name": "ChatGPT Plus 直充一个月",
-                "product_url": "https://dujiao.example/products/chatgpt-plus",
-                "listed_price": "88.00",
-                "currency": "CNY",
-                "stock_count": 1,
-                "product_status": "in_stock",
-            }
-
-        monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+        # v3.7.42 (c70e22d) 起发布器完全排除 dujiao_next：收录工作流可以走到
+        # approved，但发布门禁不会为它生成发布任务，也不会产生公开 offer。
         pipeline_db = session_for(database_url)
         try:
-            sources = approved_intake_sources(pipeline_db)
-            assert len(sources) == 1 and sources[0].intake_ids == (intake_id,)
-            publish_sources(pipeline_db, sources)
+            assert approved_intake_sources(pipeline_db) == []
         finally:
             pipeline_db.close()
 
         with Session(engine) as db:
             intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id))
-            assert intake.status == "published"
+            assert intake.status == "approved"
             assert intake.product_count == 1
-        catalog = client.get("/api/v1/products", params={"source_platform": "dujiao_next"})
-        assert catalog.status_code == 200
-        assert catalog.json()["offer_count"] == 1
     finally:
         app.dependency_overrides.clear()

@@ -102,11 +102,12 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
         errors.append("DATABASE_URL must contain the production database credentials")
     if not session_secret_key or session_secret_key in PLACEHOLDERS or len(session_secret_key.encode()) < 32:
         errors.append("SESSION_SECRET_KEY must contain at least 32 random bytes")
-    if bot_secret_encryption_key:
-        if bot_secret_encryption_key in PLACEHOLDERS or len(bot_secret_encryption_key.encode()) < 32:
-            errors.append("BOT_SECRET_ENCRYPTION_KEY must contain at least 32 random bytes when configured")
-        elif bot_secret_encryption_key == session_secret_key:
-            errors.append("BOT_SECRET_ENCRYPTION_KEY should be different from SESSION_SECRET_KEY")
+    if not bot_secret_encryption_key or bot_secret_encryption_key in PLACEHOLDERS:
+        errors.append("BOT_SECRET_ENCRYPTION_KEY must contain at least 32 random bytes")
+    elif len(bot_secret_encryption_key.encode()) < 32:
+        errors.append("BOT_SECRET_ENCRYPTION_KEY must contain at least 32 random bytes")
+    elif bot_secret_encryption_key == session_secret_key:
+        errors.append("BOT_SECRET_ENCRYPTION_KEY should be different from SESSION_SECRET_KEY")
     if env.get("API_DOCS_ENABLED", "").casefold() not in {"false", "0", "no"}:
         errors.append("API_DOCS_ENABLED must be false in production")
     for unsafe_flag in ("QQ_MOCK_AUTH_ENABLED", "DEV_PRINT_AUTH_CODES"):

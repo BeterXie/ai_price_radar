@@ -1,6 +1,30 @@
 # Changelog
 
-All notable changes to AI Price Radar are documented in this file.
+All notable changes to AI Price Memory are documented in this file.
+
+## [3.7.95] - 2026-09-20
+
+### Security
+- **凭据加密 fail-closed 防护与会话安全加固**:
+  - `apps/api/app/services/credential_crypto.py` 禁止使用默认会话密钥加密机器人凭据（直接异常阻断），强制要求配置独立的 `BOT_SECRET_ENCRYPTION_KEY`；解密保留旧密钥兼容用于平滑升级；
+  - `apps/api/app/services/auth.py` 邮箱登录验证码校验改用 `hmac.compare_digest` 防范时序攻击；
+  - `apps/api/tests/conftest.py` 注入自动化测试密钥环境保障；
+  - Web 端在 `next.config.ts` 注入安全标头（`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` 等），且限定 OAuth 头像必须为 HTTP/HTTPS 协议；
+  - `docker-compose.yml` 对数据库口令与应用密钥等敏感变量改用 `${VAR:?error}` 强制配置阻断。
+
+### Added
+- **链动小铺 (LDXP) 单品链接探测与归属店铺自动解析**:
+  - `detector/probe.py` 增加对 `/item/{goods_key}` 单品链接的支持，自动调用 LDXP API 解析归属店铺及 token；
+  - `apps/api/app/routers/internal.py` 支持收录申请归属店铺已在收录列表时，自动归档并触发 `shop_request.already_onboarded` 邮件通知申请人（忽略隐藏店铺）。
+
+### Changed
+- **生产运维与部署安全加固**:
+  - `scripts/production_preflight.py` 强化生产环境变量门禁检查，强制要求独立 `BOT_SECRET_ENCRYPTION_KEY` 并禁用 `API_DOCS_ENABLED`；
+  - `pipeline/Dockerfile` 与 `scripts/refresh_remote.sh` 改造为非 root 用户 (UID 10001) 运行，最小化只读挂载目录；
+  - `deploy/systemd/` 服务补充 `CPUQuota=85%` 与 `MemoryMax=1000M` 资源限制，定时器增加 `RandomizedDelaySec=2m`；
+  - `scripts/backup_postgres.sh` 增加备份轮转清理保留策略（默认保留 14 份）；
+  - 全站品牌名统一为 **AI Price Memory**，保留对外 API 规范与客户端本地存储 Key 兼容；
+  - 优惠券掉落限额过滤口令活动券，优惠券弹窗完善 A11y 无障碍与焦点管理。
 
 ## [3.7.94] - 2026-09-19
 

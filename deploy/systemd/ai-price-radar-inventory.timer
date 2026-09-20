@@ -1,8 +1,9 @@
 [Unit]
-Description=Refresh AI Price Radar inventory every 20 minutes
+Description=Refresh AI Price Memory inventory every 20 minutes
 
 [Timer]
 OnCalendar=*-*-* *:00/20:00
+RandomizedDelaySec=2m
 Persistent=true
 Unit=ai-price-radar-inventory.service
 

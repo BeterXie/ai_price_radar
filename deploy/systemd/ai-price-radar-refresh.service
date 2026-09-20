@@ -1,13 +1,23 @@
 [Unit]
-Description=AI Price Radar scan and publish
+Description=AI Price Memory scan and publish
 After=docker.service network-online.target
 Requires=docker.service
 
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/ai-price-radar-v3
+# 从 .env 读取 DISCOVERY_* 等调优参数；前导 "-" 表示文件缺失时不失败。
+EnvironmentFile=-/opt/ai-price-radar-v3/.env
 ExecStart=/usr/bin/bash /opt/ai-price-radar-v3/scripts/refresh_remote.sh scan
 ExecStopPost=-/usr/bin/docker rm -f ai-price-radar-crawler-run-scan
+NoNewPrivileges=true
 Nice=10
 IOSchedulingClass=idle
+CPUQuota=85%
+MemoryMax=1000M
 TimeoutStartSec=4h
+
+# 可选降权：先按 docs/QUICK_DEPLOY.md「systemd 降权」一节创建专用用户并加入 docker 组，
+# 再取消下面两行注释，同时确保 /opt/ai-price-radar-v3/data 目录属主正确。
+#User=pricememo
+#Group=pricememo

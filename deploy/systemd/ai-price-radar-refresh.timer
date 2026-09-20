@@ -1,5 +1,5 @@
 [Unit]
-Description=Run AI Price Radar full candidate scan hourly
+Description=Run AI Price Memory full candidate scan hourly
 
 [Timer]
 OnCalendar=*-*-* *:05:00

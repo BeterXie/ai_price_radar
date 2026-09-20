@@ -1138,3 +1138,62 @@ def test_injection_ssrf_urls_rejected(api_client):
         )
         assert res.status_code == 422, f"Expected 422 for {url}, got {res.status_code}"
 
+
+def test_detection_resolves_to_already_known_shop_notifies_applicant(api_client):
+    client, engine = api_client
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        shop = Shop(
+            token="KFLA",
+            name="橘子Ai源头",
+            source_url="https://wzyp.cn/shop/KFLA",
+            platform="ldxp",
+            source_score=100,
+            status="active",
+            consecutive_failures=0,
+            is_visible=True,
+            first_seen_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(shop)
+        db.commit()
+
+    created = client.post(
+        "/api/v1/shop-requests",
+        json={
+            "shop_url": "https://wzyp.cn/item/88agpi",
+            "shop_name": "单品申请",
+            "contact": "applicant@example.com",
+            "note": "测试单品链接",
+        },
+    )
+    assert created.status_code == 201
+    intake_id = created.json()["request_id"]
+    assert intake_id is not None
+
+    _detect(
+        client,
+        intake_id,
+        platform="ldxp",
+        source_url="https://wzyp.cn/shop/KFLA",
+        source_key="kfla",
+    )
+
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.status == "onboarded"
+        assert "橘子Ai源头" in intake.decision_note
+        assert "已在收录列表" in intake.decision_note
+
+        notification = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.event_type == "shop_request.already_onboarded",
+                NotificationOutbox.recipient == "applicant@example.com",
+            )
+        )
+        assert notification is not None
+        assert "橘子Ai源头" in notification.text_body
+        assert "https://wzyp.cn/shop/KFLA" in notification.text_body
+
+

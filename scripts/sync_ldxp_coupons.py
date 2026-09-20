@@ -1,7 +1,7 @@
 """LDXP Coupon Sync Utility
 
 Synchronizes official coupon batches and 10-digit redemption codes from LDXP merchant backend
-into Price Radar's `shop_coupons` table. Safe and idempotent to run repeatedly.
+into AI Price Memory's `shop_coupons` table. Safe and idempotent to run repeatedly.
 """
 
 from __future__ import annotations

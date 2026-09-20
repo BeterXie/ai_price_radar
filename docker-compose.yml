@@ -7,7 +7,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-price_radar}
       POSTGRES_USER: ${POSTGRES_USER:-price_radar}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
+      # 密钥类变量不提供默认值：缺失时 compose 直接报错退出，
+      # 防止生产用公开占位口令启动（见 scripts/production_preflight.py）。
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,20 +20,27 @@ services:
 
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-replace-with-a-long-random-string}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY must be set in .env}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3000}
-      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-pricememo-auth-secret-key-change-in-production}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?SESSION_SECRET_KEY must be set in .env}
       BOT_SECRET_ENCRYPTION_KEY: ${BOT_SECRET_ENCRYPTION_KEY:-}
       PRIVACY_LOG_RETENTION_DAYS: ${PRIVACY_LOG_RETENTION_DAYS:-90}
-      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
+      # 生产必须为 false（preflight 硬性要求）；本地开发可在 .env 中显式开启。
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
+      QQ_AUTH_ENABLED: ${QQ_AUTH_ENABLED:-false}
+      QQ_APP_ID: ${QQ_APP_ID:-}
+      QQ_APP_KEY: ${QQ_APP_KEY:-}
+      QQ_REDIRECT_URI: ${QQ_REDIRECT_URI:-}
       QQ_MOCK_AUTH_ENABLED: ${QQ_MOCK_AUTH_ENABLED:-false}
       DEV_PRINT_AUTH_CODES: ${DEV_PRINT_AUTH_CODES:-false}
+      LDXP_MERCHANT_TOKEN: ${LDXP_MERCHANT_TOKEN:-}
       REPORT_RATE_LIMIT_COUNT: ${REPORT_RATE_LIMIT_COUNT:-5}
       REPORT_RATE_LIMIT_WINDOW_SECONDS: ${REPORT_RATE_LIMIT_WINDOW_SECONDS:-3600}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
@@ -74,12 +83,13 @@ services:
 
   notification-worker:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     command: ["python", "-m", "app.notification_worker"]
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
-      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-pricememo-auth-secret-key-change-in-production}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?SESSION_SECRET_KEY must be set in .env}
       BOT_SECRET_ENCRYPTION_KEY: ${BOT_SECRET_ENCRYPTION_KEY:-}
       SHOP_INTAKE_ADMIN_EMAILS: ${SHOP_INTAKE_ADMIN_EMAILS:-admin@example.invalid}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -128,7 +138,7 @@ services:
         # rewrites() are resolved during `npm run build`, so the internal API
         # base must be passed at build time, not only in the runtime block.
         INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://api:8000}
-        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-AI Price Radar}
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-AI Price Memory}
         NEXT_PUBLIC_SUPPORT_ENABLED: ${NEXT_PUBLIC_SUPPORT_ENABLED:-true}
         NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL: ${NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL:-https://ai.pricememo.cn/support/wechat.jpg}
         NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL: ${NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL:-https://ai.pricememo.cn/support/alipay.jpg}
@@ -137,7 +147,7 @@ services:
     environment:
       INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://api:8000}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-AI Price Radar}
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-AI Price Memory}
       NEXT_PUBLIC_SUPPORT_ENABLED: ${NEXT_PUBLIC_SUPPORT_ENABLED:-true}
       NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL: ${NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL:-https://ai.pricememo.cn/support/wechat.jpg}
       NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL: ${NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL:-https://ai.pricememo.cn/support/alipay.jpg}
@@ -175,11 +185,14 @@ services:
       context: .
       dockerfile: pipeline/Dockerfile
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://price_radar:change-me-now@db:5432/price_radar}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
       INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
-      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
+      INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:?INTAKE_WORKER_KEY must be set in .env}
     volumes:
-      - ./:/workspace
+      # 只挂载 importer 需要读写的目录，避免整个仓库（含 .env）进入容器。
+      - ./pipeline:/workspace/pipeline
+      - ./data/crawler:/workspace/data/crawler
+      - ./apps/web/public/data:/workspace/apps/web/public/data
     working_dir: /workspace/pipeline
     depends_on:
       db:

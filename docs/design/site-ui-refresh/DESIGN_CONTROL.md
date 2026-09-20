@@ -48,7 +48,7 @@ Generation exception: none
 | [OpenRouter Models](https://openrouter.ai/models) | 搜索 → 模态标签 → 列表/表格 → 模型证据 | 分组侧栏、模式切换、描述与指标同层 | 将复杂筛选分层，给高频比较提供视图选择 | 紫色品牌、完整左栏结构 |
 | [Vercel AI Gateway Models](https://vercel.com/ai-gateway/models) | 大标题与定义 → 搜索/类别 → 高密度表格 | 宏观静区与数据密区明确切换 | 先建立任务，再进入比较；表头和度量对齐 | Vercel 黑白品牌语法与表面网格 |
 | [Cloudflare Radar](https://radar.cloudflare.com/) | 全局搜索/地区/时间 → 主趋势 → 分主题证据 | 固定方向、时间状态、分组数据卡 | 全局状态应持续可见；信息按问题域分组 | 橙色品牌与仪表板模板 |
-| Current AI Price Radar | 大标题 → 搜索 → 最近更新 → 报价行 | 纸面、黑墨、荧光绿状态已形成识别 | 保留“台账 + 信号”关系，增强任务清晰度 | 继续堆叠 CSS 覆盖、所有页面同一密度 |
+| Current AI Price Memory | 大标题 → 搜索 → 最近更新 → 报价行 | 纸面、黑墨、荧光绿状态已形成识别 | 保留“台账 + 信号”关系，增强任务清晰度 | 继续堆叠 CSS 覆盖、所有页面同一密度 |
 
 ### Evidence selection
 

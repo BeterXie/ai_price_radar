@@ -1,4 +1,4 @@
-# AI Price Radar v3 项目交接文档
+# AI Price Memory v3 项目交接文档
 
 - 项目版本：v3.2.0
 - 文档版本：v1.2
@@ -8,7 +8,7 @@
 
 ## 1. 交接摘要
 
-AI Price Radar v3 是一个聚合公开 AI 订阅商品报价的平台。系统由 Next.js 前端、FastAPI API、PostgreSQL、链动小铺浏览器爬虫及数据同步管道组成。项目支持公开搜索、产品详情、店铺详情、报价历史、自动分类、举报纠错和基础管理后台。
+AI Price Memory v3 是一个聚合公开 AI 订阅商品报价的平台。系统由 Next.js 前端、FastAPI API、PostgreSQL、链动小铺浏览器爬虫及数据同步管道组成。项目支持公开搜索、产品详情、店铺详情、报价历史、自动分类、举报纠错和基础管理后台。
 
 当前代码已完成 Python 语法检查、API 单元测试、爬虫自检、导入锁测试和完整 `next build`。2026-07-26 已在目标服务器完成生产 Docker 构建、PostgreSQL 并发锁、HTTPS 签发、幂等导入、管理流程、举报限流、备份恢复和自动数据刷新验收，站点地址为 `https://ai.pricememo.cn`。
 

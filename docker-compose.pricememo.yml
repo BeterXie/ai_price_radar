@@ -1,7 +1,8 @@
 services:
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     environment:
@@ -14,6 +15,7 @@ services:
       default:
       detector_control:
       pricememo_frontend:
+        ipv4_address: 172.18.0.2
         aliases:
           - ai-radar-api
 
@@ -39,12 +41,14 @@ services:
     networks:
       default:
       pricememo_frontend:
+        ipv4_address: 172.18.0.4
         aliases:
           - ai-radar-web
 
   notification-worker:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
       args:
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
 

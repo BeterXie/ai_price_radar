@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import urllib.parse
@@ -17,6 +16,8 @@ MAX_TASK_BYTES = 2 * 1024 * 1024
 MAX_TASK_SECONDS = 15.0
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
+LDXP_ITEM_PATH = re.compile(r"/item/([A-Za-z0-9._~-]+)", re.IGNORECASE)
+LDXP_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 PLATFORM_16688_GOODS_PATH = re.compile(r"/goods/([A-Za-z0-9._~-]+)", re.IGNORECASE)
@@ -184,6 +185,32 @@ def _probe_16688_goods(
     return _probe_16688(parsed, shop_no, client)
 
 
+def _probe_ldxp_item(
+    parsed: urllib.parse.SplitResult,
+    goods_key: str,
+    client: PinnedHTTPSClient,
+) -> ProbeResult:
+    if not LDXP_CODE.fullmatch(goods_key):
+        raise ValueError("LDXP goods key is invalid")
+    host = (parsed.hostname or "").casefold()
+    canonical_host = "wzyp.cn" if host in {"wzyp.cn", "www.wzyp.cn"} else "pay.ldxp.cn"
+    origin = urllib.parse.urlunsplit(("https", canonical_host, "", "", ""))
+    detail = _json(client.post_json(
+        f"{origin}/shopApi/Shop/goodsInfo",
+        {"goods_key": goods_key},
+    ))
+    if not isinstance(detail, dict) or detail.get("code") != 1 or not isinstance(detail.get("data"), dict):
+        raise ValueError("source is not a valid LDXP item")
+    data = detail["data"]
+    user = data.get("user") if isinstance(data.get("user"), dict) else {}
+    token = str(user.get("token") or "").strip()
+    if not LDXP_CODE.fullmatch(token):
+        raise ValueError("LDXP item detail returned an invalid shop token")
+    shop_name = str(user.get("nickname") or "").strip()
+    source_url = f"https://{canonical_host}/shop/{urllib.parse.quote(token, safe='._~-')}"
+    return ProbeResult("ldxp", source_url, token.casefold(), shop_name)
+
+
 def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> ProbeResult:
     client = client or PinnedHTTPSClient(
         max_response_bytes=MAX_RESPONSE_BYTES,
@@ -200,6 +227,11 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         canonical_host = "wzyp.cn" if host in {"wzyp.cn", "www.wzyp.cn"} else "pay.ldxp.cn"
         source_url = f"https://{canonical_host}/shop/{urllib.parse.quote(token, safe='._~-')}"
         return ProbeResult("ldxp", source_url, token.casefold())
+
+    match_item = LDXP_ITEM_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host in LDXP_HOSTS and match_item:
+        goods_key = urllib.parse.unquote(match_item.group(1)).strip()
+        return _probe_ldxp_item(parsed, goods_key, client)
 
     match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
     if host in PLATFORM_16688_HOSTS and match:
@@ -261,7 +293,6 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
             name = ""
             if isinstance(document, dict) and isinstance(document.get("shop"), dict):
                 name = str(document["shop"].get("name") or "").strip()
-            token = "feed-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
             return ProbeResult("merchant_json", normalized, normalized, name, len(items))
     except (OSError, TimeoutError, ValueError, json.JSONDecodeError):
         pass
@@ -282,5 +313,4 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
     if sitemap_result := _schema_from_sitemap(origin, client):
         _page_url, product_count = sitemap_result
         return ProbeResult("schema_org", origin, origin, host, product_count)
-    token = "source-" + hashlib.sha256(normalized.encode()).hexdigest()[:20]
     return ProbeResult("other", normalized, normalized, host, 0)

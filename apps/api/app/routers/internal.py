@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func, or_, select, text
@@ -108,6 +109,24 @@ def _merge_detected_intake(
     existing.product_count = max(existing.product_count, duplicate.product_count, product_count)
     existing.created_at = min(existing.created_at, duplicate.created_at)
     existing.updated_at = utcnow()
+    if duplicate.contact_email and existing.status in {"onboarded", "published"}:
+        existing.decision_note = _joined_text(
+            existing.decision_note,
+            f"重复申请 #{duplicate.id} 已合并；该店铺已收录上线，已向重复申请的联系邮箱发送通知",
+        )
+        enqueue_transition_notification(
+            db,
+            duplicate,
+            event_type="shop_request.already_onboarded",
+            subject="您申请的商品所属店铺已收录上线",
+            text_body=(
+                f"您提交的商品收录申请（#{duplicate.id}）已处理完毕。\n"
+                f"您填写的商品链接对应店铺为：【{existing.shop_name}】\n"
+                f"店铺主页：{existing.source_url}\n"
+                f"该店铺已在 AI Price Memory 成功收录上线，系统会自动同步该店铺下的全部商品与报价，无需针对单个商品重复提交申请。\n"
+                f"您可在平台中搜索该店铺或直接查看其商品报价。"
+            ),
+        )
     if existing.status in {"submitted", "detecting"}:
         existing.status = "pending_review"
         existing.lease_expires_at = None
@@ -296,6 +315,38 @@ def _apply_intake_approval_and_notifications(
 ) -> None:
     if intake.status not in {"submitted", "detecting", "pending_review"}:
         return
+
+    # 被管理员隐藏的店铺不视为"已收录"：申请应继续走正常收录流程，
+    # 而不是给申请人发送"已收录上线"邮件。
+    known_shop = db.scalar(
+        select(Shop).where(
+            Shop.is_visible.is_(True),
+            (func.lower(Shop.token) == intake.source_key.lower())
+            | (func.lower(Shop.source_url) == intake.source_url.lower()),
+        )
+    )
+    if known_shop is not None:
+        now = utcnow()
+        intake.status = "onboarded"
+        intake.approved_at = now
+        intake.finished_at = now
+        intake.shop_name = known_shop.name or intake.shop_name
+        intake.decision_note = f"该商品所属店铺【{intake.shop_name}】已在收录列表中，无需重复提交"
+        enqueue_transition_notification(
+            db,
+            intake,
+            event_type="shop_request.already_onboarded",
+            subject="您申请的商品所属店铺已收录上线",
+            text_body=(
+                f"您提交的商品收录申请（#{intake.id}）已处理完毕。\n"
+                f"您填写的商品链接对应店铺为：【{intake.shop_name}】\n"
+                f"店铺主页：{intake.source_url}\n"
+                f"该店铺已在 AI Price Memory 成功收录上线，系统会自动同步该店铺下的全部商品与报价，无需针对单个商品重复提交申请。\n"
+                f"您可在平台中搜索该店铺或直接查看其商品报价。"
+            ),
+        )
+        return
+
     is_auto_approvable = (
         bool(settings.shop_intake_auto_approve)
         and platform in {"ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}

@@ -1,5 +1,5 @@
 [Unit]
-Description=Discover new AI Price Radar shops every 12 hours
+Description=Discover new AI Price Memory shops every 12 hours
 
 [Timer]
 OnCalendar=*-*-* 00,12:30:00

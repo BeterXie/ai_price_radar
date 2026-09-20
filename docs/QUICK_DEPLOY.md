@@ -86,7 +86,7 @@ docker image tag "$(docker image inspect -f '{{.Id}}' ai-price-radar-crawler:lat
 
 ```powershell
 $env:NEXT_PUBLIC_API_BASE_URL = "https://ai.pricememo.cn"
-$env:NEXT_PUBLIC_SITE_NAME = "AI Price Radar"
+$env:NEXT_PUBLIC_SITE_NAME = "AI Price Memory"
 
 # 启用支持作者功能时，这三项是公开的构建时配置，不是密钥。
 $env:NEXT_PUBLIC_SUPPORT_ENABLED = "true"
@@ -138,12 +138,13 @@ scp "C:\Users\59908\Pictures\alipay.jpg" "pricememo-prod:/tmp/alipay.jpg"
 2. 解压源码到 /opt/ai-price-radar-staging-$Stamp
 3. 解压 .next/standalone 和 .next/static
 4. 将 `/tmp/baidu_verify_codeva-27l7NEdkV0.html` 安装到 `/opt/ai-price-radar-staging-$Stamp/apps/web/public/baidu_verify_codeva-27l7NEdkV0.html`，权限 `644`；确认其 SHA-256 与本机 `$BaiduVerificationHash` 一致。该文件必须位于 Web 镜像的 `public` 根目录，不能放到 `support/` 或只留在源码包外
-5. 从当前运行目录复制 `.env`；确认新增的 `DETECTOR_WORKER_KEY` 至少 32 字节，且不同于 Admin/Intake Worker Key
+5. 从当前运行目录复制 `.env`；确认 `DETECTOR_WORKER_KEY` 至少 32 字节，且不同于 Admin/Intake Worker Key；`SESSION_SECRET_KEY` 与 `BOT_SECRET_ENCRYPTION_KEY` 各自独立且至少 32 字节（v3.7.92 起强制，缺省会话密钥等于公开可伪造登录态）；`API_DOCS_ENABLED=false`
 6. 如果启用搜索引擎通知或站点验证：将 `INDEXNOW_KEY`、`BING_SITE_VERIFICATION`、`BAIDU_SITE_VERIFICATION` 写入生产 `.env`；`BING_WEBMASTER_API_KEY` 和 `BAIDU_PUSH_TOKEN` 只放在执行提交脚本的本机或 CI，不写入 Web 容器。未配置 `INDEXNOW_KEY` 时 `/indexnow-key.txt` 应保持不可用
-7. python3 scripts/production_preflight.py
-8. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
-9. 覆盖 /opt/ai-price-radar-v3，但保留 `.env`、`data/`、`backups/`
-10. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
+7. `docker network create pricememo_frontend`（已存在则忽略报错）；确认 `/opt/ai-price-radar-v3/apps/web/public/data` 存在且属主为 `10001:10001`（importer 镜像以该非 root uid 写入公开快照）
+8. python3 scripts/production_preflight.py —— 这是硬门禁：退出码非 0 必须中止部署，不得带病覆盖运行目录
+9. docker compose ... config -q；确认 `source-detector` 没有数据库凭据、默认网络或 Docker socket
+10. 覆盖 /opt/ai-price-radar-v3，但保留 `.env`、`data/`、`backups/`
+11. 创建 `/opt/ai-price-radar-v3/data/support`，将两个二维码安装为 `wechat.jpg` 和 `alipay.jpg`，目录权限设为 `755`、文件权限设为 `644`
 
 百度验证文件的 staging 安装示例（在远端 Linux staging 主机执行；文件名以百度后台当前下载的文件为准）：
 
@@ -241,6 +242,16 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_source_platform_16688_v11.py
 
+# 16688 库存状态订正 (v12)；把 16688 平台 offer 与 offer_history 中
+# stock_status='unknown' 且原始抓取数据显示有货的记录订正为 in_stock，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_16688_stock_status_v12.py
+
 # 用户账号体系与机器人绑定表结构迁移 (v13)；创建 users, user_sessions, auth_codes, user_bot_bindings，重复执行安全
 docker run --rm \
   --network ai-price-radar_default \
@@ -259,6 +270,16 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_user_subscriptions_v14.py
 
+# Claude 商品细分迁移 (v15)；确保 claude-pro-20x 与 claude-team 商品存在，
+# 并把 claude-pro 下的团队/20x offer 重新分类，重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_claude_subdivision_v15.py
+
 # 店铺优惠券与营销口令结构迁移 (v16)；创建 shop_coupons 与 coupon_campaigns，幂等安全
 docker run --rm \
   --network ai-price-radar_default \
@@ -276,6 +297,24 @@ docker run --rm \
   -w /workspace \
   ai-price-radar-api \
   python scripts/migrate_offer_clicks_v17.py
+
+# 优惠券活动关联迁移 (v18)；shop_coupons 增加 campaign_id 与相关索引，依赖 v16 已创建的表，幂等安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_shop_coupon_campaign_v18.py
+
+# 优惠券店铺绑定迁移 (v19)；shop_coupons / coupon_campaigns 增加店铺绑定字段与索引，幂等安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_coupon_shop_binding_v19.py
 
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
@@ -326,6 +365,21 @@ systemctl start \
   ai-price-radar-refresh.timer \
   ai-price-radar-discover.timer
 ```
+
+## 6. 可选加固与配套说明
+
+- **systemd 降权**：三个 `ai-price-radar-*.service` 默认以 root 运行（脚本需要 `chown 10001` 和 docker CLI）。如需降权，先一次性配置：
+
+  ```bash
+  sudo useradd -r -s /usr/sbin/nologin pricememo
+  sudo usermod -aG docker pricememo
+  sudo chown -R pricememo:pricememo /opt/ai-price-radar-v3/data /opt/ai-price-radar-v3/apps/web/public/data
+  ```
+
+  然后在三个 service 中取消 `User=pricememo` / `Group=pricememo` 注释并 `systemctl daemon-reload`。降权后 `refresh_remote.sh` 会自动跳过 `chown`（仅 root 可执行），目录属主必须预先配置好。注意 docker 组成员实际上等同 root 权限，降权的意义在于 unit 内脚本逻辑不再直接以 root 身份运行。
+- **备份保留期**：`scripts/backup_postgres.sh` 默认保留最近 14 份备份，可用 `BACKUP_KEEP_COUNT` 覆盖（0 为禁用清理）。
+- **品牌与兼容性豁免**：项目已更名 "AI Price Memory"，但 Atom feed 的 `urn:ai-price-radar` ID、`/.well-known/price-radar.json`、localStorage 键前缀 `apr:`/`ai-price-radar:*` 等对外契约与用户数据键有意保留旧名，避免破坏外部 Agent 与已有浏览器数据；不要在收口文案时"顺手"改掉这些标识符。
+- **完整门禁脚本**：第 1 节的手工检查也可以用 `scripts/validate_release.sh` 一次性执行（api/pipeline/detector/scripts 四个测试套件 + 版本一致性 + Web 构建，需本机 bash 环境）。
 
 恢复后可能因 `Persistent=true` 立即补跑一次，这是正常调度。普通 API/Web 发布记录任务已启动即可，不要等待后续每个周期；涉及爬虫、数据管道或数据库结构的发布，才等待一次任务完成并确认 `failed=0`。
 

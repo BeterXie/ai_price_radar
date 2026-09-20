@@ -11,7 +11,7 @@ export function GET() {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://ai.pricememo.cn/price-radar-v1.schema.json",
     "title": "PriceRadarSnapshotFeed",
-    "description": "Schema for AI Price Radar (PriceMemo) immutable snapshot feed and pointer.",
+    "description": "Schema for AI Price Memory (PriceMemo) immutable snapshot feed and pointer.",
     "oneOf": [
       { "$ref": "#/$defs/SnapshotDocument" },
       { "$ref": "#/$defs/LatestPointer" }

@@ -1,4 +1,4 @@
-# AI Price Radar
+# AI Price Memory
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-1f6f50.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/在线站点-ai.pricememo.cn-111111.svg)](https://ai.pricememo.cn/)

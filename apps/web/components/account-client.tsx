@@ -353,7 +353,9 @@ export function AccountClient() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b hairline">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full bg-[color:var(--ink)] text-[color:var(--panel)] flex items-center justify-center text-2xl font-bold uppercase shadow-sm">
-              {user.avatar_url ? (
+              {/* Avatar URLs come from OAuth providers; only render http(s) so a
+                  tampered value cannot become a javascript:/data: URI. */}
+              {/^https?:\/\//i.test(user.avatar_url) ? (
                 <img src={user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
               ) : (
                 user.nickname.slice(0, 1) || "U"

@@ -7,7 +7,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import base64
+import hashlib
+import os
+
 import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -31,7 +36,7 @@ from app.models import (
     UserSession,
 )
 from app.services.bot_binding import check_qq_binding_session, complete_qq_binding, start_qq_binding_session
-from app.services.credential_crypto import decrypt_secret, encrypt_secret
+from app.services.credential_crypto import _AAD, _PREFIX, decrypt_secret, encrypt_secret
 from app.services.notification_hub import PriceChangeEvent, create_price_change_event, dispatch_price_changes
 
 try:
@@ -779,3 +784,30 @@ def test_bot_secret_encryption_roundtrip():
     assert encrypted.startswith("enc:v1:")
     assert secret not in encrypted
     assert decrypt_secret(encrypted) == secret
+
+
+def test_encrypt_secret_refuses_public_default_session_secret(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "bot_secret_encryption_key", "")
+    monkeypatch.setattr(
+        settings, "session_secret_key", "pricememo-auth-secret-key-change-in-production"
+    )
+    with pytest.raises(RuntimeError):
+        encrypt_secret("some-bot-token")
+
+
+def test_decrypt_secret_still_reads_legacy_default_key_ciphertext(monkeypatch):
+    """Rows encrypted before the fail-closed change must stay readable so the
+    startup re-key (migrate_bot_credentials) can upgrade them."""
+    legacy_material = "pricememo-auth-secret-key-change-in-production"
+    settings = get_settings()
+    monkeypatch.setattr(settings, "bot_secret_encryption_key", "")
+    monkeypatch.setattr(settings, "session_secret_key", legacy_material)
+
+    legacy_key = hashlib.sha256(legacy_material.encode("utf-8")).digest()
+    nonce = os.urandom(12)
+    ciphertext = AESGCM(legacy_key).encrypt(nonce, b"legacy-bot-token", _AAD)
+    payload = base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii")
+    legacy_value = f"{_PREFIX}{hashlib.sha256(legacy_material.encode('utf-8')).hexdigest()[:12]}:{payload}"
+
+    assert decrypt_secret(legacy_value, settings) == "legacy-bot-token"

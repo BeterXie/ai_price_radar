@@ -639,10 +639,13 @@ def claim_lucky_drop(
         # Daily global drop limit check
         daily_limit = _get_setting_int(db, "coupon_daily_drop_limit", default=100)
         if daily_limit > 0:
+            # 只统计掉落券：活动口令兑换（campaign_id 非空）有自己的配额，
+            # 不应挤占每日掉落额度（与下方 24h 个人频控的口径一致）。
             today_claimed = (
                 db.scalar(
                     select(func.count(ShopCoupon.id)).where(
-                        ShopCoupon.assigned_at >= cooldown_cutoff
+                        ShopCoupon.campaign_id.is_(None),
+                        ShopCoupon.assigned_at >= cooldown_cutoff,
                     )
                 )
                 or 0

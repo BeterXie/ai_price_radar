@@ -703,7 +703,7 @@ def watch_feed(
         '<?xml version="1.0" encoding="utf-8"?>'
         '<feed xmlns="http://www.w3.org/2005/Atom">'
         f'<id>urn:ai-price-radar:watch:{feed_id}</id>'
-        '<title>AI Price Radar 价格与补货关注</title>'
+        '<title>AI Price Memory 价格与补货关注</title>'
         f'<updated>{(latest or now).isoformat()}</updated>'
         f'<link href="{html.escape(watch_url)}"/>'
         + "".join(entries)
@@ -764,6 +764,7 @@ def create_shop_request(
         )
 
     known_shop = db.scalar(select(Shop.id).where(
+        Shop.is_visible.is_(True),
         (func.lower(Shop.token) == token.lower()) | (func.lower(Shop.source_url) == shop_url.lower())
     ))
     if known_shop is not None:
@@ -1050,4 +1051,3 @@ def record_shop_click(
         db.commit()
 
     return OfferClickResponse(success=True, recorded=True, click_count=0)
-

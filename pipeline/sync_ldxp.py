@@ -44,7 +44,7 @@ def load_records(path: Path):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Import LDXP crawler SQLite into AI Price Radar")
+    parser = argparse.ArgumentParser(description="Import LDXP crawler SQLite into AI Price Memory")
     parser.add_argument("--source-db", required=True, type=Path)
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL", ""))
     parser.add_argument("--intake-api-url", default=os.getenv("INTAKE_API_URL", ""))

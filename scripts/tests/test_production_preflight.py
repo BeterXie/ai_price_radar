@@ -5,6 +5,9 @@ def _valid_env() -> dict[str, str]:
     return {
         "POSTGRES_PASSWORD": "a" * 24,
         "ADMIN_API_KEY": "b" * 40,
+        "SESSION_SECRET_KEY": "s" * 40,
+        "BOT_SECRET_ENCRYPTION_KEY": "g" * 40,
+        "API_DOCS_ENABLED": "false",
         "INTAKE_WORKER_KEY": "c" * 40,
         "DETECTOR_WORKER_KEY": "e" * 40,
         "DISCOVERY_WORKER_KEY": "f" * 40,
@@ -62,6 +65,27 @@ def test_production_preflight_rejects_detector_key_placeholder():
     env["DETECTOR_WORKER_KEY"] = "replace-with-a-separate-detector-worker-key"
     errors = validate_production_env(env)
     assert any("DETECTOR_WORKER_KEY" in error for error in errors)
+
+
+def test_production_preflight_requires_session_secret_and_disabled_docs():
+    env = _valid_env()
+    env["SESSION_SECRET_KEY"] = ""
+    env["API_DOCS_ENABLED"] = "true"
+    errors = validate_production_env(env)
+    assert any("SESSION_SECRET_KEY" in error for error in errors)
+    assert any("API_DOCS_ENABLED" in error for error in errors)
+
+
+def test_production_preflight_requires_a_distinct_bot_encryption_key():
+    env = _valid_env()
+    env["BOT_SECRET_ENCRYPTION_KEY"] = ""
+    errors = validate_production_env(env)
+    assert any("BOT_SECRET_ENCRYPTION_KEY" in error for error in errors)
+
+    env = _valid_env()
+    env["BOT_SECRET_ENCRYPTION_KEY"] = env["SESSION_SECRET_KEY"]
+    errors = validate_production_env(env)
+    assert any("BOT_SECRET_ENCRYPTION_KEY" in error for error in errors)
 
 
 def test_production_preflight_rejects_resend_placeholders():

@@ -1,8 +1,8 @@
-# AI Price Radar · UI Product Design Governance
+# AI Price Memory · UI Product Design Governance
 
 ## Product posture
 
-AI Price Radar is a trust-first comparison utility, not a marketplace and not a generic SaaS dashboard. The redesign keeps dense buying evidence visible while making the interface calmer, easier to scan and more coherent across every route.
+AI Price Memory is a trust-first comparison utility, not a marketplace and not a generic SaaS dashboard. The redesign keeps dense buying evidence visible while making the interface calmer, easier to scan and more coherent across every route.
 
 ## Visual direction
 

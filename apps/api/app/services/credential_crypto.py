@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 _PREFIX = "enc:v1:"
 _AAD = b"pricememo:credential:v1"
+# config.py 里 session 密钥的公开默认值。历史上 BOT_SECRET_ENCRYPTION_KEY 未配置时
+# 会回落到它加密凭据；它对任何读过仓库的人都是公开的，因此：
+# - 加密永远不得再使用它（_primary_material 直接拒绝，fail-closed）；
+# - 解密把它作为最后手段保留，用于读取历史密文并在重新落键（migrate_bot_credentials）
+#   时升级到真正的密钥。
+_LEGACY_DEFAULT_SESSION_SECRET = "pricememo-auth-secret-key-change-in-production"
 
 
 def _materials(settings: Settings) -> list[str]:
@@ -42,8 +48,20 @@ def _primary_material(settings: Settings) -> str:
     if not values:
         raise RuntimeError("credential encryption key is not configured")
     material = values[0]
+    if material == _LEGACY_DEFAULT_SESSION_SECRET:
+        raise RuntimeError(
+            "refusing to encrypt credentials with the public default session secret; "
+            "configure BOT_SECRET_ENCRYPTION_KEY (32+ random bytes) in the environment"
+        )
     _key_from_material(material)
     return material
+
+
+def _decryption_materials(settings: Settings) -> list[str]:
+    materials = _materials(settings)
+    if _LEGACY_DEFAULT_SESSION_SECRET not in materials:
+        materials.append(_LEGACY_DEFAULT_SESSION_SECRET)
+    return materials
 
 
 def is_encrypted_secret(value: str | None) -> bool:
@@ -83,15 +101,21 @@ def decrypt_secret(value: str | None, settings: Settings | None = None) -> str:
     except Exception as exc:
         raise RuntimeError("stored credential has invalid encoding") from exc
 
-    materials = _materials(settings)
+    materials = _decryption_materials(settings)
     if stored_key_id:
         materials.sort(key=lambda item: _key_id(item) != stored_key_id)
 
     for material in materials:
         try:
-            return AESGCM(_key_from_material(material)).decrypt(
+            plaintext = AESGCM(_key_from_material(material)).decrypt(
                 nonce, ciphertext, _AAD
             ).decode("utf-8")
+            if material == _LEGACY_DEFAULT_SESSION_SECRET:
+                logger.warning(
+                    "A stored credential was decrypted with the legacy public default key; "
+                    "it will be re-keyed on the next migrate_bot_credentials run"
+                )
+            return plaintext
         except Exception:
             continue
     raise RuntimeError("stored credential cannot be decrypted with configured keys")

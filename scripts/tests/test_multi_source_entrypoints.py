@@ -18,7 +18,11 @@ def test_remote_refresh_uses_dedicated_importer_image():
     publish_block = refresh.split("PUBLISH_ARGS=(", 1)[1]
     assert "ai-price-radar-importer" in publish_block
     assert "ai-price-radar-api" not in publish_block
-    assert '-v "$ROOT:/workspace:ro"' in publish_block
+    # 只挂载 importer 需要的路径（pipeline 代码只读 + 发布库只读 + 可写快照目录），
+    # 整个仓库（含 .env）不得进入容器；importer 以非 root uid 10001 运行。
+    assert '-v "$ROOT/pipeline:/workspace/pipeline:ro"' in publish_block
+    assert '-v "$ROOT:/workspace' not in publish_block
+    assert "--user 10001:10001" in publish_block
     assert "build_crawler_publish_db.py" in refresh
     assert "PRAGMA quick_check" not in refresh
     assert 'sqlite3 "$CRAWLER_DB" ".backup' not in refresh

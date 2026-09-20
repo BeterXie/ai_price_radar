@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -319,7 +320,7 @@ def verify_email_login_code(
     if auth_code is None or ensure_utc(auth_code.expires_at) <= now:
         return None, "验证码无效或已过期"
 
-    if auth_code.code != clean_code:
+    if not hmac.compare_digest(auth_code.code, clean_code):
         # Count the failed attempt; invalidate the code once the limit is reached.
         attempts = (auth_code.attempts or 0) + 1
         db.execute(

@@ -133,6 +133,7 @@ class Offer(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     approved: Mapped[bool] = mapped_column(Boolean, default=True)
     hidden_reason: Mapped[str] = mapped_column(Text, default="")
+    click_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

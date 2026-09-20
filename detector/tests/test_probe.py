@@ -290,3 +290,33 @@ def test_detector_recognizes_wzyp_shop_url():
     assert result.source_url == "https://wzyp.cn/shop/5FEQFLQO"
     assert result.source_key == "5feqflqo"
 
+
+def test_detector_recognizes_ldxp_item_and_resolves_shop():
+    client = StubClient([
+        response({
+            "code": 1,
+            "data": {
+                "goods_key": "88agpi",
+                "name": "GP Plus Codex",
+                "user": {
+                    "token": "KFLA",
+                    "nickname": "橘子Ai源头",
+                },
+            },
+        }),
+    ])
+    result = probe_source("https://wzyp.cn/item/88agpi", client=client)
+    assert result.detected_platform == "ldxp"
+    assert result.source_url == "https://wzyp.cn/shop/KFLA"
+    assert result.source_key == "kfla"
+    assert result.shop_name == "橘子Ai源头"
+
+
+def test_detector_rejects_invalid_ldxp_item():
+    client = StubClient([
+        response({"code": 0, "msg": "商品不存在"}),
+    ])
+    with pytest.raises(ValueError, match="not a valid LDXP item"):
+        probe_source("https://wzyp.cn/item/invalid_item", client=client)
+
+

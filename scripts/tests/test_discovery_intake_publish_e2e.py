@@ -105,7 +105,7 @@ def _upsert_claim_report(
     return candidate_id, reported.json()
 
 
-def test_dujiao_candidate_auto_approves_and_publishes_atomically(tmp_path, monkeypatch):
+def test_dujiao_candidate_auto_approves_and_stays_excluded_from_publish(tmp_path, monkeypatch):
     engine, database_url, client = _setup(tmp_path, monkeypatch)
     try:
         candidate_id, reported = _upsert_claim_report(
@@ -119,42 +119,20 @@ def test_dujiao_candidate_auto_approves_and_publishes_atomically(tmp_path, monke
         assert reported["status"] == "promoted"
         assert reported["detected_platform"] == "dujiao_next"
 
-        def loader(source):
-            assert str(source).rstrip("/") == "https://dujiao-e2e.example.com"
-            yield {
-                "token": "dujiao-e2e",
-                "shop_name": "Dujiao E2E",
-                "shop_url": "https://dujiao-e2e.example.com",
-                "source_platform": "dujiao_next",
-                "source_kind": "public_api",
-                "product_key": "chatgpt-plus",
-                "product_name": "ChatGPT Plus 直充一个月",
-                "product_url": "https://dujiao-e2e.example.com/products/chatgpt-plus",
-                "listed_price": "88.00",
-                "currency": "CNY",
-                "stock_count": 1,
-                "product_status": "in_stock",
-            }
-
-        monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+        # v3.7.42 (c70e22d) 起发布器完全排除 dujiao_next：候选可以自动批准并
+        # 提升（promote）为收录申请，但发布门禁不会为它生成发布任务。
         pipeline_db = session_for(database_url)
         try:
-            sources = approved_intake_sources(pipeline_db)
-            assert len(sources) == 1
-            publish_sources(pipeline_db, sources)
+            assert approved_intake_sources(pipeline_db) == []
         finally:
             pipeline_db.close()
 
         with Session(engine) as db:
             intake = db.scalar(select(SourceIntake).where(SourceIntake.id == reported["promoted_intake_id"]))
-            assert intake.status == "published"
-            assert intake.product_count == 1
+            assert intake.status == "approved"
             assert intake.origin == "discovery"
             candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == candidate_id))
             assert candidate.status == "promoted"
-        catalog = client.get("/api/v1/products", params={"source_platform": "dujiao_next"})
-        assert catalog.status_code == 200
-        assert catalog.json()["offer_count"] == 1
     finally:
         _cleanup()
 

@@ -19,4 +19,4 @@ Never include real account credentials, API keys, payment data, customer data, o
 
 ## Data boundary
 
-AI Price Radar is intended to process public product metadata only. Account passwords, card keys, access tokens, orders, payments, and customer identities must not be imported or published.
+AI Price Memory is intended to process public product metadata only. Account passwords, card keys, access tokens, orders, payments, and customer identities must not be imported or published.

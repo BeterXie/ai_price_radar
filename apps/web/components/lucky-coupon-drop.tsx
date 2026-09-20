@@ -36,6 +36,9 @@ export function LuckyCouponDrop() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const copiedTimerRef = React.useRef<number | undefined>(undefined);
+  const copyFailedTimerRef = React.useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,6 +191,49 @@ export function LuckyCouponDrop() {
     setModalOpen(false);
   };
 
+  // Unmount-time cleanup for the copy feedback timers.
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+      if (copyFailedTimerRef.current !== undefined) window.clearTimeout(copyFailedTimerRef.current);
+    };
+  }, []);
+
+  // Dialog a11y: focus the dialog on open, close on Escape, and keep Tab focus
+  // cycling inside the dialog while it is open.
+  useEffect(() => {
+    if (!modalOpen) return;
+    dialogRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleDismiss();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const current = document.activeElement;
+      if (!(current instanceof Node) || !dialogRef.current.contains(current)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+      if (event.shiftKey && current === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalOpen]);
+
   const handleOpenClick = () => {
     setModalOpen(true);
   };
@@ -222,12 +268,15 @@ export function LuckyCouponDrop() {
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setCopyFailed(false);
-      setTimeout(() => setCopied(false), 2500);
+      if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2500);
     } catch {
       // Clipboard permission can be denied; tell the user to copy manually
       // instead of falsely reporting success.
       setCopyFailed(true);
-      setTimeout(() => setCopyFailed(false), 4000);
+      setCopied(false);
+      if (copyFailedTimerRef.current !== undefined) window.clearTimeout(copyFailedTimerRef.current);
+      copyFailedTimerRef.current = window.setTimeout(() => setCopyFailed(false), 4000);
     }
   };
 
@@ -290,7 +339,14 @@ export function LuckyCouponDrop() {
           />
 
           {/* Dialog Body */}
-          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 shadow-2xl z-10 space-y-4">
+          <div
+            ref={dialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label="店铺专享优惠券"
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 shadow-2xl z-10 space-y-4 outline-none"
+          >
             {/* Header */}
             <div className="flex items-start justify-between gap-3">
               <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-800">
@@ -312,7 +368,7 @@ export function LuckyCouponDrop() {
                 🎉 触发店铺立减券！
               </h3>
               <p className="text-xs text-[color:var(--muted)] mt-1 leading-relaxed">
-                感谢您对 Price Radar 的支持。领取后即可获得一张合作店铺的立减优惠券，具体店铺与面额以领取结果为准。
+                感谢您对 AI Price Memory 的支持。领取后即可获得一张合作店铺的立减优惠券，具体店铺与面额以领取结果为准。
               </p>
               <p className="text-[10px] text-[color:var(--muted)] mt-1.5">
                 优惠券由对应店铺提供，不影响 PriceMemo 的报价排序。

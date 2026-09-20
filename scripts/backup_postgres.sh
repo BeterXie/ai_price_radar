@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 BACKUP_DIR="${BACKUP_DIR:-$ROOT/backups}"
+# 保留最近 N 份备份，防止备份目录无限增长；0 表示禁用清理。
+BACKUP_KEEP_COUNT="${BACKUP_KEEP_COUNT:-14}"
 mkdir -p "$BACKUP_DIR"
 umask 077
 STAMP="$(date +%Y%m%d_%H%M%S)"
@@ -20,3 +22,12 @@ gzip -t "$TEMP"
 mv "$TEMP" "$TARGET"
 trap - EXIT
 echo "backup: $TARGET"
+
+if [ "$BACKUP_KEEP_COUNT" -gt 0 ]; then
+  find "$BACKUP_DIR" -maxdepth 1 -name 'price_radar_*.sql.gz' -type f | sort -r \
+    | tail -n +"$((BACKUP_KEEP_COUNT + 1))" \
+    | while IFS= read -r old_backup; do
+        rm -f -- "$old_backup"
+        echo "backup: pruned $(basename "$old_backup")"
+      done
+fi

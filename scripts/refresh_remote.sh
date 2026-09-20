@@ -34,7 +34,9 @@ trap 'cleanup_crawler_container' EXIT
 trap 'exit 143' TERM INT HUP
 
 mkdir -p "$DATA_DIR/output" "$DATA_DIR/backups"
-chown 10001:10001 "$DATA_DIR" "$DATA_DIR/output"
+if [ "$(id -u)" = "0" ]; then
+  chown 10001:10001 "$DATA_DIR" "$DATA_DIR/output"
+fi
 chmod 700 "$DATA_DIR" "$DATA_DIR/output" "$DATA_DIR/backups"
 exec 9>"$DATA_DIR/.refresh.lock"
 if ! flock -n 9; then
@@ -228,22 +230,31 @@ else
   fi
 fi
 
-# The repo is mounted read-only, but publish_catalog.py exports the public
-# snapshot JSON into apps/web/public/data. Mount that directory writable (the
-# more specific mount wins over the read-only parent) and point the exporter at
-# it, so the immutable snapshot files the API and Web serve are actually written.
+# The importer runs as uid 10001 (non-root) and only receives the paths it
+# needs: pipeline code (read-only), the publish database (read-only), the
+# optional merchant sources file, and the writable public snapshot directory
+# the API and Web serve. The repo (including .env) is never mounted into the
+# container; configuration enters via --env-file only.
 PUBLIC_DATA_DIR="$ROOT/apps/web/public/data"
 mkdir -p "$PUBLIC_DATA_DIR"
 
-docker run --rm --user 0 \
+IMPORTER_MOUNTS=(
+  -v "$ROOT/pipeline:/workspace/pipeline:ro"
+  -v "$PUBLIC_DATA_DIR:/workspace/apps/web/public/data"
+  -v "$PUBLISH_DB:/tmp/ldxp_publish.db:ro"
+)
+if [[ -f "$MERCHANT_SOURCES" ]]; then
+  IMPORTER_MOUNTS+=(-v "$MERCHANT_SOURCES:/workspace/data/crawler/merchant_sources.json:ro")
+fi
+
+docker run --rm \
+  --user 10001:10001 \
   --cpus 1.0 \
   --memory 600m \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
   -e PUBLIC_DATA_DIR=/workspace/apps/web/public/data \
-  -v "$ROOT:/workspace:ro" \
-  -v "$PUBLIC_DATA_DIR:/workspace/apps/web/public/data" \
-  -v "$PUBLISH_DB:/tmp/ldxp_publish.db:ro" \
+  "${IMPORTER_MOUNTS[@]}" \
   -w /workspace/pipeline \
   ai-price-radar-importer \
   "${PUBLISH_ARGS[@]}"

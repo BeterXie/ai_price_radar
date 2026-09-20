@@ -15,7 +15,9 @@ import type {
 import { cache } from "react";
 import { getSnapshotCatalog } from "@/lib/snapshot-catalog";
 
-const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+// Keep the final fallback identical to next.config.ts and snapshot-catalog.ts:
+// local development assumes the API runs on the host at 127.0.0.1:8000.
+const internalBase = process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, public readonly path: string) {

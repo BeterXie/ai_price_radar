@@ -1,4 +1,4 @@
-# AI Price Radar 全站 UI 重构交付说明
+# AI Price Memory 全站 UI 重构交付说明
 
 ## 设计方向
 

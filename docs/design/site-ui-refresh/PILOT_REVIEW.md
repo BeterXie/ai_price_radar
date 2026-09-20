@@ -32,7 +32,7 @@ Review status: ready for user approval
 
 ## Benchmark comparison
 
-Reference family: OpenRouter Models, Vercel AI Gateway Models, Cloudflare Radar, and the current AI Price Radar product identity.
+Reference family: OpenRouter Models, Vercel AI Gateway Models, Cloudflare Radar, and the current AI Price Memory product identity.
 
 | Measure | Adjacent benchmark pattern | Signal Ledger pilot |
 | --- | --- | --- |

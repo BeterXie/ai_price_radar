@@ -44,10 +44,11 @@ async function loadLatestSnapshot(): Promise<any | null> {
     return memoryCache.data;
   }
 
+  // Keep the fallback chain identical to lib/api.ts and next.config.ts.
   const base =
     process.env.INTERNAL_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "https://ai.pricememo.cn";
+    "http://127.0.0.1:8000";
 
   try {
     const latestRes = await fetch(`${base}/data/latest.json`, {

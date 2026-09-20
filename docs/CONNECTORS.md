@@ -1,6 +1,6 @@
 # Source connectors
 
-AI Price Radar separates source reading from database publication. A connector converts one source into the common record shape; the existing import pipeline remains responsible for validation, idempotency, history, snapshots and PostgreSQL writes.
+AI Price Memory separates source reading from database publication. A connector converts one source into the common record shape; the existing import pipeline remains responsible for validation, idempotency, history, snapshots and PostgreSQL writes.
 
 ## Built-in connectors
 
