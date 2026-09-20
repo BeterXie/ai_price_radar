@@ -340,8 +340,12 @@ def bind_current_user_qq(db: Session, user: User) -> UserBotBinding | None:
         binding.target_id = target_id
         binding.is_active = True
         binding.updated_at = now
-    db.commit()
-    db.refresh(binding)
+    try:
+        db.commit()
+        db.refresh(binding)
+    except IntegrityError:
+        db.rollback()
+        return None
     return binding
 
 
@@ -446,57 +450,14 @@ def complete_qq_binding(
     try:
         db.commit()
         db.refresh(binding)
+    except IntegrityError:
+        db.rollback()
+        return None
     except Exception:
         db.rollback()
         raise
     logger.info("Successfully bound user %d to %s target %s", pending.user_id, channel, target_id)
     return binding
-
-
-def complete_qq_binding_for_user(
-    db: Session,
-    user: User,
-    bind_code: str,
-    target_id: str,
-    channel: str = "qq",
-) -> tuple[UserBotBinding | None, str]:
-    target_id = (target_id or "").strip()
-    if not target_id:
-        return None, "请输入要绑定的 QQ 标识"
-
-    pending = _find_pending_binding(db, bind_code)
-    if pending is None or pending.user_id != user.id:
-        return None, "绑定码无效或已失效"
-    if pending.status == "BOUND":
-        existing = db.scalar(
-            select(UserBotBinding).where(
-                UserBotBinding.user_id == user.id,
-                UserBotBinding.channel == channel,
-            )
-        )
-        if existing is not None and pending.target_id == target_id:
-            return existing, ""
-
-    collision = db.scalar(
-        select(UserBotBinding).where(
-            UserBotBinding.channel == channel,
-            UserBotBinding.target_id == target_id,
-            UserBotBinding.user_id != user.id,
-        )
-    )
-    if collision is not None:
-        return None, "该 QQ 已被其他账号绑定"
-
-    binding = complete_qq_binding(
-        db,
-        bind_code,
-        target_id,
-        channel=channel,
-        expected_user_id=user.id,
-    )
-    if binding is None:
-        return None, "绑定码无效、已失效或尝试过于频繁"
-    return binding, ""
 
 
 def unbind_user_channel(db: Session, user_id: int, channel: str = "qq") -> bool:

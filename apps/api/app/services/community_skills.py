@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import cast, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..models import CommunitySkill, Product
@@ -15,6 +15,42 @@ from ..schemas import (
 
 
 
+def _json_array_contains(db: Session, column, value: str):
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        return cast(column, JSONB).contains([value])
+    members = func.json_each(column).table_valued("value")
+    return select(1).select_from(members).where(members.c.value == value).exists()
+
+
+_SUMMARY_COLUMNS = (
+    CommunitySkill.id,
+    CommunitySkill.slug,
+    CommunitySkill.kind,
+    CommunitySkill.title,
+    CommunitySkill.subtitle,
+    CommunitySkill.summary,
+    CommunitySkill.author_name,
+    CommunitySkill.author_url,
+    CommunitySkill.repo_url,
+    CommunitySkill.stars_count,
+    CommunitySkill.install_command,
+    CommunitySkill.demo_url,
+    CommunitySkill.demo_type,
+    CommunitySkill.tags,
+    CommunitySkill.target_models,
+    CommunitySkill.related_product_slug,
+    CommunitySkill.is_pinned,
+    CommunitySkill.is_visible,
+    CommunitySkill.sort_order,
+    CommunitySkill.view_count,
+    CommunitySkill.copy_count,
+    CommunitySkill.created_at,
+    CommunitySkill.updated_at,
+)
+
+
 def list_community_skills(
     db: Session,
     *,
@@ -26,14 +62,14 @@ def list_community_skills(
     page_size: int = 20,
     visible_only: bool = True,
 ) -> CommunitySkillPageOut:
-    stmt = select(CommunitySkill)
+    conditions = []
     if visible_only:
-        stmt = stmt.where(CommunitySkill.is_visible.is_(True))
+        conditions.append(CommunitySkill.is_visible.is_(True))
     if kind:
-        stmt = stmt.where(CommunitySkill.kind == kind)
+        conditions.append(CommunitySkill.kind == kind)
     if search:
         term = f"%{search.strip()}%"
-        stmt = stmt.where(
+        conditions.append(
             or_(
                 CommunitySkill.title.ilike(term),
                 CommunitySkill.subtitle.ilike(term),
@@ -41,39 +77,42 @@ def list_community_skills(
                 CommunitySkill.author_name.ilike(term),
             )
         )
+    if tag:
+        conditions.append(_json_array_contains(db, CommunitySkill.tags, tag))
+    if model:
+        conditions.append(_json_array_contains(db, CommunitySkill.target_models, model))
 
-    # Order: pinned first, then sort_order DESC, then id DESC
-    stmt = stmt.order_by(
+    total = int(db.scalar(
+        select(func.count(CommunitySkill.id)).where(*conditions)
+    ) or 0)
+    offset = max(0, (page - 1) * page_size)
+    page_stmt = select(*_SUMMARY_COLUMNS).where(*conditions).order_by(
         CommunitySkill.is_pinned.desc(),
         CommunitySkill.sort_order.desc(),
         CommunitySkill.id.desc(),
-    )
-
-    all_items = list(db.scalars(stmt).all())
-
-    # Tag and model filtering in Python (since tags/models are stored as JSON arrays)
-    filtered = []
-    for item in all_items:
-        if tag and tag not in (item.tags or []):
-            continue
-        if model and model not in (item.target_models or []):
-            continue
-        filtered.append(item)
-
-    total = len(filtered)
-    offset = max(0, (page - 1) * page_size)
-    paged = filtered[offset : offset + page_size]
+    ).offset(offset).limit(page_size)
+    paged = list(db.execute(page_stmt).mappings())
 
     # Collect kinds and all tags for facet navigation
-    base_query = select(CommunitySkill)
+    facet_conditions = []
     if visible_only:
-        base_query = base_query.where(CommunitySkill.is_visible.is_(True))
-    visible_skills = list(db.scalars(base_query).all())
-    kinds = sorted(list({s.kind for s in visible_skills if s.kind}))
-    all_tags = sorted(list({t for s in visible_skills for t in (s.tags or [])}))
+        facet_conditions.append(CommunitySkill.is_visible.is_(True))
+    kinds = sorted(
+        value
+        for value in db.scalars(
+            select(CommunitySkill.kind).where(*facet_conditions).distinct()
+        )
+        if value
+    )
+    all_tags = sorted({
+        tag_value
+        for tags in db.scalars(select(CommunitySkill.tags).where(*facet_conditions))
+        for tag_value in (tags or [])
+        if tag_value
+    })
 
     return CommunitySkillPageOut(
-        items=[CommunitySkillSummaryOut.model_validate(item, from_attributes=True) for item in paged],
+        items=[CommunitySkillSummaryOut.model_validate(dict(item)) for item in paged],
         total=total,
         page=page,
         page_size=page_size,
@@ -97,13 +136,20 @@ def get_community_skill_by_slug(
         return None
 
     if increment_view:
-        skill.view_count += 1
+        db.execute(
+            update(CommunitySkill)
+            .where(CommunitySkill.id == skill.id)
+            .values(view_count=CommunitySkill.view_count + 1)
+        )
         db.commit()
         db.refresh(skill)
 
     related_product = None
     if skill.related_product_slug:
-        prod = db.scalar(select(Product).where(Product.slug == skill.related_product_slug))
+        product_stmt = select(Product).where(Product.slug == skill.related_product_slug)
+        if visible_only:
+            product_stmt = product_stmt.where(Product.is_visible.is_(True))
+        prod = db.scalar(product_stmt)
         if prod:
             related_product = RelatedProductSummary(
                 slug=prod.slug,
@@ -115,15 +161,23 @@ def get_community_skill_by_slug(
 
     data = CommunitySkillDetailOut.model_validate(skill, from_attributes=True)
     data.related_product = related_product
+    if visible_only and related_product is None:
+        data.related_product_slug = None
     return data
 
 
 def record_community_skill_copy(db: Session, slug: str) -> bool:
-    stmt = select(CommunitySkill).where(CommunitySkill.slug == slug)
-    skill = db.scalar(stmt)
-    if not skill:
+    result = db.execute(
+        update(CommunitySkill)
+        .where(
+            CommunitySkill.slug == slug,
+            CommunitySkill.is_visible.is_(True),
+        )
+        .values(copy_count=CommunitySkill.copy_count + 1)
+    )
+    if result.rowcount != 1:
+        db.rollback()
         return False
-    skill.copy_count += 1
     db.commit()
     return True
 
@@ -203,11 +257,5 @@ def seed_default_community_skills(db: Session) -> int:
             skill = CommunitySkill(**item)
             db.add(skill)
             created_count += 1
-        else:
-            # Sync target_models and content if updated in seed data
-            for key, val in item.items():
-                if hasattr(existing, key) and key not in ("id", "created_at", "view_count", "copy_count"):
-                    setattr(existing, key, val)
     db.commit()
     return created_count
-

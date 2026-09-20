@@ -19,6 +19,13 @@ test("workflow registry contains all expected workflow slugs", () => {
 test("all OpenAI products reference at least one valid workflow", () => {
   for (const product of Object.values(guideRegistry.products)) {
     if (product.brand !== "openai") continue;
+    // Verification-only products deliver no account, key, or endpoint, so no
+    // Codex import workflow applies to them.
+    const isVerificationOnly = product.supportedDeliveryTypes.every((type) => type === "verification_service");
+    if (isVerificationOnly) {
+      assert.equal(product.workflowReferences?.length ?? 0, 0, product.productSlug);
+      continue;
+    }
     assert.ok(product.workflowReferences && product.workflowReferences.length > 0, product.productSlug);
     for (const reference of product.workflowReferences) {
       assert.ok(getWorkflowGuide(reference.workflowSlug), `${product.productSlug}: ${reference.workflowSlug}`);
@@ -133,7 +140,12 @@ test("guide search data includes Cockpit Sub2API CC Switch and Codex++", async (
 test("guide workflow search respects brand product and delivery filters", async () => {
   const pagePath = fileURLToPath(new URL("../app/guides/page.tsx", import.meta.url));
   const source = await readFile(pagePath, "utf8");
-  assert.match(source, /brand && brand !== "openai"/);
-  assert.match(source, /productGuide\?\.workflowReferences/);
-  assert.match(source, /reference\.workflowSlug === guide\.slug/);
+  // Products are scoped by brand/product/delivery filters first...
+  assert.match(source, /const scopedProducts = Object\.values\(productGuides\)\.filter\(\(guide\) =>/);
+  assert.match(source, /scopedBrands\.has\(guide\.brand\)/);
+  assert.match(source, /scopedDeliveries\.has\(guide\.deliveryType\)/);
+  // ...and workflows must be referenced by one of those scoped products.
+  assert.match(source, /const referencedWorkflows = new Set\(/);
+  assert.match(source, /scopedProducts\.flatMap\(\(guide\) => \(guide\.workflowReferences \?\? \[\]\)\.map\(\(reference\) => reference\.workflowSlug\)\)/);
+  assert.match(source, /if \(!referencedWorkflows\.has\(guide\.slug\)\) return false;/);
 });

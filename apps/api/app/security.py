@@ -43,16 +43,12 @@ def require_discovery_worker(x_discovery_worker_key: str = Header(default="")) -
 
 
 def get_token_from_request(request: Request) -> str:
-    settings = get_settings()
-    # 1. Check cookie
-    token = request.cookies.get(settings.session_cookie_name) or ""
-    if token:
-        return token
-    # 2. Check Authorization header
+    # Explicit API credentials take precedence over ambient browser cookies.
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:].strip()
-    return ""
+    settings = get_settings()
+    return request.cookies.get(settings.session_cookie_name) or ""
 
 
 def get_current_user(

@@ -39,6 +39,16 @@ async function apiFetch<T>(path: string, retries = 2, init?: RequestInit): Promi
         signal: options.signal || AbortSignal.timeout(6000),
       });
       if (!response.ok) {
+        const retryable = response.status === 429 || response.status >= 500;
+        if (retryable && attempt < retries) {
+          attempt += 1;
+          const retryAfter = Number(response.headers.get("retry-after"));
+          const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 5000)
+            : 100 * attempt;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
         throw new ApiError(response.status, path);
       }
       return (await response.json()) as T;
@@ -80,9 +90,9 @@ export const getProduct = cache(async function getProduct(slug: string, query = 
   }
 });
 
-export async function getShop(token: string): Promise<ShopDetail | null> {
+export async function getShop(token: string, query = ""): Promise<ShopDetail | null> {
   try {
-    return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}`, 2, { next: { revalidate: 60 } });
+    return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}${query ? `?${query}` : ""}`, 2, { next: { revalidate: 60 } });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -100,7 +110,10 @@ export async function getShopCards(query = ""): Promise<ShopListResponse> {
 }
 
 export const getMeta = cache(async function getMeta(): Promise<Meta> {
-  return apiFetch("/api/v1/meta", 2, { next: { revalidate: 300 } });
+  return apiFetch("/api/v1/meta", 0, {
+    next: { revalidate: 300 },
+    signal: AbortSignal.timeout(1200),
+  });
 });
 
 export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {
@@ -110,23 +123,24 @@ export async function getCorrections(query = ""): Promise<PublicCorrectionPage> 
 export async function getSkills(query = ""): Promise<CommunitySkillPage | null> {
   try {
     return await apiFetch<CommunitySkillPage>(`/api/v1/skills${query ? `?${query}` : ""}`);
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
 }
 
-export async function getSkillDetail(slug: string): Promise<CommunitySkillDetail | null> {
+export const getSkillDetail = cache(async function getSkillDetail(slug: string): Promise<CommunitySkillDetail | null> {
   try {
     return await apiFetch<CommunitySkillDetail>(`/api/v1/skills/${encodeURIComponent(slug)}`);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
-    return null;
+    throw error;
   }
-}
+});
 
 export async function recordSkillCopy(slug: string): Promise<boolean> {
   try {
-    const response = await fetch(`${internalBase}/api/v1/skills/${encodeURIComponent(slug)}/copy`, {
+    const response = await fetch(`/api/v1/skills/${encodeURIComponent(slug)}/copy`, {
       method: "POST",
     });
     return response.ok;
@@ -134,4 +148,3 @@ export async function recordSkillCopy(slug: string): Promise<boolean> {
     return false;
   }
 }
-

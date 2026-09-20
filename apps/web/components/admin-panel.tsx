@@ -77,6 +77,7 @@ type AdminOffer = {
 type Report = {
   id: number;
   offer_id: number | null;
+  product_slug: string | null;
   kind: string;
   message: string;
   contact: string;
@@ -137,6 +138,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("current");
   const [offerSearch, setOfferSearch] = useState("");
   const [reclassifyingOfferId, setReclassifyingOfferId] = useState<number | null>(null);
+  const [reclassifyingAll, setReclassifyingAll] = useState(false);
   const [actionToast, setActionToast] = useState<string>("");
   const [reports, setReports] = useState<Report[]>([]);
   const [reportFilter, setReportFilter] = useState<ReportFilter>("open");
@@ -149,6 +151,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [updatingAdvertise, setUpdatingAdvertise] = useState<boolean>(false);
   const [botEnabled, setBotEnabled] = useState<boolean>(true);
   const [updatingBot, setUpdatingBot] = useState<boolean>(false);
+  const [settingsLoadState, setSettingsLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [siteNotice, setSiteNotice] = useState({
     enabled: true,
     badge: "最新动态",
@@ -157,6 +160,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     link_text: "",
     link_url: "",
   });
+  const [updatingSiteNotice, setUpdatingSiteNotice] = useState<boolean>(false);
   const [savingSiteNotice, setSavingSiteNotice] = useState<boolean>(false);
   const [communityNoticeForm, setCommunityNoticeForm] = useState({
     enabled: true,
@@ -166,12 +170,15 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     qq_url: "",
     btn_text: "一键加入 QQ 群",
   });
+  const [updatingCommunityNotice, setUpdatingCommunityNotice] = useState<boolean>(false);
   const [savingCommunityNotice, setSavingCommunityNotice] = useState<boolean>(false);
   const [error, setError] = useState(previewState === "error" ? "管理数据暂时无法加载。输入密钥后可以重新连接。" : "");
   const headers = { "X-Admin-Key": key };
   // Child panels must use a verified credential, and remount when it changes.
   const verifiedHeaders = { "X-Admin-Key": verifiedKey };
   const hasScrolledToIntakeRef = useRef(false);
+  const offerRequestSeqRef = useRef(0);
+  const settingsReady = settingsLoadState === "loaded";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -230,6 +237,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     stock: StockFilter = stockFilter,
     scope: ScopeFilter = scopeFilter
   ) {
+    const requestSeq = ++offerRequestSeqRef.current;
     const params = new URLSearchParams();
     params.set("limit", "100");
     params.set("offset", String(offset));
@@ -250,9 +258,13 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       params.set("product_slug", productSlug.trim());
     }
     if (search.trim()) params.set("q", search.trim());
-    const response = await fetch(`${API}/api/v1/admin/offers?${params.toString()}`, { headers });
+    const response = await fetch(`${API}/api/v1/admin/offers?${params.toString()}`, {
+      headers: verifiedKey ? verifiedHeaders : headers,
+    });
+    if (requestSeq !== offerRequestSeqRef.current) return;
     if (response.ok) {
       const data = await response.json();
+      if (requestSeq !== offerRequestSeqRef.current) return;
       const totalHeader = response.headers.get("x-total-count");
       const total = totalHeader ? parseInt(totalHeader, 10) : data.length;
       setOfferTotal(total);
@@ -261,6 +273,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       } else {
         setOffers(data);
       }
+    } else {
+      setError(`报价列表加载失败 (${response.status})`);
     }
   }
 
@@ -286,8 +300,10 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function load() {
+    const offerRequestSeq = ++offerRequestSeqRef.current;
     setError("");
     setLoading(true);
+    setSettingsLoadState("loading");
     try {
       const params = new URLSearchParams();
       params.set("limit", "100");
@@ -316,6 +332,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       ]);
       if (!statsResponse.ok || !offersResponse.ok || !reportsResponse.ok || !intakesResponse.ok) {
         setError("管理密钥无效，或 API 无法访问。密钥仍保留在当前页面，可以修改后重试。");
+        setSettingsLoadState("error");
         setVerifiedKey("");
         return;
       }
@@ -324,30 +341,41 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setVerifiedKey(key);
       setStats(await statsResponse.json());
       if (settingsResponse && settingsResponse.ok) {
-        const settingsData = await settingsResponse.json();
-        setAdvertiseEnabled(Boolean(settingsData.advertise_enabled));
-        setBotEnabled(settingsData.bot_enabled ?? true);
-        setSiteNotice({
-          enabled: settingsData.site_notice_enabled ?? true,
-          badge: settingsData.site_notice_badge || "最新动态",
-          title: settingsData.site_notice_title || "",
-          content: settingsData.site_notice_content || "",
-          link_text: settingsData.site_notice_link_text || "",
-          link_url: settingsData.site_notice_link_url || "",
-        });
-        setCommunityNoticeForm({
-          enabled: settingsData.community_enabled ?? true,
-          title: settingsData.community_title || "加入 AI 比价交流群",
-          desc: settingsData.community_desc || "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。",
-          qq_group: settingsData.community_qq_group || "938741334",
-          qq_url: settingsData.community_qq_url || "",
-          btn_text: settingsData.community_btn_text || "一键加入 QQ 群",
-        });
+        try {
+          const settingsData = await settingsResponse.json();
+          setAdvertiseEnabled(Boolean(settingsData.advertise_enabled));
+          setBotEnabled(settingsData.bot_enabled ?? true);
+          setSiteNotice({
+            enabled: settingsData.site_notice_enabled ?? true,
+            badge: settingsData.site_notice_badge || "最新动态",
+            title: settingsData.site_notice_title || "",
+            content: settingsData.site_notice_content || "",
+            link_text: settingsData.site_notice_link_text || "",
+            link_url: settingsData.site_notice_link_url || "",
+          });
+          setCommunityNoticeForm({
+            enabled: settingsData.community_enabled ?? true,
+            title: settingsData.community_title || "加入 AI 比价交流群",
+            desc: settingsData.community_desc || "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。",
+            qq_group: settingsData.community_qq_group || "938741334",
+            qq_url: settingsData.community_qq_url || "",
+            btn_text: settingsData.community_btn_text || "一键加入 QQ 群",
+          });
+          setSettingsLoadState("loaded");
+        } catch {
+          setSettingsLoadState("error");
+          setError("管理数据已加载，但运营设置响应无法解析；设置写入已禁用，请重新连接。");
+        }
+      } else {
+        setSettingsLoadState("error");
+        setError("管理数据已加载，但运营设置读取失败；设置写入已禁用，请重新连接。");
       }
       const offersData = await offersResponse.json();
-      const totalHeader = offersResponse.headers.get("x-total-count");
-      setOfferTotal(totalHeader ? parseInt(totalHeader, 10) : offersData.length);
-      setOffers(offersData);
+      if (offerRequestSeq === offerRequestSeqRef.current) {
+        const totalHeader = offersResponse.headers.get("x-total-count");
+        setOfferTotal(totalHeader ? parseInt(totalHeader, 10) : offersData.length);
+        setOffers(offersData);
+      }
       const loadedReports = await reportsResponse.json() as Report[];
       setReports(loadedReports);
       setReportDrafts(Object.fromEntries(loadedReports.map((report) => [report.id, { public_summary: report.public_summary || "", merchant_response: report.merchant_response || "" }])));
@@ -355,6 +383,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setIntakes(loadedIntakes);
       setIntakeReasons(Object.fromEntries(loadedIntakes.map((intake) => [intake.id, intake.decision_note || ""])));
     } catch {
+      setSettingsLoadState("error");
       setError("管理 API 暂时无法访问。密钥仍保留在当前页面，请稍后重试。");
     } finally {
       setLoading(false);
@@ -388,12 +417,13 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function toggleAdvertise(targetState: boolean) {
+    if (!settingsReady || updatingAdvertise) return;
     setUpdatingAdvertise(true);
     setActionToast("");
     try {
       const response = await fetch(`${API}/api/v1/admin/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
         body: JSON.stringify({ advertise_enabled: targetState }),
       });
       if (response.ok) {
@@ -415,12 +445,13 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function toggleBot(targetState: boolean) {
+    if (!settingsReady || updatingBot) return;
     setUpdatingBot(true);
     setActionToast("");
     try {
       const response = await fetch(`${API}/api/v1/admin/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
         body: JSON.stringify({ bot_enabled: targetState }),
       });
       if (response.ok) {
@@ -442,12 +473,15 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function toggleSiteNoticeEnabled(targetState: boolean) {
+    if (!settingsReady || updatingSiteNotice) return;
+    const previousState = siteNotice.enabled;
+    setUpdatingSiteNotice(true);
     setSiteNotice((prev) => ({ ...prev, enabled: targetState }));
     setActionToast("");
     try {
       const response = await fetch(`${API}/api/v1/admin/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
         body: JSON.stringify({ site_notice_enabled: targetState }),
       });
       if (response.ok) {
@@ -459,20 +493,25 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
             : "已停用页面顶部横条公告（前台已隐藏）"
         );
       } else {
+        setSiteNotice((prev) => ({ ...prev, enabled: previousState }));
         setError("更新顶部公告开关失败。");
       }
     } catch {
+      setSiteNotice((prev) => ({ ...prev, enabled: previousState }));
       setError("网络请求失败，未能更新顶部公告开关。");
+    } finally {
+      setUpdatingSiteNotice(false);
     }
   }
 
   async function saveSiteNotice() {
+    if (!settingsReady || savingSiteNotice || updatingSiteNotice) return;
     setSavingSiteNotice(true);
     setActionToast("");
     try {
       const response = await fetch(`${API}/api/v1/admin/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
         body: JSON.stringify({
           site_notice_enabled: siteNotice.enabled,
           site_notice_badge: siteNotice.badge.trim(),
@@ -504,12 +543,15 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function toggleCommunityNoticeEnabled(targetState: boolean) {
+    if (!settingsReady || updatingCommunityNotice) return;
+    const previousState = communityNoticeForm.enabled;
+    setUpdatingCommunityNotice(true);
     setCommunityNoticeForm((prev) => ({ ...prev, enabled: targetState }));
     setActionToast("");
     try {
       const response = await fetch(`${API}/api/v1/admin/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
         body: JSON.stringify({ community_enabled: targetState }),
       });
       if (response.ok) {
@@ -521,20 +563,25 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
             : "已停用交流群引导弹窗（前台已隐藏）"
         );
       } else {
+        setCommunityNoticeForm((prev) => ({ ...prev, enabled: previousState }));
         setError("更新交流群引导弹窗开关失败。");
       }
     } catch {
+      setCommunityNoticeForm((prev) => ({ ...prev, enabled: previousState }));
       setError("网络请求失败，未能更新交流群引导弹窗开关。");
+    } finally {
+      setUpdatingCommunityNotice(false);
     }
   }
 
   async function saveCommunityNotice() {
+    if (!settingsReady || savingCommunityNotice || updatingCommunityNotice) return;
     setSavingCommunityNotice(true);
     setActionToast("");
     try {
       const response = await fetch(`${API}/api/v1/admin/settings`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
         body: JSON.stringify({
           community_enabled: communityNoticeForm.enabled,
           community_title: communityNoticeForm.title.trim(),
@@ -566,6 +613,9 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function patchOffer(offerId: number, body: Record<string, unknown>) {
+    if (!verifiedKey) return;
+    const previousOffer = offers.find((offer) => offer.id === offerId);
+    if (!previousOffer) return;
     // 1. Optimistic in-place update so DOM doesn't collapse or lose focus
     setOffers((prev) =>
       prev.map((o) => {
@@ -583,14 +633,21 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
 
     // 2. Perform network request while preserving scroll position
     await preserveScroll(async () => {
-      const response = await fetch(`${API}/api/v1/admin/offers/${offerId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(body),
-      });
-      if (response.ok) {
-        const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
+      try {
+        const response = await fetch(`${API}/api/v1/admin/offers/${offerId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...verifiedHeaders },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.detail || `报价更新失败 (${response.status})`);
+        }
+        const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers: verifiedHeaders });
         if (statsRes.ok) setStats(await statsRes.json());
+      } catch (cause) {
+        setOffers((prev) => prev.map((offer) => (offer.id === offerId ? previousOffer : offer)));
+        setError(cause instanceof Error ? cause.message : `报价 #${offerId} 更新失败`);
       }
     });
   }
@@ -602,7 +659,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       try {
         const response = await fetch(`${API}/api/v1/admin/offers/${offerId}/reclassify`, {
           method: "POST",
-          headers,
+          headers: verifiedHeaders,
         });
         if (response.ok) {
           const data = await response.json();
@@ -623,7 +680,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 : o
             )
           );
-          const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers });
+          const statsRes = await fetch(`${API}/api/v1/admin/stats`, { headers: verifiedHeaders });
           if (statsRes.ok) setStats(await statsRes.json());
         } else {
           setError(`报价 #${offerId} 自动分类失败`);
@@ -637,15 +694,28 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   }
 
   async function reclassify() {
+    if (reclassifyingAll || !verifiedKey) return;
+    setReclassifyingAll(true);
+    setError("");
     await preserveScroll(async () => {
-      const response = await fetch(`${API}/api/v1/admin/reclassify`, {
-        method: "POST",
-        headers,
-      });
-      if (response.ok) {
+      try {
+        const response = await fetch(`${API}/api/v1/admin/reclassify`, {
+          method: "POST",
+          headers: verifiedHeaders,
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.detail || `全量重新分类失败 (${response.status})`);
+        }
         const data = await response.json();
         setActionToast(`全量重新分类完成：变更 ${data.changed} 条，未分类 ${data.unclassified} 条`);
-        await load();
+        await loadOffers();
+        const statsResponse = await fetch(`${API}/api/v1/admin/stats`, { headers: verifiedHeaders });
+        if (statsResponse.ok) setStats(await statsResponse.json());
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "全量重新分类请求失败");
+      } finally {
+        setReclassifyingAll(false);
       }
     });
   }
@@ -771,8 +841,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
         <button type="button" onClick={load} disabled={!key.trim() || loading} className="button-primary tactile disabled:cursor-not-allowed disabled:opacity-50">
           {loading ? "正在连接" : "验证并加载"}
         </button>
-        <button type="button" onClick={reclassify} disabled={!stats || loading} className="button-secondary tactile disabled:cursor-not-allowed disabled:opacity-50">
-          <ArrowClockwise size={17} />重新分类
+        <button type="button" onClick={reclassify} disabled={!stats || loading || reclassifyingAll} className="button-secondary tactile disabled:cursor-not-allowed disabled:opacity-50">
+          <ArrowClockwise size={17} />{reclassifyingAll ? "正在重新分类" : "重新分类"}
         </button>
       </section>
 
@@ -853,6 +923,16 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
             ))}
           </section>
 
+          {settingsLoadState !== "loaded" && (
+            <div role={settingsLoadState === "error" ? "alert" : "status"} className="rounded-[10px] border border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-4 py-3 text-sm text-[color:var(--muted)]">
+              {settingsLoadState === "error"
+                ? "运营设置未成功读取。为避免覆盖生产配置，以下设置暂时只读；请重新验证并加载。"
+                : "正在读取运营设置，写入操作暂时禁用。"}
+            </div>
+          )}
+
+          <fieldset disabled={!settingsReady} className="contents">
+
           {/* 商务合作 / 广告投放专区 */}
           <section className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
             <div className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)] px-5 py-4">
@@ -877,7 +957,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 <div className="shrink-0">
                   <button
                     type="button"
-                    disabled={updatingAdvertise}
+                    disabled={updatingAdvertise || !settingsReady}
                     onClick={() => toggleAdvertise(!advertiseEnabled)}
                     className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${advertiseEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
                   >
@@ -915,7 +995,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 <div className="shrink-0">
                   <button
                     type="button"
-                    disabled={updatingBot}
+                    disabled={updatingBot || !settingsReady}
                     onClick={() => toggleBot(!botEnabled)}
                     className={`tactile inline-flex min-h-10 items-center justify-center rounded-[10px] px-5 text-xs font-semibold transition-all ${botEnabled ? "border border-[color:var(--danger)] text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)]" : "bg-[color:var(--ink)] text-white hover:opacity-90"} disabled:cursor-not-allowed disabled:opacity-50`}
                   >
@@ -944,10 +1024,11 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 </span>
                 <button
                   type="button"
+                  disabled={updatingSiteNotice || !settingsReady}
                   onClick={() => toggleSiteNoticeEnabled(!siteNotice.enabled)}
-                  className={`tactile inline-flex h-8 items-center justify-center rounded-[8px] px-3 text-xs font-medium border ${siteNotice.enabled ? "border-[color:var(--line-strong)] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] text-[color:var(--ink)]" : "bg-[color:var(--ink)] text-white"}`}
+                  className={`tactile inline-flex h-8 items-center justify-center rounded-[8px] px-3 text-xs font-medium border disabled:cursor-not-allowed disabled:opacity-50 ${siteNotice.enabled ? "border-[color:var(--line-strong)] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] text-[color:var(--ink)]" : "bg-[color:var(--ink)] text-white"}`}
                 >
-                  {siteNotice.enabled ? "快速关闭" : "快速开启"}
+                  {updatingSiteNotice ? "正在保存" : siteNotice.enabled ? "快速关闭" : "快速开启"}
                 </button>
               </div>
             </div>
@@ -1055,7 +1136,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               <div className="flex justify-end pt-2">
                 <button
                   type="button"
-                  disabled={savingSiteNotice}
+                  disabled={savingSiteNotice || updatingSiteNotice || !settingsReady}
                   onClick={saveSiteNotice}
                   className="button-primary tactile disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -1093,10 +1174,11 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 </span>
                 <button
                   type="button"
+                  disabled={updatingCommunityNotice || !settingsReady}
                   onClick={() => toggleCommunityNoticeEnabled(!communityNoticeForm.enabled)}
-                  className={`tactile inline-flex h-8 items-center justify-center rounded-[8px] px-3 text-xs font-medium border ${communityNoticeForm.enabled ? "border-[color:var(--line-strong)] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] text-[color:var(--ink)]" : "bg-[color:var(--ink)] text-white"}`}
+                  className={`tactile inline-flex h-8 items-center justify-center rounded-[8px] px-3 text-xs font-medium border disabled:cursor-not-allowed disabled:opacity-50 ${communityNoticeForm.enabled ? "border-[color:var(--line-strong)] bg-[color:var(--panel)] hover:bg-[color:var(--subtle)] text-[color:var(--ink)]" : "bg-[color:var(--ink)] text-white"}`}
                 >
-                  {communityNoticeForm.enabled ? "快速关闭" : "快速开启"}
+                  {updatingCommunityNotice ? "正在保存" : communityNoticeForm.enabled ? "快速关闭" : "快速开启"}
                 </button>
               </div>
             </div>
@@ -1207,7 +1289,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               <div className="flex justify-end pt-2">
                 <button
                   type="button"
-                  disabled={savingCommunityNotice}
+                  disabled={savingCommunityNotice || updatingCommunityNotice || !settingsReady}
                   onClick={saveCommunityNotice}
                   className="button-primary tactile disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -1226,6 +1308,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               </div>
             </div>
           </section>
+          </fieldset>
         </div>
       )}
 
@@ -1417,6 +1500,9 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                         )}
                         {report.offer_id ? (
                           <span className="text-xs mono text-[color:var(--muted)]">关联报价 #{report.offer_id}</span>
+                        ) : null}
+                        {report.product_slug ? (
+                          <span className="text-xs mono text-[color:var(--muted)]">关联商品 {report.product_slug}</span>
                         ) : null}
                         <span className="text-xs text-[color:var(--muted)] ml-auto">
                           提交于 {new Date(report.created_at).toLocaleString("zh-CN", { hour12: false })}

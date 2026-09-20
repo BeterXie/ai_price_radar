@@ -1,4 +1,6 @@
 import sys
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
+from app.core.config import get_settings
 from app.main import app
 from app.models import CatalogSnapshot, Offer, OfferClick, Product, RawProduct, Shop
 
@@ -132,6 +135,12 @@ def test_record_offer_click_and_debounce(client, test_db):
     assert len(clicks) == 1
     assert clicks[0].shop_id == shop.id
     assert clicks[0].product_slug == "chatgpt-plus"
+    expected_hash = hmac.new(
+        get_settings().session_secret_key.encode("utf-8"),
+        b"offer-click:testclient",
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    assert clicks[0].ip_hash == expected_hash
 
     # 2. Immediate second click from same IP (debounced within 60s)
     res2 = client.post(f"/api/v1/offers/{offer.id}/click")
@@ -148,6 +157,15 @@ def test_record_offer_click_and_debounce(client, test_db):
 def test_record_offer_click_not_found(client, test_db):
     res = client.post("/api/v1/offers/99999/click")
     assert res.status_code == 404
+
+
+def test_hidden_offer_click_is_not_recorded(client, test_db):
+    _, _, offer = _seed_catalog(test_db)
+    offer.hidden_reason = "manual moderation"
+    test_db.commit()
+    response = client.post(f"/api/v1/offers/{offer.id}/click")
+    assert response.status_code == 404
+    assert test_db.scalar(select(OfferClick).where(OfferClick.offer_id == offer.id)) is None
 
 
 def test_record_shop_click(client, test_db):

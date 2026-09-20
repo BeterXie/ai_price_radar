@@ -6,7 +6,6 @@ import { GuideIndex } from "@/components/guides/guide-index";
 import { GuideJsonLd } from "@/components/guides/guide-json-ld";
 import { PageHero } from "@/components/page-shell";
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
-import type { ProductSlug } from "@/lib/guides/types";
 import { BRAND_NAMES, breadcrumbJsonLd } from "./_shared";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -47,39 +46,34 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
   const product = lastValue(params.product);
   const delivery = lastValue(params.delivery);
 
-  const brands = Object.values(brandGuides).filter((guide) =>
-    (!brand || guide.brand === brand) && includesQuery([guide.title, guide.description, BRAND_NAMES[guide.brand]], query),
-  );
-  const products = Object.values(productGuides).filter((guide) =>
+  const hasStructuralFilters = Boolean(brand || product || delivery);
+  const scopedProducts = Object.values(productGuides).filter((guide) =>
     (!brand || guide.brand === brand) &&
     (!product || guide.productSlug === product) &&
-    (!delivery || (guide.supportedDeliveryTypes as readonly string[]).includes(delivery)) &&
+    (!delivery || (guide.supportedDeliveryTypes as readonly string[]).includes(delivery)),
+  );
+  const scopedBrands = new Set(scopedProducts.map((guide) => guide.brand));
+  const scopedDeliveries = new Set(scopedProducts.flatMap((guide) => [...guide.supportedDeliveryTypes]));
+  const brands = Object.values(brandGuides).filter((guide) =>
+    scopedBrands.has(guide.brand) && includesQuery([guide.title, guide.description, BRAND_NAMES[guide.brand]], query),
+  );
+  const products = scopedProducts.filter((guide) =>
     includesQuery([guide.title, guide.description, guide.productSlug, BRAND_NAMES[guide.brand]], query),
   );
   const deliveries = Object.values(deliveryGuides).filter((guide) =>
-    (!delivery || guide.deliveryType === delivery) && includesQuery([guide.title, guide.summary, guide.shortLabel], query),
+    scopedDeliveries.has(guide.deliveryType) && includesQuery([guide.title, guide.summary, guide.shortLabel], query),
   );
-  const general = Object.values(generalGuides).filter((guide) => includesQuery([guide.title, guide.description], query));
+  const featuredSlugs = new Set(["buying-checklist", "account-control", "subscription-verification"]);
+  const matchingGeneral = hasStructuralFilters
+    ? []
+    : Object.values(generalGuides).filter((guide) => includesQuery([guide.title, guide.description], query));
+  const featured = matchingGeneral.filter((guide) => featuredSlugs.has(guide.slug));
+  const general = matchingGeneral.filter((guide) => !featuredSlugs.has(guide.slug));
+  const referencedWorkflows = new Set(
+    scopedProducts.flatMap((guide) => (guide.workflowReferences ?? []).map((reference) => reference.workflowSlug)),
+  );
   const workflows = Object.values(workflowGuides).filter((guide) => {
-    if (brand && brand !== "openai") return false;
-    if (product) {
-      const productGuide = productGuides[product as ProductSlug];
-      const referenced = productGuide?.workflowReferences?.some(
-        (reference) => reference.workflowSlug === guide.slug,
-      ) ?? false;
-      if (!referenced) return false;
-    }
-    if (delivery) {
-      const referencedByDelivery = Object.values(productGuides).some(
-        (productGuide) =>
-          productGuide.brand === "openai" &&
-          (productGuide.supportedDeliveryTypes as readonly string[]).includes(delivery) &&
-          (productGuide.workflowReferences ?? []).some(
-            (reference) => reference.workflowSlug === guide.slug,
-          ),
-      );
-      if (!referencedByDelivery) return false;
-    }
+    if (!referencedWorkflows.has(guide.slug)) return false;
     return includesQuery(
       [
         guide.title,
@@ -94,6 +88,7 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
     );
   });
   const hasFilters = Boolean(query || brand || product || delivery);
+  const resultCount = featured.length + brands.length + products.length + deliveries.length + general.length + workflows.length;
   const guideCount = Object.keys(brandGuides).length
     + Object.keys(productGuides).length
     + Object.keys(deliveryGuides).length
@@ -154,16 +149,16 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
           </form>
           {hasFilters ? (
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-black/55">
-              <span>找到 {brands.length + products.length + deliveries.length + general.length + workflows.length} 篇相关教程</span>
+              <span>找到 {resultCount} 篇相关教程</span>
               <Link href="/guides" className="button-tertiary">清空筛选</Link>
             </div>
           ) : null}
         </section>
 
-        <GuideIndex title="第一次购买先看" description="先确认买的是什么、账号由谁控制，以及交付后能否自行修改资料。">
-          <GuideCard href="/guides/buying-checklist" title="购买前检查" description="核对产品、交付方式、期限、质保和售后条件。" meta="通用指南" />
-          <GuideCard href="/guides/account-control" title="判断账号控制权" description="分清登录凭据、邮箱、恢复渠道和 MFA 的控制方。" meta="账号安全" />
-          <GuideCard href="/guides/subscription-verification" title="确认订阅状态" description="从官方账户页确认套餐、期限、账单和续费状态。" meta="状态确认" />
+        <GuideIndex title="第一次购买先看" description="先确认买的是什么、账号由谁控制，以及交付后能否自行修改资料。" empty={featured.length === 0}>
+          {featured.map((guide) => (
+            <GuideCard key={guide.slug} href={`/guides/${guide.slug}`} title={guide.title} description={guide.description} meta="通用指南" />
+          ))}
         </GuideIndex>
 
         <GuideIndex id="brands" title="全部品牌" description="查看品牌产品范围、套餐选择、常见交付和官方帮助入口。" empty={brands.length === 0}>

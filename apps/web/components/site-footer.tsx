@@ -31,16 +31,18 @@ export function SiteFooter({ advertiseEnabled = false }: { advertiseEnabled?: bo
           <h2 className="text-2xl font-semibold leading-tight tracking-[-.035em] sm:text-3xl">购买前请核对来源页面</h2>
           <p className="mt-4 text-sm leading-7 text-[color:var(--muted)]">本站聚合公开报价，不参与交易。价格、库存、交付方式和退款规则以来源页面为准。</p>
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer" className="footer-cta inline-flex min-h-11 items-center gap-2 rounded-[12px] px-4 text-sm font-semibold">
-              查看开源仓库 <ArrowSquareOut size={16} />
-            </a>
+            {GITHUB_REPOSITORY_URL ? (
+              <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noreferrer" className="footer-cta inline-flex min-h-11 items-center gap-2 rounded-[12px] px-4 text-sm font-semibold">
+                查看开源仓库 <ArrowSquareOut size={16} />
+              </a>
+            ) : null}
             {advertiseEnabled ? (
               <Link href="/advertise" className="footer-cta inline-flex min-h-11 items-center gap-2 rounded-[12px] px-4 text-sm font-semibold">
                 商务合作 / 广告投放
               </Link>
             ) : null}
           </div>
-          {advertiseEnabled ? (
+          {advertiseEnabled && BUSINESS_EMAIL ? (
             <p className="mt-3 text-xs text-[color:var(--muted)]">
               商务合作联系邮箱：
               <a href={`mailto:${BUSINESS_EMAIL}`} className="underline hover:text-[color:var(--ink)]">

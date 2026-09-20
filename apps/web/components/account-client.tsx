@@ -27,7 +27,6 @@ import {
   logout,
   startQQBotBinding,
   checkQQBotBinding,
-  manualConfirmQQBotBinding,
   updateQQNotificationPreferences,
   unbindQQBot,
   bindCurrentLoggedInQQ,
@@ -55,7 +54,6 @@ export function AccountClient() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrError, setQrError] = useState(false);
   const [bindStarting, setBindStarting] = useState(false);
-  const [manualTargetId, setManualTargetId] = useState("");
   const [bindError, setBindError] = useState<string | null>(null);
   const [bindSuccess, setBindSuccess] = useState<string | null>(null);
   const [prefSaving, setPrefSaving] = useState(false);
@@ -188,25 +186,6 @@ export function AccountClient() {
         // it keeps polling and can report EXPIRED after this binding succeeded.
         setBindSession(null);
         setBindSuccess("🎉 已成功一键绑定您当前登录的 QQ！");
-        loadData();
-      }
-    } catch (err: any) {
-      setBindError(err.message || "绑定失败");
-    } finally {
-      setBindStarting(false);
-    }
-  };
-
-  const handleManualConfirm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!bindSession || !manualTargetId.trim()) return;
-    setBindStarting(true);
-    setBindError(null);
-    try {
-      const res = await manualConfirmQQBotBinding(bindSession.bind_code, manualTargetId.trim());
-      if (res.success) {
-        setBindSession(null);
-        setBindSuccess("🎉 QQ 机器人绑定成功！");
         loadData();
       }
     } catch (err: any) {
@@ -797,25 +776,6 @@ export function AccountClient() {
                             /bind {bindSession.bind_code}
                           </code>
                         </p>
-                      </div>
-                      <div className="pt-3 border-t hairline">
-                        <p className="font-bold text-[color:var(--ink)]">备选方式二：手动输入 QQ 号或 OpenID</p>
-                        <form onSubmit={handleManualConfirm} className="space-y-2 mt-2">
-                          <input
-                            type="text"
-                            placeholder="输入您的 QQ 号或 OpenID"
-                            value={manualTargetId}
-                            onChange={(e) => setManualTargetId(e.target.value)}
-                            className="field text-xs py-2 px-3 rounded-lg"
-                          />
-                          <button
-                            type="submit"
-                            disabled={bindStarting || !manualTargetId.trim()}
-                            className="button-primary tactile w-full py-2 px-3 rounded-lg text-xs font-semibold disabled:opacity-50"
-                          >
-                            {bindStarting ? "绑定中..." : "确认绑定"}
-                          </button>
-                        </form>
                       </div>
                     </div>
                   </details>

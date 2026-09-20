@@ -29,6 +29,7 @@ DEFAULT_PUBLIC_BASE_URL = os.getenv("PUBLIC_SITE_URL", "https://ai.pricememo.cn"
 DISABLED_SOURCE_PLATFORMS: set[str] = {"dujiao_next"}
 # Mirrors services/pricing.py: prices below this absolute floor are not trusted.
 MIN_TRUSTED_PRICE_CNY = Decimal("1.00")
+DEFAULT_STALE_OFFER_HOURS = 72
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -40,15 +41,14 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _fresh_cutoff() -> datetime | None:
-    """Staleness cutoff mirroring the public catalog (STALE_OFFER_HOURS)."""
-    hours = os.getenv("STALE_OFFER_HOURS", "").strip()
-    if not hours:
-        return None
+def _fresh_cutoff(reference_time: datetime) -> datetime:
+    """Fixed staleness cutoff mirroring the public catalog."""
+    hours = os.getenv("STALE_OFFER_HOURS", str(DEFAULT_STALE_OFFER_HOURS)).strip()
     try:
-        return datetime.now(timezone.utc) - timedelta(hours=float(hours))
+        parsed_hours = float(hours)
     except ValueError:
-        return None
+        parsed_hours = float(DEFAULT_STALE_OFFER_HOURS)
+    return reference_time - timedelta(hours=parsed_hours)
 
 OFFICIAL_REFERENCES: dict[str, dict[str, Any]] = {
     "chatgpt-plus": {
@@ -216,8 +216,6 @@ def export_public_snapshot(
                     Offer.approved == True,
                     Shop.is_visible == True,
                     Shop.status != "closed",
-                    Offer.price.is_not(None),
-                    Offer.price > 0,
                     # Keep parity with the public catalog: hidden offers must not
                     # reappear through the exported feed.
                     or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
@@ -227,26 +225,31 @@ def export_public_snapshot(
         if DISABLED_SOURCE_PLATFORMS:
             stmt = stmt.where(
                 or_(Shop.platform.is_(None), Shop.platform.notin_(DISABLED_SOURCE_PLATFORMS))
-            )
-        cutoff = _fresh_cutoff()
-        if cutoff is not None:
-            stmt = stmt.where(Offer.observed_at >= cutoff)
+        )
+        stmt = stmt.where(Offer.observed_at >= _fresh_cutoff(published_dt))
         rows = db.execute(stmt).all()
-
-        # Export CNY figures only; other currencies must not be mixed into
-        # CNY-denominated lowest/median/trusted metrics.
-        cny_rows = [r for r in rows if (r[0].currency or "CNY").upper() == "CNY"]
+        if not rows:
+            continue
 
         offer_count = len(rows)
         total_offers_count += offer_count
 
-        in_stock_rows = [r for r in cny_rows if r[0].stock_status == "in_stock"]
+        in_stock_rows = [
+            r for r in rows
+            if r[0].stock_status == "in_stock" and r[0].price is not None and r[0].price > 0
+        ]
         in_stock_count = len(in_stock_rows)
         total_in_stock_count += in_stock_count
 
-        comparable_rows = [r for r in in_stock_rows if r[0].is_comparable]
-        comparable_count = len(comparable_rows)
+        comparable_count = sum(1 for r in rows if r[0].is_comparable)
         total_comparable_count += comparable_count
+
+        # Price statistics remain CNY-only even though inventory and comparable
+        # counts describe all public offers, matching the API card contract.
+        cny_in_stock_rows = [
+            r for r in in_stock_rows if (r[0].currency or "CNY").upper() == "CNY"
+        ]
+        comparable_rows = [r for r in cny_in_stock_rows if r[0].is_comparable]
 
         # Compute medians by delivery_type
         delivery_prices: dict[str, list[float]] = defaultdict(list)
@@ -272,7 +275,7 @@ def export_public_snapshot(
         lowest_price = min(trusted_prices) if trusted_prices else None
         lowest_price_str = f"{lowest_price:.2f}" if lowest_price is not None else None
 
-        in_stock_prices = [float(r[0].price) for r in in_stock_rows]
+        in_stock_prices = [float(r[0].price) for r in cny_in_stock_rows]
         related_lowest_price = min(in_stock_prices) if in_stock_prices else None
         related_lowest_price_str = f"{related_lowest_price:.2f}" if related_lowest_price is not None else None
 
@@ -283,7 +286,13 @@ def export_public_snapshot(
         # Data quality
         source_count = len({r[1].id for r in rows})
         latest_obs = max((r[0].observed_at for r in rows), default=None)
-        score, label = _calc_data_quality(offer_count, source_count, comparable_count, trusted_count, latest_obs)
+        score, label = _calc_data_quality(
+            offer_count,
+            source_count,
+            len(comparable_rows),
+            trusted_count,
+            latest_obs,
+        )
 
         # Tags
         all_tags = sorted({t for r in rows for t in (r[0].tags or [])})[:8]
@@ -313,7 +322,7 @@ def export_public_snapshot(
                 "source_platform": shop.platform,
                 "source_url": offer.source_url or raw.source_url or shop.source_url,
                 "original_name": raw.original_name,
-                "price": float(offer.price),
+                "price": float(offer.price) if offer.price is not None else None,
                 "currency": (offer.currency or "CNY"),
                 "stock_status": offer.stock_status,
                 "stock_count": offer.stock_count,
@@ -392,7 +401,7 @@ def export_public_snapshot(
         "product_count": len(product_snapshots),
     }
 
-    if is_current_snapshot or allow_historical:
+    if is_current_snapshot:
         latest_file = target_dir / "latest.json"
         temp_latest = target_dir / f".tmp_latest_{os.getpid()}.json"
         with open(temp_latest, "w", encoding="utf-8") as f:

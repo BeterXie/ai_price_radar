@@ -151,6 +151,17 @@ def test_user_subscriptions_crud(client: TestClient, test_db):
     assert update_resp.json()["target_price"] == "130.00"
     assert update_resp.json()["notify_bot"] is False
 
+    # Partial updates change only the submitted field and avoid GET+replace races.
+    patch_resp = client.patch(
+        "/api/v1/user/subscriptions/chatgpt-plus",
+        json={"notify_email": False},
+        headers=headers,
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["notify_email"] is False
+    assert patch_resp.json()["notify_bot"] is False
+    assert patch_resp.json()["target_price"] == "130.00"
+
     # 8. Delete subscription
     del_resp = client.delete("/api/v1/user/subscriptions/chatgpt-plus", headers=headers)
     assert del_resp.status_code == 200

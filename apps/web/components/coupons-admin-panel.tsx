@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowClockwise,
   ArrowSquareOut,
@@ -41,7 +41,9 @@ export function CouponsAdminPanel({
   const [dropEnabled, setDropEnabled] = useState(true);
   const [dropProbability, setDropProbability] = useState(20);
   const [dynamicDrop, setDynamicDrop] = useState(true);
-  const [dailyDropLimit, setDailyDropLimit] = useState(1);
+  const [dailyDropLimit, setDailyDropLimit] = useState(100);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
@@ -60,6 +62,7 @@ export function CouponsAdminPanel({
   const [couponSearch, setCouponSearch] = useState("");
   const [loadingCoupons, setLoadingCoupons] = useState(false);
   const [deletingCouponId, setDeletingCouponId] = useState<number | null>(null);
+  const couponRequestSeqRef = useRef(0);
 
   // Campaigns
   const [campaigns, setCampaigns] = useState<CampaignRead[]>([]);
@@ -125,18 +128,20 @@ export function CouponsAdminPanel({
   // Fetch Stats
   const fetchStats = async () => {
     setLoadingStats(true);
+    setSettingsLoaded(false);
+    setSettingsError("");
     try {
       const res = await fetch(`${apiBase}/api/v1/admin/coupons/stats`, { credentials: "include", headers });
-      if (res.ok) {
-        const data: AdminCouponStats = await res.json();
-        setStats(data);
-        setDropEnabled(data.drop_enabled);
-        setDropProbability(data.drop_probability);
-        setDynamicDrop(data.dynamic_drop);
-        setDailyDropLimit(data.daily_drop_limit);
-      }
-    } catch {
-      // ignore
+      if (!res.ok) throw new Error(`优惠券设置加载失败 (${res.status})`);
+      const data: AdminCouponStats = await res.json();
+      setStats(data);
+      setDropEnabled(data.drop_enabled);
+      setDropProbability(data.drop_probability);
+      setDynamicDrop(data.dynamic_drop);
+      setDailyDropLimit(data.daily_drop_limit);
+      setSettingsLoaded(true);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "优惠券设置加载失败");
     } finally {
       setLoadingStats(false);
     }
@@ -144,6 +149,18 @@ export function CouponsAdminPanel({
 
   // Save Settings
   const handleSaveSettings = async () => {
+    if (!settingsLoaded) {
+      showToast("设置尚未成功加载，已阻止覆盖生产配置");
+      return;
+    }
+    if (!Number.isInteger(dailyDropLimit) || dailyDropLimit < 1 || dailyDropLimit > 1000) {
+      showToast("每日掉落配额必须是 1–1000 的整数");
+      return;
+    }
+    if (!Number.isInteger(dropProbability) || dropProbability < 0 || dropProbability > 100) {
+      showToast("掉落概率必须是 0–100 的整数");
+      return;
+    }
     setSavingSettings(true);
     try {
       const payload: AdminCouponSettingsUpdate = {
@@ -161,6 +178,10 @@ export function CouponsAdminPanel({
       if (res.ok) {
         const data: AdminCouponStats = await res.json();
         setStats(data);
+        setDropEnabled(data.drop_enabled);
+        setDropProbability(data.drop_probability);
+        setDynamicDrop(data.dynamic_drop);
+        setDailyDropLimit(data.daily_drop_limit);
         showToast("掉落配置更新成功");
       } else {
         const err = await res.json().catch(() => ({}));
@@ -175,6 +196,7 @@ export function CouponsAdminPanel({
 
   // Fetch Coupons Page
   const fetchCoupons = async (page = couponPage) => {
+    const requestSeq = ++couponRequestSeqRef.current;
     setLoadingCoupons(true);
     try {
       const q = new URLSearchParams({
@@ -192,14 +214,15 @@ export function CouponsAdminPanel({
         credentials: "include",
         headers,
       });
+      if (requestSeq !== couponRequestSeqRef.current) return;
       if (res.ok) {
         const data: AdminCouponPageOut = await res.json();
+        if (requestSeq !== couponRequestSeqRef.current) return;
         // Deleting the last row of the last page leaves the fetch on an empty
         // page; fall back to the new last page instead of showing nothing.
         if (data.items.length === 0 && data.total > 0 && page > 1) {
           const lastPage = Math.max(1, Math.ceil(data.total / (data.page_size || 50)));
           if (lastPage !== page) {
-            setLoadingCoupons(false);
             await fetchCoupons(Math.min(page, lastPage));
             return;
           }
@@ -207,11 +230,17 @@ export function CouponsAdminPanel({
         setCoupons(data.items);
         setCouponTotal(data.total);
         setCouponPage(data.page);
+      } else {
+        showToast(`优惠券列表加载失败 (${res.status})`);
       }
     } catch {
-      // ignore
+      if (requestSeq === couponRequestSeqRef.current) {
+        showToast("优惠券列表加载失败，请检查网络或管理凭证");
+      }
     } finally {
-      setLoadingCoupons(false);
+      if (requestSeq === couponRequestSeqRef.current) {
+        setLoadingCoupons(false);
+      }
     }
   };
 
@@ -300,6 +329,21 @@ export function CouponsAdminPanel({
   // Submit Import
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const discountAmount = Number(importForm.discount_amount);
+    const minSpend = Number(importForm.min_spend);
+    const expiresDays = Number(importForm.expires_days);
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+      setImportResult({ success: false, imported_count: 0, skipped_count: 0, message: "优惠券面额必须大于 0。" });
+      return;
+    }
+    if (!Number.isFinite(minSpend) || minSpend < 0) {
+      setImportResult({ success: false, imported_count: 0, skipped_count: 0, message: "消费门槛不能小于 0。" });
+      return;
+    }
+    if (!Number.isInteger(expiresDays) || expiresDays < 1) {
+      setImportResult({ success: false, imported_count: 0, skipped_count: 0, message: "有效天数必须是大于等于 1 的整数。" });
+      return;
+    }
     // Coupons without a resolvable shop fall into the site-wide pool on
     // redemption, so require either a platform shop or a valid link.
     if (!importForm.shop_id && !importForm.shop_url?.trim()) {
@@ -311,12 +355,12 @@ export function CouponsAdminPanel({
       });
       return;
     }
-    if (importForm.shop_url?.trim() && !/^https?:\/\/\S+$/i.test(importForm.shop_url.trim())) {
+    if (importForm.shop_url?.trim() && !/^https:\/\/\S+$/i.test(importForm.shop_url.trim())) {
       setImportResult({
         success: false,
         imported_count: 0,
         skipped_count: 0,
-        message: "店铺链接必须是有效的 http(s) 地址。",
+        message: "店铺链接必须是有效的公开 HTTPS 地址。",
       });
       return;
     }
@@ -324,12 +368,12 @@ export function CouponsAdminPanel({
     setImportResult(null);
     try {
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + Number(importForm.expires_days || 30));
+      expiresAt.setDate(expiresAt.getDate() + expiresDays);
 
       const payload: AdminCouponImportRequest = {
         name: importForm.name,
-        discount_amount: Number(importForm.discount_amount),
-        min_spend: Number(importForm.min_spend),
+        discount_amount: discountAmount,
+        min_spend: minSpend,
         shop_id: importForm.shop_id > 0 ? importForm.shop_id : null,
         shop_name: importForm.shop_name,
         shop_url: importForm.shop_url,
@@ -423,8 +467,8 @@ export function CouponsAdminPanel({
       alert("手动指定的店铺必须填写店铺链接，否则无法确定发券范围。");
       return;
     }
-    if (campaignForm.shop_url?.trim() && !/^https?:\/\/\S+$/i.test(campaignForm.shop_url.trim())) {
-      alert("店铺链接必须是有效的 http(s) 地址。");
+    if (campaignForm.shop_url?.trim() && !/^https:\/\/\S+$/i.test(campaignForm.shop_url.trim())) {
+      alert("店铺链接必须是有效的公开 HTTPS 地址。");
       return;
     }
     setCreatingCampaign(true);
@@ -593,7 +637,12 @@ export function CouponsAdminPanel({
           </button>
         </div>
 
-        <div className="p-5 space-y-6">
+        <fieldset disabled={!settingsLoaded} className="p-5 space-y-6 disabled:opacity-70">
+          {settingsError ? (
+            <p role="alert" className="rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-xs text-rose-700">
+              {settingsError}。为避免覆盖真实配置，保存操作已禁用。
+            </p>
+          ) : null}
           <div className="grid gap-6 md:grid-cols-2">
             {/* Switch 1: drop_enabled */}
             <div className="rounded-[14px] border border-[color:var(--line)] bg-[color:var(--surface)] p-4 flex items-start justify-between gap-4">
@@ -704,7 +753,7 @@ export function CouponsAdminPanel({
                   min="1"
                   max="1000"
                   value={dailyDropLimit}
-                  onChange={(e) => setDailyDropLimit(Math.max(1, Number(e.target.value)))}
+                  onChange={(e) => setDailyDropLimit(e.target.value === "" ? 0 : Number(e.target.value))}
                   className="w-24 rounded-lg border hairline border-[color:var(--line)] bg-[color:var(--panel)] px-3 py-1.5 font-mono text-sm text-[color:var(--ink)] focus:outline-none"
                 />
                 <span className="text-xs text-[color:var(--muted)]">张 / 天（达到即熔断）</span>
@@ -719,14 +768,14 @@ export function CouponsAdminPanel({
             <button
               type="button"
               onClick={handleSaveSettings}
-              disabled={savingSettings}
+              disabled={savingSettings || !settingsLoaded}
               className="tactile inline-flex items-center gap-1.5 rounded-[10px] bg-[color:var(--ink)] px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-50"
             >
               {savingSettings ? <ArrowClockwise size={14} className="animate-spin" /> : <Check size={14} weight="bold" />}
               <span>{savingSettings ? "正在保存..." : "保存掉落设置"}</span>
             </button>
           </div>
-        </div>
+        </fieldset>
       </section>
 
       {/* 3. Sub-tabs Navigation & Operational Actions */}
@@ -1249,6 +1298,7 @@ export function CouponsAdminPanel({
                   <input
                     type="number"
                     step="0.01"
+                    min="0.01"
                     required
                     value={importForm.discount_amount}
                     onChange={(e) => setImportForm({ ...importForm, discount_amount: Number(e.target.value) })}
@@ -1260,6 +1310,7 @@ export function CouponsAdminPanel({
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     required
                     value={importForm.min_spend}
                     onChange={(e) => setImportForm({ ...importForm, min_spend: Number(e.target.value) })}
@@ -1270,6 +1321,8 @@ export function CouponsAdminPanel({
                   <label className="block font-semibold mb-1 text-[color:var(--ink)]">有效期 (天数)</label>
                   <input
                     type="number"
+                    min="1"
+                    step="1"
                     required
                     value={importForm.expires_days}
                     onChange={(e) => setImportForm({ ...importForm, expires_days: Number(e.target.value) })}

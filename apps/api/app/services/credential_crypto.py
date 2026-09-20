@@ -26,7 +26,12 @@ _LEGACY_DEFAULT_SESSION_SECRET = "pricememo-auth-secret-key-change-in-production
 
 def _materials(settings: Settings) -> list[str]:
     values: list[str] = []
-    for value in (settings.bot_secret_encryption_key, settings.session_secret_key):
+    previous = settings.bot_secret_encryption_previous_keys.replace("\n", ",").split(",")
+    for value in (
+        settings.bot_secret_encryption_key,
+        *previous,
+        settings.session_secret_key,
+    ):
         clean = (value or "").strip()
         if clean and clean not in values:
             values.append(clean)
@@ -44,10 +49,12 @@ def _key_id(material: str) -> str:
 
 
 def _primary_material(settings: Settings) -> str:
-    values = _materials(settings)
-    if not values:
+    material = (
+        settings.bot_secret_encryption_key.strip()
+        or settings.session_secret_key.strip()
+    )
+    if not material:
         raise RuntimeError("credential encryption key is not configured")
-    material = values[0]
     if material == _LEGACY_DEFAULT_SESSION_SECRET:
         raise RuntimeError(
             "refusing to encrypt credentials with the public default session secret; "

@@ -1,12 +1,12 @@
 {
   "name": "ai-price-radar-web",
-  "version": "3.7.95",
+  "version": "3.7.96",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "node --import tsx --test"
   },
   "dependencies": {

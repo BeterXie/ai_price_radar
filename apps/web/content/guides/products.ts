@@ -24,6 +24,7 @@ const DELIVERY_LABELS: Record<KnownDeliveryType, string> = {
 
 interface ProductSeed {
   productSlug: ProductSlug;
+  offerPath?: string;
   brand: BrandSlug;
   title: string;
   description: string;
@@ -175,6 +176,7 @@ const productSeeds = [
   },
   {
     productSlug: "chatgpt-pro",
+    offerPath: "/products?brand=OpenAI",
     brand: "openai",
     title: "ChatGPT Pro 指南",
     description: "了解未明确 5x 或 20x 倍率的 ChatGPT Pro 充值与账号交付，避免替商品推断权益。",
@@ -253,7 +255,7 @@ const productSeeds = [
           title: "下载并安装 Cockpit Tools",
           action: "从项目的 GitHub Releases 页面下载，不要在搜索结果里的陌生网盘找安装包。本文以 Windows 64 位为例，选择文件名中包含 x64 和 setup.exe 的安装包。",
           items: [
-            "打开 Releases 页面，优先查看标记为 Latest 的稳定版；截至 2026-08-03，最新发布为 v1.3.16。",
+            "打开 Releases 页面，优先查看标记为 Latest 的稳定版，并核对该版本的兼容说明。",
             "Windows 64 位选择 x64 安装包；ARM、macOS 或 Linux 用户按自己的系统和架构选择对应文件。",
             "如果商家明确要求旧版兼容，可以进入对应历史版本；参考页使用的是 v0.23.9，不要把旧文件名当成当前最新版。",
             "完成安装并启动 Cockpit Tools，先确认左侧导航中能看到 Codex 入口。",
@@ -655,15 +657,7 @@ const WORKFLOW_REFERENCE_MATRIX: Partial<Record<ProductSlug, readonly ProductWor
       note: "此商品直接交付 API 使用能力，不需要先把账号导入 Cockpit。只有在你需要自行做账号池时才考虑 Sub2API。",
     },
   ],
-  "chatgpt-access-service": [
-    {
-      workflowSlug: "api-endpoint-to-codex",
-      relevance: "recommended",
-      audience: "已有 Base URL 和用户 Key 的用户",
-      condition: "已有 Base URL 和用户 Key",
-      note: "此商品直接交付 API 使用能力，不需要先把账号导入 Cockpit。只有在你需要自行做账号池时才考虑 Sub2API。",
-    },
-  ],
+  "chatgpt-access-service": [],
   "codex-access": [
     {
       workflowSlug: "cockpit-to-codex",
@@ -694,6 +688,7 @@ function buildProductGuide(seed: ProductSeed): ProductGuide {
 
   return {
     productSlug: seed.productSlug,
+    offerPath: seed.offerPath || `/products/${encodeURIComponent(seed.productSlug)}`,
     brand: seed.brand,
     title: seed.title,
     description: seed.description,

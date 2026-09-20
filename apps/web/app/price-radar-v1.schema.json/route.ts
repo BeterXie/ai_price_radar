@@ -54,6 +54,7 @@ export function GET() {
       "LatestPointer": {
         "type": "object",
         "description": "latest.json pointer returned by /data/latest.json; it carries no product list.",
+        "not": { "required": ["products"] },
         "required": ["schema_version", "snapshot_id", "published_at", "snapshot_url", "product_count"],
         "properties": {
           "schema_version": { "type": "string", "enum": ["price-radar.v1"] },

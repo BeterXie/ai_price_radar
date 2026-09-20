@@ -17,10 +17,18 @@ function safeLinkHref(value: string): string | null {
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyFailed(false);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 3000);
+    }
   };
   return (
     <div className="relative my-4 overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 text-neutral-100 font-mono text-xs sm:text-sm">
@@ -32,7 +40,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           className="inline-flex items-center gap-1 rounded px-2 py-0.5 hover:bg-neutral-800 hover:text-white transition"
         >
           {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-          <span>{copied ? "已复制" : "复制"}</span>
+          <span>{copied ? "已复制" : copyFailed ? "复制失败" : "复制"}</span>
         </button>
       </div>
       <pre className="overflow-x-auto p-4 leading-relaxed">
@@ -241,6 +249,9 @@ export function MarkdownView({ content = "" }: { content: string }) {
 
   if (inTable) {
     flushTable("table-end");
+  }
+  if (inCodeBlock) {
+    nodes.push(<CodeBlock key="code-end" code={codeBuffer.join("\n")} language={codeLang} />);
   }
 
   return <div className="markdown-prose my-4">{nodes}</div>;

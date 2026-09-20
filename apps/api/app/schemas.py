@@ -1,15 +1,55 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
 
 import json
 import re
+import urllib.parse
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 from .core.email import normalize_email
+from .services.source_platform import normalize_public_https_url
+
+
+def _normalize_skill_https_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    if re.search(r"[\x00-\x20\x7f]", cleaned):
+        raise ValueError("skill URL contains invalid whitespace or control characters")
+    parsed = urllib.parse.urlsplit(cleaned)
+    if parsed.scheme.casefold() != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("skill URL must be an HTTPS URL without credentials")
+    return cleaned
+
+
+def _normalize_skill_demo_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    if re.search(r"[\x00-\x20\x7f\\]", cleaned):
+        raise ValueError("demo URL contains invalid characters")
+    parsed = urllib.parse.urlsplit(cleaned)
+    decoded_path = urllib.parse.unquote(parsed.path)
+    segments = decoded_path.split("/")
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.query
+        or parsed.fragment
+        or not decoded_path.startswith("/demos/")
+        or not decoded_path.endswith(".html")
+        or any(segment in {".", ".."} for segment in segments)
+    ):
+        raise ValueError("demo URL must be a local /demos/*.html path")
+    return cleaned
 
 
 class OfficialPriceReferencePublic(BaseModel):
@@ -287,6 +327,7 @@ class MetaResponse(BaseModel):
 
 class ReportCreate(BaseModel):
     offer_id: int | None = None
+    product_slug: str | None = Field(default=None, max_length=160, pattern=r"^[a-z0-9][a-z0-9-]*$")
     kind: Literal["correction", "unavailable", "fraud_concern", "shop_request", "other"] = "correction"
     message: str = Field(min_length=10, max_length=2000)
     contact: str = Field(default="", max_length=200)
@@ -297,6 +338,7 @@ class ReportOut(BaseModel):
 
     id: int
     offer_id: int | None
+    product_slug: str | None
     kind: str
     message: str
     contact: str
@@ -320,6 +362,8 @@ class ShopRequestCreate(BaseModel):
     shop_name: str = Field(default="", max_length=120)
     contact: str = Field(min_length=3, max_length=200)
     note: str = Field(default="", max_length=1000)
+    authorization_confirmed: Literal[True]
+    consent_version: Literal["shop-source-submission-v1"]
 
     @field_validator("contact")
     @classmethod
@@ -705,6 +749,32 @@ class AdminSettingsUpdate(BaseModel):
     community_qq_url: str | None = None
     community_btn_text: str | None = None
 
+    @field_validator("site_notice_link_url", "community_qq_url")
+    @classmethod
+    def validate_public_link(cls, value: str | None, info) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        if re.search(r"[\x00-\x20\x7f]", cleaned):
+            raise ValueError("link URL contains invalid whitespace or control characters")
+        if info.field_name == "site_notice_link_url":
+            if not cleaned.startswith("/") or cleaned.startswith("//"):
+                raise ValueError("site notice link must be an internal path")
+            decoded = urllib.parse.unquote(cleaned)
+            path = decoded.split("?", 1)[0].split("#", 1)[0]
+            if "\\" in decoded or any(segment in {".", ".."} for segment in path.split("/")):
+                raise ValueError("internal link URL is invalid")
+            parsed_internal = urllib.parse.urlsplit(cleaned)
+            if parsed_internal.scheme or parsed_internal.netloc:
+                raise ValueError("site notice link must be an internal path")
+            return cleaned
+        parsed = urllib.parse.urlsplit(cleaned)
+        if parsed.scheme.casefold() != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("link URL must be an internal path or public HTTPS URL")
+        return cleaned
+
 
 class CommunitySkillSummaryOut(BaseModel):
     id: int
@@ -780,6 +850,24 @@ class AdminCommunitySkillCreate(BaseModel):
     is_visible: bool = True
     sort_order: int = 0
 
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, value: str) -> str:
+        cleaned = value.strip().casefold()
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", cleaned) is None:
+            raise ValueError("slug must contain lowercase letters, numbers, and single hyphens only")
+        return cleaned
+
+    @field_validator("author_url", "repo_url")
+    @classmethod
+    def validate_https_urls(cls, value: str) -> str:
+        return _normalize_skill_https_url(value) or ""
+
+    @field_validator("demo_url")
+    @classmethod
+    def validate_demo_url(cls, value: str) -> str:
+        return _normalize_skill_demo_url(value) or ""
+
 
 class AdminCommunitySkillUpdate(BaseModel):
     slug: str | None = Field(default=None, min_length=1, max_length=160)
@@ -803,6 +891,52 @@ class AdminCommunitySkillUpdate(BaseModel):
     is_visible: bool | None = None
     sort_order: int | None = None
 
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().casefold()
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", cleaned) is None:
+            raise ValueError("slug must contain lowercase letters, numbers, and single hyphens only")
+        return cleaned
+
+    @field_validator("author_url", "repo_url")
+    @classmethod
+    def validate_https_urls(cls, value: str | None) -> str | None:
+        return _normalize_skill_https_url(value)
+
+    @field_validator("demo_url")
+    @classmethod
+    def validate_demo_url(cls, value: str | None) -> str | None:
+        return _normalize_skill_demo_url(value)
+
+    @field_validator(
+        "kind",
+        "title",
+        "subtitle",
+        "summary",
+        "content_markdown",
+        "prompt_template",
+        "author_name",
+        "author_url",
+        "repo_url",
+        "stars_count",
+        "install_command",
+        "demo_url",
+        "demo_type",
+        "tags",
+        "target_models",
+        "is_pinned",
+        "is_visible",
+        "sort_order",
+    )
+    @classmethod
+    def reject_null_non_nullable_fields(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("field cannot be null")
+        return value
+
 
 class UserRead(BaseModel):
     id: int
@@ -816,6 +950,11 @@ class UserRead(BaseModel):
 class EmailCodeRequest(BaseModel):
     email: str = Field(min_length=3, max_length=200)
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email_address(cls, value: str) -> str:
+        return normalize_email(value)
+
 
 class EmailCodeResponse(BaseModel):
     success: bool
@@ -825,7 +964,12 @@ class EmailCodeResponse(BaseModel):
 
 class EmailVerifyRequest(BaseModel):
     email: str = Field(min_length=3, max_length=200)
-    code: str = Field(min_length=4, max_length=20)
+    code: str = Field(pattern=r"^\d{6}$")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email_address(cls, value: str) -> str:
+        return normalize_email(value)
 
 
 class AuthSessionResponse(BaseModel):
@@ -884,9 +1028,15 @@ class UserSubscriptionRead(BaseModel):
 
 class UserSubscriptionCreateOrUpdate(BaseModel):
     product_slug: str = Field(min_length=1, max_length=120)
-    target_price: Decimal | None = None
+    target_price: Decimal | None = Field(default=None, ge=0, le=Decimal("99999999.99"), max_digits=10, decimal_places=2)
     notify_email: bool = True
     notify_bot: bool = True
+
+
+class UserSubscriptionPatch(BaseModel):
+    target_price: Decimal | None = Field(default=None, ge=0, le=Decimal("99999999.99"), max_digits=10, decimal_places=2)
+    notify_email: bool | None = None
+    notify_bot: bool | None = None
 
 
 class UserSubscriptionListOut(BaseModel):
@@ -952,6 +1102,16 @@ class CouponDropStatus(BaseModel):
     remaining_stock: int
 
 
+class CouponDropQualificationResponse(BaseModel):
+    success: bool = True
+    eligible: bool = False
+    claim_token: str = ""
+
+
+class CouponDropClaimRequest(BaseModel):
+    claim_token: str = Field(min_length=20, max_length=2000)
+
+
 class CouponDropTrackRequest(BaseModel):
     page: str = Field(default="", max_length=200)
     extra_data: dict[str, Any] = Field(default_factory=dict)
@@ -982,21 +1142,42 @@ class AdminCouponStats(BaseModel):
 
 class AdminCouponSettingsUpdate(BaseModel):
     drop_enabled: bool | None = None
-    drop_probability: int | None = None
+    drop_probability: int | None = Field(default=None, ge=0, le=100)
     dynamic_drop: bool | None = None
-    daily_drop_limit: int | None = None
+    daily_drop_limit: int | None = Field(default=None, ge=1, le=1000)
 
 
 class AdminCouponImportRequest(BaseModel):
     name: str = "专享立减券"
-    discount_amount: Decimal = Decimal("5.00")
-    min_spend: Decimal = Decimal("15.00")
+    discount_amount: Decimal = Field(default=Decimal("5.00"), gt=0, max_digits=10, decimal_places=2)
+    min_spend: Decimal = Field(default=Decimal("15.00"), ge=0, max_digits=10, decimal_places=2)
     expires_at: datetime | None = None
     shop_name: str = ""
     shop_url: str = ""
     shop_id: int | None = None
     coupon_batch_id: int = 0
     codes_text: str = Field(min_length=1)
+
+    @field_validator("shop_url")
+    @classmethod
+    def validate_shop_url(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        try:
+            return normalize_public_https_url(cleaned)
+        except ValueError as exc:
+            raise ValueError("shop_url must be a public HTTPS URL") from exc
+
+    @field_validator("expires_at")
+    @classmethod
+    def validate_future_expiry(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        normalized = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if normalized.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+            raise ValueError("expires_at must be in the future")
+        return normalized
 
 
 class AdminCouponSyncRequest(BaseModel):
@@ -1026,9 +1207,32 @@ class AdminCampaignCreate(BaseModel):
     shop_id: int | None = None
     shop_url: str | None = None
     shop_name: str | None = None
-    max_per_user: int = 1
-    total_quota: int = 100
+    max_per_user: int = Field(default=1, ge=1)
+    total_quota: int = Field(default=100, ge=1)
     expires_at: datetime | None = None
+
+    @field_validator("shop_url")
+    @classmethod
+    def validate_shop_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        try:
+            return normalize_public_https_url(cleaned)
+        except ValueError as exc:
+            raise ValueError("shop_url must be a public HTTPS URL") from exc
+
+    @field_validator("expires_at")
+    @classmethod
+    def validate_future_expiry(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        normalized = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if normalized.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+            raise ValueError("expires_at must be in the future")
+        return normalized
 
 
 class AdminUserItem(BaseModel):
@@ -1102,13 +1306,36 @@ class AdminUserDetailOut(BaseModel):
 
 
 class AdminBroadcastCreate(BaseModel):
+    operation_key: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9._:-]+$")
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=5000)
-    channels: list[str] = Field(default_factory=lambda: ["email", "bot"])
+    channels: list[Literal["email", "bot"]] = Field(
+        default_factory=lambda: ["email", "bot"], min_length=1, max_length=2
+    )
+
+    @field_validator("title", "content")
+    @classmethod
+    def validate_non_blank_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("broadcast text must not be blank")
+        return cleaned
+
+    @field_validator("channels")
+    @classmethod
+    def validate_unique_channels(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("broadcast channels must be unique")
+        return value
+
+
+class AdminUserStatusUpdate(BaseModel):
+    is_active: bool = Field(strict=True)
 
 
 class AdminBroadcastItem(BaseModel):
     id: int
+    operation_key: str
     title: str
     content: str
     channels: list[str] = Field(default_factory=list)
@@ -1149,7 +1376,3 @@ class UserHeartbeatResponse(BaseModel):
     status: str = "ok"
     online_seconds: int = 0
     is_online: bool = True
-
-
-
-

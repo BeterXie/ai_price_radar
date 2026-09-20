@@ -9,6 +9,7 @@ from sqlalchemy import text
 from common import CatalogSnapshot, Offer, RawProduct, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
 from connectors import CONNECTORS
 from publish_catalog import (
+    SnapshotExportError,
     SourceImportError,
     SourceSpec,
     UNREVIEWED_DUJIAO_ENV,
@@ -19,6 +20,25 @@ from publish_catalog import (
     publish_sources,
     validate_dujiao_source_access,
 )
+
+
+def test_export_failure_is_reported_after_database_publish(monkeypatch: pytest.MonkeyPatch):
+    install_loader(monkeypatch)
+    import export_snapshot
+
+    def fail_export(*_args, **_kwargs):
+        raise OSError("export volume unavailable")
+
+    monkeypatch.setattr(export_snapshot, "export_public_snapshot", fail_export)
+    db = session_for("sqlite://")
+    try:
+        with pytest.raises(SnapshotExportError, match="public feed export failed") as exc_info:
+            publish_sources(db, [SourceSpec("merchant-json", "a")])
+        snapshot = db.get(CatalogSnapshot, exc_info.value.snapshot_id)
+        assert snapshot is not None
+        assert snapshot.published_at is not None
+    finally:
+        db.close()
 
 
 def record(source: str) -> dict:
@@ -887,6 +907,5 @@ def test_import_result_to_dict_json_serializable():
     payload = json.dumps({"imports": [d]})
     parsed = json.loads(payload)
     assert parsed["imports"][0]["connector"] == "16688"
-
 
 

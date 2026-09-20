@@ -31,7 +31,17 @@ Only reports marked resolved and given an explicit public summary may appear in 
 
 ## Watchlists
 
-Browser watchlists are stored in localStorage. Atom Feed requests contain product slugs and optional target prices in the URL; the service does not create user profiles or persist subscriptions. Operators should avoid logging full query strings when they consider target prices sensitive.
+Anonymous browser watchlists are stored in localStorage. Authenticated users persist product subscriptions, optional target prices, and email/QQ notification preferences in the service; the browser may keep an account-scoped cache. Anonymous items may be migrated into the signed-in account.
+
+Atom Feed requests contain product slugs and optional target prices in the URL. Production reverse-proxy logging must omit the full request URI, and users should still treat personalized Feed URLs as sensitive links.
+
+## Accounts, notifications, analytics, and logs
+
+Email login stores the account email, session records, and bounded security metadata. QQ notification binding stores the receiving identifier and notification preferences. Login codes and outbound email/QQ payloads pass through the notification outbox and are removed according to the configured retention policy; expired login codes, binding sessions, and user sessions are also cleaned up.
+
+When `NEXT_PUBLIC_GA_MEASUREMENT_ID` is configured, the web app offers an explicit browser-side analytics choice. GA4 is loaded only after opt-in, and account, admin, and authentication paths do not emit page-view events. The opt-out choice does not affect product functionality. Without that setting, GA4 is not loaded.
+
+Application security, rate-limit, click, and activity records may include request timestamps, User-Agent values, session activity, and keyed IP hashes. These records are bounded by `PRIVACY_LOG_RETENTION_DAYS`; stale raw login IP values are cleared and expired transient records are deleted.
 
 ## Source health and official references
 

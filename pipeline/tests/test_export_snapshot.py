@@ -103,3 +103,24 @@ def test_export_public_snapshot(db, tmp_path: Path):
     assert len(plus_snap["top_5_offers"]) == 1
     assert plus_snap["top_5_offers"][0]["shop_token"] == "test-shop-1"
     assert plus_snap["top_5_offers"][0]["price"] == 120.0
+
+
+def test_historical_export_never_rewrites_latest_pointer(db, tmp_path: Path):
+    older = CatalogSnapshot(source="older", offer_count=0, published_at=utcnow())
+    newer = CatalogSnapshot(source="newer", offer_count=0, published_at=utcnow())
+    db.add_all([older, newer])
+    db.commit()
+
+    output_dir = tmp_path / "data"
+    export_public_snapshot(db, snapshot_id=newer.id, output_dir=output_dir)
+    before = (output_dir / "latest.json").read_text(encoding="utf-8")
+
+    export_public_snapshot(
+        db,
+        snapshot_id=older.id,
+        output_dir=output_dir,
+        allow_historical=True,
+    )
+
+    assert (output_dir / "latest.json").read_text(encoding="utf-8") == before
+    assert (output_dir / "v1" / "snapshots" / f"{older.id}.json").is_file()

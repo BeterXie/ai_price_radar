@@ -12,12 +12,17 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "AI Price Memory API"
+    app_env: str = "development"
     database_url: str = "sqlite:///./price_radar.db"
     admin_api_key: str = ""
     web_origin: str = "http://localhost:3000"
     public_site_url: str = "http://localhost:3000"
     seed_demo_data: bool = False
     stale_offer_hours: int = Field(default=72, ge=1, le=24 * 30)
+    # Per-product price trend cache TTL. Trend buckets only change when a new
+    # snapshot publishes (cache keys include the current snapshot id), so the
+    # TTL is a staleness backstop. 0 disables the cache entirely.
+    price_trend_cache_ttl_seconds: int = Field(default=3600, ge=0, le=24 * 60 * 60)
     report_rate_limit_count: int = Field(default=5, ge=1, le=100)
     report_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=24 * 60 * 60)
     trusted_proxy_cidrs: str = ""
@@ -55,6 +60,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_starttls: bool = True
+    smtp_ssl: bool = False
     smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
     qq_auth_enabled: bool = False
     qq_app_id: str = ""
@@ -67,6 +73,7 @@ class Settings(BaseSettings):
     dev_print_auth_codes: bool = False
     session_secret_key: str = "pricememo-auth-secret-key-change-in-production"
     bot_secret_encryption_key: str = ""
+    bot_secret_encryption_previous_keys: str = ""
     session_cookie_name: str = "pm_session"
     session_max_age_days: int = Field(default=30, ge=1, le=365)
     privacy_log_retention_days: int = Field(default=90, ge=7, le=3650)

@@ -12,8 +12,10 @@ import {
   SUPPORT_METHODS,
 } from "@/lib/community";
 import type { CommunityNotice } from "@/lib/types";
+import { releaseGlobalOverlay, tryAcquireGlobalOverlay } from "@/lib/global-overlay";
 
 type PromptKind = "community" | "github" | "support";
+const OVERLAY_OWNER = "community-prompt";
 
 const DAY = 24 * 60 * 60 * 1000;
 const storageKeys = {
@@ -84,23 +86,28 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
   const dismissPrompt = useCallback((kind: PromptKind, days: number) => {
     snooze(kind, days);
     setPrompt(null);
+    releaseGlobalOverlay(OVERLAY_OWNER);
   }, [snooze]);
 
   const openSupport = useCallback(() => {
     if (!SUPPORT_AVAILABLE) return;
     rememberPrompt();
     setPrompt(null);
+    if (!tryAcquireGlobalOverlay(OVERLAY_OWNER)) return;
     setSupportOpen(true);
   }, [rememberPrompt]);
 
   const closeSupport = useCallback(() => {
     snooze("support", 30);
     setSupportOpen(false);
+    releaseGlobalOverlay(OVERLAY_OWNER);
   }, [snooze]);
 
   useEffect(() => {
     if (excludedPath(pathname)) {
       setPrompt(null);
+      setSupportOpen(false);
+      releaseGlobalOverlay(OVERLAY_OWNER);
       return;
     }
     // Disabling the community notice (e.g. an admin toggles it off) must both
@@ -144,6 +151,7 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
         sessions >= 3 &&
         now >= storedNumber(localStorage, storageKeys.supportUntil);
       const githubEligible =
+        Boolean(GITHUB_REPOSITORY_URL) &&
         (sessions >= 2 || pageViews >= 2) &&
         now >= storedNumber(localStorage, storageKeys.githubUntil);
 
@@ -157,11 +165,20 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
       if (!nextPrompt) return;
 
       const delayMs = nextPrompt === "community" ? 25_000 : nextPrompt === "support" ? 60_000 : 45_000;
-      const timer = window.setTimeout(() => {
-        rememberPrompt();
-        setPrompt(nextPrompt);
-      }, delayMs);
-      return () => window.clearTimeout(timer);
+      let retryTimer: number | undefined;
+      const showWhenAvailable = () => {
+        if (tryAcquireGlobalOverlay(OVERLAY_OWNER)) {
+          rememberPrompt();
+          setPrompt(nextPrompt);
+        } else {
+          retryTimer = window.setTimeout(showWhenAvailable, 5_000);
+        }
+      };
+      const timer = window.setTimeout(showWhenAvailable, delayMs);
+      return () => {
+        window.clearTimeout(timer);
+        if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      };
     } catch {
       return;
     }
@@ -171,6 +188,7 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
     if (!SUPPORT_AVAILABLE) return;
     const openFromHash = () => {
       if (window.location.hash !== "#support-author") return;
+      if (!tryAcquireGlobalOverlay(OVERLAY_OWNER)) return;
       rememberPrompt();
       setPrompt(null);
       setSupportOpen(true);
@@ -180,6 +198,8 @@ export function CommunityPrompts({ communityNotice }: { communityNotice?: Commun
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
   }, [rememberPrompt]);
+
+  useEffect(() => () => releaseGlobalOverlay(OVERLAY_OWNER), []);
 
   useEffect(() => {
     if (!supportOpen) return;

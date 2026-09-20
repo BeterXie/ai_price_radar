@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Fire, MagnifyingGlass, Sparkle, TerminalWindow } from "@phosphor-icons/react/ssr";
 import { getSkills } from "@/lib/api";
+import { getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { SkillCard } from "@/components/skills/skill-card";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +21,7 @@ export const metadata: Metadata = {
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+const SKILLS_PAGE_SIZE = 20;
 
 function single(params: Record<string, string | string[] | undefined>, key: string): string {
   const value = params[key];
@@ -31,20 +34,37 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
   const tag = single(params, "tag");
   const model = single(params, "model");
   const query = single(params, "q");
+  const page = parsePage(single(params, "page"), SKILLS_PAGE_SIZE);
 
   const queryParams = new URLSearchParams();
   if (kind) queryParams.set("kind", kind);
   if (tag) queryParams.set("tag", tag);
   if (model) queryParams.set("model", model);
   if (query) queryParams.set("q", query);
+  queryParams.set("page", String(page));
+  queryParams.set("page_size", String(SKILLS_PAGE_SIZE));
 
   const skillsData = await getSkills(queryParams.toString());
   const items = skillsData?.items || [];
   const total = skillsData?.total || 0;
   const allTags = skillsData?.all_tags || [];
+  const totalPages = getTotalPages(total, SKILLS_PAGE_SIZE);
+
+  const pageHref = (nextPage: number) => {
+    const next = new URLSearchParams(queryParams);
+    if (nextPage > 1) next.set("page", String(nextPage));
+    else next.delete("page");
+    next.delete("page_size");
+    const value = next.toString();
+    return value ? `/skills?${value}` : "/skills";
+  };
+
+  if (total > 0 && page > totalPages) redirect(pageHref(totalPages));
 
   const tabHref = (k: string) => {
     const next = new URLSearchParams(queryParams);
+    next.delete("page");
+    next.delete("page_size");
     if (k) next.set("kind", k);
     else next.delete("kind");
     const s = next.toString();
@@ -53,6 +73,8 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
 
   const tagHref = (t: string) => {
     const next = new URLSearchParams(queryParams);
+    next.delete("page");
+    next.delete("page_size");
     if (t === tag) next.delete("tag");
     else next.set("tag", t);
     const s = next.toString();
@@ -80,6 +102,7 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
         <form action="/skills" method="GET" className="mt-6 flex max-w-lg items-center gap-2">
           {kind ? <input type="hidden" name="kind" value={kind} /> : null}
           {tag ? <input type="hidden" name="tag" value={tag} /> : null}
+          {model ? <input type="hidden" name="model" value={model} /> : null}
           <div className="relative flex-1">
             <MagnifyingGlass size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[color:var(--muted)]" />
             <input
@@ -110,7 +133,7 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
                 : "border-[color:var(--line)] bg-[color:var(--panel)] text-[color:var(--muted)] hover:border-[color:var(--line-strong)] hover:text-[color:var(--foreground)]"
             }`}
           >
-            全部 ({total})
+            {kind ? "全部" : `全部 (${total})`}
           </Link>
 
           <Link
@@ -189,6 +212,7 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
           </Link>
         </div>
       )}
+      <PaginationNav page={page} totalPages={totalPages} hrefForPage={pageHref} ariaLabel="技能分页" />
     </main>
   );
 }

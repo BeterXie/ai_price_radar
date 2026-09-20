@@ -292,8 +292,12 @@ class QQGatewayService:
                             user_openid = author.get("user_openid") or author.get("id")
 
                             if user_openid and raw_content:
-                                print(f">>> [QQBotGateway] Inbound message: '{raw_content}' from {user_openid} <<<", flush=True)
-                                logger.info("Received QQ C2C message [%s]: '%s'", user_openid[:6] + "...", raw_content[:20])
+                                logger.info(
+                                    "Received QQ C2C message [user=%s, message_id=%s, length=%d]",
+                                    user_openid[:6] + "...",
+                                    msg_id,
+                                    len(raw_content),
+                                )
                                 # Command routing hits the DB and the reply hits the
                                 # network: both must run off the event loop.
                                 reply_text = await asyncio.to_thread(
@@ -310,7 +314,12 @@ class QQGatewayService:
                                     app_secret=app_secret,
                                     msg_id=msg_id,
                                 )
-                                print(f">>> [QQBotGateway] Passive reply sent (success={ok}): '{reply_text[:30]}...' <<<", flush=True)
+                                logger.info(
+                                    "Sent QQ C2C reply [success=%s, message_id=%s, length=%d]",
+                                    ok,
+                                    msg_id,
+                                    len(reply_text),
+                                )
 
                         elif t in ("GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"):
                             # Inbound group message (@机器人 in QQ group)
@@ -327,8 +336,13 @@ class QQGatewayService:
                                 cleaned_content = "帮助"
 
                             if group_openid:
-                                print(f">>> [QQBotGateway] Group message in {group_openid[:6]}... by {member_openid[:6] if member_openid else 'unknown'}...: '{cleaned_content}' <<<", flush=True)
-                                logger.info("Received QQ Group message [%s]: '%s'", group_openid[:6] + "...", cleaned_content[:20])
+                                logger.info(
+                                    "Received QQ group message [group=%s, member=%s, message_id=%s, length=%d]",
+                                    group_openid[:6] + "...",
+                                    member_openid[:6] + "..." if member_openid else "unknown",
+                                    msg_id,
+                                    len(cleaned_content),
+                                )
                                 reply_text = await asyncio.to_thread(
                                     handle_chat_command,
                                     raw_text=cleaned_content,
@@ -343,7 +357,12 @@ class QQGatewayService:
                                     app_secret=app_secret,
                                     msg_id=msg_id,
                                 )
-                                print(f">>> [QQBotGateway] Group reply sent (success={ok}) <<<", flush=True)
+                                logger.info(
+                                    "Sent QQ group reply [success=%s, message_id=%s, length=%d]",
+                                    ok,
+                                    msg_id,
+                                    len(reply_text),
+                                )
 
                         elif t == "FRIEND_ADD":
                             # User added robot as friend

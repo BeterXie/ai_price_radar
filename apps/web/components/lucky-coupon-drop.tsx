@@ -18,18 +18,22 @@ import {
 import { fetchAuthMe, claimLuckyDrop, fetchCouponDropStatus, recordCouponDropTrigger } from "@/lib/auth-client";
 import type { ShopCoupon } from "@/lib/types";
 import { LoginModal } from "@/components/login-modal";
+import { safeExternalHttpsUrl } from "@/lib/safe-url";
+import { releaseGlobalOverlay, tryAcquireGlobalOverlay } from "@/lib/global-overlay";
 
 const STORAGE_KEY_DISMISSED = "apr:coupon_drop_dismissed_v1";
 const STORAGE_KEY_NON_HOME_CLICKED = "apr:coupon_drop_non_home_click_v1";
 const STORAGE_KEY_LAST_EVAL = "apr:coupon_drop_last_eval_time_v1";
 const COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12 hours after dismiss
 const EVAL_COOLDOWN_MS = 60 * 1000; // At most 1 probability evaluation per minute
+const OVERLAY_OWNER = "coupon-drop";
 
 export function LuckyCouponDrop() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [claimToken, setClaimToken] = useState("");
   const [claimedCoupon, setClaimedCoupon] = useState<ShopCoupon | null>(null);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState<boolean | null>(null);
@@ -39,6 +43,20 @@ export function LuckyCouponDrop() {
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const copiedTimerRef = React.useRef<number | undefined>(undefined);
   const copyFailedTimerRef = React.useRef<number | undefined>(undefined);
+
+  const resetRoundState = React.useCallback(() => {
+    setVisible(false);
+    setModalOpen(false);
+    setClaiming(false);
+    setClaimToken("");
+    setClaimedCoupon(null);
+    setClaimMessage(null);
+    setIsSuccess(null);
+    setShowLoginModal(false);
+    setCopied(false);
+    setCopyFailed(false);
+    releaseGlobalOverlay(OVERLAY_OWNER);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,8 +68,7 @@ export function LuckyCouponDrop() {
     const isDisabledPath =
       pathname.startsWith("/admin") || pathname.startsWith("/account");
     if (isDisabledPath) {
-      setVisible(false);
-      setModalOpen(false);
+      resetRoundState();
       return () => {
         cancelled = true;
       };
@@ -60,6 +77,7 @@ export function LuckyCouponDrop() {
     // Easter egg is disabled on homepage ("除首页外其他页面存在真实页面点击动作以后才能正常触发概率")
     const isHomePage = pathname === "/" || pathname === "";
     if (isHomePage) {
+      resetRoundState();
       return () => {
         cancelled = true;
       };
@@ -105,7 +123,7 @@ export function LuckyCouponDrop() {
           // ignore
         }
 
-        // 3. Query backend drop status & dynamic probability based on stock
+        // 3. Query backend status first so disabled/out-of-stock states stay quiet.
         const dropStatus = await fetchCouponDropStatus().catch(() => null);
         if (cancelled) return;
         if (
@@ -117,16 +135,19 @@ export function LuckyCouponDrop() {
           return;
         }
 
-        // 4. Dynamic probability roll (0 to 100)
-        const roll = Math.random() * 100;
-        if (roll > dropStatus.probability) {
+        // 4. The server performs the draw and returns a signed, single-use
+        // claim capability. Client randomness is never an authorization boundary.
+        const qualification = await recordCouponDropTrigger(pathname).catch(() => null);
+        if (cancelled || !qualification?.eligible || !qualification.claim_token) {
           return;
         }
 
-        // 5. Trigger egg! Show floating egg and record trigger count in backend
+        // 5. Trigger egg only after a server-authorized draw.
         if (!cancelled) {
+          resetRoundState();
+          if (!tryAcquireGlobalOverlay(OVERLAY_OWNER)) return;
+          setClaimToken(qualification.claim_token);
           setVisible(true);
-          void recordCouponDropTrigger(pathname).catch(() => {});
         }
       } catch {
         return;
@@ -178,7 +199,7 @@ export function LuckyCouponDrop() {
       if (timer) window.clearTimeout(timer);
       if (clickCleanup) clickCleanup();
     };
-  }, [pathname, visible, modalOpen]);
+  }, [pathname, visible, modalOpen, resetRoundState]);
 
 
   const handleDismiss = () => {
@@ -187,8 +208,7 @@ export function LuckyCouponDrop() {
     } catch {
       // ignore
     }
-    setVisible(false);
-    setModalOpen(false);
+    resetRoundState();
   };
 
   // Unmount-time cleanup for the copy feedback timers.
@@ -196,6 +216,7 @@ export function LuckyCouponDrop() {
     return () => {
       if (copiedTimerRef.current !== undefined) window.clearTimeout(copiedTimerRef.current);
       if (copyFailedTimerRef.current !== undefined) window.clearTimeout(copyFailedTimerRef.current);
+      releaseGlobalOverlay(OVERLAY_OWNER);
     };
   }, []);
 
@@ -244,12 +265,18 @@ export function LuckyCouponDrop() {
     try {
       const auth = await fetchAuthMe();
       if (!auth.authenticated || !auth.user) {
+        setModalOpen(false);
         setShowLoginModal(true);
         setClaiming(false);
         return;
       }
 
-      const res = await claimLuckyDrop();
+      if (!claimToken) {
+        setIsSuccess(false);
+        setClaimMessage("掉落资格已失效，请重新参与活动");
+        return;
+      }
+      const res = await claimLuckyDrop(claimToken);
       setIsSuccess(res.success);
       setClaimMessage(res.message);
       if (res.coupon) {
@@ -281,11 +308,12 @@ export function LuckyCouponDrop() {
   };
 
   if (!visible) return null;
+  const claimedShopUrl = safeExternalHttpsUrl(claimedCoupon?.shop_url);
 
   return (
     <>
       {/* Floating Lucky Egg Bubble in Bottom-Right */}
-      {!modalOpen && (
+      {!modalOpen && !showLoginModal && (
         <aside
           aria-label="店铺专享优惠券"
           className="fixed bottom-20 right-4 sm:right-6 z-40 animate-in slide-in-from-bottom-5 fade-in duration-300"
@@ -325,10 +353,8 @@ export function LuckyCouponDrop() {
       )}
 
       {/* Interactive Modal Card */}
-      {modalOpen && (
+      {modalOpen && !showLoginModal && (
         <div
-          role="dialog"
-          aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
         >
           {/* Backdrop */}
@@ -485,19 +511,21 @@ export function LuckyCouponDrop() {
                 </button>
               ) : (
                 <div className="flex gap-2.5">
-                  <a
-                    href={claimedCoupon.shop_url || "https://wzyp.cn/shop/pricememo"}
+                  {claimedShopUrl ? (
+                    <a
+                    href={claimedShopUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="button-primary tactile flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-1.5 text-center"
                   >
                     <span>去 {claimedCoupon.shop_name || "合作店铺"} 下单</span>
                     <ArrowSquareOut size={15} />
-                  </a>
+                    </a>
+                  ) : null}
                   <button
                     type="button"
                     onClick={handleDismiss}
-                    className="button-secondary tactile px-4 py-2.5 rounded-xl text-xs font-semibold text-[color:var(--muted)]"
+                    className="button-secondary tactile flex-1 px-4 py-2.5 rounded-xl text-xs font-semibold text-[color:var(--muted)]"
                   >
                     完成
                   </button>
@@ -511,10 +539,14 @@ export function LuckyCouponDrop() {
       {/* Login modal fallback if user is not logged in */}
       <LoginModal
         isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
+        onClose={() => {
+          setShowLoginModal(false);
+          if (visible) setModalOpen(true);
+        }}
         onSuccess={() => {
           setShowLoginModal(false);
-          handleClaim();
+          setModalOpen(true);
+          void handleClaim();
         }}
       />
     </>

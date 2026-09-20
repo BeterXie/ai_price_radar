@@ -1,6 +1,11 @@
 {$SITE_ADDRESS} {
     encode zstd gzip
 
+    @internal path /api/v1/internal/*
+    handle @internal {
+        respond 404
+    }
+
     @telemetry path /api/v1/user/track-click /api/v1/user/coupons/record-drop-trigger
     handle @telemetry {
         request_body {
@@ -11,6 +16,9 @@
 
     @api path /api/* /health
     handle @api {
+        request_body {
+            max_size 1MB
+        }
         reverse_proxy api:8000
     }
 
@@ -25,6 +33,6 @@
         Referrer-Policy strict-origin-when-cross-origin
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://www.googletagmanager.com"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://www.googletagmanager.com"
     }
 }

@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Bell, BellRinging } from "@phosphor-icons/react";
-import { LoginModal } from "@/components/login-modal";
-import { deleteUserSubscription, fetchAuthMe, fetchUserSubscriptions, saveUserSubscription } from "@/lib/auth-client";
+import {
+  AUTH_CHANGE_EVENT,
+  deleteUserSubscription,
+  fetchAuthMe,
+  fetchUserSubscriptions,
+  saveUserSubscription,
+  type UserSubscriptionItem,
+} from "@/lib/auth-client";
 
 export const WATCHLIST_KEY = "ai-price-radar:watchlist:v1";
 // Anonymous (not-yet-logged-in) items live under their own key so they are
@@ -29,7 +35,7 @@ export function normalizeWatchThreshold(value: string): string | null {
   if (!normalized) return "";
   if (!/^(?:0|[1-9]\d*)(?:\.\d{0,2})?$/.test(normalized)) return null;
   const amount = Number(normalized);
-  return Number.isFinite(amount) && amount > 0 ? normalized : null;
+  return Number.isFinite(amount) && amount > 0 && amount <= 99_999_999.99 ? normalized : null;
 }
 
 function normalizeWatchItem(value: unknown): WatchItem | null {
@@ -99,6 +105,10 @@ export function readAnonymousWatchlist(): WatchItem[] {
     if (legacy.length > 0) {
       items = legacy;
       try {
+        window.localStorage.setItem(
+          ANONYMOUS_WATCHLIST_KEY,
+          JSON.stringify(legacy.slice(0, MAX_WATCHLIST_ITEMS))
+        );
         window.localStorage.removeItem(WATCHLIST_KEY);
       } catch {
         // ignore
@@ -142,6 +152,16 @@ export function writeWatchlist(items: WatchItem[]): boolean {
   return writeAnonymousWatchlist(items);
 }
 
+function subscriptionToWatchItem(sub: UserSubscriptionItem): WatchItem {
+  return {
+    slug: sub.product_slug,
+    name: sub.product_name,
+    currency: sub.current_currency || "CNY",
+    threshold: sub.target_price || "",
+    added_at: sub.created_at,
+  };
+}
+
 export function WatchButton({
   slug,
   name,
@@ -154,117 +174,93 @@ export function WatchButton({
   suggestedPrice?: string | null;
 }) {
   const [watched, setWatched] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The signed-in account this button is showing state for, so the cloud list
-  // (not a possibly-stale local cache) is the source of truth.
   const [userId, setUserId] = useState<number | null>(null);
   const [cloudSlugs, setCloudSlugs] = useState<Set<string> | null>(null);
+  const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "anonymous" | "error">("loading");
 
   useEffect(() => {
     let cancelled = false;
-
-    const syncFromLocal = (): boolean => {
-      if (userId !== null) return false;
-      const local = readAnonymousWatchlist();
-      setWatched(local.some((item) => item.slug === slug));
-      return true;
-    };
-
-    const loadCloudState = async () => {
+    const loadState = async () => {
+      setAuthStatus("loading");
       try {
         const auth = await fetchAuthMe();
         if (cancelled) return;
         if (auth.authenticated && auth.user) {
-          setUserId(auth.user.id);
           const cloud = await fetchUserSubscriptions();
           if (cancelled) return;
           const slugs = new Set(cloud.items.map((item) => item.product_slug));
+          setUserId(auth.user.id);
           setCloudSlugs(slugs);
           setWatched(slugs.has(slug));
-          writeUserWatchlist(
-            auth.user.id,
-            cloud.items.map((sub) => ({
-              slug: sub.product_slug,
-              name: sub.product_name,
-              currency: sub.current_currency || "CNY",
-              threshold: sub.target_price || "",
-              added_at: sub.created_at,
-            }))
-          );
+          setAuthStatus("authenticated");
+          writeUserWatchlist(auth.user.id, cloud.items.map(subscriptionToWatchItem));
         } else {
           setUserId(null);
           setCloudSlugs(null);
-          syncFromLocal();
+          setWatched(readAnonymousWatchlist().some((item) => item.slug === slug));
+          setAuthStatus("anonymous");
         }
       } catch {
         if (!cancelled) {
-          setUserId(null);
-          setCloudSlugs(null);
-          syncFromLocal();
+          setAuthStatus("error");
+          setError("暂时无法读取登录与关注状态，请稍后重试");
         }
       }
     };
 
-    void loadCloudState();
-
-    const sync = () => {
-      if (!cancelled && userId === null) syncFromLocal();
-    };
-    window.addEventListener(WATCHLIST_EVENT, sync);
-    window.addEventListener("storage", sync);
+    void loadState();
+    const handleAuthChange = () => void loadState();
+    window.addEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
     return () => {
       cancelled = true;
-      window.removeEventListener(WATCHLIST_EVENT, sync);
-      window.removeEventListener("storage", sync);
+      window.removeEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
     };
-  }, [slug, userId]);
+  }, [slug]);
 
-  async function performAddSubscription() {
+  useEffect(() => {
+    const syncAnonymousState = () => {
+      if (authStatus === "anonymous") {
+        setWatched(readAnonymousWatchlist().some((item) => item.slug === slug));
+      }
+    };
+    window.addEventListener(WATCHLIST_EVENT, syncAnonymousState);
+    window.addEventListener("storage", syncAnonymousState);
+    return () => {
+      window.removeEventListener(WATCHLIST_EVENT, syncAnonymousState);
+      window.removeEventListener("storage", syncAnonymousState);
+    };
+  }, [authStatus, slug]);
+
+  async function refreshCloudState(accountId: number): Promise<Set<string>> {
+    const cloud = await fetchUserSubscriptions();
+    const slugs = new Set(cloud.items.map((item) => item.product_slug));
+    setUserId(accountId);
+    setCloudSlugs(slugs);
+    setWatched(slugs.has(slug));
+    setAuthStatus("authenticated");
+    writeUserWatchlist(accountId, cloud.items.map(subscriptionToWatchItem));
+    return slugs;
+  }
+
+  async function performAddSubscription(accountId: number) {
     setError(null);
     const threshold = normalizeWatchThreshold(suggestedPrice || "") ?? "";
-    const previousAnon = readAnonymousWatchlist();
-    const optimisticItem: WatchItem = {
-      slug,
-      name,
-      currency,
-      threshold,
-      added_at: new Date().toISOString(),
-    };
-
-    // Anonymous (not signed in) list has a local cap; surface it instead of
-    // silently dropping the oldest entry. Signed-in users have no cloud limit.
-    if (userId === null && !previousAnon.some((item) => item.slug === slug) && previousAnon.length >= MAX_WATCHLIST_ITEMS) {
-      setError(`本地最多可保存 ${MAX_WATCHLIST_ITEMS} 个关注商品，请先移除部分或登录后同步到云端（云端不限数量）。`);
-      return;
-    }
-
     try {
-      // Persist to the cloud first; only then mirror it locally, so a failed
-      // save cannot leave the UI claiming a subscription that does not exist.
-      await saveUserSubscription({
+      const saved = await saveUserSubscription({
         product_slug: slug,
         target_price: threshold || null,
         notify_email: true,
         notify_bot: true,
       });
-      if (userId !== null) {
-        writeUserWatchlist(userId, [
-          ...readUserWatchlist(userId).filter((item) => item.slug !== slug),
-          optimisticItem,
-        ]);
-        setCloudSlugs((prev) => {
-          const next = new Set(prev || []);
-          next.add(slug);
-          return next;
-        });
-      } else {
-        writeAnonymousWatchlist([
-          ...previousAnon.filter((item) => item.slug !== slug),
-          optimisticItem,
-        ]);
-      }
+      writeUserWatchlist(accountId, [
+        ...readUserWatchlist(accountId).filter((item) => item.slug !== slug),
+        subscriptionToWatchItem(saved),
+      ]);
+      setUserId(accountId);
+      setAuthStatus("authenticated");
+      setCloudSlugs((prev) => new Set([...(prev || []), slug]));
       setWatched(true);
     } catch (err: any) {
       setError(err?.message || "关注失败，请稍后重试");
@@ -278,27 +274,52 @@ export function WatchButton({
 
     try {
       const auth = await fetchAuthMe();
-      if (!auth.authenticated) {
-        setShowLoginModal(true);
+      if (!auth.authenticated || !auth.user) {
+        setUserId(null);
+        setCloudSlugs(null);
+        setAuthStatus("anonymous");
+        const current = readAnonymousWatchlist();
+        const isWatched = current.some((item) => item.slug === slug);
+        const next = isWatched
+          ? current.filter((item) => item.slug !== slug)
+          : [
+              ...current,
+              {
+                slug,
+                name,
+                currency,
+                threshold: normalizeWatchThreshold(suggestedPrice || "") ?? "",
+                added_at: new Date().toISOString(),
+              },
+            ];
+        if (!isWatched && current.length >= MAX_WATCHLIST_ITEMS) {
+          setError(`匿名关注最多保存 ${MAX_WATCHLIST_ITEMS} 项，请先移除一项或登录同步`);
+          return;
+        }
+        if (!writeAnonymousWatchlist(next)) {
+          setError("浏览器未允许保存本地关注清单");
+          return;
+        }
+        setWatched(!isWatched);
         return;
       }
 
-      const isWatched = cloudSlugs ? cloudSlugs.has(slug) : watched;
+      const accountId = auth.user.id;
+      const currentCloudSlugs = userId === accountId && cloudSlugs
+        ? cloudSlugs
+        : await refreshCloudState(accountId);
+      const isWatched = currentCloudSlugs.has(slug);
       if (isWatched) {
-        // Remove from the cloud first; on failure the item stays and the user
-        // can retry instead of the server silently keeping sending alerts.
         try {
           await deleteUserSubscription(slug);
         } catch (err: any) {
           setError(err?.message || "取消关注失败，请稍后重试");
           return;
         }
-        if (auth.user) {
-          writeUserWatchlist(
-            auth.user.id,
-            readUserWatchlist(auth.user.id).filter((item) => item.slug !== slug)
-          );
-        }
+        writeUserWatchlist(
+          accountId,
+          readUserWatchlist(accountId).filter((item) => item.slug !== slug)
+        );
         setCloudSlugs((prev) => {
           const next = new Set(prev || []);
           next.delete(slug);
@@ -306,8 +327,10 @@ export function WatchButton({
         });
         setWatched(false);
       } else {
-        await performAddSubscription();
+        await performAddSubscription(accountId);
       }
+    } catch (err: any) {
+      setError(err?.message || "关注状态暂时无法更新，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -318,7 +341,7 @@ export function WatchButton({
       <button
         type="button"
         onClick={toggle}
-        disabled={loading}
+        disabled={loading || authStatus === "loading"}
         aria-pressed={watched}
         className={`tactile inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm font-medium transition ${
           watched
@@ -334,15 +357,6 @@ export function WatchButton({
           {error}
         </p>
       )}
-
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        onSuccess={() => {
-          setShowLoginModal(false);
-          void performAddSubscription();
-        }}
-      />
     </>
   );
 }

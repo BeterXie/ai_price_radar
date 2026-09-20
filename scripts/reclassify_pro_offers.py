@@ -48,6 +48,9 @@ def reclassify_pro_offers(dry_run: bool = False) -> None:
         count_20x = 0
 
         for offer in offers:
+            if "manual_override" in (offer.tags or []) or (offer.classification_confidence or 0) >= 100:
+                print(f"  Offer #{offer.id}: skipped manual classification")
+                continue
             raw = offer.raw_product
             title = raw.original_name if raw else ""
             category = raw.original_category if raw else ""

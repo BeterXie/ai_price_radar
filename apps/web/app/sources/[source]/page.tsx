@@ -93,7 +93,7 @@ export default async function SourcePage({
     limit: String(DIRECTORY_PAGE_SIZE),
   });
   const [catalog, shopsData] = await Promise.all([
-    getProducts(`source_platform=${encodeURIComponent(source)}&sort=quality`),
+    getProducts(`source_platform=${encodeURIComponent(source)}&sort=quality&limit=100`),
     getShopCards(shopQuery.toString()),
   ]);
 

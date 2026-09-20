@@ -11,7 +11,8 @@ from sqlalchemy.pool import StaticPool
 from app.core.config import get_settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import NotificationOutbox, Report, Shop, SourceIntake
+from app.models import NotificationOutbox, Report, Shop, SourceIntake, User
+from app.security import require_current_user
 from app.services import outbox
 from app.services.outbox import process_once
 
@@ -42,6 +43,7 @@ def api_client(monkeypatch):
             yield db
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=1, email="merchant@example.com")
     try:
         yield TestClient(app), engine
     finally:
@@ -54,6 +56,8 @@ def _payload(token: str = "ABC123", **extra):
         "shop_name": "测试店铺",
         "contact": "merchant@example.com",
         "note": "公开 AI 商品申请",
+        "authorization_confirmed": True,
+        "consent_version": "shop-source-submission-v1",
         **extra,
     }
 
@@ -104,6 +108,45 @@ def test_shop_request_rejects_invalid_email_labels(api_client, contact):
     client, _ = api_client
     response = client.post("/api/v1/shop-requests", json=_payload(contact=contact))
     assert response.status_code == 422
+
+
+def test_shop_request_requires_authenticated_account(api_client):
+    client, engine = api_client
+    app.dependency_overrides.pop(require_current_user, None)
+    try:
+        response = client.post("/api/v1/shop-requests", json=_payload())
+        assert response.status_code == 401
+        with Session(engine) as db:
+            assert db.scalar(select(SourceIntake.id)) is None
+    finally:
+        app.dependency_overrides[require_current_user] = lambda: User(
+            id=1, email="merchant@example.com"
+        )
+
+
+def test_shop_request_rejects_contact_email_mismatch(api_client):
+    client, engine = api_client
+    app.dependency_overrides[require_current_user] = lambda: User(
+        id=7, email="verified@example.com"
+    )
+    try:
+        mismatch = client.post("/api/v1/shop-requests", json=_payload())
+        assert mismatch.status_code == 403
+        assert "contact email must match" in mismatch.json()["detail"]
+
+        # Case differences must not block a legitimately matching address.
+        accepted = client.post(
+            "/api/v1/shop-requests", json=_payload(contact="Verified@Example.com")
+        )
+        assert accepted.status_code == 201
+    finally:
+        app.dependency_overrides[require_current_user] = lambda: User(
+            id=1, email="merchant@example.com"
+        )
+    with Session(engine) as db:
+        intakes = db.scalars(select(SourceIntake)).all()
+        assert len(intakes) == 1
+        assert intakes[0].contact_email == "verified@example.com"
 
 
 def test_submission_preserves_schema_maximum_name_and_note_lengths(api_client):
@@ -285,6 +328,7 @@ def test_detection_merges_two_product_pages_into_one_canonical_dujiao_source(api
         "/api/v1/shop-requests",
         json={**_payload(), "shop_url": "https://shop.example/products/a", "note": "first note"},
     ).json()["request_id"]
+    app.dependency_overrides[require_current_user] = lambda: User(id=2, email="second@example.com")
     second = client.post(
         "/api/v1/shop-requests",
         json={
@@ -858,7 +902,7 @@ def test_outbox_worker_success_failure_backoff_and_secret_scrubbing(monkeypatch,
         assert failed.status == "failed"
         assert failed.next_attempt_at.replace(tzinfo=timezone.utc) == fourth_failure_at
         assert "super-secret" not in failed.last_error
-        assert failed.last_error == "RuntimeError: mail delivery failed"
+        assert failed.last_error == "RuntimeError: notification delivery failed"
     assert "super-secret" not in caplog.text
 
 
@@ -962,6 +1006,31 @@ def test_admin_change_platform_and_redetect(api_client):
     assert res.json()["source_type"] == "unknown"
 
 
+@pytest.mark.parametrize("workflow_status", ["detecting", "approved", "published", "onboarded"])
+def test_admin_cannot_redetect_active_or_completed_intake(api_client, workflow_status):
+    client, engine = api_client
+    with Session(engine) as db:
+        intake = SourceIntake(
+            source_type="dujiao_next",
+            detected_platform="dujiao_next",
+            source_key=f"redetect-{workflow_status}",
+            source_url=f"https://{workflow_status}.example.com",
+            contact_email="merchant@example.com",
+            status=workflow_status,
+        )
+        db.add(intake)
+        db.commit()
+        intake_id = intake.id
+
+    response = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/redetect",
+        headers={"X-Admin-Key": "admin-test"},
+    )
+    assert response.status_code == 409
+    with Session(engine) as db:
+        assert db.get(SourceIntake, intake_id).status == workflow_status
+
+
 @pytest.mark.parametrize(
     ("status", "platform"),
     [("detecting", "unknown"), ("validating", "ldxp"), ("validated", "ldxp")],
@@ -1031,7 +1100,7 @@ def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
         assert f"店铺地址：{intake.source_url}" in applicant_notice.text_body
         assert f"店铺名称：{intake.shop_name}" in applicant_notice.text_body
 
-    # 2. dujiao_next auto-approves to approved
+    # 2. Disabled dujiao_next remains pending review.
     intake_id_dj = client.post(
         "/api/v1/shop-requests",
         json={**_payload(), "shop_url": "https://dj.example.com", "source_type": "dujiao_next"},
@@ -1043,8 +1112,8 @@ def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
         source_url="https://dj.example.com",
         source_key="https://dj.example.com",
     )
-    assert detected_dj.json()["status"] == "approved"
-    assert detected_dj.json()["workflow_status"] == "approved"
+    assert detected_dj.json()["status"] == "pending_review"
+    assert detected_dj.json()["workflow_status"] == "pending_review"
 
 
 def test_shop_intake_auto_approve_ignores_other(api_client, monkeypatch):
@@ -1159,6 +1228,7 @@ def test_detection_resolves_to_already_known_shop_notifies_applicant(api_client)
         db.add(shop)
         db.commit()
 
+    app.dependency_overrides[require_current_user] = lambda: User(id=3, email="applicant@example.com")
     created = client.post(
         "/api/v1/shop-requests",
         json={
@@ -1166,6 +1236,8 @@ def test_detection_resolves_to_already_known_shop_notifies_applicant(api_client)
             "shop_name": "单品申请",
             "contact": "applicant@example.com",
             "note": "测试单品链接",
+            "authorization_confirmed": True,
+            "consent_version": "shop-source-submission-v1",
         },
     )
     assert created.status_code == 201
@@ -1195,5 +1267,3 @@ def test_detection_resolves_to_already_known_shop_notifies_applicant(api_client)
         assert notification is not None
         assert "橘子Ai源头" in notification.text_body
         assert "https://wzyp.cn/shop/KFLA" in notification.text_body
-
-

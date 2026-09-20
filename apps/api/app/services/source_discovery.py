@@ -13,7 +13,12 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..models import SourceCandidate, SourceDiscoveryRun, SourceIntake
 from .source_intake import utcnow
-from .source_platform import canonical_source_platform, normalize_public_https_url
+from .source_platform import (
+    canonical_source_platform,
+    is_source_platform_disabled,
+    normalize_public_https_url,
+    prepare_source_submission,
+)
 
 
 DETECTED_PLATFORMS = frozenset(
@@ -83,7 +88,8 @@ def candidate_origin(value: str) -> str:
     rendered_host = f"[{host}]" if ":" in host else host
     if parsed.port not in (None, 443):
         rendered_host = f"{rendered_host}:{parsed.port}"
-    return urllib.parse.urlunsplit(("https", rendered_host, "", "", ""))
+    origin = urllib.parse.urlunsplit(("https", rendered_host, "", "", ""))
+    return prepare_source_submission(origin).source_url
 
 
 def candidate_key_for(normalized_url: str, platform_hint: str) -> str:
@@ -251,9 +257,8 @@ def _validate_sample_products(samples: list[dict[str, Any]]) -> list[dict[str, A
             raise ValueError("sample product name is required and must be at most 200 characters")
         if not url or len(url) > MAX_SAMPLE_URL_LENGTH:
             raise ValueError("sample product url is required and must be at most 2000 characters")
-        if url.startswith(("http://", "https://")):
-            normalize_public_https_url(url)
-        item: dict[str, Any] = {"name": name, "url": url}
+        normalized_url = normalize_public_https_url(url)
+        item: dict[str, Any] = {"name": name, "url": normalized_url}
         if slug:
             item["product_slug"] = slug[:200]
         validated.append(item)
@@ -278,6 +283,8 @@ def _trim_note(value: str) -> str:
 
 
 def auto_approval_enabled(platform: str) -> bool:
+    if is_source_platform_disabled(platform):
+        return False
     setting = AUTO_APPROVE_SETTING.get(platform)
     if setting is None:
         return False
@@ -297,10 +304,15 @@ def promote_candidate_to_intake(
     satisfy the strict conditions must not be written as ``approved``.
     """
     platform = canonical_source_platform(candidate.detected_platform)
-    if platform not in PROMOTABLE_PLATFORMS:
+    if platform not in PROMOTABLE_PLATFORMS or is_source_platform_disabled(platform):
         return None
     source_url = candidate.detected_source_url or candidate.canonical_url
-    source_key = candidate.detected_source_key or source_url
+    if platform in ORIGIN_KEY_PLATFORMS:
+        prepared = prepare_source_submission(candidate_origin(source_url))
+        source_url = prepared.source_url
+        source_key = prepared.source_key
+    else:
+        source_key = candidate.detected_source_key or source_url
     _lock_identity(db, f"intake\n{platform}\n{source_key}")
     existing = db.scalar(
         select(SourceIntake).where(
@@ -511,20 +523,18 @@ def report_candidate_result(
     normalized_samples = _validate_sample_products(sample_products)
     normalized_fingerprints = _validate_fingerprints(fingerprints)
     normalized_source_url = normalize_candidate_url(detected_source_url or candidate.canonical_url)
-    source_url = (
-        candidate_origin(normalized_source_url)
-        if platform in ORIGIN_KEY_PLATFORMS
-        else normalized_source_url
-    )
-    source_key = str(detected_source_key or source_url).strip()
-    if not source_key or len(source_key) > 300:
+    source_url = candidate_origin(normalized_source_url) if platform in ORIGIN_KEY_PLATFORMS else normalized_source_url
+    reported_source_key = str(detected_source_key or source_url).strip()
+    if not reported_source_key or len(reported_source_key) > 300:
         raise ValueError("detected_source_key is required and must be at most 300 characters")
     if platform in ORIGIN_KEY_PLATFORMS:
-        canonical_key = normalize_candidate_url(source_key)
+        canonical_key = normalize_candidate_url(reported_source_key)
         if candidate_origin(canonical_key) != source_url:
             raise ValueError("detected_source_key is not canonical for the platform")
-        source_key = source_url
-    elif source_key.startswith("http"):
+        source_key = prepare_source_submission(source_url).source_key
+    else:
+        source_key = reported_source_key
+    if platform not in ORIGIN_KEY_PLATFORMS and source_key.casefold().startswith(("http://", "https://")):
         canonical_key = normalize_candidate_url(source_key)
         source_key = canonical_key
 
@@ -557,9 +567,10 @@ def report_candidate_result(
         return candidate
 
     auto_approved = auto_approval_enabled(platform)
+    can_promote = platform in PROMOTABLE_PLATFORMS and not is_source_platform_disabled(platform)
     strict_auto = (
         auto_approved
-        and platform in PROMOTABLE_PLATFORMS
+        and can_promote
         and bool(normalized_samples)
         and confidence_score >= 50
     )
@@ -576,7 +587,7 @@ def report_candidate_result(
     candidate.next_verify_at = now + timedelta(days=30)
 
     promoted_intake_id: int | None = None
-    if platform in PROMOTABLE_PLATFORMS:
+    if can_promote:
         promoted_intake_id = promote_candidate_to_intake(
             db,
             candidate,
@@ -593,6 +604,10 @@ def report_candidate_result(
             candidate.decision_note = _trim_note(
                 f"{candidate.decision_note}\n已存在 rejected/disabled 的 Intake，等待管理员处理"
             )
+    elif is_source_platform_disabled(platform):
+        candidate.decision_note = _trim_note(
+            f"{candidate.decision_note}\n{platform} 已禁用，不自动促进到 Source Intake"
+        )
     promoted_intake = db.get(SourceIntake, promoted_intake_id) if promoted_intake_id is not None else None
     intake_approved = promoted_intake is not None and promoted_intake.approved_at is not None
     _update_run_stats(
@@ -649,7 +664,7 @@ def admin_promote_candidate(db: Session, candidate: SourceCandidate, *, reason: 
     if candidate.status not in {"pending_review", "auto_approved", "detected"}:
         raise ValueError(f"cannot promote candidate in status {candidate.status}")
     platform = canonical_source_platform(candidate.detected_platform)
-    if platform not in PROMOTABLE_PLATFORMS:
+    if platform not in PROMOTABLE_PLATFORMS or is_source_platform_disabled(platform):
         raise ValueError("candidate platform is not promotable")
     if candidate.ai_product_count <= 0 or not (candidate.detected_source_url or candidate.canonical_url):
         raise ValueError("candidate must have AI products and a validated source URL")
@@ -693,7 +708,7 @@ def recover_unpromoted_candidates(db: Session, *, limit: int = 100) -> int:
     recovered = 0
     for candidate in rows:
         platform = canonical_source_platform(candidate.detected_platform)
-        if platform not in PROMOTABLE_PLATFORMS:
+        if platform not in PROMOTABLE_PLATFORMS or is_source_platform_disabled(platform):
             continue
         promoted_intake_id = promote_candidate_to_intake(
             db,

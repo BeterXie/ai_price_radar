@@ -11,11 +11,13 @@ type UnknownRecord = Record<string, unknown>;
 
 export const COCKPIT_LIMITS = {
   maxFileBytes: 10 * 1024 * 1024,
+  maxPastedTextBytes: 10 * 1024 * 1024,
   maxTotalFileBytes: 10 * 1024 * 1024,
   maxFilesPerBatch: 50,
   maxDepth: 64,
   maxVisitedNodes: 200_000,
   maxAccountsPerBatch: 500,
+  maxIssuesPerBatch: 500,
   minAccessTokenLength: 40,
   maxAccessTokenLength: 100_000,
 } as const;
@@ -85,8 +87,54 @@ function firstString(...values: readonly unknown[]): string | undefined {
   return undefined;
 }
 
+function normalizedEmail(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) return undefined;
+  return cleaned;
+}
+
+function firstEmail(...values: readonly unknown[]): string | undefined {
+  for (const value of values) {
+    const email = normalizedEmail(value);
+    if (email) return email;
+  }
+  return undefined;
+}
+
+function assertConsistentIdentity(label: string, values: readonly (string | undefined)[], normalize = (value: string) => value): void {
+  const distinct = new Set(values.filter((value): value is string => Boolean(value)).map(normalize));
+  if (distinct.size > 1) throw new Error(`${label} 身份字段互相冲突`);
+}
+
 function readString(record: UnknownRecord, ...paths: readonly (readonly string[])[]): string | undefined {
   return firstString(...paths.map((path) => valueAt(record, path)));
+}
+
+function createIssueCollector() {
+  const issues: CockpitConversionIssue[] = [];
+  let omitted = 0;
+
+  return {
+    add(issue: CockpitConversionIssue): void {
+      if (issues.length < COCKPIT_LIMITS.maxIssuesPerBatch - 1) {
+        issues.push(issue);
+      } else {
+        omitted += 1;
+      }
+    },
+    result(): readonly CockpitConversionIssue[] {
+      if (!omitted) return issues;
+      return [
+        ...issues,
+        {
+          sourceName: "批次",
+          path: "$",
+          reason: `另有 ${omitted} 个问题未逐项显示，已达到 ${COCKPIT_LIMITS.maxIssuesPerBatch} 条问题上限`,
+        },
+      ];
+    },
+  };
 }
 
 function decodeBase64Url(value: string): string {
@@ -187,19 +235,23 @@ function accessTokenOf(record: UnknownRecord): string | undefined {
   );
 }
 
-function collectSessionRecords(value: unknown): readonly { record: UnknownRecord; path: string }[] {
+type TraversalBudget = { visitedNodes: number };
+
+function collectSessionRecords(
+  value: unknown,
+  budget: TraversalBudget,
+): readonly { record: UnknownRecord; path: string }[] {
   const found: { record: UnknownRecord; path: string }[] = [];
   const visited = new WeakSet<object>();
-  let visitedNodes = 0;
 
   function visit(item: unknown, path: string, depth: number): void {
+    budget.visitedNodes += 1;
+    if (budget.visitedNodes > COCKPIT_LIMITS.maxVisitedNodes) {
+      throw new Error(`对象节点数超过 ${COCKPIT_LIMITS.maxVisitedNodes}，已停止解析`);
+    }
     if (!isRecord(item) && !Array.isArray(item)) return;
     if (visited.has(item)) return;
     visited.add(item);
-    visitedNodes += 1;
-    if (visitedNodes > COCKPIT_LIMITS.maxVisitedNodes) {
-      throw new Error(`对象节点数超过 ${COCKPIT_LIMITS.maxVisitedNodes}，已停止解析`);
-    }
     if (depth > COCKPIT_LIMITS.maxDepth) {
       throw new Error(`嵌套层级超过 ${COCKPIT_LIMITS.maxDepth} 层，已停止解析`);
     }
@@ -218,15 +270,23 @@ function collectSessionRecords(value: unknown): readonly { record: UnknownRecord
         valueAt(item, ["account", "id"]),
         valueAt(item, ["tokens", "account_id"]),
         valueAt(item, ["providerSpecificData", "chatgptAccountId"]),
+        valueAt(item, ["credentials", "email"]),
+        valueAt(item, ["credentials", "accountId"]),
+        valueAt(item, ["credentials", "account_id"]),
+        valueAt(item, ["credentials", "chatgptAccountId"]),
+        valueAt(item, ["credentials", "chatgpt_account_id"]),
         payload?.email,
         auth.chatgpt_account_id,
       ));
-      if (accessToken && hasIdentity) {
+      const isCandidate = Boolean(accessToken && hasIdentity);
+      if (isCandidate) {
         found.push({ record: item, path });
-        return;
       }
       for (const [key, child] of Object.entries(item)) {
         if (["accessToken", "access_token", "sessionToken", "session_token"].includes(key)) continue;
+        if (isCandidate && ["account", "credentials", "meta", "providerSpecificData", "token", "tokens", "user"].includes(key)) {
+          continue;
+        }
         visit(child, `${path}.${key}`, depth + 1);
       }
       return;
@@ -271,6 +331,7 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     ["tokens", "refresh_token"],
     ["token", "refreshToken"],
     ["token", "refresh_token"],
+    ["credentials", "refreshToken"],
     ["credentials", "refresh_token"],
   );
   const inputIdToken = readString(
@@ -281,6 +342,7 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     ["tokens", "id_token"],
     ["token", "idToken"],
     ["token", "id_token"],
+    ["credentials", "idToken"],
     ["credentials", "id_token"],
   );
   const payload = parseJwtPayload(accessToken);
@@ -295,19 +357,22 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     normalizeTimestamp(record.expired),
     normalizeTimestamp(record.expires_at),
   );
-  const email = firstString(
+  const recordEmail = firstEmail(
     valueAt(record, ["user", "email"]),
     record.email,
     valueAt(record, ["meta", "label"]),
     record.label,
     valueAt(record, ["credentials", "email"]),
     valueAt(record, ["providerSpecificData", "email"]),
-    profile.email,
-    idPayload?.email,
-    payload?.email,
   );
-  const accountId = firstString(
+  const accessEmail = firstEmail(profile.email, payload?.email);
+  const idEmail = firstEmail(idPayload?.email);
+  assertConsistentIdentity("email", [recordEmail, accessEmail, idEmail], (value) => value.toLowerCase());
+  const email = firstEmail(recordEmail, accessEmail, idEmail);
+
+  const recordAccountId = firstString(
     valueAt(record, ["account", "id"]),
+    record.accountId,
     record.account_id,
     valueAt(record, ["tokens", "accountId"]),
     valueAt(record, ["tokens", "account_id"]),
@@ -317,21 +382,32 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     valueAt(record, ["meta", "chatgpt_account_id"]),
     valueAt(record, ["providerSpecificData", "chatgptAccountId"]),
     valueAt(record, ["providerSpecificData", "chatgpt_account_id"]),
+    valueAt(record, ["credentials", "accountId"]),
+    valueAt(record, ["credentials", "account_id"]),
+    valueAt(record, ["credentials", "chatgptAccountId"]),
     valueAt(record, ["credentials", "chatgpt_account_id"]),
-    auth.chatgpt_account_id,
-    idAuth.chatgpt_account_id,
     record.provider === "codex" ? record.id : undefined,
   );
-  const userId = firstString(
+  const accessAccountId = firstString(auth.chatgpt_account_id);
+  const idAccountId = firstString(idAuth.chatgpt_account_id);
+  assertConsistentIdentity("account_id", [recordAccountId, accessAccountId, idAccountId]);
+  const accountId = firstString(recordAccountId, accessAccountId, idAccountId);
+
+  const recordUserId = firstString(
     valueAt(record, ["user", "id"]),
     record.user_id,
     record.chatgptUserId,
+    record.chatgpt_user_id,
     valueAt(record, ["providerSpecificData", "chatgptUserId"]),
-    auth.chatgpt_user_id,
-    auth.user_id,
-    idAuth.chatgpt_user_id,
-    idAuth.user_id,
+    valueAt(record, ["credentials", "userId"]),
+    valueAt(record, ["credentials", "user_id"]),
+    valueAt(record, ["credentials", "chatgptUserId"]),
+    valueAt(record, ["credentials", "chatgpt_user_id"]),
   );
+  const accessUserId = firstString(auth.chatgpt_user_id, auth.user_id);
+  const idUserId = firstString(idAuth.chatgpt_user_id, idAuth.user_id);
+  assertConsistentIdentity("user_id", [recordUserId, accessUserId, idUserId]);
+  const userId = firstString(recordUserId, accessUserId, idUserId);
   const planType = firstString(
     valueAt(record, ["account", "planType"]),
     valueAt(record, ["account", "plan_type"]),
@@ -339,7 +415,10 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     record.plan_type,
     valueAt(record, ["providerSpecificData", "chatgptPlanType"]),
     valueAt(record, ["providerSpecificData", "chatgpt_plan_type"]),
+    valueAt(record, ["credentials", "planType"]),
     valueAt(record, ["credentials", "plan_type"]),
+    valueAt(record, ["credentials", "chatgptPlanType"]),
+    valueAt(record, ["credentials", "chatgpt_plan_type"]),
     auth.chatgpt_plan_type,
     idAuth.chatgpt_plan_type,
   );
@@ -349,7 +428,7 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
     throw new Error(validationReasons.join("；"));
   }
 
-  const canKeepInputIdToken = Boolean(inputIdToken && idPayload && firstString(idPayload.email));
+  const canKeepInputIdToken = Boolean(inputIdToken && idPayload && idEmail);
   const idToken = canKeepInputIdToken
     ? inputIdToken
     : syntheticIdToken(email, accountId, planType, userId, expiresAt, now);
@@ -371,16 +450,30 @@ function convertRecord(record: UnknownRecord, sourceName: string, sourcePath: st
 
 export function convertJsonDocuments(documents: readonly JsonDocument[], now = new Date()): CockpitConversionResult {
   const accounts: ConvertedCockpitAccount[] = [];
-  const issues: CockpitConversionIssue[] = [];
-  const seenAccessTokens = new Set<string>();
+  const issueCollector = createIssueCollector();
+  const seenAccessTokens = new Map<string, string>();
+  const accountIndexes = new Map<string, number>();
+  const traversalBudget: TraversalBudget = { visitedNodes: 0 };
   let budgetExceededReported = false;
+
+  function shouldReplaceAccount(
+    existing: ConvertedCockpitAccount,
+    candidate: ConvertedCockpitAccount,
+  ): boolean {
+    const existingExpiry = Date.parse(existing.expiresAt || "");
+    const candidateExpiry = Date.parse(candidate.expiresAt || "");
+    const existingRank = Number.isFinite(existingExpiry) ? existingExpiry : Number.NEGATIVE_INFINITY;
+    const candidateRank = Number.isFinite(candidateExpiry) ? candidateExpiry : Number.NEGATIVE_INFINITY;
+    if (candidateRank !== existingRank) return candidateRank > existingRank;
+    return true;
+  }
 
   for (const document of documents) {
     let records: readonly { record: UnknownRecord; path: string }[];
     try {
-      records = collectSessionRecords(document.value);
+      records = collectSessionRecords(document.value, traversalBudget);
     } catch (error) {
-      issues.push({
+      issueCollector.add({
         sourceName: document.sourceName,
         path: "$",
         reason: error instanceof Error ? error.message : "解析失败",
@@ -388,42 +481,62 @@ export function convertJsonDocuments(documents: readonly JsonDocument[], now = n
       continue;
     }
     if (!records.length) {
-      issues.push({ sourceName: document.sourceName, path: "$", reason: "未找到包含 accessToken 和账号信息的对象" });
-      continue;
-    }
-    if (accounts.length >= COCKPIT_LIMITS.maxAccountsPerBatch) {
-      if (!budgetExceededReported) {
-        issues.push({
-          sourceName: document.sourceName,
-          path: "$",
-          reason: `账号总数已达到单次批次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，后续记录不再转换`,
-        });
-        budgetExceededReported = true;
-      }
+      issueCollector.add({ sourceName: document.sourceName, path: "$", reason: "未找到包含 accessToken 和账号信息的对象" });
       continue;
     }
     for (const { record, path } of records) {
-      if (accounts.length >= COCKPIT_LIMITS.maxAccountsPerBatch) {
-        if (!budgetExceededReported) {
-          issues.push({
-            sourceName: document.sourceName,
-            path: "$",
-            reason: `账号总数已达到单次批次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，后续记录不再转换`,
-          });
-          budgetExceededReported = true;
-        }
-        break;
-      }
       try {
         const converted = convertRecord(record, document.sourceName, path, now);
-        if (seenAccessTokens.has(converted.account.access_token)) {
-          issues.push({ sourceName: document.sourceName, path, reason: "重复账号已跳过（access_token 相同）" });
+        const accountId = converted.account.account_id;
+        const tokenOwner = seenAccessTokens.get(converted.account.access_token);
+        if (tokenOwner) {
+          issueCollector.add({
+            sourceName: document.sourceName,
+            path,
+            reason: tokenOwner === accountId
+              ? "重复账号已跳过（access_token 相同）"
+              : "access_token 已关联到另一个 account_id，记录已跳过",
+          });
           continue;
         }
-        seenAccessTokens.add(converted.account.access_token);
+
+        seenAccessTokens.set(converted.account.access_token, accountId);
+        const existingIndex = accountIndexes.get(accountId);
+        if (existingIndex !== undefined) {
+          const existing = accounts[existingIndex];
+          if (shouldReplaceAccount(existing, converted)) {
+            accounts[existingIndex] = converted;
+            issueCollector.add({
+              sourceName: document.sourceName,
+              path,
+              reason: "同一 account_id 的令牌已轮换，保留到期时间较晚或后出现的记录",
+            });
+          } else {
+            issueCollector.add({
+              sourceName: document.sourceName,
+              path,
+              reason: "同一 account_id 的较旧令牌已跳过",
+            });
+          }
+          continue;
+        }
+
+        if (accounts.length >= COCKPIT_LIMITS.maxAccountsPerBatch) {
+          if (!budgetExceededReported) {
+            issueCollector.add({
+              sourceName: document.sourceName,
+              path: "$",
+              reason: `账号总数已达到单次批次 ${COCKPIT_LIMITS.maxAccountsPerBatch} 个上限，后续新账号不再转换`,
+            });
+            budgetExceededReported = true;
+          }
+          continue;
+        }
+
+        accountIndexes.set(accountId, accounts.length);
         accounts.push(converted);
       } catch (error) {
-        issues.push({
+        issueCollector.add({
           sourceName: document.sourceName,
           path,
           reason: error instanceof Error ? error.message : "无法转换",
@@ -432,18 +545,18 @@ export function convertJsonDocuments(documents: readonly JsonDocument[], now = n
     }
   }
 
-  return { accounts, issues };
+  return { accounts, issues: issueCollector.result() };
 }
 
 export function convertJsonTexts(documents: readonly JsonTextDocument[], now = new Date()): JsonTextConversionResult {
   const parsedDocuments: JsonDocument[] = [];
-  const parseIssues: CockpitConversionIssue[] = [];
+  const parseIssueCollector = createIssueCollector();
 
   for (const document of documents) {
     try {
       parsedDocuments.push({ sourceName: document.sourceName, value: parseJsonText(document.text) });
     } catch (error) {
-      parseIssues.push({
+      parseIssueCollector.add({
         sourceName: document.sourceName,
         path: "$",
         reason: error instanceof Error ? error.message : "JSON 解析失败",
@@ -452,14 +565,21 @@ export function convertJsonTexts(documents: readonly JsonTextDocument[], now = n
   }
 
   const converted = convertJsonDocuments(parsedDocuments, now);
+  const combinedIssueCollector = createIssueCollector();
+  converted.issues.forEach((issue) => combinedIssueCollector.add(issue));
+  parseIssueCollector.result().forEach((issue) => combinedIssueCollector.add(issue));
   return {
     accounts: converted.accounts,
-    issues: [...converted.issues, ...parseIssues],
+    issues: combinedIssueCollector.result(),
     parsedFileNames: parsedDocuments.map((document) => document.sourceName),
   };
 }
 
 export function parseJsonText(text: string): unknown {
+  const byteLength = new TextEncoder().encode(text).byteLength;
+  if (byteLength > COCKPIT_LIMITS.maxPastedTextBytes) {
+    throw new Error(`JSON 文本超过 ${COCKPIT_LIMITS.maxPastedTextBytes / (1024 * 1024)} MB 上限`);
+  }
   try {
     return JSON.parse(text);
   } catch (error) {

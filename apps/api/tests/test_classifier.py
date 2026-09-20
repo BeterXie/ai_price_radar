@@ -149,6 +149,22 @@ def test_plus_does_not_inherit_tier_tags_from_description():
     assert not ({"Team", "Business", "K12"} & set(result.tags))
 
 
+@pytest.mark.parametrize(
+    ("description", "delivery_type"),
+    [
+        ("3人共享账号，随机分配", "shared_pool"),
+        ("体验版日抛，当天失效", "trial_account"),
+        ("仅提供中转 API，不交付账号", "relay_api"),
+        ("只可反代，没有账号密码", "session_token"),
+    ],
+)
+def test_description_restrictions_override_finished_account_title(description: str, delivery_type: str):
+    result = classify_product("ChatGPT Plus 成品号", "GPT Plus", description)
+    assert result.delivery_type == delivery_type
+    if delivery_type in {"shared_pool", "trial_account", "relay_api"}:
+        assert result.is_comparable is False
+
+
 def test_openai_description_can_refine_an_already_identified_product():
     result = classify_product("ChatGPT 独享账号", "OpenAI", "Business Team 自动拉入")
     assert result.slug == "chatgpt-k12"
@@ -485,4 +501,3 @@ def test_chatgpt_plus_low_price_safeguard():
         price=1.20,
     )
     assert res7.slug != "chatgpt-plus"
-

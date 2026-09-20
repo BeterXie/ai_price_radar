@@ -3,6 +3,7 @@ from scripts.production_preflight import validate_production_env
 
 def _valid_env() -> dict[str, str]:
     return {
+        "APP_ENV": "production",
         "POSTGRES_PASSWORD": "a" * 24,
         "ADMIN_API_KEY": "b" * 40,
         "SESSION_SECRET_KEY": "s" * 40,
@@ -19,6 +20,9 @@ def _valid_env() -> dict[str, str]:
         "PUBLIC_SITE_URL": "https://ai.example.com",
         "WEB_ORIGIN": "https://ai.example.com",
         "NEXT_PUBLIC_API_BASE_URL": "https://ai.example.com",
+        "NEXT_PUBLIC_SITE_URL": "https://ai.example.com",
+        "NEXT_PUBLIC_GITHUB_REPOSITORY_URL": "https://github.com/example/price-radar",
+        "NEXT_PUBLIC_BUSINESS_EMAIL": "business@example.com",
         "SITE_ADDRESS": "https://ai.example.com",
         "TRUSTED_PROXY_CIDRS": "172.16.0.0/12",
     }
@@ -104,6 +108,19 @@ def test_production_preflight_accepts_smtp_fallback():
     env["SMTP_HOST"] = "smtp.example.com"
     env["SMTP_FROM"] = "no-reply@example.com"
     assert validate_production_env(env) == []
+
+
+def test_production_preflight_rejects_plaintext_smtp_auth():
+    env = _valid_env()
+    env["RESEND_API_KEY"] = ""
+    env["RESEND_FROM"] = ""
+    env["SMTP_HOST"] = "smtp.example.com"
+    env["SMTP_FROM"] = "no-reply@example.com"
+    env["SMTP_USERNAME"] = "mailer"
+    env["SMTP_STARTTLS"] = "false"
+    env["SMTP_SSL"] = "false"
+    errors = validate_production_env(env)
+    assert any("SMTP authentication requires" in error for error in errors)
 
 
 def test_production_preflight_requires_complete_author_support_configuration():

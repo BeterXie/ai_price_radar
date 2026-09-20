@@ -123,6 +123,7 @@ export function UsersAdminPanel({
   // Monotonic request id so an out-of-order detail response cannot overwrite a
   // newer selection (e.g. open A, close, open B, A resolves late).
   const detailRequestSeqRef = useRef(0);
+  const usersRequestSeqRef = useRef(0);
 
   // Broadcast Notification Modal
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
@@ -136,6 +137,7 @@ export function UsersAdminPanel({
   const [broadcastHistory, setBroadcastHistory] = useState<AdminBroadcastItem[]>([]);
   const [loadingBroadcastHistory, setLoadingBroadcastHistory] = useState(false);
   const [broadcastSubTab, setBroadcastSubTab] = useState<"send" | "history">("send");
+  const broadcastOperationRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   async function openBroadcastModal() {
     setShowBroadcastModal(true);
@@ -190,13 +192,22 @@ export function UsersAdminPanel({
 
     setSendingBroadcast(true);
     try {
+      const payload = {
+        title: broadcastTitle.trim(),
+        content: broadcastContent.trim(),
+        channels,
+      };
+      const fingerprint = JSON.stringify(payload);
+      if (broadcastOperationRef.current?.fingerprint !== fingerprint) {
+        const randomPart = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        broadcastOperationRef.current = { fingerprint, key: `broadcast-${randomPart}` };
+      }
       const res = await fetch(`${apiBase}/api/v1/admin/broadcasts`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: broadcastTitle.trim(),
-          content: broadcastContent.trim(),
-          channels,
+          ...payload,
+          operation_key: broadcastOperationRef.current.key,
         }),
       });
       if (res.ok) {
@@ -204,6 +215,7 @@ export function UsersAdminPanel({
         showToast(`已成功广播通知！触达 ${created.target_user_count} 位用户`);
         setBroadcastTitle("");
         setBroadcastContent("");
+        broadcastOperationRef.current = null;
         void fetchBroadcastHistory();
         setBroadcastSubTab("history");
       } else {
@@ -244,6 +256,7 @@ export function UsersAdminPanel({
   }
 
   async function fetchUsers() {
+    const requestSeq = ++usersRequestSeqRef.current;
     setLoadingUsers(true);
     try {
       const params = new URLSearchParams();
@@ -257,15 +270,23 @@ export function UsersAdminPanel({
       }
 
       const res = await fetch(`${apiBase}/api/v1/admin/users?${params.toString()}`, { headers });
+      if (requestSeq !== usersRequestSeqRef.current) return;
       if (res.ok) {
         const data: AdminUserPageOut = await res.json();
+        if (requestSeq !== usersRequestSeqRef.current) return;
         setUsers(data.items);
         setTotal(data.total);
+      } else {
+        showToast(`获取用户列表失败 (${res.status})`);
       }
     } catch {
-      showToast("获取用户列表失败，请检查网络或管理凭证");
+      if (requestSeq === usersRequestSeqRef.current) {
+        showToast("获取用户列表失败，请检查网络或管理凭证");
+      }
     } finally {
-      setLoadingUsers(false);
+      if (requestSeq === usersRequestSeqRef.current) {
+        setLoadingUsers(false);
+      }
     }
   }
 

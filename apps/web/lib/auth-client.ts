@@ -45,11 +45,7 @@ async function jsonFetch<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export async function fetchAuthMe(): Promise<AuthSessionState> {
-  try {
-    return await jsonFetch<AuthSessionState>("/api/v1/auth/me");
-  } catch {
-    return { authenticated: false, user: null };
-  }
+  return jsonFetch<AuthSessionState>("/api/v1/auth/me");
 }
 
 export async function requestEmailLoginCode(email: string): Promise<{ success: boolean; retry_after: number; message: string }> {
@@ -110,12 +106,6 @@ export async function startQQBotBinding(): Promise<QQBotBindingStartResponse> {
 
 export async function checkQQBotBinding(sessionId: string): Promise<{ status: string; bind_code: string; target_id?: string; message?: string }> {
   return jsonFetch(`/api/v1/user/notifications/qq/status?session_id=${encodeURIComponent(sessionId)}`);
-}
-
-export async function manualConfirmQQBotBinding(bindCode: string, targetId: string): Promise<{ success: boolean; binding: UserBotBinding }> {
-  return jsonFetch(`/api/v1/user/notifications/qq/confirm?bind_code=${encodeURIComponent(bindCode)}&target_id=${encodeURIComponent(targetId)}`, {
-    method: "POST",
-  });
 }
 
 export async function updateQQNotificationPreferences(data: {
@@ -190,22 +180,13 @@ export async function saveUserSubscription(payload: UserSubscriptionSaveInput): 
   });
 }
 
-/**
- * Partial update helper: reads the current subscription list and re-submits the
- * complete configuration so toggling one channel cannot wipe the target price
- * or the other channel.
- */
 export async function updateUserSubscription(
   productSlug: string,
   changes: Omit<UserSubscriptionSaveInput, "product_slug">
 ): Promise<UserSubscriptionItem> {
-  const current = await fetchUserSubscriptions();
-  const existing = current.items.find((item) => item.product_slug === productSlug);
-  return saveUserSubscription({
-    product_slug: productSlug,
-    target_price: changes.target_price !== undefined ? changes.target_price : (existing?.target_price ?? null),
-    notify_email: changes.notify_email !== undefined ? changes.notify_email : (existing?.notify_email ?? true),
-    notify_bot: changes.notify_bot !== undefined ? changes.notify_bot : (existing?.notify_bot ?? true),
+  return jsonFetch<UserSubscriptionItem>(`/api/v1/user/subscriptions/${encodeURIComponent(productSlug)}`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
   });
 }
 
@@ -226,9 +207,10 @@ export async function redeemCoupon(code: string): Promise<CouponClaimResponse> {
   });
 }
 
-export async function claimLuckyDrop(): Promise<CouponClaimResponse> {
+export async function claimLuckyDrop(claimToken: string): Promise<CouponClaimResponse> {
   return jsonFetch<CouponClaimResponse>("/api/v1/user/coupons/claim-drop", {
     method: "POST",
+    body: JSON.stringify({ claim_token: claimToken }),
   });
 }
 
@@ -236,12 +218,10 @@ export async function fetchCouponDropStatus(): Promise<CouponDropStatus> {
   return jsonFetch<CouponDropStatus>("/api/v1/user/coupons/drop-status");
 }
 
-export async function recordCouponDropTrigger(page?: string): Promise<{ success: boolean }> {
-  return jsonFetch<{ success: boolean }>("/api/v1/user/coupons/record-drop-trigger", {
+export async function recordCouponDropTrigger(page?: string): Promise<{ success: boolean; eligible: boolean; claim_token: string }> {
+  return jsonFetch<{ success: boolean; eligible: boolean; claim_token: string }>("/api/v1/user/coupons/record-drop-trigger", {
     method: "POST",
     body: JSON.stringify({ page: page || "" }),
   });
 }
-
-
 

@@ -125,16 +125,18 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
                 />
                 {currentCount} 次访问
               </span>
-              <a
-                href={offer.source_url}
-                target="_blank"
-                rel="noreferrer nofollow"
-                onClick={() => handleTrackClick(offer.id, offer.click_count || 0)}
-                aria-label={`前往 ${offer.shop_name} 查看报价`}
-                className="inline-flex items-center gap-1 text-xs hover:opacity-60"
-              >
-                查看原站 <ArrowSquareOut size={14} />
-              </a>
+              {offer.source_url ? (
+                <a
+                  href={offer.source_url}
+                  target="_blank"
+                  rel="noreferrer nofollow"
+                  onClick={() => handleTrackClick(offer.id, offer.click_count || 0)}
+                  aria-label={`前往 ${offer.shop_name} 查看报价`}
+                  className="inline-flex items-center gap-1 text-xs hover:opacity-60"
+                >
+                  查看原站 <ArrowSquareOut size={14} />
+                </a>
+              ) : null}
             </div>
           </div>
         );
@@ -330,15 +332,17 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
         {!group && (
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a
-              href={offer.source_url}
-              target="_blank"
-              rel="noreferrer nofollow"
-              onClick={() => handleTrackOfferClick(offer.id)}
-              className="button-primary tactile"
-            >
-              去原站查看 <ArrowSquareOut size={16} />
-            </a>
+            {offer.source_url ? (
+              <a
+                href={offer.source_url}
+                target="_blank"
+                rel="noreferrer nofollow"
+                onClick={() => handleTrackOfferClick(offer.id)}
+                className="button-primary tactile"
+              >
+                去原站查看 <ArrowSquareOut size={16} />
+              </a>
+            ) : null}
             <span
               className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-2 py-1 text-xs font-medium text-black/60"
               title={`该商品已点击访问原站 ${clickCount} 次`}

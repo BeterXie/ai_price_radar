@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, Copy, Fire, GithubLogo, Sparkle, Star, TerminalWindow } from "@phosphor-icons/react";
+import { Check, Copy, Fire, Sparkle, Star, TerminalWindow } from "@phosphor-icons/react";
 import type { CommunitySkillSummary } from "@/lib/types";
 import { recordSkillCopy } from "@/lib/api";
 
-const KIND_META: Record<string, { label: string; icon: any; badgeClass: string }> = {
+const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: string }> = {
   benchmark: {
     label: "降智体检",
     icon: Fire,

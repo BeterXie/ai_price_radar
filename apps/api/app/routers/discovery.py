@@ -40,6 +40,15 @@ runs_router = APIRouter(
 
 KNOWN_ADAPTERS = frozenset({"seed", "16688", "bing", "github", "commoncrawl", "manual"})
 MAX_PAYLOAD_BYTES = 1024 * 1024
+RUNNER_FINISH_FIELDS = (
+    "discovered_raw_count",
+    "normalized_count",
+    "duplicate_count",
+    "new_candidate_count",
+    "reverified_count",
+    "adapter_stats",
+    "note",
+)
 
 
 def register_discovery_payload_guard(app: FastAPI) -> None:
@@ -74,17 +83,34 @@ def _candidate_summary(candidate: SourceCandidate) -> dict[str, object]:
     }
 
 
+def _lock_running_runs(db: Session, run_ids: set[int]) -> dict[int, SourceDiscoveryRun]:
+    if not run_ids:
+        return {}
+    rows = list(
+        db.scalars(
+            select(SourceDiscoveryRun)
+            .where(SourceDiscoveryRun.id.in_(sorted(run_ids)))
+            .order_by(SourceDiscoveryRun.id)
+            .with_for_update()
+        )
+    )
+    runs = {row.id: row for row in rows}
+    missing = sorted(run_ids - runs.keys())
+    if missing:
+        raise HTTPException(status_code=404, detail=f"discovery run {missing[0]} not found")
+    stopped = next((row for row in rows if row.status != "running"), None)
+    if stopped is not None:
+        raise HTTPException(status_code=409, detail=f"discovery run {stopped.id} is not running")
+    return runs
+
+
 @router.post("/upsert")
 def upsert_source_candidate(
     payload: DiscoveryCandidateUpsert,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     if payload.run_id is not None:
-        run = db.get(SourceDiscoveryRun, payload.run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail="discovery run not found")
-        if run.status != "running":
-            raise HTTPException(status_code=409, detail="discovery run is not running")
+        _lock_running_runs(db, {payload.run_id})
     try:
         result = upsert_candidate(
             db,
@@ -110,13 +136,8 @@ def batch_upsert_source_candidates(
 ) -> dict[str, object]:
     items: list[dict[str, object]] = []
     try:
+        _lock_running_runs(db, {item.run_id for item in payload.items if item.run_id is not None})
         for item in payload.items:
-            if item.run_id is not None:
-                run = db.get(SourceDiscoveryRun, item.run_id)
-                if run is None:
-                    raise HTTPException(status_code=404, detail=f"discovery run {item.run_id} not found")
-                if run.status != "running":
-                    raise HTTPException(status_code=409, detail=f"discovery run {item.run_id} is not running")
             result = upsert_candidate(
                 db,
                 discovered_url=item.discovered_url,
@@ -210,15 +231,19 @@ def finish_discovery_run(
     payload: DiscoveryRunFinish,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    result = db.execute(
-        update(SourceDiscoveryRun)
-        .where(SourceDiscoveryRun.id == run_id, SourceDiscoveryRun.status == "running")
-        .values(**payload.model_dump(), finished_at=utcnow())
+    run = db.scalar(
+        select(SourceDiscoveryRun)
+        .where(SourceDiscoveryRun.id == run_id)
+        .with_for_update()
     )
-    if result.rowcount == 0:
-        run = db.get(SourceDiscoveryRun, run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail="discovery run not found")
+    if run is None:
+        raise HTTPException(status_code=404, detail="discovery run not found")
+    if run.status != "running":
         raise HTTPException(status_code=409, detail=f"discovery run is already {run.status}")
+    finish_values = payload.model_dump()
+    for field in RUNNER_FINISH_FIELDS:
+        setattr(run, field, finish_values[field])
+    run.status = payload.status
+    run.finished_at = utcnow()
     db.commit()
     return {"run_id": run_id, "status": payload.status}

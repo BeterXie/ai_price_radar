@@ -26,7 +26,12 @@ from ..services.source_intake import (
     site_url,
     utcnow,
 )
-from ..services.source_platform import canonical_source_platform, prepare_source_submission, workflow_status
+from ..services.source_platform import (
+    canonical_source_platform,
+    is_source_platform_disabled,
+    prepare_source_submission,
+    workflow_status,
+)
 
 router = APIRouter(
     prefix="/api/v1/internal/source-intakes",
@@ -163,6 +168,15 @@ def _lock_canonical_identity(db: Session, platform: str, source_key: str) -> Non
         )
 
 
+def _validate_detection_attempt(intake: SourceIntake, payload: SourceDetectionResult) -> None:
+    if intake.status != "detecting" or intake.source_type != "unknown":
+        raise HTTPException(status_code=409, detail=f"cannot report detection from status {intake.status}")
+    if payload.attempt_count != intake.attempt_count:
+        raise HTTPException(status_code=409, detail="stale detection attempt")
+    if _is_expired(intake.lease_expires_at, utcnow()):
+        raise HTTPException(status_code=409, detail="detection lease expired")
+
+
 @detector_router.post("/claim", response_model=list[SourceDetectionClaimOut])
 def claim_source_detections(
     payload: SourceDetectionClaimRequest,
@@ -210,19 +224,17 @@ def report_source_detection_result(
     payload: SourceDetectionResult,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
-    intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id).with_for_update())
-    if intake is None:
+    preliminary = db.get(SourceIntake, intake_id)
+    if preliminary is None:
         raise HTTPException(status_code=404, detail="source intake not found")
-    if intake.status != "detecting" or intake.source_type != "unknown":
-        raise HTTPException(status_code=409, detail=f"cannot report detection from status {intake.status}")
-    if payload.attempt_count != intake.attempt_count:
-        raise HTTPException(status_code=409, detail="stale detection attempt")
-    if _is_expired(intake.lease_expires_at, utcnow()):
-        raise HTTPException(status_code=409, detail="detection lease expired")
-
-    intake.lease_expires_at = None
-    intake.finished_at = utcnow()
+    _validate_detection_attempt(preliminary, payload)
     if payload.status == "validation_failed":
+        intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id).with_for_update())
+        if intake is None:
+            raise HTTPException(status_code=404, detail="source intake not found")
+        _validate_detection_attempt(intake, payload)
+        intake.lease_expires_at = None
+        intake.finished_at = utcnow()
         intake.status = "validation_failed"
         intake.failure_reason = "来源安全检测失败"
         db.commit()
@@ -232,7 +244,7 @@ def report_source_detection_result(
     if platform not in {"ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other"}:
         raise HTTPException(status_code=422, detail="invalid detected source platform")
     try:
-        normalized = prepare_source_submission(payload.source_url or intake.source_url)
+        normalized = prepare_source_submission(payload.source_url or preliminary.source_url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     source_key = normalized.source_key
@@ -247,7 +259,24 @@ def report_source_detection_result(
                 raise HTTPException(status_code=422, detail="detector returned an invalid source key") from exc
         if canonical_reported_key != source_key:
             raise HTTPException(status_code=422, detail="detector returned a non-canonical source key")
+
+    # Every successful normalization takes locks in the same order. Reading the
+    # row before the advisory lock is intentionally non-locking; state is
+    # revalidated after the row lock is acquired.
     _lock_canonical_identity(db, platform, source_key)
+    intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id).with_for_update())
+    if intake is None:
+        raise HTTPException(status_code=404, detail="source intake not found")
+    _validate_detection_attempt(intake, payload)
+    if not payload.source_url:
+        try:
+            locked_normalized = prepare_source_submission(intake.source_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if locked_normalized.source_key != source_key:
+            raise HTTPException(status_code=409, detail="source intake changed during detection; retry result")
+    intake.lease_expires_at = None
+    intake.finished_at = utcnow()
     existing = _canonical_intake(db, intake_id=intake.id, platform=platform, source_key=source_key)
     if existing is not None:
         merged = _merge_detected_intake(
@@ -349,6 +378,7 @@ def _apply_intake_approval_and_notifications(
 
     is_auto_approvable = (
         bool(settings.shop_intake_auto_approve)
+        and not is_source_platform_disabled(platform)
         and platform in {"ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}
     )
     if is_auto_approvable:

@@ -84,6 +84,10 @@ def seed() -> None:
         if legacy_pro is not None:
             legacy_pro.is_visible = False
         db.flush()
+
+        from .services.community_skills import seed_default_community_skills
+        seed_default_community_skills(db)
+
         if db.scalar(select(Offer.id).limit(1)) is not None:
             db.commit()
             return
@@ -145,11 +149,6 @@ def seed() -> None:
                     observed_at=now - timedelta(days=days, minutes=age_minutes),
                 ))
         db.commit()
-
-        from .services.community_skills import seed_default_community_skills
-        seed_default_community_skills(db)
-
-
 
 if __name__ == "__main__":
     seed()

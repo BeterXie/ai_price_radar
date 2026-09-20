@@ -89,6 +89,12 @@ class SourceImportError(RuntimeError):
     pass
 
 
+class SnapshotExportError(RuntimeError):
+    def __init__(self, snapshot_id: int, cause: Exception):
+        super().__init__(f"snapshot {snapshot_id} was published but public feed export failed: {cause}")
+        self.snapshot_id = snapshot_id
+
+
 def _dujiao_origin(value: str) -> str:
     parsed = urllib.parse.urlsplit(value)
     host = (parsed.hostname or "").casefold().rstrip(".")
@@ -702,7 +708,8 @@ def publish_sources(
                     from export_snapshot import export_public_snapshot
                     export_public_snapshot(db, snapshot.id)
                 except Exception as export_err:
-                    logger.warning("Failed to export public snapshot %d: %s", snapshot.id, export_err)
+                    logger.exception("Failed to export public snapshot %d", snapshot.id)
+                    raise SnapshotExportError(snapshot.id, export_err) from export_err
                 if all_price_changes:
                     try:
                         from app.services.notification_hub import dispatch_price_changes
@@ -773,6 +780,14 @@ def main() -> int:
     except ImportLockUnavailable as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False))
         return 3
+    except SnapshotExportError as exc:
+        print(json.dumps({
+            "error": str(exc),
+            "snapshot_id": exc.snapshot_id,
+            "published": True,
+            "feed_exported": False,
+        }, ensure_ascii=False))
+        return 2
     except Exception as exc:
         print(json.dumps({"error": str(exc), "published": False}, ensure_ascii=False))
         return 2

@@ -200,6 +200,7 @@ export type OfficialSource = GuideSource;
 
 export interface ProductGuide {
   productSlug: ProductSlug;
+  offerPath: string;
   brand: BrandSlug;
   title: string;
   description: string;

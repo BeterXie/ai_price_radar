@@ -1,6 +1,4 @@
 SHELL := /bin/bash
-SOURCE_DB ?= ./ldxp_crawler.db
-
 .PHONY: up prod-up down logs ps test-api test-pipeline build-web release-check import-db seed
 
 up:
@@ -8,7 +6,7 @@ up:
 
 prod-up:
 	python scripts/production_preflight.py
-	docker compose --profile production up --build -d
+	docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile production up --build -d
 
 down:
 	docker compose down
@@ -32,7 +30,7 @@ release-check:
 	bash scripts/validate_release.sh
 
 import-db:
-	docker compose --profile tools run --rm importer python sync_ldxp.py --source-db /workspace/$(SOURCE_DB)
+	docker compose --profile tools run --rm importer python sync_ldxp.py --source-db /workspace/data/crawler/ldxp_crawler.db
 
 seed:
 	docker compose exec api python -m app.seed

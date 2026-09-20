@@ -1,15 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowRight, Fire, Sparkle, X } from "@phosphor-icons/react";
+import { releaseGlobalOverlay, tryAcquireGlobalOverlay } from "@/lib/global-overlay";
 
 const FEATURE_STORAGE_KEY = "apr:feature_notice:skills_benchmark_v3753";
+const OVERLAY_OWNER = "feature-notice";
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function NewFeatureModal() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const modalRootRef = useRef<HTMLDivElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  const handleDismiss = useCallback(() => {
+    try {
+      localStorage.setItem(FEATURE_STORAGE_KEY, "1");
+    } catch {
+      // Storage might be unavailable.
+    }
+    setIsOpen(false);
+    releaseGlobalOverlay(OVERLAY_OWNER);
+  }, []);
 
   useEffect(() => {
     try {
@@ -17,39 +33,87 @@ export function NewFeatureModal() {
       // If already dismissed, never show again
       if (localStorage.getItem(FEATURE_STORAGE_KEY)) return;
       // Don't show if user is already browsing the skills section or admin
-      if (pathname.startsWith("/skills") || pathname.startsWith("/admin")) return;
+      if (pathname.startsWith("/skills") || pathname.startsWith("/admin")) {
+        setIsOpen(false);
+        releaseGlobalOverlay(OVERLAY_OWNER);
+        return;
+      }
 
-      const timer = window.setTimeout(() => {
+      let retryTimer: number | undefined;
+      const openWhenAvailable = () => {
         try {
-          if (!localStorage.getItem(FEATURE_STORAGE_KEY)) {
+          if (!localStorage.getItem(FEATURE_STORAGE_KEY) && tryAcquireGlobalOverlay(OVERLAY_OWNER)) {
             setIsOpen(true);
+          } else if (!localStorage.getItem(FEATURE_STORAGE_KEY)) {
+            retryTimer = window.setTimeout(openWhenAvailable, 5_000);
           }
         } catch {
           // Ignore storage errors
         }
-      }, 30_000); // 30 seconds
+      };
+      const timer = window.setTimeout(openWhenAvailable, 30_000);
 
-      return () => window.clearTimeout(timer);
+      return () => {
+        window.clearTimeout(timer);
+        if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      };
     } catch {
       return;
     }
   }, [pathname]);
 
-  const handleDismiss = () => {
-    try {
-      localStorage.setItem(FEATURE_STORAGE_KEY, "1");
-    } catch {
-      // Storage might be unavailable
-    }
-    setIsOpen(false);
-  };
+  useEffect(() => () => releaseGlobalOverlay(OVERLAY_OWNER), []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const originalOverflow = document.body.style.overflow;
+    const inertedSiblings = Array.from(document.body.children)
+      .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== modalRootRef.current)
+      .map((element) => ({ element, wasInert: element.hasAttribute("inert") }));
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleDismiss();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.body.style.overflow = "hidden";
+    inertedSiblings.forEach(({ element }) => element.setAttribute("inert", ""));
+    document.addEventListener("keydown", handleKeyDown);
+    dialogRef.current?.focus();
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      inertedSiblings.forEach(({ element, wasInert }) => {
+        if (!wasInert) element.removeAttribute("inert");
+      });
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [handleDismiss, isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
+      ref={modalRootRef}
+      role="presentation"
       aria-labelledby="feature-dialog-title"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300"
     >
@@ -61,7 +125,14 @@ export function NewFeatureModal() {
       />
 
       {/* Modal Dialog Card */}
-      <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 shadow-2xl transition-all sm:my-8 z-10">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="feature-dialog-title"
+        tabIndex={-1}
+        className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 shadow-2xl transition-all sm:my-8 z-10 outline-none"
+      >
         {/* Top Header with Close Button */}
         <div className="flex items-start justify-between gap-4">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">

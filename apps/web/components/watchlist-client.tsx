@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowClockwise,
   BellRinging,
@@ -29,6 +29,7 @@ import {
   writeUserWatchlist,
 } from "@/components/watch-button";
 import {
+  AUTH_CHANGE_EVENT,
   deleteUserSubscription,
   fetchAuthMe,
   fetchUserSubscriptions,
@@ -51,6 +52,8 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   const [products, setProducts] = useState<Record<string, ProductCard>>({});
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [siteOrigin, setSiteOrigin] = useState("");
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [actionNotice, setActionNotice] = useState<{ type: "info" | "warning" | "success"; text: string } | null>(null);
 
@@ -61,61 +64,54 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   const [productLoadFailed, setProductLoadFailed] = useState<Set<string>>(new Set());
   // Bumped by the retry button to re-run the product fetch effect.
   const [productReloadNonce, setProductReloadNonce] = useState(0);
+  const loadGeneration = useRef(0);
 
   // 1. Initial Load: Check Auth & fetch either Cloud Subscriptions or Local Items
   const loadData = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    setActionNotice(null);
     setLoading(true);
+    setLoadFailed(false);
+    setAuthenticated(false);
+    setUserId(null);
+    setUserNickname("");
+    setEmailBound(false);
+    setBotBound(false);
+    setSubscriptions([]);
+    setLocalItems([]);
+    setProducts({});
+    setThresholdDrafts({});
     try {
       const auth = await fetchAuthMe();
+      if (generation !== loadGeneration.current) return;
       if (auth.authenticated && auth.user) {
-        setAuthenticated(true);
-        setUserId(auth.user.id);
-        setUserNickname(auth.user.nickname || "用户");
+        let cloudData = await fetchUserSubscriptions();
+        if (generation !== loadGeneration.current) return;
 
-        // Fetch cloud subscriptions
-        const cloudData = await fetchUserSubscriptions();
-        setEmailBound(cloudData.email_bound);
-        setBotBound(cloudData.bot_bound);
-
-        // One-time migration of *anonymous* items only. The per-user cache is a
-        // mirror of the server list, so anything extra it holds is stale (e.g.
-        // removed from another device) and must never be written back.
         const local = readAnonymousWatchlist();
         const existingCloudSlugs = new Set(cloudData.items.map((i) => i.product_slug));
         const toMigrate = local.filter((item) => !existingCloudSlugs.has(item.slug));
 
         if (toMigrate.length > 0) {
-          const results = await Promise.all(
-            toMigrate.map(async (item) => {
-              try {
-                await saveUserSubscription({
-                  product_slug: item.slug,
-                  target_price: item.threshold || null,
-                  notify_email: true,
-                  notify_bot: true,
-                });
-                return true;
-              } catch {
-                return false;
-              }
-            })
-          );
+          const results: boolean[] = [];
+          for (const item of toMigrate) {
+            try {
+              await saveUserSubscription({
+                product_slug: item.slug,
+                target_price: item.threshold || null,
+                notify_email: true,
+                notify_bot: true,
+              });
+              results.push(true);
+            } catch {
+              results.push(false);
+            }
+          }
+          if (generation !== loadGeneration.current) return;
           const succeeded = results.filter(Boolean).length;
-          // Retain only the items that failed so nothing is silently lost.
           writeAnonymousWatchlist(toMigrate.filter((_, index) => !results[index]));
-
-          const refreshed = await fetchUserSubscriptions();
-          setSubscriptions(refreshed.items);
-          writeUserWatchlist(
-            auth.user.id,
-            refreshed.items.map((sub) => ({
-              slug: sub.product_slug,
-              name: sub.product_name,
-              currency: sub.current_currency || "CNY",
-              threshold: sub.target_price || "",
-              added_at: sub.created_at,
-            }))
-          );
+          cloudData = await fetchUserSubscriptions();
+          if (generation !== loadGeneration.current) return;
           const failedCount = toMigrate.length - succeeded;
           if (succeeded > 0) {
             setActionNotice({
@@ -131,33 +127,38 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
               text: `同步失败，${failedCount} 个本地关注商品仍保留在浏览器中，请稍后重试。`,
             });
           }
-        } else {
-          setSubscriptions(cloudData.items);
-          // The server list is authoritative; the cache is refreshed from it.
-          writeUserWatchlist(
-            auth.user.id,
-            cloudData.items.map((sub) => ({
-              slug: sub.product_slug,
-              name: sub.product_name,
-              currency: sub.current_currency || "CNY",
-              threshold: sub.target_price || "",
-              added_at: sub.created_at,
-            }))
-          );
+        } else if (local.length > 0) {
+          writeAnonymousWatchlist([]);
         }
+
+        setAuthenticated(true);
+        setUserId(auth.user.id);
+        setUserNickname(auth.user.nickname || "用户");
+        setEmailBound(cloudData.email_bound);
+        setBotBound(cloudData.bot_bound);
+        setSubscriptions(cloudData.items);
+        writeUserWatchlist(
+          auth.user.id,
+          cloudData.items.map((sub) => ({
+            slug: sub.product_slug,
+            name: sub.product_name,
+            currency: sub.current_currency || "CNY",
+            threshold: sub.target_price || "",
+            added_at: sub.created_at,
+          }))
+        );
       } else {
-        setAuthenticated(false);
-        setUserId(null);
         setLocalItems(readAnonymousWatchlist());
       }
-    } catch {
-      // Auth or the subscription fetch failed: stay in anonymous mode instead
-      // of pretending the user is signed out with an empty cloud list.
-      setAuthenticated(false);
-      setUserId(null);
-      setLocalItems(readAnonymousWatchlist());
+    } catch (error: any) {
+      if (generation !== loadGeneration.current) return;
+      setLoadFailed(true);
+      setActionNotice({
+        type: "warning",
+        text: error?.message || "关注清单暂时无法读取，现有云端和本地记录均未被修改。",
+      });
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, []);
 
@@ -165,7 +166,14 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   // state updates made by loadData cannot retrigger it in a loop.
   useEffect(() => {
     void loadData();
+    const handleAuthChange = () => void loadData();
+    window.addEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
+    return () => window.removeEventListener(AUTH_CHANGE_EVENT, handleAuthChange);
   }, [loadData]);
+
+  useEffect(() => {
+    setSiteOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -211,37 +219,40 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
     const slugs = displayItems.map((item) => item.slug);
     async function loadProducts() {
       if (displayItems.length === 0) {
+        setProducts({});
         setProductLoadFailed(new Set());
         return;
       }
       setProductLoadFailed(new Set());
-      const results = await Promise.all(
-        displayItems.map(async (item) => {
+      const chunks: string[][] = [];
+      for (let index = 0; index < slugs.length; index += 20) {
+        chunks.push(slugs.slice(index, index + 20));
+      }
+      const responses = await Promise.all(
+        chunks.map(async (chunk) => {
           try {
             const response = await fetch(
-              `${API}/api/v1/products?product=${encodeURIComponent(item.slug)}&sort=quality`,
+              `${API}/api/v1/products?products=${encodeURIComponent(chunk.join(","))}&sort=quality`,
               { cache: "no-store" }
             );
-            if (!response.ok) return null;
-            const data = (await response.json()) as CatalogResponse;
-            return data.items[0] || null;
+            if (!response.ok) return [];
+            return ((await response.json()) as CatalogResponse).items;
           } catch {
-            return null;
+            return [];
           }
         })
       );
       if (active) {
+        const results = responses.flat();
         setProducts(
           Object.fromEntries(
-            results
-              .filter((value): value is ProductCard => Boolean(value))
-              .map((product) => [product.slug, product])
+            results.map((product) => [product.slug, product])
           )
         );
         // Track which rows ended with no data so they can show a retry state
         // instead of a permanent "loading" spinner.
         const loadedSlugs = new Set(
-          results.filter((value): value is ProductCard => Boolean(value)).map((product) => product.slug)
+          results.map((product) => product.slug)
         );
         setProductLoadFailed(new Set(slugs.filter((slug) => !loadedSlugs.has(slug))));
       }
@@ -253,12 +264,21 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   }, [displayItems.map((i) => i.slug).join(","), productReloadNonce]);
 
   // Atom feed URL for RSS readers
-  const feedUrl = useMemo(() => {
-    const targets = displayItems
-      .map((item) => `${item.slug}${item.threshold ? `:${item.threshold}` : ""}`)
-      .join(",");
-    return targets ? `${API}/api/v1/watch.atom?targets=${encodeURIComponent(targets)}` : "";
-  }, [displayItems]);
+  const feed = useMemo(() => {
+    if (!siteOrigin) return { url: "", count: 0, truncated: false };
+    const targets: string[] = [];
+    for (const item of displayItems.slice(0, 20)) {
+      const next = `${item.slug}${item.threshold ? `:${item.threshold}` : ""}`;
+      if ([...targets, next].join(",").length > 1000) break;
+      targets.push(next);
+    }
+    if (!targets.length) return { url: "", count: 0, truncated: false };
+    const base = API ? new URL(API, siteOrigin).origin : siteOrigin;
+    const url = new URL("/api/v1/watch.atom", base);
+    url.searchParams.set("targets", targets.join(","));
+    return { url: url.toString(), count: targets.length, truncated: targets.length < displayItems.length };
+  }, [displayItems, siteOrigin]);
+  const feedUrl = feed.url;
 
   // Update target price
   const handleThresholdChange = (slug: string, value: string) => {
@@ -282,7 +302,6 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
 
     if (authenticated) {
       try {
-        // Merge with the stored config; the endpoint replaces the whole record.
         const updated = await updateUserSubscription(slug, { target_price: normalized || null });
         setSubscriptions((prev) =>
           prev.map((s) => (s.product_slug === slug ? { ...s, ...updated } : s))
@@ -306,7 +325,15 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
       }
     } else {
       const next = localItems.map((item) => (item.slug === slug ? { ...item, threshold: normalized } : item));
-      if (writeAnonymousWatchlist(next)) setLocalItems(next);
+      if (writeAnonymousWatchlist(next)) {
+        setLocalItems(next);
+        setThresholdDrafts((prev) => {
+          if (prev[slug] !== draft) return prev;
+          const copy = { ...prev };
+          delete copy[slug];
+          return copy;
+        });
+      }
     }
   };
 
@@ -341,7 +368,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
     if (!currentVal && !botBound) {
       setActionNotice({
         type: "warning",
-        text: "您尚未连接 QQ/微信 机器人。请前往个人中心扫码加好友，即可通过私聊接收降价推送与指令交互。",
+        text: "您尚未连接 QQ 机器人。请前往个人中心扫码加好友，即可通过私聊接收降价推送与指令交互。",
       });
     }
     try {
@@ -386,7 +413,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   };
 
   // Loading Skeleton
-  if (previewState === "loading" || (loading && !displayItems.length)) {
+  if (previewState === "loading" || loading) {
     return (
       <section className="surface-panel p-6 sm:p-8" role="status" aria-busy="true" data-vds-layer="evidence">
         <p className="section-kicker">正在连接价格监控数据中心</p>
@@ -401,7 +428,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
   }
 
   // Error preview
-  if (previewState === "error") {
+  if (previewState === "error" || loadFailed) {
     return (
       <div className="empty-state" role="alert" data-vds-layer="evidence">
         <ArrowClockwise className="mx-auto" size={34} />
@@ -426,7 +453,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
                 登录开启多渠道降价提醒
               </h3>
               <p className="text-xs text-[color:var(--muted)] leading-relaxed">
-                登录后关注的商品将持久化存储在云端，并可通过绑定的邮箱或 QQ / 微信 机器人实时接收降价通知。
+                登录后关注的商品将持久化存储在云端，并可通过绑定的邮箱或 QQ 机器人实时接收降价通知。
               </p>
             </div>
             <button
@@ -477,7 +504,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
     const current = product?.lowest_price ? Number(product.lowest_price) : null;
     const threshold = item.threshold ? Number(item.threshold) : null;
     return Boolean(
-      product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold))
+      product && product.in_stock_count > 0 && threshold !== null && current !== null && current <= threshold
     );
   }).length;
 
@@ -497,7 +524,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
               </h3>
             </div>
             <p className="text-xs text-[color:var(--muted)] max-w-2xl leading-relaxed">
-              登录或注册账号后，关注商品将<strong>自动同步存入云端数据库</strong>，并可通过您已绑定的<strong>邮箱</strong>与 <strong>QQ / 微信 机器人</strong>在达到目标价时为您发送即时私聊提醒。
+              登录或注册账号后，关注商品将<strong>自动同步存入云端数据库</strong>，并可通过您已绑定的<strong>邮箱</strong>与 <strong>QQ 机器人</strong>在达到目标价时为您发送即时私聊提醒。
             </p>
           </div>
           <button
@@ -517,7 +544,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
               尚未完全开启主动通知推送
             </h4>
             <p className="text-xs text-[color:var(--muted)]">
-              当前状态：邮箱推送 {emailBound ? "已开通" : "未绑定"} · QQ/微信 机器人 {botBound ? "已连接" : "未连接"}。前往个人中心配置后即可接收实时降价私聊。
+              当前状态：邮箱推送 {emailBound ? "已开通" : "未绑定"} · QQ 机器人 {botBound ? "已连接" : "未连接"}。前往个人中心配置后即可接收实时降价私聊。
             </p>
           </div>
           <Link
@@ -532,7 +559,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
           <div className="flex items-center gap-2 text-xs text-emerald-900">
             <CheckCircle size={18} weight="fill" className="text-emerald-600 shrink-0" />
             <span>
-              <strong>云端价格监控就绪</strong>：监控变动将自动通过您的有效邮箱及已连接的 QQ / 微信 机器人私聊推送。
+              <strong>云端价格监控就绪</strong>：监控变动将自动通过您的有效邮箱及已连接的 QQ 机器人私聊推送。
             </span>
           </div>
           <Link href="/account" className="text-xs font-semibold text-emerald-800 hover:underline shrink-0">
@@ -627,7 +654,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
             const current = product?.lowest_price ? Number(product.lowest_price) : null;
             const threshold = item.threshold ? Number(item.threshold) : null;
             const reached = Boolean(
-              product && product.in_stock_count > 0 && (threshold === null || (current !== null && current <= threshold))
+              product && product.in_stock_count > 0 && threshold !== null && current !== null && current <= threshold
             );
 
             return (
@@ -747,8 +774,8 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
                       !authenticated
                         ? "点击登录并开启机器人私聊提醒"
                         : item.notifyBot
-                        ? "QQ/微信 机器人推送已开启 (点击关闭)"
-                        : "QQ/微信 机器人推送已关闭 (点击开启)"
+                        ? "QQ 机器人推送已开启 (点击关闭)"
+                        : "QQ 机器人推送已关闭 (点击开启)"
                     }
                     className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
                       item.notifyBot
@@ -789,7 +816,8 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
               备用追踪：Atom / RSS 离线阅读器订阅
             </h2>
             <p className="mt-1.5 max-w-3xl text-xs leading-relaxed text-[color:var(--muted)]">
-              除了上述通过云端已绑定的邮箱和 QQ / 微信 机器人直接接收推送之外，您也可以将下方专属地址添加到支持 Atom / RSS 的客户端（如 NetNewsWire、Feedly 或自建服务），在阅读器中同步追踪最新报价与现货动态。
+              除了上述通过云端已绑定的邮箱和 QQ 机器人直接接收推送之外，您也可以将下方专属地址添加到支持 Atom / RSS 的客户端（如 NetNewsWire、Feedly 或自建服务），在阅读器中同步追踪最新报价与现货动态。
+              {feed.truncated ? ` 当前 Feed 按接口上限包含前 ${feed.count} 个关注项。` : ""}
             </p>
           </div>
         </div>

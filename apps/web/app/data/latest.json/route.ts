@@ -1,20 +1,21 @@
-import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 export const dynamic = "force-dynamic";
 
-function etagFor(body: string): string {
-  return `"${crypto.createHash("sha256").update(body).digest("hex").slice(0, 16)}"`;
+function etagForStat(stat: fs.Stats): string {
+  return `W/"${Math.trunc(stat.mtimeMs).toString(16)}-${stat.size.toString(16)}"`;
 }
 
 function matchesIfNoneMatch(headerValue: string | null, etag: string): boolean {
   if (!headerValue) return false;
+  const normalizedEtag = etag.replace(/^W\//, "");
   return headerValue
     .split(",")
     .map((value) => value.trim().replace(/^W\//, ""))
-    .some((value) => value === etag || value === "*");
+    .some((value) => value === normalizedEtag || value === "*");
 }
 
 function notModified(etag: string, maxAge: number): NextResponse {
@@ -31,14 +32,14 @@ function notModified(etag: string, maxAge: number): NextResponse {
 export async function GET(request: NextRequest) {
   const ifNoneMatch = request.headers.get("if-none-match");
   const dataPath = path.join(process.cwd(), "public", "data", "latest.json");
-  if (fs.existsSync(dataPath)) {
-    try {
-      const content = fs.readFileSync(dataPath, "utf-8");
-      const etag = etagFor(content);
+  try {
+      const stat = await fs.promises.stat(dataPath);
+      const etag = etagForStat(stat);
       if (matchesIfNoneMatch(ifNoneMatch, etag)) {
         return notModified(etag, 60);
       }
-      return new NextResponse(content, {
+      const body = Readable.toWeb(fs.createReadStream(dataPath)) as ReadableStream;
+      return new Response(body, {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
@@ -46,9 +47,8 @@ export async function GET(request: NextRequest) {
           ETag: etag,
         },
       });
-    } catch {
-      // fallback to internal API
-    }
+  } catch {
+    // fallback to internal API
   }
 
   const internalApiBase = process.env.INTERNAL_API_BASE_URL || "http://api:8000";
@@ -78,12 +78,21 @@ export async function GET(request: NextRequest) {
         "Access-Control-Allow-Origin": "*",
       };
       const upstreamEtag = res.headers.get("etag");
-      headers.ETag = upstreamEtag || etagFor(data);
+      if (upstreamEtag) headers.ETag = upstreamEtag;
       return new NextResponse(data, { headers });
     }
+    const errorBody = await res.text();
+    const headers: Record<string, string> = {
+      "Cache-Control": "no-store",
+      "Content-Type": res.headers.get("content-type") || "application/json; charset=utf-8",
+    };
+    const retryAfter = res.headers.get("retry-after");
+    if (retryAfter) headers["Retry-After"] = retryAfter;
+    return new NextResponse(errorBody || JSON.stringify({ error: "Snapshot feed unavailable" }), {
+      status: res.status,
+      headers,
+    });
   } catch {
-    // ignore
+    return NextResponse.json({ error: "Snapshot feed upstream unavailable" }, { status: 502 });
   }
-
-  return NextResponse.json({ error: "Snapshot feed not ready" }, { status: 404 });
 }

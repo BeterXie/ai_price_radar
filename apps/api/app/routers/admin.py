@@ -9,9 +9,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, case, cast, delete, func, nullslast, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 logger = logging.getLogger(__name__)
+
+RECLASSIFY_BATCH_SIZE = 200
 
 from ..database import get_db
 from ..models import (
@@ -58,6 +61,7 @@ from ..schemas import (
     AdminUserPageOut,
     AdminUserSessionItem,
     AdminUserStatsOut,
+    AdminUserStatusUpdate,
     CampaignRead,
     CouponRead,
     NotificationOutboxOut,
@@ -80,13 +84,13 @@ from ..schemas import (
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
-from ..services.credential_crypto import decrypt_secret
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
     admin_create_community_skill,
     admin_delete_community_skill,
     admin_toggle_community_skill_visibility,
     admin_update_community_skill,
+    get_community_skill_by_slug,
     list_community_skills,
 )
 from ..services.source_discovery import (
@@ -95,8 +99,15 @@ from ..services.source_discovery import (
     admin_retry_candidate,
     recover_unpromoted_candidates,
 )
+from ..services.outbox import refresh_broadcast_status
 from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
-from ..services.source_platform import _16688_detection, _ldxp_detection, prepare_source_submission, workflow_status
+from ..services.source_platform import (
+    _16688_detection,
+    _ldxp_detection,
+    prepare_source_submission,
+    public_https_url_or_empty,
+    workflow_status,
+)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -114,7 +125,6 @@ def set_setting_str(db: Session, key: str, value: str) -> None:
         setting.value = value
     else:
         db.add(SystemSetting(key=key, value=value))
-    db.commit()
 
 
 def get_setting_str(db: Session, key: str, default: str = "") -> str:
@@ -188,6 +198,7 @@ def update_admin_settings(
         set_setting_str(db, "community_qq_url", payload.community_qq_url.strip())
     if payload.community_btn_text is not None:
         set_setting_str(db, "community_btn_text", payload.community_btn_text.strip())
+    db.commit()
     return get_admin_settings(db)
 
 
@@ -283,7 +294,7 @@ def offers(
     product_slug: str | None = None,
     sort: str = Query(default="frontend", pattern="^(frontend|updated_desc|updated_asc|price_asc|price_desc)$"),
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=10000),
     response: Response = Response(),
     db: Session = Depends(get_db),
 ) -> list[dict]:
@@ -409,6 +420,11 @@ def update_offer(offer_id: int, payload: AdminOfferUpdate, db: Session = Depends
     data = payload.model_dump(exclude_unset=True)
     if "product_slug" in data:
         product_slug = data.pop("product_slug")
+        tags = list(offer.tags or [])
+        if "manual_override" not in tags:
+            tags.append("manual_override")
+        offer.tags = tags
+        offer.classification_confidence = 100
         if not product_slug or str(product_slug).strip() == "":
             offer.product_id = None
         else:
@@ -416,11 +432,6 @@ def update_offer(offer_id: int, payload: AdminOfferUpdate, db: Session = Depends
             if product is None:
                 raise HTTPException(status_code=404, detail="product not found")
             offer.product_id = product.id
-            tags = list(offer.tags or [])
-            if "manual_override" not in tags:
-                tags.append("manual_override")
-            offer.tags = tags
-            offer.classification_confidence = 100
     for key, value in data.items():
         setattr(offer, key, value)
     db.commit()
@@ -471,6 +482,7 @@ def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
     offer.use_scenarios = result.use_scenarios
     offer.item_fingerprint = result.item_fingerprint
     offer.product_id = target_product.id if target_product else None
+    offer.tags = [tag for tag in (offer.tags or []) if tag != "manual_override"]
     db.commit()
     return {
         "ok": True,
@@ -483,58 +495,73 @@ def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/reclassify")
 def reclassify(db: Session = Depends(get_db)) -> dict:
-    products_by_slug = {x.slug: x for x in db.scalars(select(Product))}
-    offers = list(db.scalars(select(Offer).options(joinedload(Offer.raw_product), joinedload(Offer.shop))))
+    products_by_slug = dict(db.execute(select(Product.slug, Product.id)).all())
     changed = 0
     unclassified = 0
-    for offer in offers:
-        source_platform = str(offer.shop.platform or "")
-        raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
-        category_values = [offer.raw_product.original_category]
-        if source_platform.strip().casefold() == "16688":
-            source_category = raw_json.get("sourceCategory") or raw_json.get("source_category")
-            if isinstance(source_category, dict):
-                category_values.append(source_category.get("name", ""))
-            elif source_category:
-                category_values.append(str(source_category))
-        description_values = [raw_json.get("description", "")]
-        if source_platform.strip().casefold() == "16688":
-            description_values.extend(raw_json.get(key, "") for key in ("content", "instruction", "remark"))
-        category = " ".join(str(value or "") for value in category_values)
-        description = " ".join(str(value or "") for value in description_values)
-        result = classify_product(
-            offer.raw_product.original_name,
-            category,
-            description,
-            source_platform=source_platform,
+    last_offer_id = 0
+    while True:
+        batch = list(
+            db.scalars(
+                select(Offer)
+                .options(joinedload(Offer.raw_product), joinedload(Offer.shop))
+                .where(Offer.id > last_offer_id)
+                .order_by(Offer.id)
+                .limit(RECLASSIFY_BATCH_SIZE)
+            )
         )
-        offer.tags = result.tags
-        offer.risk_flags = result.risk_flags
-        offer.classification_confidence = result.confidence
-        offer.delivery_type = result.delivery_type
-        offer.is_comparable = result.is_comparable
-        offer.service_period = result.service_period
-        offer.warranty = result.warranty
-        offer.use_scenarios = result.use_scenarios
-        offer.item_fingerprint = result.item_fingerprint
-        was_unclassified = offer.product_id is None
-        target_id = products_by_slug[result.slug].id if result.slug in products_by_slug else None
-        if offer.product_id != target_id:
-            offer.product_id = target_id
-            changed += 1
-        if (
-            source_platform.strip().casefold() == "16688"
-            and was_unclassified
-            and target_id is not None
-            and result.confidence >= 80
-            and not offer.approved
-            and offer.active
-            and not str(offer.hidden_reason or "").strip()
-        ):
-            offer.approved = True
-        if target_id is None:
-            unclassified += 1
-    db.commit()
+        if not batch:
+            break
+        last_offer_id = batch[-1].id
+        for offer in batch:
+            if "manual_override" in (offer.tags or []) or (offer.classification_confidence or 0) >= 100:
+                continue
+            source_platform = str(offer.shop.platform or "")
+            raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
+            category_values = [offer.raw_product.original_category]
+            if source_platform.strip().casefold() == "16688":
+                source_category = raw_json.get("sourceCategory") or raw_json.get("source_category")
+                if isinstance(source_category, dict):
+                    category_values.append(source_category.get("name", ""))
+                elif source_category:
+                    category_values.append(str(source_category))
+            description_values = [raw_json.get("description", "")]
+            if source_platform.strip().casefold() == "16688":
+                description_values.extend(raw_json.get(key, "") for key in ("content", "instruction", "remark"))
+            category = " ".join(str(value or "") for value in category_values)
+            description = " ".join(str(value or "") for value in description_values)
+            result = classify_product(
+                offer.raw_product.original_name,
+                category,
+                description,
+                source_platform=source_platform,
+            )
+            offer.tags = result.tags
+            offer.risk_flags = result.risk_flags
+            offer.classification_confidence = result.confidence
+            offer.delivery_type = result.delivery_type
+            offer.is_comparable = result.is_comparable
+            offer.service_period = result.service_period
+            offer.warranty = result.warranty
+            offer.use_scenarios = result.use_scenarios
+            offer.item_fingerprint = result.item_fingerprint
+            was_unclassified = offer.product_id is None
+            target_id = products_by_slug.get(result.slug)
+            if offer.product_id != target_id:
+                offer.product_id = target_id
+                changed += 1
+            if (
+                source_platform.strip().casefold() == "16688"
+                and was_unclassified
+                and target_id is not None
+                and result.confidence >= 80
+                and not offer.approved
+                and offer.active
+                and not str(offer.hidden_reason or "").strip()
+            ):
+                offer.approved = True
+            if target_id is None:
+                unclassified += 1
+        db.commit()
     return {"ok": True, "changed": changed, "unclassified": unclassified}
 
 
@@ -695,6 +722,8 @@ def redetect_source_intake(
     intake = _locked_source_intake(db, intake_id)
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
+    if intake.status not in {"pending_review", "validation_failed", "no_products"}:
+        raise HTTPException(status_code=409, detail=f"cannot redetect intake in status {intake.status}")
     intake.status = "submitted"
     intake.source_type = "unknown"
     intake.lease_expires_at = None
@@ -804,6 +833,13 @@ def retry_failed_intake_notifications(intake_id: int, db: Session = Depends(get_
 
 @router.post("/notification-outbox/{outbox_id}/retry", response_model=NotificationOutboxOut)
 def retry_notification(outbox_id: int, db: Session = Depends(get_db)) -> NotificationOutbox:
+    existing = db.get(NotificationOutbox, outbox_id)
+    broadcast_id = None
+    if existing is not None and existing.dedupe_key.startswith("broadcast:"):
+        try:
+            broadcast_id = int(existing.dedupe_key.split(":", 2)[1])
+        except ValueError:
+            broadcast_id = None
     result = db.execute(
         update(NotificationOutbox)
         .where(NotificationOutbox.id == outbox_id, NotificationOutbox.status == "failed")
@@ -814,6 +850,8 @@ def retry_notification(outbox_id: int, db: Session = Depends(get_db)) -> Notific
         if row is None:
             raise HTTPException(status_code=404, detail="notification not found")
         raise HTTPException(status_code=409, detail=f"cannot retry notification in status {row.status}")
+    if broadcast_id is not None:
+        refresh_broadcast_status(db, broadcast_id)
     db.commit()
     return db.get(NotificationOutbox, outbox_id)
 
@@ -844,6 +882,7 @@ def discovery_run_detail(run_id: int, db: Session = Depends(get_db)) -> SourceDi
 
 @router.get("/source-candidates", response_model=list[SourceCandidateOut])
 def source_candidates(
+    response: Response,
     status: str | None = None,
     detected_platform: str | None = None,
     discovered_by: str | None = None,
@@ -885,6 +924,8 @@ def source_candidates(
         .limit(limit)
         .offset(offset)
     )
+    total = db.scalar(select(func.count()).select_from(SourceCandidate).where(and_(*conditions))) or 0
+    response.headers["X-Total-Count"] = str(total)
     return list(db.scalars(stmt))
 
 
@@ -1042,6 +1083,25 @@ def admin_get_skills(
     )
 
 
+@router.get("/skills/{skill_id}", response_model=CommunitySkillDetailOut)
+def admin_get_skill_detail(
+    skill_id: int,
+    db: Session = Depends(get_db),
+) -> CommunitySkillDetailOut:
+    skill = db.get(CommunitySkill, skill_id)
+    if skill is None:
+        raise HTTPException(status_code=404, detail="skill not found")
+    detail = get_community_skill_by_slug(
+        db,
+        skill.slug,
+        visible_only=False,
+        increment_view=False,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return detail
+
+
 
 @router.post("/skills", response_model=CommunitySkillSummaryOut)
 def admin_post_skill(
@@ -1166,7 +1226,7 @@ def _admin_coupon_to_read(c: ShopCoupon) -> CouponRead:
         min_spend=c.min_spend,
         shop_id=getattr(c, "shop_id", None),
         shop_name=c.shop_name,
-        shop_url=c.shop_url,
+        shop_url=public_https_url_or_empty(c.shop_url),
         is_assigned=c.is_assigned,
         assigned_at=c.assigned_at,
         expires_at=c.expires_at,
@@ -1184,7 +1244,7 @@ def _admin_campaign_to_read(c: CouponCampaign) -> CampaignRead:
         title=c.title,
         coupon_batch_id=c.coupon_batch_id,
         shop_id=getattr(c, "shop_id", None),
-        shop_url=getattr(c, "shop_url", None),
+        shop_url=public_https_url_or_empty(getattr(c, "shop_url", None)) or None,
         shop_name=getattr(c, "shop_name", None),
         max_per_user=c.max_per_user,
         total_quota=c.total_quota,
@@ -1245,8 +1305,8 @@ def admin_update_coupon_settings(
     if payload.dynamic_drop is not None:
         set_setting_str(db, "coupon_dynamic_drop", "true" if payload.dynamic_drop else "false")
     if payload.daily_drop_limit is not None:
-        val = max(0, payload.daily_drop_limit)
-        set_setting_str(db, "coupon_daily_drop_limit", str(val))
+        set_setting_str(db, "coupon_daily_drop_limit", str(payload.daily_drop_limit))
+    db.commit()
     return _get_coupon_stats(db)
 
 
@@ -1329,7 +1389,7 @@ def _resolve_shop(
 
     final_id = shop.id if shop else None
     final_name = (shop.name if shop and shop.name else (shop_name or "")).strip()
-    final_url = (shop.source_url if shop and shop.source_url else (shop_url or "")).strip()
+    final_url = public_https_url_or_empty(shop.source_url if shop and shop.source_url else shop_url)
     return final_id, final_name, final_url
 
 
@@ -1906,16 +1966,15 @@ def admin_get_user_detail(user_id: int, db: Session = Depends(get_db)) -> AdminU
 @router.patch("/users/{user_id}/status")
 def admin_toggle_user_status(
     user_id: int,
-    payload: dict[str, Any],
+    payload: AdminUserStatusUpdate,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
-    if "is_active" in payload:
-        user.is_active = bool(payload["is_active"])
-        db.commit()
-        db.refresh(user)
+    user.is_active = payload.is_active
+    db.commit()
+    db.refresh(user)
     return {"id": user.id, "is_active": user.is_active}
 
 
@@ -1958,20 +2017,47 @@ def admin_create_broadcast(
     payload: AdminBroadcastCreate,
     db: Session = Depends(get_db),
 ) -> AdminBroadcast:
-    channels = payload.channels or ["email", "bot"]
+    channels = payload.channels
+    existing = db.scalar(
+        select(AdminBroadcast).where(AdminBroadcast.operation_key == payload.operation_key)
+    )
+    if existing is not None:
+        if (
+            existing.title != payload.title
+            or existing.content != payload.content
+            or existing.channels != channels
+        ):
+            raise HTTPException(status_code=409, detail="operation_key already belongs to a different broadcast")
+        return existing
     site_url = os.getenv("NEXT_PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
     now = datetime.now(timezone.utc)
 
     broadcast = AdminBroadcast(
+        operation_key=payload.operation_key,
         title=payload.title.strip(),
         content=payload.content.strip(),
         channels=channels,
-        status="sent",
+        status="queued",
         created_by="admin",
         created_at=now,
     )
     db.add(broadcast)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        existing = db.scalar(
+            select(AdminBroadcast).where(AdminBroadcast.operation_key == payload.operation_key)
+        )
+        if existing is None:
+            raise HTTPException(status_code=409, detail="broadcast operation conflicted") from exc
+        if (
+            existing.title != payload.title
+            or existing.content != payload.content
+            or existing.channels != channels
+        ):
+            raise HTTPException(status_code=409, detail="operation_key already belongs to a different broadcast") from exc
+        return existing
 
     email_count = 0
     bot_count = 0
@@ -2008,7 +2094,7 @@ def admin_create_broadcast(
                 created_at=now,
             )
             db.add(outbox_row)
-            email_count += 1
+            target_user_ids.add(u.id)
 
     if "bot" in channels:
         active_bindings = list(
@@ -2031,40 +2117,23 @@ def admin_create_broadcast(
             f"🔗 访问官网：{site_url}"
         )
         for b in active_bindings:
-            try:
-                from extensions.bots.qq_bot import QQBotClient
-
-                # Build the client from this binding's own credentials first:
-                # Connector deployments keep per-user app_id/app_secret in the
-                # binding (extra_meta.app_id / bot_token) and may have no global
-                # QQ_BOT_APP_ID/SECRET configured at all.
-                app_id = (b.extra_meta or {}).get("app_id") if isinstance(b.extra_meta, dict) else None
-                app_secret = decrypt_secret(b.bot_token) or None
-                qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
-                if not qq_client.is_configured:
-                    logger.warning(
-                        "Broadcast %s: binding %s has no usable QQ credentials, skipped",
-                        broadcast.id,
-                        b.id,
-                    )
-                    continue
-                sent = qq_client.send_c2c_message(b.target_id, bot_msg, app_id=app_id, app_secret=app_secret)
-                if sent:
-                    bot_count += 1
-                    target_user_ids.add(b.user_id)
-                else:
-                    logger.warning("Broadcast %s: failed sending bot message to target %s", broadcast.id, b.target_id)
-            except Exception as b_err:
-                logger.warning(
-                    "Broadcast %s: error sending to bot target %s: %s",
-                    broadcast.id,
-                    b.target_id,
-                    b_err,
-                )
+            db.add(NotificationOutbox(
+                event_type="admin_broadcast_bot",
+                recipient=b.target_id,
+                subject=broadcast.title,
+                text_body=bot_msg,
+                status="pending",
+                dedupe_key=f"broadcast:{broadcast.id}:{b.user_id}:bot:{b.id}",
+                next_attempt_at=now,
+                created_at=now,
+            ))
+            target_user_ids.add(b.user_id)
 
     broadcast.target_user_count = len(target_user_ids)
     broadcast.email_sent_count = email_count
     broadcast.bot_sent_count = bot_count
+    if not target_user_ids:
+        broadcast.status = "sent"
     db.commit()
     db.refresh(broadcast)
     return broadcast
@@ -2078,6 +2147,3 @@ def admin_list_broadcasts(
 ) -> list[AdminBroadcast]:
     stmt = select(AdminBroadcast).order_by(AdminBroadcast.created_at.desc()).limit(limit).offset(offset)
     return list(db.scalars(stmt))
-
-
-

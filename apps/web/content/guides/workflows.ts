@@ -66,6 +66,7 @@ export const workflowGuideEntries = [
       "已确认账号、套餐、席位或 API 额度已经生效。",
       "已知道自己收到的是账号、JSON、Base URL 还是 API Key。",
       "已阅读 OpenAI 官方 Codex 文档，并接受第三方工具的凭证与条款风险。",
+      "本地 Cockpit API 只监听 127.0.0.1 或 localhost；如确需远程访问，必须同时配置身份认证、TLS、防火墙和最小来源白名单，禁止把账号池或计费接口直接暴露到公网。",
     ],
     overview: [
       {

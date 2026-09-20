@@ -1,10 +1,16 @@
+import base64
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
+import json
 import logging
+import secrets
 import threading
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -25,6 +31,8 @@ from ..schemas import (
     BotCommandRequest,
     BotCommandResponse,
     CouponClaimResponse,
+    CouponDropClaimRequest,
+    CouponDropQualificationResponse,
     CouponDropStatus,
     CouponDropTrackRequest,
     CouponRead,
@@ -36,6 +44,7 @@ from ..schemas import (
     UserHeartbeatResponse,
     UserRead,
     UserSubscriptionCreateOrUpdate,
+    UserSubscriptionPatch,
     UserSubscriptionListOut,
     UserSubscriptionRead,
     UserTrackClickRequest,
@@ -46,13 +55,15 @@ from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
     complete_qq_binding,
-    complete_qq_binding_for_user,
     get_user_bindings,
     start_qq_binding_session,
     unbind_user_channel,
     update_binding_preferences,
 )
+from ..core.config import get_settings
+from ..services.catalog import _base_public_offer_query
 from ..services.notification_hub import handle_inbound_chat_message
+from ..services.source_platform import public_https_url_or_empty
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +72,60 @@ router = APIRouter(prefix="/api/v1/user", tags=["user"])
 # Serializes lucky-drop claims within this process so per-user and global daily
 # limits cannot be raced by concurrent requests (single-instance deployment).
 _CLAIM_DROP_LOCK = threading.Lock()
+_DROP_TOKEN_TTL_SECONDS = 15 * 60
 
 
 def _escape_like(value: str) -> str:
     """Escape LIKE/ILIKE wildcard characters so codes match literally."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _drop_probability(db: Session, remaining_stock: int) -> int:
+    base_prob = _get_setting_int(db, "coupon_drop_probability", default=20)
+    if _get_setting_bool(db, "coupon_dynamic_drop", default=True):
+        if remaining_stock < 5:
+            base_prob = min(base_prob, 5)
+        elif remaining_stock < 20:
+            base_prob = min(base_prob, 15)
+    return max(0, min(100, base_prob))
+
+
+def _encode_drop_claim_token(*, issued_at: datetime) -> str:
+    payload = {
+        "exp": int(issued_at.timestamp()) + _DROP_TOKEN_TTL_SECONDS,
+        "nonce": secrets.token_urlsafe(24),
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        get_settings().session_secret_key.encode("utf-8"),
+        encoded.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _validate_drop_claim_token(token: str, *, now: datetime) -> str | None:
+    try:
+        encoded, signature = token.split(".", 1)
+        expected = hmac.new(
+            get_settings().session_secret_key.encode("utf-8"),
+            encoded.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        padding = "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+        if int(payload.get("exp", 0)) < int(now.timestamp()):
+            return None
+        nonce = str(payload.get("nonce") or "")
+        if len(nonce) < 20:
+            return None
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
 
 
 def _is_bot_enabled(db: Session) -> bool:
@@ -111,7 +171,9 @@ def _subscription_to_read(
     db: Session,
     snapshot: CatalogSnapshot | None = None,
 ) -> UserSubscriptionRead:
-    product = db.scalar(select(Product).where(Product.slug == sub.product_slug))
+    product = db.scalar(
+        select(Product).where(Product.slug == sub.product_slug, Product.is_visible.is_(True))
+    )
     p_name = product.display_name if product else sub.product_slug
     platform = product.platform if product else "AI"
     min_price = None
@@ -128,11 +190,10 @@ def _subscription_to_read(
 
     if snapshot and product:
         min_offer = db.scalar(
-            select(Offer)
+            _base_public_offer_query(db, include_details=False, snapshot=snapshot)
             .where(
-                Offer.snapshot_id == snapshot.id,
                 Offer.product_id == product.id,
-                Offer.is_comparable == True,
+                Offer.is_comparable.is_(True),
                 Offer.stock_count > 0,
             )
             .order_by(Offer.price.asc())
@@ -196,7 +257,9 @@ def create_or_update_subscription(
     db: Session = Depends(get_db),
 ) -> UserSubscriptionRead:
     clean_slug = payload.product_slug.strip().casefold()
-    product = db.scalar(select(Product).where(Product.slug == clean_slug))
+    product = db.scalar(
+        select(Product).where(Product.slug == clean_slug, Product.is_visible.is_(True))
+    )
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"商品「{clean_slug}」不存在")
 
@@ -204,25 +267,35 @@ def create_or_update_subscription(
         select(UserProductSubscription).where(
             UserProductSubscription.user_id == current_user.id,
             UserProductSubscription.product_slug == clean_slug,
-        )
+        ).with_for_update()
     )
     now = datetime.now(timezone.utc)
     if sub is None:
-        sub = UserProductSubscription(
-            user_id=current_user.id,
-            product_slug=clean_slug,
-            target_price=payload.target_price,
-            notify_email=payload.notify_email,
-            notify_bot=payload.notify_bot,
-            created_at=now,
-            updated_at=now,
-        )
-        db.add(sub)
-    else:
-        sub.target_price = payload.target_price
-        sub.notify_email = payload.notify_email
-        sub.notify_bot = payload.notify_bot
-        sub.updated_at = now
+        try:
+            with db.begin_nested():
+                sub = UserProductSubscription(
+                    user_id=current_user.id,
+                    product_slug=clean_slug,
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(sub)
+                db.flush()
+        except IntegrityError:
+            sub = db.scalar(
+                select(UserProductSubscription)
+                .where(
+                    UserProductSubscription.user_id == current_user.id,
+                    UserProductSubscription.product_slug == clean_slug,
+                )
+                .with_for_update()
+            )
+            if sub is None:
+                raise
+    sub.target_price = payload.target_price
+    sub.notify_email = payload.notify_email
+    sub.notify_bot = payload.notify_bot
+    sub.updated_at = now
 
     db.commit()
     db.refresh(sub)
@@ -244,6 +317,37 @@ def delete_subscription(
     )
     db.commit()
     return {"success": bool(res.rowcount and res.rowcount > 0)}
+
+
+@router.patch("/subscriptions/{slug}", response_model=UserSubscriptionRead)
+def patch_subscription(
+    slug: str,
+    payload: UserSubscriptionPatch,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> UserSubscriptionRead:
+    clean_slug = slug.strip().casefold()
+    sub = db.scalar(
+        select(UserProductSubscription).where(
+            UserProductSubscription.user_id == current_user.id,
+            UserProductSubscription.product_slug == clean_slug,
+        )
+    )
+    if sub is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="关注记录不存在")
+    fields = payload.model_fields_set
+    if not fields:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="至少提供一个更新字段")
+    if "target_price" in fields:
+        sub.target_price = payload.target_price
+    if "notify_email" in fields:
+        sub.notify_email = bool(payload.notify_email)
+    if "notify_bot" in fields:
+        sub.notify_bot = bool(payload.notify_bot)
+    sub.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(sub)
+    return _subscription_to_read(sub, db)
 
 
 
@@ -284,22 +388,6 @@ def bind_current_qq(
     binding = bind_current_user_qq(db, current_user)
     if binding is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前账号尚未关联 QQ，请使用下方扫码绑定")
-    return {"success": True, "binding": _binding_to_read(binding)}
-
-
-@router.post("/notifications/qq/confirm")
-def manual_confirm_qq_binding(
-    bind_code: str,
-    target_id: str,
-    current_user: User = Depends(require_current_user),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Fallback manual binding endpoint: bind by entering QQ ID / OpenID with the code."""
-    if not _is_bot_enabled(db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="机器人功能已由管理员暂时关闭")
-    binding, error = complete_qq_binding_for_user(db, current_user, bind_code, target_id)
-    if binding is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error or "绑定码无效或已失效")
     return {"success": True, "binding": _binding_to_read(binding)}
 
 
@@ -378,7 +466,7 @@ def _coupon_to_read(c: ShopCoupon) -> CouponRead:
         min_spend=c.min_spend,
         shop_id=getattr(c, "shop_id", None),
         shop_name=c.shop_name,
-        shop_url=c.shop_url,
+        shop_url=public_https_url_or_empty(c.shop_url),
         is_assigned=c.is_assigned,
         assigned_at=c.assigned_at,
         expires_at=c.expires_at,
@@ -412,6 +500,7 @@ def list_user_coupons(
 @router.post("/coupons/redeem", response_model=CouponClaimResponse)
 def redeem_coupon(
     payload: CouponRedeemRequest,
+    request: Request,
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> CouponClaimResponse:
@@ -419,6 +508,25 @@ def redeem_coupon(
     raw_code = payload.code.strip()
     if not raw_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="兑换码不能为空")
+
+    from .public import _client_address, _enforce_client_rate_limit
+
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace=f"coupon-redeem-user-{current_user.id}",
+        max_requests=20,
+        window_seconds=10 * 60,
+        detail="兑换尝试过于频繁，请稍后再试",
+    )
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace=f"coupon-redeem-ip-{_client_address(request)}",
+        max_requests=40,
+        window_seconds=10 * 60,
+        detail="兑换尝试过于频繁，请稍后再试",
+    )
 
     now = datetime.now(timezone.utc)
 
@@ -460,16 +568,15 @@ def redeem_coupon(
         # Find an unassigned coupon from the pool strictly for this shop
         query = select(ShopCoupon).where(
             ShopCoupon.is_assigned.is_(False),
+            ShopCoupon.is_used.is_(False),
             ShopCoupon.expires_at > now,
         )
         if campaign.shop_id:
             query = query.where(ShopCoupon.shop_id == campaign.shop_id)
         elif campaign.shop_url:
+            normalized_shop_url = campaign.shop_url.strip().rstrip("/").casefold()
             query = query.where(
-                or_(
-                    ShopCoupon.shop_url == campaign.shop_url,
-                    ShopCoupon.shop_url.ilike(f"%{_escape_like(campaign.shop_url.strip())}%", escape="\\"),
-                )
+                func.lower(func.rtrim(ShopCoupon.shop_url, "/")) == normalized_shop_url
             )
 
         coupon = None
@@ -533,6 +640,8 @@ def redeem_coupon(
             )
         if direct_coupon.is_assigned:
             return CouponClaimResponse(success=False, message="该优惠券码已被其他用户兑换", coupon=None)
+        if direct_coupon.is_used:
+            return CouponClaimResponse(success=False, message="该优惠券码已核销", coupon=None)
         if _ensure_utc(direct_coupon.expires_at) < now:
             return CouponClaimResponse(success=False, message="该优惠券码已过期", coupon=None)
 
@@ -542,6 +651,7 @@ def redeem_coupon(
             .where(
                 ShopCoupon.id == direct_coupon.id,
                 ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.is_used.is_(False),
             )
             .values(
                 is_assigned=True,
@@ -591,6 +701,7 @@ def get_coupon_drop_status(db: Session = Depends(get_db)) -> CouponDropStatus:
         db.scalar(
             select(func.count(ShopCoupon.id)).where(
                 ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.is_used.is_(False),
                 ShopCoupon.expires_at > now,
             )
         )
@@ -600,20 +711,9 @@ def get_coupon_drop_status(db: Session = Depends(get_db)) -> CouponDropStatus:
     if remaining_stock <= 0:
         return CouponDropStatus(enabled=True, probability=0, has_stock=False, remaining_stock=0)
 
-    base_prob = _get_setting_int(db, "coupon_drop_probability", default=20)
-    dynamic_drop = _get_setting_bool(db, "coupon_dynamic_drop", default=True)
-
-    probability = base_prob
-    if dynamic_drop:
-        # Dynamic rate scaling based on remaining unassigned coupons
-        if remaining_stock < 5:
-            probability = min(base_prob, 5)
-        elif remaining_stock < 20:
-            probability = min(base_prob, 15)
-
     return CouponDropStatus(
         enabled=True,
-        probability=max(0, min(100, probability)),
+        probability=_drop_probability(db, remaining_stock),
         has_stock=True,
         remaining_stock=remaining_stock,
     )
@@ -621,6 +721,7 @@ def get_coupon_drop_status(db: Session = Depends(get_db)) -> CouponDropStatus:
 
 @router.post("/coupons/claim-drop", response_model=CouponClaimResponse)
 def claim_lucky_drop(
+    payload: CouponDropClaimRequest,
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> CouponClaimResponse:
@@ -630,22 +731,32 @@ def claim_lucky_drop(
 
     with _CLAIM_DROP_LOCK:
         now = datetime.now(timezone.utc)
+        token_hash = _validate_drop_claim_token(payload.claim_token, now=now)
+        if token_hash is None:
+            return CouponClaimResponse(success=False, message="掉落资格无效或已过期，请重新参与活动", coupon=None)
         cooldown_cutoff = now - timedelta(hours=24)
 
         # Serialize per-user claims (Postgres row lock on the user) so the 24h
         # frequency check cannot be raced by concurrent requests of the same user.
         db.execute(select(User.id).where(User.id == current_user.id).with_for_update())
 
+        token_used = db.scalar(
+            select(UserActionLog.id).where(
+                UserActionLog.action_type == "coupon_drop_claim_token",
+                UserActionLog.target_id == token_hash,
+            )
+        )
+        if token_used is not None:
+            return CouponClaimResponse(success=False, message="该掉落资格已使用", coupon=None)
+
         # Daily global drop limit check
         daily_limit = _get_setting_int(db, "coupon_daily_drop_limit", default=100)
         if daily_limit > 0:
-            # 只统计掉落券：活动口令兑换（campaign_id 非空）有自己的配额，
-            # 不应挤占每日掉落额度（与下方 24h 个人频控的口径一致）。
             today_claimed = (
                 db.scalar(
-                    select(func.count(ShopCoupon.id)).where(
-                        ShopCoupon.campaign_id.is_(None),
-                        ShopCoupon.assigned_at >= cooldown_cutoff,
+                    select(func.count(UserActionLog.id)).where(
+                        UserActionLog.action_type == "coupon_drop_claim_token",
+                        UserActionLog.created_at >= cooldown_cutoff,
                     )
                 )
                 or 0
@@ -658,21 +769,33 @@ def claim_lucky_drop(
                 )
 
         # Frequency check: Has user claimed a drop in last 24h?
-        recent_coupon = db.scalar(
-            select(ShopCoupon)
+        recent_drop = db.scalar(
+            select(UserActionLog)
             .where(
-                ShopCoupon.assigned_user_id == current_user.id,
-                ShopCoupon.campaign_id.is_(None),
-                ShopCoupon.assigned_at >= cooldown_cutoff,
+                UserActionLog.user_id == current_user.id,
+                UserActionLog.action_type == "coupon_drop_claim_token",
+                UserActionLog.created_at >= cooldown_cutoff,
             )
-            .order_by(ShopCoupon.assigned_at.desc())
+            .order_by(UserActionLog.created_at.desc(), UserActionLog.id.desc())
             .limit(1)
         )
-        if recent_coupon:
+        if recent_drop:
+            coupon_id = (recent_drop.extra_data or {}).get("coupon_id")
+            recent_coupon = db.get(ShopCoupon, coupon_id) if isinstance(coupon_id, int) else None
+            if recent_coupon is None:
+                recent_coupon = db.scalar(
+                    select(ShopCoupon)
+                    .where(
+                        ShopCoupon.assigned_user_id == current_user.id,
+                        ShopCoupon.assigned_at >= recent_drop.created_at,
+                    )
+                    .order_by(ShopCoupon.assigned_at.asc(), ShopCoupon.id.asc())
+                    .limit(1)
+                )
             return CouponClaimResponse(
                 success=False,
                 message="您在 24 小时内已领取过专属立减券啦，已在您的卡包中生效！",
-                coupon=_coupon_to_read(recent_coupon),
+                coupon=_coupon_to_read(recent_coupon) if recent_coupon else None,
             )
 
         # Find an available unassigned valid coupon with row-level lock
@@ -680,6 +803,7 @@ def claim_lucky_drop(
             select(ShopCoupon)
             .where(
                 ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.is_used.is_(False),
                 ShopCoupon.expires_at > now,
             )
             .order_by(ShopCoupon.id.asc())
@@ -699,6 +823,16 @@ def claim_lucky_drop(
         db.add(
             UserActionLog(
                 user_id=current_user.id,
+                action_type="coupon_drop_claim_token",
+                action_name="消费优惠券掉落资格",
+                target_id=token_hash,
+                extra_data={"coupon_id": coupon.id},
+                created_at=now,
+            )
+        )
+        db.add(
+            UserActionLog(
+                user_id=current_user.id,
                 action_type="coupon_claim",
                 action_name=f"领取优惠券: {coupon.name}",
                 target_id=str(coupon.id),
@@ -715,23 +849,23 @@ def claim_lucky_drop(
     )
 
 
-@router.post("/coupons/record-drop-trigger")
+@router.post("/coupons/record-drop-trigger", response_model=CouponDropQualificationResponse)
 def record_coupon_drop_trigger(
     payload: CouponDropTrackRequest,
     request: Request,
     current_user: User | None = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Record an easter egg drop trigger event from the frontend (supports anonymous or logged-in visitors)."""
+) -> CouponDropQualificationResponse:
+    """Perform the server-side drop draw and return a signed claim capability."""
     from .public import _client_address, _enforce_client_rate_limit
 
     _enforce_client_rate_limit(
         request,
         db,
-        namespace="coupon-drop-telemetry",
-        max_requests=30,
+        namespace=f"coupon-drop-draw-{current_user.id if current_user else 'anonymous'}",
+        max_requests=1,
         window_seconds=60,
-        detail="too many telemetry requests",
+        detail="掉落抽签过于频繁，请稍后再试",
     )
     client_ip = _client_address(request)
     ua = request.headers.get("user-agent", "")
@@ -739,7 +873,20 @@ def record_coupon_drop_trigger(
 
     user_id = current_user.id if current_user else None
 
-    # 1. Log to UserActionLog
+    remaining_stock = (
+        db.scalar(
+            select(func.count(ShopCoupon.id)).where(
+                ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.is_used.is_(False),
+                ShopCoupon.expires_at > now,
+            )
+        )
+        or 0
+    )
+    enabled = _get_setting_bool(db, "coupon_drop_enabled", default=True)
+    probability = _drop_probability(db, remaining_stock) if enabled and remaining_stock > 0 else 0
+    eligible = probability > 0 and secrets.randbelow(10_000) < probability * 100
+
     log = UserActionLog(
         user_id=user_id,
         action_type="coupon_drop_trigger",
@@ -748,25 +895,20 @@ def record_coupon_drop_trigger(
         page=payload.page or "",
         ip_address=client_ip,
         user_agent=ua,
-        extra_data=payload.extra_data or {},
+        extra_data={**(payload.extra_data or {}), "eligible": eligible, "probability": probability},
         created_at=now,
     )
     db.add(log)
 
-    # 2. Increment SystemSetting counter
-    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "coupon_drop_trigger_count"))
-    if not setting:
-        setting = SystemSetting(key="coupon_drop_trigger_count", value="1")
-        db.add(setting)
-    else:
-        try:
-            cnt = int((setting.value or "").strip() or "0") + 1
-        except (ValueError, TypeError):
-            cnt = 1
-        setting.value = str(cnt)
-
+    # UserActionLog is the canonical, concurrency-safe trigger counter. The
+    # admin stats endpoint counts these rows and only reads the legacy setting
+    # as a migration floor.
     db.commit()
-    return {"status": "ok", "success": True}
+    return CouponDropQualificationResponse(
+        success=True,
+        eligible=eligible,
+        claim_token=_encode_drop_claim_token(issued_at=now) if eligible else "",
+    )
 
 
 @router.post("/heartbeat", response_model=UserHeartbeatResponse)
@@ -846,6 +988,3 @@ def user_track_click(
         "recorded": True,
         "click_count": current_user.button_click_count if current_user else 0,
     }
-
-
-

@@ -89,6 +89,7 @@ export interface DiscoveryFilters {
   discovered_by?: string;
   ai_hit?: boolean;
   limit?: number;
+  offset?: number;
 }
 
 export function candidateQuery(filters: DiscoveryFilters): string {
@@ -96,8 +97,9 @@ export function candidateQuery(filters: DiscoveryFilters): string {
   if (filters.status) params.set("status", filters.status);
   if (filters.detected_platform) params.set("detected_platform", filters.detected_platform);
   if (filters.discovered_by) params.set("discovered_by", filters.discovered_by);
-  if (filters.ai_hit) params.set("ai_hit", "true");
+  if (filters.ai_hit !== undefined) params.set("ai_hit", String(filters.ai_hit));
   if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined && filters.offset >= 0) params.set("offset", String(filters.offset));
   const query = params.toString();
   return query ? `?${query}` : "";
 }

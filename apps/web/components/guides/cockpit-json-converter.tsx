@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -38,6 +38,7 @@ function downloadName(): string {
 
 export function CockpitJsonConverter({ previewState }: { previewState?: "error" }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const readGenerationRef = useRef(0);
   const [inputText, setInputText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<readonly string[]>([]);
   const [result, setResult] = useState<CockpitConversionResult>({ accounts: [], issues: [] });
@@ -49,6 +50,10 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
     return JSON.stringify(buildCockpitDocument(result.accounts), null, 2);
   }, [result.accounts]);
 
+  useEffect(() => () => {
+    readGenerationRef.current += 1;
+  }, []);
+
   function applyConversion(documents: readonly JsonDocument[]): void {
     const nextResult = convertJsonDocuments(documents);
     setResult(nextResult);
@@ -56,6 +61,7 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
   }
 
   function convertPastedJson(): void {
+    readGenerationRef.current += 1;
     if (!inputText.trim()) {
       setError("请粘贴 JSON，或先选择一个或多个 JSON 文件。");
       return;
@@ -72,6 +78,7 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
 
   async function convertFiles(files: FileList | null): Promise<void> {
     if (!files?.length) return;
+    const generation = ++readGenerationRef.current;
     const allFiles = Array.from(files);
     const inScopeFiles = allFiles.slice(0, COCKPIT_LIMITS.maxFilesPerBatch);
     const overflowFiles = allFiles.slice(COCKPIT_LIMITS.maxFilesPerBatch);
@@ -98,8 +105,11 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
       }
       totalBytes += file.size;
       try {
-        textDocuments.push({ sourceName: file.name, text: await file.text() });
+        const text = await file.text();
+        if (generation !== readGenerationRef.current) return;
+        textDocuments.push({ sourceName: file.name, text });
       } catch (readError) {
+        if (generation !== readGenerationRef.current) return;
         fileIssues.push({
           sourceName: file.name,
           path: "$",
@@ -116,6 +126,7 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
     }
 
     const nextResult = convertJsonTexts(textDocuments);
+    if (generation !== readGenerationRef.current) return;
     setResult({ accounts: nextResult.accounts, issues: [...nextResult.issues, ...fileIssues] });
     setInputText("");
     setSelectedFiles(nextResult.parsedFileNames);
@@ -128,6 +139,7 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
   }
 
   function clearAll(): void {
+    readGenerationRef.current += 1;
     setInputText("");
     setSelectedFiles([]);
     setResult({ accounts: [], issues: [] });
@@ -201,7 +213,11 @@ export function CockpitJsonConverter({ previewState }: { previewState?: "error" 
             multiple
             aria-label="选择要转换的 JSON 文件"
             className="sr-only"
-            onChange={(event) => void convertFiles(event.target.files)}
+            onChange={(event) => {
+              const files = event.target.files;
+              event.target.value = "";
+              void convertFiles(files);
+            }}
           />
           <button
             type="button"

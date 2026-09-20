@@ -10,6 +10,7 @@ import {
   type WorkflowGuide,
   type WorkflowGuideSlug,
 } from "./types";
+import { PRODUCT_DELIVERY_TYPES } from "./product-delivery-map";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid guide registry: ${message}`);
@@ -27,6 +28,23 @@ function assertUnique(values: readonly string[], label: string): void {
     assert(!seen.has(value), `duplicate ${label}: ${value}`);
     seen.add(value);
   }
+}
+
+const GUIDE_SITE_ORIGIN = "https://ai.pricememo.cn";
+
+function validateGuideLink(rawUrl: string, label: string): void {
+  assert(!/[\\\u0000-\u0020\u007f]/.test(rawUrl), `${label} contains invalid characters: ${rawUrl}`);
+  let url: URL;
+  try {
+    url = new URL(rawUrl, GUIDE_SITE_ORIGIN);
+  } catch {
+    throw new Error(`Invalid guide registry: ${label} has an invalid link: ${rawUrl}`);
+  }
+  if (rawUrl.startsWith("/")) {
+    assert(url.origin === GUIDE_SITE_ORIGIN, `${label} must remain on the site: ${rawUrl}`);
+    return;
+  }
+  assert(url.protocol === "https:" && !url.username && !url.password, `${label} must use safe HTTPS: ${rawUrl}`);
 }
 
 function validateSources(sources: readonly GuideSource[], label: string): void {
@@ -115,14 +133,7 @@ function validateWorkflowVariants(workflow: WorkflowGuide): void {
       }
       for (const link of step.links ?? []) {
         assert(link.label.trim(), `workflow ${workflow.slug} variant ${variant.id} has a link without label`);
-        if (link.url.startsWith("/") && !link.url.startsWith("//")) continue;
-        let url: URL;
-        try {
-          url = new URL(link.url);
-        } catch {
-          throw new Error(`Invalid guide registry: workflow ${workflow.slug} variant ${variant.id} has an invalid link: ${link.url}`);
-        }
-        assert(url.protocol === "https:", `workflow ${workflow.slug} variant ${variant.id} link must use HTTPS: ${link.url}`);
+        validateGuideLink(link.url, `workflow ${workflow.slug} variant ${variant.id}`);
       }
     }
   }
@@ -166,6 +177,8 @@ export function validateGuideRegistry(registry: GuideRegistry): void {
     assert(key === product.productSlug, `product key ${key} does not match product slug ${product.productSlug}`);
     assert(product.title.trim(), `product ${product.productSlug} is missing title`);
     assert(product.description.trim(), `product ${product.productSlug} is missing description`);
+    validateGuideLink(product.offerPath, `product ${product.productSlug} offer path`);
+    assert(product.offerPath.startsWith("/products") && !product.offerPath.startsWith("//"), `product ${product.productSlug} offer path must target the catalog`);
     assert(product.lastReviewedAt.trim(), `product ${product.productSlug} is missing lastReviewedAt`);
     assert(product.audience.length > 0, `product ${product.productSlug} is missing audience`);
     assert(product.buyingChecklist.length > 0, `product ${product.productSlug} is missing buying checklist`);
@@ -173,6 +186,10 @@ export function validateGuideRegistry(registry: GuideRegistry): void {
     assert(product.riskNotes.length > 0, `product ${product.productSlug} is missing risk notes`);
     assert(product.faq.length > 0, `product ${product.productSlug} is missing FAQ`);
     validateSources(product.officialSources, `product ${product.productSlug}`);
+    assert(
+      registry.brands[product.brand].productSlugs.filter((slug) => slug === product.productSlug).length === 1,
+      `product ${product.productSlug} must appear exactly once in brand ${product.brand}`,
+    );
 
     if (product.walkthrough) {
       assert(product.walkthrough.title.trim(), `product ${product.productSlug} walkthrough is missing title`);
@@ -187,28 +204,26 @@ export function validateGuideRegistry(registry: GuideRegistry): void {
         }
         for (const link of step.links ?? []) {
           assert(link.label.trim(), `product ${product.productSlug} walkthrough has a link without label`);
-          if (link.url.startsWith("/") && !link.url.startsWith("//")) continue;
-          let url: URL;
-          try {
-            url = new URL(link.url);
-          } catch {
-            throw new Error(`Invalid guide registry: product ${product.productSlug} walkthrough has an invalid link: ${link.url}`);
-          }
-          assert(url.protocol === "https:", `product ${product.productSlug} walkthrough link must use HTTPS: ${link.url}`);
+          validateGuideLink(link.url, `product ${product.productSlug} walkthrough`);
         }
       }
     }
 
     assertUnique(product.supportedDeliveryTypes, `delivery type in product ${product.productSlug}`);
+    assert(
+      JSON.stringify(product.supportedDeliveryTypes) === JSON.stringify(PRODUCT_DELIVERY_TYPES[product.productSlug]),
+      `product ${product.productSlug} delivery types do not match the client guide map`,
+    );
     for (const deliveryType of product.supportedDeliveryTypes) {
       assert(Boolean(registry.delivery[deliveryType]), `product ${product.productSlug} references missing delivery ${deliveryType}`);
     }
 
     const workflowReferences = product.workflowReferences ?? [];
-    if (product.brand === "openai") {
+    const isVerificationOnly = product.supportedDeliveryTypes.every((type) => type === "verification_service");
+    if (product.brand === "openai" && !isVerificationOnly) {
       assert(workflowReferences.length > 0, `OpenAI product ${product.productSlug} must reference at least one workflow`);
     } else {
-      assert(workflowReferences.length === 0, `non-OpenAI product ${product.productSlug} must not reference OpenAI workflows`);
+      assert(workflowReferences.length === 0, `product ${product.productSlug} must not reference an unrelated OpenAI workflow`);
     }
     const referencedWorkflowSlugs = new Set<string>();
     for (const reference of workflowReferences) {
@@ -330,14 +345,18 @@ export function validateGuideRegistry(registry: GuideRegistry): void {
   assert(/用户 Key/.test(sub2apiSearchText), "sub2api workflow is missing user key guidance");
 
   const allWorkflowSources = workflowValues.flatMap((workflow) => workflow.sources);
-  const ccSwitchSource = allWorkflowSources.find((source) => source.title === "CC Switch");
+  const ccSwitchSources = allWorkflowSources.filter((source) => source.title === "CC Switch");
   assert(
-    ccSwitchSource?.url === "https://github.com/farion1231/cc-switch",
+    ccSwitchSources.length > 0 && ccSwitchSources.every(
+      (source) => source.url === "https://github.com/farion1231/cc-switch" && source.kind === "project_official",
+    ),
     "CC Switch must point to https://github.com/farion1231/cc-switch",
   );
-  const codexPlusPlusSource = allWorkflowSources.find((source) => source.title === "CodexPlusPlus");
+  const codexPlusPlusSources = allWorkflowSources.filter((source) => source.title === "CodexPlusPlus");
   assert(
-    codexPlusPlusSource?.url === "https://github.com/BigPizzaV3/CodexPlusPlus",
+    codexPlusPlusSources.length > 0 && codexPlusPlusSources.every(
+      (source) => source.url === "https://github.com/BigPizzaV3/CodexPlusPlus" && source.kind === "project_official",
+    ),
     "Codex++ must point to https://github.com/BigPizzaV3/CodexPlusPlus",
   );
 

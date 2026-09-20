@@ -114,7 +114,7 @@ export default async function ProductGuidePage({ params }: PageProps) {
             <GuideCallout tone="warning" title="使用前请确认">
               {guide.disclaimer}
             </GuideCallout>
-            <Link href={`/products/${encodeURIComponent(guide.productSlug)}`} className="tactile flex min-h-12 items-center justify-between text-sm font-semibold">
+            <Link href={guide.offerPath} className="tactile flex min-h-12 items-center justify-between text-sm font-semibold">
               返回该产品报价目录
               <ArrowRight size={18} aria-hidden="true" />
             </Link>

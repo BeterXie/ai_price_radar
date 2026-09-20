@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import os
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
 router = APIRouter(tags=["public-feed"])
 
@@ -34,13 +33,45 @@ def _get_candidate_data_dirs() -> list[Path]:
 
 
 def _find_data_dir() -> Path:
-    for candidate in _get_candidate_data_dirs():
-        if candidate.is_dir():
-            return candidate
     configured = os.getenv(PUBLIC_DATA_DIR_ENV, "").strip()
     if configured:
         return Path(configured)
+    for candidate in _get_candidate_data_dirs():
+        if candidate.is_dir():
+            return candidate
     return Path("./data")
+
+
+def _file_etag(path: Path) -> tuple[str, os.stat_result]:
+    stat_result = path.stat()
+    return f'W/"{stat_result.st_mtime_ns:x}-{stat_result.st_size:x}"', stat_result
+
+
+def _etag_matches(header_value: str | None, etag: str) -> bool:
+    if not header_value:
+        return False
+    normalized = etag.removeprefix("W/")
+    return any(
+        candidate.strip().removeprefix("W/") in {normalized, "*"}
+        for candidate in header_value.split(",")
+    )
+
+
+def _serve_feed_file(path: Path, if_none_match: str | None, cache_control: str) -> Response:
+    etag, stat_result = _file_etag(path)
+    headers = {
+        "ETag": etag,
+        "Cache-Control": cache_control,
+        "Access-Control-Allow-Origin": "*",
+    }
+    if _etag_matches(if_none_match, etag):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return FileResponse(
+        path,
+        media_type="application/json",
+        headers=headers,
+        stat_result=stat_result,
+    )
 
 
 @router.get("/data/latest.json")
@@ -53,62 +84,23 @@ def get_latest_feed(if_none_match: str | None = Header(None)) -> Response:
             detail="Latest snapshot feed has not been generated yet",
         )
 
-    content = latest_file.read_bytes()
-    etag = f'"{hashlib.sha256(content).hexdigest()[:16]}"'
-
-    if if_none_match and if_none_match.strip('"') == etag.strip('"'):
-        return Response(
-            status_code=status.HTTP_304_NOT_MODIFIED,
-            headers={
-                "ETag": etag,
-                "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
-            },
-        )
-
-    return Response(
-        content=content,
-        media_type="application/json",
-        headers={
-            "ETag": etag,
-            "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
-            "Access-Control-Allow-Origin": "*",
-        },
+    return _serve_feed_file(
+        latest_file,
+        if_none_match,
+        "public, max-age=60, stale-while-revalidate=300",
     )
 
 
 @router.get("/data/v1/snapshots/{snapshot_id}.json")
 def get_snapshot_feed(snapshot_id: str, if_none_match: str | None = Header(None)) -> Response:
-    # Ensure safe filename
-    safe_id = "".join(c for c in snapshot_id if c.isalnum() or c in "-_")
-    if not safe_id:
+    if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", snapshot_id) is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid snapshot ID")
 
     data_dir = _find_data_dir()
-    snapshot_file = data_dir / "v1" / "snapshots" / f"{safe_id}.json"
+    snapshot_file = data_dir / "v1" / "snapshots" / f"{snapshot_id}.json"
     if not snapshot_file.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Snapshot {safe_id} not found",
+            detail=f"Snapshot {snapshot_id} not found",
         )
-
-    content = snapshot_file.read_bytes()
-    etag = f'"{hashlib.sha256(content).hexdigest()[:16]}"'
-
-    if if_none_match and if_none_match.strip('"') == etag.strip('"'):
-        return Response(
-            status_code=status.HTTP_304_NOT_MODIFIED,
-            headers={
-                "ETag": etag,
-                "Cache-Control": "public, max-age=31536000, immutable",
-            },
-        )
-
-    return Response(
-        content=content,
-        media_type="application/json",
-        headers={
-            "ETag": etag,
-            "Cache-Control": "public, max-age=31536000, immutable",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
+    return _serve_feed_file(snapshot_file, if_none_match, "public, max-age=31536000, immutable")

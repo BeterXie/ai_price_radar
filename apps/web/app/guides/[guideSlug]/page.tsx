@@ -41,8 +41,8 @@ export default async function GeneralGuidePage({ params }: PageProps) {
 
   const path = `/guides/${guide.slug}`;
   const faq = guide.blocks.flatMap((block) => block.type === "faq" ? block.items : []) as readonly GuideFaq[];
-  const procedure = guide.blocks.find((block) => block.type === "steps" || block.type === "checklist");
-  const procedureItems = procedure && (procedure.type === "steps" || procedure.type === "checklist") ? procedure.items : [];
+  const procedure = guide.blocks.find((block) => block.type === "steps");
+  const procedureItems = procedure?.type === "steps" ? procedure.items : [];
   const toc = guide.blocks.map((block, index) => ({ id: `section-${index + 1}`, label: blockLabel(block, index) }));
   toc.push({ id: "sources", label: "官方来源" });
   const schemas: Record<string, unknown>[] = [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowClockwise,
   ArrowSquareOut,
@@ -35,7 +35,9 @@ export function SkillsAdminPanel({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<CommunitySkillSummary | null>(null);
   const [formSaving, setFormSaving] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [formError, setFormError] = useState("");
+  const editRequestRef = useRef(0);
 
   // Form fields
   const [formSlug, setFormSlug] = useState("");
@@ -88,6 +90,8 @@ export function SkillsAdminPanel({
   };
 
   const openCreateModal = () => {
+    editRequestRef.current += 1;
+    setDetailLoading(false);
     setEditingSkill(null);
     setFormSlug("");
     setFormKind("skill");
@@ -113,7 +117,14 @@ export function SkillsAdminPanel({
     setIsModalOpen(true);
   };
 
+  const closeModal = () => {
+    editRequestRef.current += 1;
+    setDetailLoading(false);
+    setIsModalOpen(false);
+  };
+
   const openEditModal = async (skill: CommunitySkillSummary) => {
+    const requestId = ++editRequestRef.current;
     setEditingSkill(skill);
     setFormSlug(skill.slug);
     setFormKind(skill.kind);
@@ -133,23 +144,37 @@ export function SkillsAdminPanel({
     setFormPinned(skill.is_pinned);
     setFormVisible(skill.is_visible);
     setFormSortOrder(skill.sort_order || 0);
+    setFormContent("");
+    setFormPrompt("");
     setFormError("");
-
-    // Fetch full detail for markdown & prompt
-    try {
-      const res = await fetch(`${apiBase}/api/v1/skills/${encodeURIComponent(skill.slug)}`);
-      if (res.ok) {
-        const detail = await res.json();
-        setFormContent(detail.content_markdown || "");
-        setFormPrompt(detail.prompt_template || "");
-      }
-    } catch {}
-
+    setDetailLoading(true);
     setIsModalOpen(true);
+
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/skills/${skill.id}`, { headers });
+      if (!res.ok) throw new Error(`详情加载失败 (${res.status})`);
+      const detail = await res.json();
+      if (requestId !== editRequestRef.current) return;
+      setFormContent(detail.content_markdown || "");
+      setFormPrompt(detail.prompt_template || "");
+    } catch (cause) {
+      if (requestId !== editRequestRef.current) return;
+      setFormContent("");
+      setFormPrompt("");
+      setFormError(cause instanceof Error ? cause.message : "详情加载失败");
+    } finally {
+      if (requestId === editRequestRef.current) setDetailLoading(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (detailLoading) return;
+    const normalizedSlug = formSlug.trim().toLowerCase();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug)) {
+      setFormError("URL Slug 只能包含小写字母、数字和单连字符");
+      return;
+    }
     setFormSaving(true);
     setFormError("");
 
@@ -163,7 +188,7 @@ export function SkillsAdminPanel({
       .filter(Boolean);
 
     const payload: AdminCommunitySkillCreate = {
-      slug: formSlug.trim(),
+      slug: normalizedSlug,
       kind: formKind,
       title: formTitle.trim(),
       subtitle: formSubtitle.trim(),
@@ -206,6 +231,7 @@ export function SkillsAdminPanel({
         throw new Error(errData.detail || "保存失败，请检查字段输入");
       }
 
+      editRequestRef.current += 1;
       setIsModalOpen(false);
       fetchSkills();
     } catch (err: any) {
@@ -451,7 +477,7 @@ export function SkillsAdminPanel({
               </h3>
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
                 className="rounded-lg p-1 text-[color:var(--muted)] hover:text-[color:var(--foreground)]"
               >
                 <X size={18} />
@@ -691,18 +717,18 @@ export function SkillsAdminPanel({
               <div className="flex items-center justify-end gap-3 border-t border-[color:var(--line)] pt-4">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   className="rounded-xl border hairline px-4 py-2 font-medium text-[color:var(--muted)] hover:bg-[color:var(--hover)]"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
-                  disabled={formSaving}
+                  disabled={formSaving || detailLoading}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-[color:var(--ink)] px-5 py-2 font-bold text-white shadow-sm hover:opacity-90 active:scale-95 disabled:opacity-50"
                 >
                   {formSaving ? <ArrowClockwise size={14} className="animate-spin" /> : <Check size={14} />}
-                  <span>{formSaving ? "保存中..." : "保存发布"}</span>
+                  <span>{detailLoading ? "正在加载详情..." : formSaving ? "保存中..." : "保存发布"}</span>
                 </button>
               </div>
             </form>

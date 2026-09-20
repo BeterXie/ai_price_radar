@@ -1,8 +1,16 @@
 ai.pricememo.cn {
     encode zstd gzip
 
+    @internal path /api/v1/internal/*
+    handle @internal {
+        respond 404
+    }
+
     @api path /api/* /docs* /openapi.json /health
     handle @api {
+        request_body {
+            max_size 1MB
+        }
         reverse_proxy ai-radar-api:8000 {
             lb_try_duration 5s
             lb_try_interval 200ms
@@ -57,6 +65,11 @@ ai.pricememo.cn {
 
     log {
         output stdout
-        format json
+        format filter {
+            wrap json
+            fields {
+                request>uri delete
+            }
+        }
     }
 }

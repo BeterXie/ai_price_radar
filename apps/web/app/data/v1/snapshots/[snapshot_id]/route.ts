@@ -1,22 +1,23 @@
-import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 export const dynamic = "force-dynamic";
 
 const IMMUTABLE_MAX_AGE = 31536000;
 
-function etagFor(body: string): string {
-  return `"${crypto.createHash("sha256").update(body).digest("hex").slice(0, 16)}"`;
+function etagForStat(stat: fs.Stats): string {
+  return `W/"${Math.trunc(stat.mtimeMs).toString(16)}-${stat.size.toString(16)}"`;
 }
 
 function matchesIfNoneMatch(headerValue: string | null, etag: string): boolean {
   if (!headerValue) return false;
+  const normalizedEtag = etag.replace(/^W\//, "");
   return headerValue
     .split(",")
     .map((value) => value.trim().replace(/^W\//, ""))
-    .some((value) => value === etag || value === "*");
+    .some((value) => value === normalizedEtag || value === "*");
 }
 
 function notModified(etag: string): NextResponse {
@@ -35,13 +36,13 @@ export async function GET(
   { params }: { params: Promise<{ snapshot_id: string }> }
 ) {
   const { snapshot_id } = await params;
-  // Public links are published as `<id>.json`; strip the suffix before
-  // sanitizing, otherwise "1234.json" becomes the id "1234json".
+  // Public links are published as `<id>.json`; strip only that suffix, then
+  // reject the whole value if any other character is invalid.
   const rawId = snapshot_id.replace(/\.json$/i, "");
-  const safeId = rawId.replace(/[^a-zA-Z0-9_\-]/g, "");
-  if (!safeId) {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(rawId)) {
     return NextResponse.json({ error: "Invalid snapshot ID" }, { status: 400 });
   }
+  const safeId = rawId;
 
   const ifNoneMatch = request.headers.get("if-none-match");
   const snapshotPath = path.join(
@@ -53,14 +54,14 @@ export async function GET(
     `${safeId}.json`
   );
 
-  if (fs.existsSync(snapshotPath)) {
-    try {
-      const content = fs.readFileSync(snapshotPath, "utf-8");
-      const etag = etagFor(content);
+  try {
+      const stat = await fs.promises.stat(snapshotPath);
+      const etag = etagForStat(stat);
       if (matchesIfNoneMatch(ifNoneMatch, etag)) {
         return notModified(etag);
       }
-      return new NextResponse(content, {
+      const body = Readable.toWeb(fs.createReadStream(snapshotPath)) as ReadableStream;
+      return new Response(body, {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": `public, max-age=${IMMUTABLE_MAX_AGE}, immutable`,
@@ -68,9 +69,8 @@ export async function GET(
           ETag: etag,
         },
       });
-    } catch {
-      // fallback
-    }
+  } catch {
+    // fallback to internal API
   }
 
   const internalApiBase = process.env.INTERNAL_API_BASE_URL || "http://api:8000";
@@ -97,12 +97,22 @@ export async function GET(
         "Cache-Control": `public, max-age=${IMMUTABLE_MAX_AGE}, immutable`,
         "Access-Control-Allow-Origin": "*",
       };
-      headers.ETag = res.headers.get("etag") || etagFor(data);
+      const upstreamEtag = res.headers.get("etag");
+      if (upstreamEtag) headers.ETag = upstreamEtag;
       return new NextResponse(data, { headers });
     }
+    const errorBody = await res.text();
+    const headers: Record<string, string> = {
+      "Cache-Control": "no-store",
+      "Content-Type": res.headers.get("content-type") || "application/json; charset=utf-8",
+    };
+    const retryAfter = res.headers.get("retry-after");
+    if (retryAfter) headers["Retry-After"] = retryAfter;
+    return new NextResponse(errorBody || JSON.stringify({ error: `Snapshot ${safeId} unavailable` }), {
+      status: res.status,
+      headers,
+    });
   } catch {
-    // ignore
+    return NextResponse.json({ error: "Snapshot feed upstream unavailable" }, { status: 502 });
   }
-
-  return NextResponse.json({ error: `Snapshot ${safeId} not found` }, { status: 404 });
 }

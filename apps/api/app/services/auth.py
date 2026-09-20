@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode
 
 import httpx
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
@@ -31,6 +31,7 @@ _VERIFY_RATE_WINDOW_SECONDS = 60
 _VERIFY_RATE_MAX_REQUESTS = 20
 _verify_rate_lock = threading.Lock()
 _verify_rate_buckets: dict[str, deque[float]] = {}
+_email_issue_lock = threading.Lock()
 
 
 def _check_verify_rate_limit(client_ip: str) -> bool:
@@ -166,19 +167,59 @@ def settle_session_activity(
     """
     if user is None:
         return
-    now = now or utcnow()
+    now = ensure_utc(now or utcnow())
     if session is not None:
-        baseline = session.last_active_at or session.created_at
-    else:
-        baseline = user.last_active_at
-    if baseline is not None:
+        stored_baseline = session.last_active_at
+        baseline = stored_baseline or session.created_at
+        baseline_filter = (
+            UserSession.last_active_at.is_(None)
+            if stored_baseline is None
+            else UserSession.last_active_at == stored_baseline
+        )
+        claimed = db.execute(
+            update(UserSession)
+            .where(UserSession.token == session.token, baseline_filter)
+            .values(last_active_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        if claimed.rowcount != 1:
+            db.expire(session, ["last_active_at"])
+            db.expire(user, ["last_active_at", "total_duration_seconds"])
+            return
+
         delta = int((now - ensure_utc(baseline)).total_seconds())
-        # Cap delta between 5s and 120s to avoid bogus spikes / idle gaps
-        if 5 <= delta <= 120:
-            user.total_duration_seconds = (user.total_duration_seconds or 0) + delta
-    if session is not None:
-        session.last_active_at = now
-    user.last_active_at = now
+        duration_increment = delta if 5 <= delta <= 120 else 0
+        db.execute(
+            update(User)
+            .where(User.id == user.id)
+            .values(
+                total_duration_seconds=func.coalesce(User.total_duration_seconds, 0) + duration_increment,
+                last_active_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        db.expire(session, ["last_active_at"])
+        db.expire(user, ["last_active_at", "total_duration_seconds"])
+        return
+
+    stored_baseline = user.last_active_at
+    baseline_filter = (
+        User.last_active_at.is_(None)
+        if stored_baseline is None
+        else User.last_active_at == stored_baseline
+    )
+    delta = int((now - ensure_utc(stored_baseline)).total_seconds()) if stored_baseline else 0
+    duration_increment = delta if 5 <= delta <= 120 else 0
+    db.execute(
+        update(User)
+        .where(User.id == user.id, baseline_filter)
+        .values(
+            total_duration_seconds=func.coalesce(User.total_duration_seconds, 0) + duration_increment,
+            last_active_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    db.expire(user, ["last_active_at", "total_duration_seconds"])
 
 
 def delete_user_session(db: Session, token: str) -> None:
@@ -202,15 +243,21 @@ def delete_user_session(db: Session, token: str) -> None:
         db.commit()
 
 
-def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
-    """Generates 6-digit verification code and enqueues notification.
+def _masked_email(email: str) -> str:
+    local, separator, domain = email.partition("@")
+    if not separator:
+        return "***"
+    visible = local[:1]
+    return f"{visible}***@{domain}"
 
-    Returns: (success, retry_after_seconds, message)
-    """
-    email = normalize_email(raw_email)
-    if not EMAIL_REGEX.match(email):
-        return False, 0, "请输入有效的邮箱地址"
 
+def _send_email_login_code_locked(
+    db: Session,
+    email: str,
+    *,
+    mail_ready: bool,
+    settings: Settings,
+) -> tuple[bool, int, str]:
     now = utcnow()
     # Check if a code was sent in the last 60 seconds
     recent_codes = list(
@@ -233,6 +280,17 @@ def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
 
     code = f"{secrets.randbelow(900000) + 100000}"
     expires_at = now + timedelta(minutes=10)
+
+    # Issuing a new code must revoke every older active code for this address.
+    db.execute(
+        update(AuthCode)
+        .where(
+            AuthCode.email == email,
+            AuthCode.purpose == "login",
+            AuthCode.used.is_(False),
+        )
+        .values(used=True)
+    )
 
     auth_code = AuthCode(
         email=email,
@@ -264,10 +322,7 @@ def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
     db.add(outbox)
     db.commit()
 
-    from .outbox import mail_is_configured
-
-    settings = get_settings()
-    if not mail_is_configured(settings):
+    if not mail_ready:
         if settings.dev_print_auth_codes:
             logger.warning(
                 "[PriceMemo Dev Auth] 未配置邮件服务 (Resend/SMTP)，已在控制台打印验证码:\n"
@@ -275,20 +330,53 @@ def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
                 "  目标邮箱: %s\n"
                 "  登录验证码: %s (10分钟有效)\n"
                 "--------------------------------------------------",
-                email,
+                _masked_email(email),
                 code,
             )
-            print(f"\n[PriceMemo Dev Auth] >>> 邮箱: {email} | 验证码: {code} <<<\n", flush=True)
+            print(
+                f"\n[PriceMemo Dev Auth] >>> 邮箱: {_masked_email(email)} | 验证码: {code} <<<\n",
+                flush=True,
+            )
         else:
             logger.warning(
                 "Mail service is not configured and dev_print_auth_codes is disabled; "
                 "login code for %s was enqueued but cannot be delivered.",
-                email,
+                _masked_email(email),
             )
     else:
         # Never log the code itself in production logs.
-        logger.info("Enqueued login code for %s", email)
+        logger.info("Enqueued login code for %s", _masked_email(email))
     return True, 60, "验证码已发送至您的邮箱，请查收"
+
+
+def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
+    """Generate one login code under a per-address database serialization lock."""
+    try:
+        email = normalize_email(raw_email)
+    except ValueError:
+        return False, 0, "请输入有效的邮箱地址"
+    if not EMAIL_REGEX.match(email):
+        return False, 0, "请输入有效的邮箱地址"
+
+    from .outbox import mail_is_configured
+
+    settings = get_settings()
+    mail_ready = mail_is_configured(settings)
+    if not mail_ready and not settings.dev_print_auth_codes:
+        return False, 0, "邮件服务暂未配置，暂时无法发送验证码"
+
+    with _email_issue_lock:
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:identity, 0))"),
+                {"identity": f"auth-email-code\n{email}"},
+            )
+        return _send_email_login_code_locked(
+            db,
+            email,
+            mail_ready=mail_ready,
+            settings=settings,
+        )
 
 
 def verify_email_login_code(
@@ -297,7 +385,10 @@ def verify_email_login_code(
     code: str,
     client_ip: str = "",
 ) -> tuple[User | None, str]:
-    email = normalize_email(raw_email)
+    try:
+        email = normalize_email(raw_email)
+    except ValueError:
+        return None, "请输入有效的邮箱地址"
     clean_code = code.strip()
     if not clean_code:
         return None, "请输入验证码"
@@ -321,13 +412,23 @@ def verify_email_login_code(
         return None, "验证码无效或已过期"
 
     if not hmac.compare_digest(auth_code.code, clean_code):
-        # Count the failed attempt; invalidate the code once the limit is reached.
-        attempts = (auth_code.attempts or 0) + 1
-        db.execute(
+        # Increment inside the database so concurrent guesses consume one shared
+        # budget instead of repeatedly writing the same stale counter value.
+        updated = db.execute(
             update(AuthCode)
-            .where(AuthCode.id == auth_code.id, AuthCode.used == False)
-            .values(attempts=attempts, used=(attempts >= MAX_VERIFY_ATTEMPTS))
+            .where(AuthCode.id == auth_code.id, AuthCode.used.is_(False))
+            .values(attempts=func.coalesce(AuthCode.attempts, 0) + 1)
         )
+        if updated.rowcount != 1:
+            db.rollback()
+            return None, "验证码无效或已过期"
+        attempts = db.scalar(select(AuthCode.attempts).where(AuthCode.id == auth_code.id)) or 0
+        if attempts >= MAX_VERIFY_ATTEMPTS:
+            db.execute(
+                update(AuthCode)
+                .where(AuthCode.id == auth_code.id, AuthCode.used.is_(False))
+                .values(used=True)
+            )
         db.commit()
         return None, "验证码错误或已失效"
 
@@ -341,7 +442,7 @@ def verify_email_login_code(
         return None, "验证码无效或已过期"
 
     # Find or create User
-    user = db.scalar(select(User).where(User.email == email))
+    user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None:
         nickname = email.split("@")[0][:30]
         user = User(
@@ -352,6 +453,8 @@ def verify_email_login_code(
         )
         db.add(user)
         db.flush()
+    elif user.email != email:
+        user.email = email
     db.commit()
     db.refresh(user)
     return user, ""

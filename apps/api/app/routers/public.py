@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import html
 import ipaddress
 import math
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..database import get_db
 from ..models import Offer, OfferClick, Product, Report, ReportRateLimit, Shop, SourceIntake, SystemSetting, User, UserActionLog, UserSession
-from ..security import get_current_user, get_token_from_request
+from ..security import get_current_user, get_token_from_request, require_current_user
 from ..schemas import (
     CatalogOfferGroupPageResponse,
     CatalogResponse,
@@ -51,6 +52,8 @@ from ..services.source_intake import enqueue_submission_notifications
 from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.catalog import (
     OfferFilters,
+    _base_public_offer_query,
+    count_product_cards,
     get_catalog_group_page,
     get_current_snapshot,
     get_group_offers,
@@ -64,6 +67,7 @@ from ..services.catalog import (
     list_public_shops,
     get_snapshot,
     list_product_cards,
+    SnapshotNotFoundError,
 )
 from ..services.source_platform import (
     DISABLED_SOURCE_PLATFORMS,
@@ -71,12 +75,22 @@ from ..services.source_platform import (
     canonical_source_platform,
     get_disabled_source_platforms,
     prepare_source_submission,
+    public_https_url_or_empty,
     source_platform_label,
     workflow_status,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 settings = get_settings()
+
+
+def _snapshot_or_404(db: Session, snapshot_id: int | None):
+    try:
+        return get_snapshot(db, snapshot_id)
+    except SnapshotNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 def _offer_filters(
     *,
     source_platform: str = "",
@@ -190,6 +204,7 @@ def products(
     platform: str = Query(default="", max_length=50),
     brand: str = Query(default="", max_length=50),
     product: str = Query(default="", max_length=160),
+    products: str = Query(default="", max_length=4000),
     source_platform: str = Query(default="", max_length=50),
     product_type: str = Query(default="", max_length=60),
     tag: str = Query(default="", max_length=80),
@@ -205,39 +220,47 @@ def products(
     exclude: str = Query(default="", max_length=200),
     snapshot: int | None = Query(default=None, ge=1),
     sort: str = Query(default="quality", pattern="^(quality|price|price_desc|updated|offers)$"),
+    offset: int = Query(default=0, ge=0, le=10000),
+    limit: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> CatalogResponse:
-    items = list_product_cards(
-        db,
-        q=q,
-        platform=brand or platform,
-        product_slug=product,
-        product_type=product_type,
-        tag=tag,
-        filters=_offer_filters(
-            source_platform=source_platform,
-            delivery_type=delivery_type,
-            period=period,
-            warranty=warranty,
-            auto_delivery=auto_delivery,
-            updated_within_hours=updated_within_hours,
-            comparable=comparable,
-            exclude=exclude,
-            in_stock=in_stock,
-            min_price=min_price,
-            max_price=max_price,
-        ),
-        sort=sort,
-        snapshot_id=snapshot,
+    product_slugs = tuple(dict.fromkeys(value.strip().casefold() for value in products.split(",") if value.strip()))
+    if len(product_slugs) > 20 or any(re.fullmatch(r"[a-z0-9][a-z0-9-]{0,159}", value) is None for value in product_slugs):
+        raise HTTPException(status_code=422, detail="products must contain at most 20 valid product slugs")
+    current = _snapshot_or_404(db, snapshot)
+    filters = _offer_filters(
+        source_platform=source_platform,
+        delivery_type=delivery_type,
+        period=period,
+        warranty=warranty,
+        auto_delivery=auto_delivery,
+        updated_within_hours=updated_within_hours,
+        comparable=comparable,
+        exclude=exclude,
+        in_stock=in_stock,
+        min_price=min_price,
+        max_price=max_price,
     )
-    current = get_snapshot(db, snapshot)
+    catalog_args = {
+        "q": q,
+        "platform": brand or platform,
+        "product_slug": product,
+        "product_slugs": product_slugs,
+        "product_type": product_type,
+        "tag": tag,
+        "filters": filters,
+        "snapshot_id": current.id if current else None,
+    }
+    total = count_product_cards(db, **catalog_args)
+    items = list_product_cards(db, **catalog_args, sort=sort, offset=offset, limit=limit)
     return CatalogResponse(
         items=items,
-        total=len(items),
+        total=total,
         offer_count=sum(item.offer_count for item in items),
         in_stock_count=sum(item.in_stock_count for item in items),
         comparable_offer_count=sum(item.comparable_offer_count for item in items),
         trusted_offer_count=sum(item.trusted_offer_count for item in items),
+        metrics_note="报价统计范围为当前筛选条件、当前已发布快照和当前页商品。",
         snapshot_id=current.id if current else None,
         snapshot_at=current.published_at if current else None,
     )
@@ -274,7 +297,7 @@ def catalog_groups(
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> CatalogOfferGroupPageResponse:
-    current = get_snapshot(db, snapshot)
+    current = _snapshot_or_404(db, snapshot)
     items, total, offer_total, in_stock_count, comparable_offer_count, trusted_offer_count, last_updated_at = get_catalog_group_page(
         db,
         q=q,
@@ -327,6 +350,7 @@ def product_detail(
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> ProductDetail:
+    current = _snapshot_or_404(db, snapshot)
     result = get_product_detail(
         db,
         slug,
@@ -343,7 +367,7 @@ def product_detail(
             min_price=min_price,
             max_price=max_price,
         ),
-        snapshot_id=snapshot,
+        snapshot_id=current.id if current else None,
     )
     if result is None:
         raise HTTPException(status_code=404, detail="product not found")
@@ -375,13 +399,14 @@ def product_offers(
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> OfferPageResponse:
+    current = _snapshot_or_404(db, snapshot)
     items = get_product_offer_page(
         db,
         slug,
         offset=offset,
         limit=limit,
         filters=_offer_filters(source_platform=source_platform),
-        snapshot_id=snapshot,
+        snapshot_id=current.id if current else None,
     )
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
@@ -410,7 +435,7 @@ def product_groups(
     product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
     if product is None:
         raise HTTPException(status_code=404, detail="product not found")
-    current = get_snapshot(db, snapshot)
+    current = _snapshot_or_404(db, snapshot)
     items, total, offer_total = get_product_group_page(
         db,
         product.id,
@@ -458,6 +483,7 @@ def product_group_offers(
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> GroupOffersResponse:
+    current = _snapshot_or_404(db, snapshot)
     items = get_group_offers(
         db,
         slug,
@@ -476,7 +502,7 @@ def product_group_offers(
             min_price=min_price,
             max_price=max_price,
         ),
-        snapshot_id=snapshot,
+        snapshot_id=current.id if current else None,
     )
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
@@ -522,8 +548,13 @@ def shop_tokens(db: Session = Depends(get_db)) -> list[str]:
 
 
 @router.get("/shops/{token}", response_model=ShopDetail)
-def shop_detail(token: str, db: Session = Depends(get_db)) -> ShopDetail:
-    result = get_shop_detail(db, token)
+def shop_detail(
+    token: str,
+    offer_offset: int = Query(default=0, ge=0, le=10000),
+    offer_limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> ShopDetail:
+    result = get_shop_detail(db, token, offer_offset=offer_offset, offer_limit=offer_limit)
     if result is None:
         raise HTTPException(status_code=404, detail="shop not found")
     return result
@@ -531,7 +562,24 @@ def shop_detail(token: str, db: Session = Depends(get_db)) -> ShopDetail:
 
 @router.get("/meta", response_model=MetaResponse)
 def meta(db: Session = Depends(get_db)) -> MetaResponse:
-    products = list(db.scalars(select(Product).where(Product.is_visible.is_(True))))
+    brands = sorted(
+        value
+        for value in db.scalars(
+            select(Product.platform)
+            .where(Product.is_visible.is_(True), Product.platform != "")
+            .distinct()
+        )
+        if value
+    )
+    product_types = sorted(
+        value
+        for value in db.scalars(
+            select(Product.product_type)
+            .where(Product.is_visible.is_(True), Product.product_type != "")
+            .distinct()
+        )
+        if value
+    )
     current = get_current_snapshot(db)
     disabled_platforms = get_disabled_source_platforms()
     offer_conditions = [
@@ -544,16 +592,26 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     ]
     if disabled_platforms:
         offer_conditions.append(Shop.platform.notin_(disabled_platforms))
-    offer_stmt = (
-        select(Offer)
+    source_platform_ids = sorted({
+        canonical_source_platform(value)
+        for value in db.scalars(
+            select(Shop.platform)
+            .join(Offer, Offer.shop_id == Shop.id)
+            .join(Product, Offer.product_id == Product.id)
+            .where(*offer_conditions)
+            .where(Offer.snapshot_id == current.id if current is not None else false())
+            .distinct()
+        )
+        if value
+    })
+    tag_rows = db.scalars(
+        select(Offer.tags)
         .join(Shop, Offer.shop_id == Shop.id)
         .join(Product, Offer.product_id == Product.id)
         .where(*offer_conditions)
+        .where(Offer.snapshot_id == current.id if current is not None else false())
     )
-    offer_stmt = offer_stmt.where(Offer.snapshot_id == current.id if current is not None else false())
-    offers = list(db.scalars(offer_stmt))
-    brands = sorted({x.platform for x in products})
-    source_platform_ids = sorted({canonical_source_platform(offer.shop.platform) for offer in offers})
+    tags = sorted({tag for row in tag_rows for tag in (row or [])})
     setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "advertise_enabled"))
     advertise_enabled = bool(setting and setting.value and setting.value.strip().lower() in ("true", "1", "yes", "on"))
 
@@ -564,13 +622,22 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         s = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
         return s.value if s and s.value is not None else default
 
+    def _public_link_or_empty(value: str, *, allow_internal: bool = False) -> str:
+        cleaned = value.strip()
+        if allow_internal and cleaned.startswith("/") and not cleaned.startswith("//") and "\\" not in cleaned:
+            return cleaned
+        return public_https_url_or_empty(cleaned)
+
     site_notice = SiteNoticeOut(
         enabled=notice_enabled,
         badge=_get_setting_val("site_notice_badge", "最新动态"),
         title=_get_setting_val("site_notice_title", "已支持 16688 平台商户比价与 Agent 开放快照"),
         content=_get_setting_val("site_notice_content", "我们新增了 16688 渠道 AI 商品实时抓取，并上线了面向 AI Agent 与开发者的全站静态只读 Feed。"),
         link_text=_get_setting_val("site_notice_link_text", "查看开发文档"),
-        link_url=_get_setting_val("site_notice_link_url", "/developers"),
+        link_url=_public_link_or_empty(
+            _get_setting_val("site_notice_link_url", "/developers"),
+            allow_internal=True,
+        ),
     )
 
     comm_setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "community_enabled"))
@@ -581,7 +648,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         title=_get_setting_val("community_title", "加入 AI 比价交流群"),
         desc=_get_setting_val("community_desc", "第一时间获取各大卡网最新特价、库存补货、封号避坑与 API 渠道动态。"),
         qq_group=_get_setting_val("community_qq_group", "938741334"),
-        qq_url=_get_setting_val("community_qq_url", ""),
+        qq_url=_public_link_or_empty(_get_setting_val("community_qq_url", "")),
         btn_text=_get_setting_val("community_btn_text", "一键加入 QQ 群"),
     )
 
@@ -596,8 +663,8 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
             for platform_id in source_platform_ids
             if platform_id in SOURCE_PLATFORM_LABELS and platform_id not in disabled_platforms
         ],
-        product_types=sorted({x.product_type for x in products}),
-        tags=sorted({tag for offer in offers for tag in (offer.tags or [])}),
+        product_types=product_types,
+        tags=tags,
         advertise_enabled=advertise_enabled,
         bot_enabled=bot_enabled,
         site_notice=site_notice,
@@ -717,9 +784,28 @@ def create_report(payload: ReportCreate, request: Request, db: Session = Depends
     _enforce_report_rate_limit(request, db)
     if payload.kind == "shop_request":
         raise HTTPException(status_code=422, detail="use /api/v1/shop-requests for shop applications")
-    if payload.offer_id is not None and db.get(Offer, payload.offer_id) is None:
-        raise HTTPException(status_code=404, detail="offer not found")
-    report = Report(**payload.model_dump())
+    product_slug = payload.product_slug
+    if product_slug is not None:
+        product_slug = db.scalar(
+            select(Product.slug).where(Product.slug == product_slug, Product.is_visible.is_(True))
+        )
+        if product_slug is None:
+            raise HTTPException(status_code=404, detail="product not found")
+
+    if payload.offer_id is not None:
+        public_offer = db.scalar(
+            _base_public_offer_query(db, include_details=False)
+            .join(Product, Offer.product_id == Product.id)
+            .where(Offer.id == payload.offer_id, Product.is_visible.is_(True))
+        )
+        if public_offer is None:
+            raise HTTPException(status_code=404, detail="offer not found")
+        offer_product_slug = db.scalar(select(Product.slug).where(Product.id == public_offer.product_id))
+        if product_slug is not None and product_slug != offer_product_slug:
+            raise HTTPException(status_code=422, detail="offer does not belong to product")
+        product_slug = offer_product_slug
+
+    report = Report(**payload.model_dump(exclude={"product_slug"}), product_slug=product_slug)
     db.add(report)
     db.commit()
     db.refresh(report)
@@ -731,9 +817,15 @@ def create_shop_request(
     payload: ShopRequestCreate,
     request: Request,
     response: Response,
+    current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> ShopRequestOut:
     _enforce_report_rate_limit(request, db)
+    if not current_user.email or current_user.email.casefold() != payload.contact.casefold():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="contact email must match the verified account email",
+        )
     declared_platform = canonical_source_platform(payload.declared_platform or payload.source_type)
     try:
         submission = prepare_source_submission(payload.shop_url)
@@ -745,6 +837,20 @@ def create_shop_request(
     shop_url = submission.source_url
     token = submission.shop_token
     detection_message = "来源已提交，正在等待隔离检测器确认来源类型和公开契约。"
+    db.add(
+        UserActionLog(
+            user_id=current_user.id,
+            action_type="shop_request_authorization",
+            action_name="确认有权提交公开来源",
+            target_id=source_key[:100],
+            page="/shops/submit",
+            extra_data={
+                "consent_version": payload.consent_version,
+                "declared_platform": declared_platform,
+            },
+            created_at=datetime.now(timezone.utc),
+        )
+    )
 
     def build_response(
         status_value: str,
@@ -900,6 +1006,14 @@ def public_community_skill_copy(
 _CLICK_DEBOUNCE_LOCK = threading.Lock()
 
 
+def _click_ip_hash(namespace: str, client_ip: str) -> str:
+    return hmac.new(
+        settings.session_secret_key.encode("utf-8"),
+        f"{namespace}:{client_ip}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+
+
 def _settle_click_user_activity(db: Session, request: Request, current_user: User | None, now: datetime) -> None:
     """Settle online-duration accounting and atomically bump the user click counter."""
     if not current_user:
@@ -921,12 +1035,16 @@ def record_offer_click(
     current_user: User | None = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OfferClickResponse:
-    offer = db.scalar(select(Offer).where(Offer.id == offer_id))
+    offer = db.scalar(
+        _base_public_offer_query(db)
+        .join(Product, Offer.product_id == Product.id)
+        .where(Offer.id == offer_id, Product.is_visible.is_(True))
+    )
     if not offer:
         raise HTTPException(status_code=404, detail="offer not found")
 
     client_ip = _client_address(request)
-    ip_hash = hashlib.sha256(f"click:{client_ip}".encode()).hexdigest()[:32]
+    ip_hash = _click_ip_hash("offer-click", client_ip)
     user_agent = (request.headers.get("user-agent") or "")[:500]
     now = datetime.now(timezone.utc)
 
@@ -997,12 +1115,19 @@ def record_shop_click(
     current_user: User | None = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OfferClickResponse:
-    shop = db.scalar(select(Shop).where(Shop.token == token))
+    shop = db.scalar(select(Shop).where(Shop.token == token, Shop.is_visible.is_(True)))
     if not shop:
+        raise HTTPException(status_code=404, detail="shop not found")
+    public_offer_id = db.scalar(
+        _base_public_offer_query(db, include_details=False)
+        .where(Offer.shop_id == shop.id)
+        .limit(1)
+    )
+    if public_offer_id is None:
         raise HTTPException(status_code=404, detail="shop not found")
 
     client_ip = _client_address(request)
-    ip_hash = hashlib.sha256(f"shop_click:{client_ip}".encode()).hexdigest()[:32]
+    ip_hash = _click_ip_hash("shop-click", client_ip)
     user_agent = (request.headers.get("user-agent") or "")[:500]
     now = datetime.now(timezone.utc)
 

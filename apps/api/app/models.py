@@ -157,6 +157,7 @@ class Report(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     offer_id: Mapped[int | None] = mapped_column(ForeignKey("offers.id", ondelete="SET NULL"), nullable=True)
+    product_slug: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
     kind: Mapped[str] = mapped_column(String(40), default="correction", index=True)
     message: Mapped[str] = mapped_column(Text)
     contact: Mapped[str] = mapped_column(String(200), default="")
@@ -429,6 +430,7 @@ class UserBotBinding(Base):
     __tablename__ = "user_bot_bindings"
     __table_args__ = (
         UniqueConstraint("user_id", "channel", name="uq_user_bot_binding"),
+        UniqueConstraint("channel", "target_id", name="uq_user_bot_binding_target"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -579,6 +581,7 @@ class AdminBroadcast(Base):
     __tablename__ = "admin_broadcasts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    operation_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text)
     channels: Mapped[list[str]] = mapped_column(JSON, default=list)

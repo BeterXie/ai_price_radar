@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Calendar, Clock, Eye, Fire, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { OfferTable } from "@/components/offer-table";
 import { PageHero, SectionIntro } from "@/components/page-shell";
@@ -8,13 +8,20 @@ import { ShopVisitButton } from "@/components/shop-visit-button";
 import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 import { getShop } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
+import { getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
+import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-const SITE_URL = "https://ai.pricememo.cn";
+const SHOP_OFFER_PAGE_SIZE = 30;
+type ShopPageProps = {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ page?: string }>;
+};
 
-export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: ShopPageProps): Promise<Metadata> {
   const { token } = await params;
+  const page = parsePage((await searchParams).page, SHOP_OFFER_PAGE_SIZE);
   const shop = await getShop(token);
 
   if (!shop) {
@@ -24,7 +31,8 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
     };
   }
 
-  const canonical = `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`;
+  const baseCanonical = `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`;
+  const canonical = page > 1 ? `${baseCanonical}?page=${page}` : baseCanonical;
   const description = `查看 ${shop.name} 在 ${shop.source_platform_label} 的 AI 商品公开报价、库存、交付方式、更新时间和原始来源。`;
 
   return {
@@ -44,10 +52,16 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
   };
 }
 
-export default async function ShopPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function ShopPage({ params, searchParams }: ShopPageProps) {
   const { token } = await params;
-  const shop = await getShop(token);
+  const page = parsePage((await searchParams).page, SHOP_OFFER_PAGE_SIZE);
+  const shop = await getShop(token, `offer_limit=${SHOP_OFFER_PAGE_SIZE}&offer_offset=${(page - 1) * SHOP_OFFER_PAGE_SIZE}`);
   if (!shop) notFound();
+  const totalPages = getTotalPages(shop.offer_count, SHOP_OFFER_PAGE_SIZE);
+  if (page > totalPages) {
+    const basePath = `/shops/${encodeURIComponent(shop.token)}`;
+    redirect(totalPages > 1 ? `${basePath}?page=${totalPages}` : basePath);
+  }
   const lastSeen = new Date(shop.last_seen_at || shop.last_success_at || shop.first_seen_at).getTime();
   const observedDays = Math.max(1, Math.floor((lastSeen - new Date(shop.first_seen_at).getTime()) / 86_400_000) + 1);
   const canonical = `${SITE_URL}/shops/${encodeURIComponent(shop.token)}`;
@@ -140,7 +154,19 @@ export default async function ShopPage({ params }: { params: Promise<{ token: st
           </div>
         </section>
       )}
-      <section className="py-12"><SectionIntro eyebrow="当前报价" title={`当前公开报价 · ${shop.offer_count}`} description="点开每条报价可核对交付、来源、原文与更新时间。" /><div className="mt-6"><OfferTable offers={shop.offers} /></div></section>
+      <section className="py-12">
+        <SectionIntro eyebrow="当前报价" title={`当前公开报价 · ${shop.offer_count}`} description="点开每条报价可核对交付、来源、原文与更新时间。" />
+        <div className="mt-6"><OfferTable offers={shop.offers} /></div>
+        <PaginationNav
+          page={page}
+          totalPages={totalPages}
+          hrefForPage={(nextPage) => {
+            const basePath = `/shops/${encodeURIComponent(shop.token)}`;
+            return nextPage > 1 ? `${basePath}?page=${nextPage}` : basePath;
+          }}
+          ariaLabel={`${shop.name} 报价分页`}
+        />
+      </section>
     </main>
   );
 }

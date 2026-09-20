@@ -4,8 +4,11 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import Base
 from app.models import AdminBroadcast, NotificationOutbox, ShopCoupon, User, UserActionLog, UserBotBinding, UserSession
@@ -19,9 +22,10 @@ from app.routers.admin import (
     admin_toggle_user_status,
 )
 from app.routers.user import user_heartbeat, user_track_click
-from app.schemas import AdminBroadcastCreate, UserTrackClickRequest
-from app.services.auth import create_user_session, delete_user_session
+from app.schemas import AdminBroadcastCreate, AdminUserStatusUpdate, UserTrackClickRequest
+from app.services.auth import create_user_session, delete_user_session, settle_session_activity
 from app.services.classifier import classify_product
+from app.services.outbox import process_once
 
 
 def test_admin_users_stats_and_list():
@@ -123,10 +127,16 @@ def test_admin_users_stats_and_list():
         assert page_disabled.items[0].id == u2.id
 
         # 5. Test toggle status
-        toggle_res = admin_toggle_user_status(user_id=u2.id, payload={"is_active": True}, db=db)
+        toggle_res = admin_toggle_user_status(
+            user_id=u2.id,
+            payload=AdminUserStatusUpdate(is_active=True),
+            db=db,
+        )
         assert toggle_res["is_active"] is True
         db.refresh(u2)
         assert u2.is_active is True
+        with pytest.raises(ValidationError):
+            AdminUserStatusUpdate(is_active="false")
 
         # 6. Test user detail
         detail = admin_get_user_detail(user_id=u1.id, db=db)
@@ -202,6 +212,37 @@ def test_user_heartbeat_and_click_tracking():
         assert user.total_duration_seconds >= 120
 
 
+def test_session_activity_stale_baseline_is_not_counted_twice():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    baseline = datetime(2026, 9, 20, 1, 0, tzinfo=timezone.utc)
+    with Session(engine) as db:
+        user = User(email="activity@example.com", total_duration_seconds=10, last_active_at=baseline)
+        db.add(user)
+        db.flush()
+        session = UserSession(
+            token="activity-token",
+            user_id=user.id,
+            last_active_at=baseline,
+            expires_at=baseline + timedelta(days=1),
+            created_at=baseline,
+        )
+        db.add(session)
+        db.commit()
+
+        settled_at = baseline + timedelta(seconds=30)
+        settle_session_activity(db, user, session, now=settled_at)
+        db.commit()
+        db.refresh(user)
+        assert user.total_duration_seconds == 40
+
+        set_committed_value(session, "last_active_at", baseline)
+        settle_session_activity(db, user, session, now=settled_at)
+        db.commit()
+        db.refresh(user)
+        assert user.total_duration_seconds == 40
+
+
 def _fake_qq_bot_module(sent_targets: list[str] | None = None):
     """Build a stand-in extensions.bots.qq_bot module that always delivers."""
     module = types.ModuleType("extensions.bots.qq_bot")
@@ -255,24 +296,42 @@ def test_admin_broadcast_notifications():
 
         # 2. Test create broadcast (both channels)
         payload = AdminBroadcastCreate(
+            operation_key="broadcast-test-both-0001",
             title="全新品牌上线测试",
             content="Cursor 与 智谱 AI 比价已上线！",
             channels=["email", "bot"],
         )
-        sent_targets: list[str] = []
-        with patch.dict(sys.modules, {"extensions.bots.qq_bot": _fake_qq_bot_module(sent_targets)}):
-            broadcast = admin_create_broadcast(payload=payload, db=db)
+        broadcast = admin_create_broadcast(payload=payload, db=db)
         assert broadcast.id is not None
         assert broadcast.title == "全新品牌上线测试"
         assert broadcast.target_user_count == 3
+        assert broadcast.email_sent_count == 0
+        assert broadcast.bot_sent_count == 0
+        assert broadcast.status == "queued"
+
+        # Both transports are queued in the same database transaction.
+        outbox_rows = list(
+            db.query(NotificationOutbox)
+            .filter(NotificationOutbox.dedupe_key.like(f"broadcast:{broadcast.id}:%"))
+            .all()
+        )
+        assert len(outbox_rows) == 4
+        recipients = {r.recipient for r in outbox_rows if r.event_type == "admin_broadcast"}
+        assert recipients == {"u1@example.com", "u2@example.com"}
+
+        delivered: list[str] = []
+        assert process_once(db, send=lambda row: delivered.append(row.dedupe_key), limit=10) == 4
+        db.refresh(broadcast)
+        assert len(delivered) == 4
         assert broadcast.email_sent_count == 2
         assert broadcast.bot_sent_count == 2
+        assert broadcast.status == "sent"
 
-        # Verify NotificationOutbox rows created for email
-        outbox_rows = list(db.query(NotificationOutbox).filter_by(event_type="admin_broadcast").all())
-        assert len(outbox_rows) == 2
-        recipients = {r.recipient for r in outbox_rows}
-        assert recipients == {"u1@example.com", "u2@example.com"}
+        repeated = admin_create_broadcast(payload=payload, db=db)
+        assert repeated.id == broadcast.id
+        assert db.query(NotificationOutbox).filter(
+            NotificationOutbox.dedupe_key.like(f"broadcast:{broadcast.id}:%")
+        ).count() == 4
 
         # 3. Test list broadcasts
         history = admin_list_broadcasts(limit=10, offset=0, db=db)
@@ -308,12 +367,19 @@ def test_admin_broadcast_counts_only_delivered_bot_messages():
         db.add(UserBotBinding(user_id=user.id, channel="qq", target_id="unreachable_target", is_active=True))
         db.commit()
 
-        payload = AdminBroadcastCreate(title="投递失败测试", content="内容", channels=["bot"])
+        payload = AdminBroadcastCreate(
+            operation_key="broadcast-test-bot-0002",
+            title="投递失败测试",
+            content="内容",
+            channels=["bot"],
+        )
+        broadcast = admin_create_broadcast(payload=payload, db=db)
         with patch.dict(sys.modules, {"extensions.bots.qq_bot": module}):
-            broadcast = admin_create_broadcast(payload=payload, db=db)
+            assert process_once(db) == 0
 
         assert broadcast.bot_sent_count == 0
-        assert broadcast.target_user_count == 0
+        assert broadcast.target_user_count == 1
+        assert broadcast.status == "queued"
 
 
 def test_cursor_and_zhipu_classifier():

@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 from app.core.config import get_settings  # noqa: E402
 from app.database import Base as ApiBase, get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import SourceIntake  # noqa: E402
+from app.models import SourceIntake, User  # noqa: E402
+from app.security import require_current_user  # noqa: E402
 from publish_catalog import approved_intake_sources  # noqa: E402
 from common import session_for  # noqa: E402
 
@@ -35,6 +36,7 @@ def test_dujiao_submission_detection_approval_and_atomic_publication(tmp_path, m
             yield db
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=1, email="owner@example.com")
     try:
         client = TestClient(app)
         submitted = client.post("/api/v1/shop-requests", json={
@@ -42,6 +44,8 @@ def test_dujiao_submission_detection_approval_and_atomic_publication(tmp_path, m
             "shop_url": "https://dujiao.example",
             "shop_name": "Dujiao Example",
             "contact": "owner@example.com",
+            "authorization_confirmed": True,
+            "consent_version": "shop-source-submission-v1",
         })
         assert submitted.status_code == 201
         intake_id = submitted.json()["request_id"]

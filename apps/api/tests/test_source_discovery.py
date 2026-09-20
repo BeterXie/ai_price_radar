@@ -272,10 +272,28 @@ def test_woocommerce_auto_approval_promotes_to_approved_intake(client, engine):
         assert intake.detected_platform == "woocommerce"
         assert intake.status == "approved"
         assert intake.origin == "discovery"
-        assert intake.source_url == "https://shop.example.com"
-        assert intake.source_key == "https://shop.example.com"
+        assert intake.source_url == "https://shop.example.com/"
+        assert intake.source_key == "https://shop.example.com/"
         assert intake.approved_at is not None
         assert intake.product_count == 3
+
+
+def test_disabled_dujiao_candidate_is_not_promoted(client, engine):
+    upsert(client, "https://disabled-dujiao.example.com/products/chatgpt", hint="dujiao_next")
+    task = claim(client)[0]
+    response = report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
+        detected_platform="dujiao_next",
+        detected_source_key="https://disabled-dujiao.example.com",
+        detected_source_url="https://disabled-dujiao.example.com/products/chatgpt",
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "pending_review"
+    assert response.json()["promoted_intake_id"] is None
+    with Session(engine) as db:
+        assert db.scalar(select(SourceIntake)) is None
 
 
 def test_16688_candidate_promotes_to_pending_review_by_default(client, engine):
@@ -410,6 +428,12 @@ def test_invalid_result_payloads_are_rejected(client):
         client,
         task["candidate_id"],
         task["attempt_count"],
+        sample_products=[{"name": "unsafe", "url": "javascript:alert(1)"}],
+    ).status_code == 422
+    assert report(
+        client,
+        task["candidate_id"],
+        task["attempt_count"],
         confidence_score=101,
     ).status_code == 422
     assert report(
@@ -495,13 +519,20 @@ def test_admin_candidate_actions_and_filters(client):
         ai_product_count=1,
         total_product_count=5,
     )
-    assert reported.json()["status"] == "promoted"
+    assert reported.json()["status"] == "pending_review"
+    assert reported.json()["promoted_intake_id"] is None
+    promote = client.post(
+        f"/api/v1/admin/source-candidates/{candidate_id}/promote",
+        headers=ADMIN_HEADERS,
+        json={"reason": "disabled platform"},
+    )
+    assert promote.status_code == 409
     rejected = client.post(
         f"/api/v1/admin/source-candidates/{candidate_id}/reject",
         headers=ADMIN_HEADERS,
         json={"reason": "after review"},
     )
-    assert rejected.status_code == 409
+    assert rejected.status_code == 200
 
 
 def test_admin_manual_promote_creates_approved_intake(client, engine):
@@ -568,7 +599,7 @@ def test_discovery_run_accepts_16688_adapter(client):
 
 @pytest.mark.parametrize("reuse_pending", [False, True])
 def test_discovery_run_funnel_counts_follow_actual_intake_approval(client, engine, reuse_pending):
-    source_url = "https://funnel-one.example.com"
+    source_url = "https://funnel-one.example.com/"
     existing_id = None
     if reuse_pending:
         with Session(engine) as db:
@@ -765,7 +796,7 @@ def test_concurrent_upsert_on_postgres_merges_into_one_candidate():
     with session_factory() as db:
         candidates = list(db.scalars(select(SourceCandidate)))
         assert len(candidates) == 1
-        assert candidates[0].candidate_key == "https://concurrent.example.com"
+        assert candidates[0].candidate_key == "https://concurrent.example.com/"
         assert len(candidates[0].discovery_sources) == 4
 
 
@@ -1020,4 +1051,3 @@ def test_admin_cleanup_source_candidates(client, engine):
         assert len(remaining) == 2
         statuses = {r.status for r in remaining}
         assert statuses == {"promoted", "auto_approved"}
-

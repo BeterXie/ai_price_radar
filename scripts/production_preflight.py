@@ -59,6 +59,9 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
     session_secret_key = env.get("SESSION_SECRET_KEY", "")
     bot_secret_encryption_key = env.get("BOT_SECRET_ENCRYPTION_KEY", "").strip()
 
+    if env.get("APP_ENV", "").strip().casefold() != "production":
+        errors.append("APP_ENV must be production")
+
     if not password or password in PLACEHOLDERS or len(password) < 16:
         errors.append("POSTGRES_PASSWORD must be changed and contain at least 16 characters")
     if not admin_key or admin_key in PLACEHOLDERS or len(admin_key.encode()) < 32:
@@ -96,6 +99,13 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
             errors.append("SMTP_HOST must be configured for production mail delivery")
         if not smtp_from or smtp_from in PLACEHOLDERS or not is_email(smtp_from):
             errors.append("SMTP_FROM must be a real sender address")
+        smtp_username = env.get("SMTP_USERNAME", "").strip()
+        smtp_starttls = env.get("SMTP_STARTTLS", "true").casefold() in {"true", "1", "yes", "on"}
+        smtp_ssl = env.get("SMTP_SSL", "false").casefold() in {"true", "1", "yes", "on"}
+        if smtp_username and not (smtp_starttls or smtp_ssl):
+            errors.append("SMTP authentication requires SMTP_STARTTLS=true or SMTP_SSL=true")
+        if smtp_starttls and smtp_ssl:
+            errors.append("SMTP_STARTTLS and SMTP_SSL cannot both be true")
     else:
         errors.append("Configure RESEND_API_KEY/RESEND_FROM or SMTP_HOST/SMTP_FROM for production mail delivery")
     if not database_url or any(value in database_url for value in PLACEHOLDERS):
@@ -115,9 +125,13 @@ def validate_production_env(env: Dict[str, str]) -> List[str]:
             errors.append(f"{unsafe_flag} must be disabled in production")
     if env.get("SEED_DEMO_DATA", "").casefold() not in {"false", "0", "no"}:
         errors.append("SEED_DEMO_DATA must be false")
-    for key in ("PUBLIC_SITE_URL", "WEB_ORIGIN", "NEXT_PUBLIC_API_BASE_URL", "SITE_ADDRESS"):
+    for key in ("PUBLIC_SITE_URL", "WEB_ORIGIN", "NEXT_PUBLIC_API_BASE_URL", "NEXT_PUBLIC_SITE_URL", "SITE_ADDRESS"):
         if not is_https_url(env.get(key, "")):
             errors.append(f"{key} must be an absolute https URL")
+    if not is_https_url(env.get("NEXT_PUBLIC_GITHUB_REPOSITORY_URL", "")):
+        errors.append("NEXT_PUBLIC_GITHUB_REPOSITORY_URL must be an absolute https URL")
+    if not is_email(env.get("NEXT_PUBLIC_BUSINESS_EMAIL", "")):
+        errors.append("NEXT_PUBLIC_BUSINESS_EMAIL must be a real contact address")
     proxy_cidrs = env.get("TRUSTED_PROXY_CIDRS", "").strip()
     if not proxy_cidrs:
         errors.append("TRUSTED_PROXY_CIDRS must include the private proxy network")

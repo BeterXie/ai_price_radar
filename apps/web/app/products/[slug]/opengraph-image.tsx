@@ -1,13 +1,21 @@
 import { ImageResponse } from "next/og";
+import { notFound } from "next/navigation";
+import { getProduct } from "@/lib/api";
 import { getProductOgTitle } from "@/lib/product-seo";
 
 export const alt = "AI product public price comparison";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+export const revalidate = 300;
+
+const PRODUCT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,159}$/;
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const title = getProductOgTitle(slug);
+  if (!PRODUCT_SLUG_PATTERN.test(slug)) notFound();
+  const product = await getProduct(slug, "comparable=true");
+  if (!product) notFound();
+  const title = getProductOgTitle(product.slug);
   return new ImageResponse(
     (
       <div
@@ -38,6 +46,9 @@ export default async function Image({ params }: { params: Promise<{ slug: string
         </div>
       </div>
     ),
-    size,
+    {
+      ...size,
+      headers: { "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400" },
+    },
   );
 }

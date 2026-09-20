@@ -31,6 +31,14 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   // The email the pending code was requested for. Verification must use it,
   // not whatever is currently typed into the (still editable) input.
   const requestedEmailRef = useRef<string>("");
+  const requestGenerationRef = useRef(0);
+
+  const closeModal = useCallback(() => {
+    requestGenerationRef.current += 1;
+    requestedEmailRef.current = "";
+    setLoading(false);
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     setMounted(true);
@@ -44,6 +52,17 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     return () => clearInterval(timer);
   }, [countdown]);
 
+  useEffect(() => {
+    if (isOpen) return;
+    requestGenerationRef.current += 1;
+    requestedEmailRef.current = "";
+    setLoading(false);
+    setStep("email");
+    setCode("");
+    setError(null);
+    setInfo(null);
+  }, [isOpen]);
+
   // Focus management: move focus into the dialog on open, keep Tab inside it,
   // close on Escape, and restore focus to the trigger on close.
   useEffect(() => {
@@ -56,7 +75,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closeModal();
         return;
       }
       if (event.key !== "Tab") return;
@@ -82,12 +101,14 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
       document.removeEventListener("keydown", handleKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [isOpen, mounted, step, onClose]);
+  }, [closeModal, isOpen, mounted, step]);
 
   const handleBackToEmail = useCallback(() => {
     // Reset before showing the email step so a late response from the previous
     // request cannot drive the new flow.
+    requestGenerationRef.current += 1;
     requestedEmailRef.current = "";
+    setLoading(false);
     setStep("email");
     setCode("");
     setError(null);
@@ -107,12 +128,10 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     setInfo(null);
     setLoading(true);
     const requestEmail = cleanEmail;
+    const generation = ++requestGenerationRef.current;
     try {
       const res = await requestEmailLoginCode(requestEmail);
-      // Ignore a response if the user already switched back to the email step.
-      if (requestedEmailRef.current !== "" && requestedEmailRef.current !== requestEmail) {
-        return;
-      }
+      if (generation !== requestGenerationRef.current) return;
       if (res.success) {
         // Freeze the email this code belongs to and verify against it later.
         requestedEmailRef.current = requestEmail;
@@ -123,34 +142,38 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
         setError(res.message);
         if (res.retry_after > 0) setCountdown(res.retry_after);
       }
-    } catch (err: any) {
-      setError(err.message || "发送失败，请稍后重试");
+    } catch (err: unknown) {
+      if (generation !== requestGenerationRef.current) return;
+      setError(err instanceof Error ? err.message : "发送失败，请稍后重试");
     } finally {
-      setLoading(false);
+      if (generation === requestGenerationRef.current) setLoading(false);
     }
   };
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim()) {
+    if (!/^\d{6}$/.test(code.trim())) {
       setError("请输入收到的 6 位验证码");
       return;
     }
     setError(null);
     setLoading(true);
     const verifyEmail = requestedEmailRef.current || email.trim();
+    const generation = ++requestGenerationRef.current;
     try {
       const session = await verifyEmailLoginCode(verifyEmail, code.trim());
+      if (generation !== requestGenerationRef.current) return;
       if (session.authenticated) {
         onSuccess(session);
-        onClose();
+        closeModal();
       } else {
         setError("登录验证失败，请重试");
       }
-    } catch (err: any) {
-      setError(err.message || "验证码错误或已失效");
+    } catch (err: unknown) {
+      if (generation !== requestGenerationRef.current) return;
+      setError(err instanceof Error ? err.message : "验证码错误或已失效");
     } finally {
-      setLoading(false);
+      if (generation === requestGenerationRef.current) setLoading(false);
     }
   };
 
@@ -164,7 +187,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
       {/* Editorial Dimmed Backdrop */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        onClick={closeModal}
         aria-hidden="true"
       />
 
@@ -177,7 +200,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={closeModal}
           className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-[color:var(--muted)] hover:bg-[color:var(--subtle)] hover:text-[color:var(--ink)] transition"
           aria-label="关闭"
         >
@@ -273,7 +296,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
               <div className="space-y-2">
                 <button
                   type="submit"
-                  disabled={loading || code.length < 4}
+                  disabled={loading || code.length !== 6}
                   className="button-primary tactile w-full py-2.5 rounded-xl text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? "正在验证..." : "登录 / 注册"}

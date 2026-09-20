@@ -19,6 +19,7 @@ coverage/
 *.sqlite3
 browser_profile/
 browser_state.json
+.runtime/
 output/
 backups/
 dogfood-output/

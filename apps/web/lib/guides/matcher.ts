@@ -1,7 +1,8 @@
-import { getProductGuide } from "./registry";
-import { KNOWN_DELIVERY_TYPES, type DeliveryType, type KnownDeliveryType } from "./types";
+import { PRODUCT_DELIVERY_TYPES } from "./product-delivery-map";
+import { KNOWN_DELIVERY_TYPES, PRODUCT_SLUGS, type DeliveryType, type KnownDeliveryType, type ProductSlug } from "./types";
 
 const knownDeliveryTypes = new Set<string>(KNOWN_DELIVERY_TYPES);
+const productSlugs = new Set<string>(PRODUCT_SLUGS);
 
 const GUIDE_LINK_LABELS: Record<DeliveryType, string> = {
   subscription_recharge: "查看充值和确认订阅教程",
@@ -29,15 +30,15 @@ export function resolveGuideHref(input: {
   productSlug?: string | null;
   deliveryType?: string | null;
 }): string {
-  const product = getProductGuide(input.productSlug);
+  const productSlug = productSlugs.has(input.productSlug || "") ? input.productSlug as ProductSlug : null;
 
   if (
-    product
+    productSlug
     && isDeliveryType(input.deliveryType)
     && input.deliveryType !== "unknown"
-    && product.supportedDeliveryTypes.includes(input.deliveryType)
+    && (PRODUCT_DELIVERY_TYPES[productSlug] as readonly string[]).includes(input.deliveryType)
   ) {
-    return `/guides/products/${product.productSlug}#delivery-${input.deliveryType}`;
+    return `/guides/products/${productSlug}#delivery-${input.deliveryType}`;
   }
 
   if (input.deliveryType === "unknown") return "/guides/buying-checklist";
@@ -46,7 +47,7 @@ export function resolveGuideHref(input: {
     return `/guides/delivery/${input.deliveryType}`;
   }
 
-  if (product) return `/guides/products/${product.productSlug}`;
+  if (productSlug) return `/guides/products/${productSlug}`;
   return "/guides/buying-checklist";
 }
 

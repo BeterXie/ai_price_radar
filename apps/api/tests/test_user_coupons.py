@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.models import CouponCampaign, ShopCoupon, User, UserSession
+from app.routers.user import _encode_drop_claim_token
 
 
 @pytest.fixture
@@ -62,6 +63,10 @@ def _login_user(test_db, user: User, client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _drop_token() -> str:
+    return _encode_drop_claim_token(issued_at=datetime.now(timezone.utc))
+
+
 def test_user_coupons_unauthenticated(client: TestClient):
     res = client.get("/api/v1/user/coupons")
     assert res.status_code == 401
@@ -69,7 +74,10 @@ def test_user_coupons_unauthenticated(client: TestClient):
     res = client.post("/api/v1/user/coupons/redeem", json={"code": "RADAR888"})
     assert res.status_code == 401
 
-    res = client.post("/api/v1/user/coupons/claim-drop")
+    res = client.post(
+        "/api/v1/user/coupons/claim-drop",
+        json={"claim_token": _drop_token()},
+    )
     assert res.status_code == 401
 
 
@@ -119,7 +127,11 @@ def test_claim_lucky_drop_success_and_rate_limit(client: TestClient, test_db):
     headers = _login_user(test_db, user, client)
 
     # First claim: Success
-    res = client.post("/api/v1/user/coupons/claim-drop", headers=headers)
+    res = client.post(
+        "/api/v1/user/coupons/claim-drop",
+        json={"claim_token": _drop_token()},
+        headers=headers,
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
@@ -135,7 +147,11 @@ def test_claim_lucky_drop_success_and_rate_limit(client: TestClient, test_db):
     assert wallet["items"][0]["code"] == "3602984211"
 
     # Second claim within 24 hours: Cooldown rejected
-    res2 = client.post("/api/v1/user/coupons/claim-drop", headers=headers)
+    res2 = client.post(
+        "/api/v1/user/coupons/claim-drop",
+        json={"claim_token": _drop_token()},
+        headers=headers,
+    )
     assert res2.status_code == 200
     data2 = res2.json()
     assert data2["success"] is False
@@ -150,7 +166,11 @@ def test_claim_lucky_drop_pool_exhausted(client: TestClient, test_db):
     headers = _login_user(test_db, user, client)
 
     # Empty coupon pool
-    res = client.post("/api/v1/user/coupons/claim-drop", headers=headers)
+    res = client.post(
+        "/api/v1/user/coupons/claim-drop",
+        json={"claim_token": _drop_token()},
+        headers=headers,
+    )
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is False
@@ -244,6 +264,45 @@ def test_redeem_direct_coupon_code(client: TestClient, test_db):
     assert res_other.status_code == 200
     assert res_other.json()["success"] is False
     assert "已被其他用户兑换" in res_other.json()["message"]
+
+
+def test_direct_coupon_redemption_does_not_consume_drop_cooldown(client: TestClient, test_db):
+    user = User(id=1, email="direct-then-drop@example.com", nickname="测试员")
+    future = datetime.now(timezone.utc) + timedelta(days=30)
+    direct_coupon = ShopCoupon(
+        name="直接兑换券",
+        code="DIRECT-ONLY-1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        expires_at=future,
+    )
+    drop_coupon = ShopCoupon(
+        name="掉落券",
+        code="DROP-ONLY-1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        expires_at=future,
+    )
+    test_db.add_all([user, direct_coupon, drop_coupon])
+    test_db.commit()
+    headers = _login_user(test_db, user, client)
+
+    redeemed = client.post(
+        "/api/v1/user/coupons/redeem",
+        json={"code": direct_coupon.code},
+        headers=headers,
+    )
+    assert redeemed.json()["success"] is True
+
+    claimed = client.post(
+        "/api/v1/user/coupons/claim-drop",
+        json={"claim_token": _drop_token()},
+        headers=headers,
+    )
+    assert claimed.json()["success"] is True
+    assert claimed.json()["coupon"]["code"] == drop_coupon.code
 
 
 def test_coupon_drop_status_and_dynamic_probability(client: TestClient, test_db):
@@ -469,5 +528,3 @@ def test_record_coupon_drop_trigger_and_stats(client: TestClient, test_db):
     # 4. Verify stats reflects drop_trigger_count == 2
     stats = _get_coupon_stats(test_db)
     assert stats.drop_trigger_count == 2
-
-

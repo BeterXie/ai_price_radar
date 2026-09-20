@@ -10,8 +10,8 @@ export function JsonLd({ data }: { data: JsonLdValue }) {
 }
 
 export function SiteStructuredData() {
-  const organizationId = "https://ai.pricememo.cn/#organization";
-  const websiteId = "https://ai.pricememo.cn/#website";
+  const organizationId = `${SITE_URL}/#organization`;
+  const websiteId = `${SITE_URL}/#website`;
 
   return (
     <JsonLd
@@ -23,10 +23,10 @@ export function SiteStructuredData() {
             "@id": organizationId,
             name: "AI Price Memory",
             alternateName: ["AI Price Radar", "PriceMemo"],
-            url: "https://ai.pricememo.cn",
+            url: SITE_URL,
             logo: {
               "@type": "ImageObject",
-              url: "https://ai.pricememo.cn/brand/logo-icon.png",
+              url: `${SITE_URL}/brand/logo-icon.png`,
             },
             sameAs: ["https://github.com/BeterXie/ai_price_radar"],
             description: "整理公开 AI 商品报价、来源、库存和更新时间的价格信息项目。",
@@ -35,7 +35,7 @@ export function SiteStructuredData() {
           {
             "@type": "WebSite",
             "@id": websiteId,
-            url: "https://ai.pricememo.cn",
+            url: SITE_URL,
             name: "AI Price Memory",
             alternateName: ["AI Price Radar", "PriceMemo"],
             inLanguage: "zh-CN",
@@ -44,7 +44,7 @@ export function SiteStructuredData() {
               "@type": "SearchAction",
               target: {
                 "@type": "EntryPoint",
-                urlTemplate: "https://ai.pricememo.cn/products?q={search_term_string}",
+                urlTemplate: `${SITE_URL}/products?q={search_term_string}`,
               },
               "query-input": "required name=search_term_string",
             },
@@ -63,7 +63,8 @@ export function breadcrumbJsonLd(items: readonly { name: string; path: string }[
       "@type": "ListItem",
       position: index + 1,
       name: item.name,
-      item: `https://ai.pricememo.cn${item.path}`,
+      item: `${SITE_URL}${item.path}`,
     })),
   };
 }
+import { SITE_URL } from "@/lib/site";

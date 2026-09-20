@@ -556,6 +556,7 @@ export type AdminBroadcastAudienceOut = {
 };
 
 export type AdminBroadcastCreate = {
+  operation_key: string;
   title: string;
   content: string;
   channels: string[];
@@ -563,6 +564,7 @@ export type AdminBroadcastCreate = {
 
 export type AdminBroadcastItem = {
   id: number;
+  operation_key: string;
   title: string;
   content: string;
   channels: string[];
@@ -573,7 +575,6 @@ export type AdminBroadcastItem = {
   created_by: string;
   created_at: string;
 };
-
 
 
 

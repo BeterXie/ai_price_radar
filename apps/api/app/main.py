@@ -1,21 +1,44 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
+from contextlib import suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
+from .core.runtime_safety import validate_api_runtime_settings
 from .database import Base, engine
 from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.95"
+VERSION = "3.7.96"
+PRIVACY_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
+logger = logging.getLogger(__name__)
+
+
+async def _privacy_cleanup_loop(session_factory) -> None:
+    while True:
+        await asyncio.sleep(PRIVACY_CLEANUP_INTERVAL_SECONDS)
+
+        def run_cleanup() -> None:
+            from .services.privacy import cleanup_privacy_data
+
+            with session_factory() as db:
+                cleanup_privacy_data(db)
+
+        try:
+            await asyncio.to_thread(run_cleanup)
+        except Exception:
+            logger.exception("Periodic privacy cleanup failed")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    validate_api_runtime_settings(settings)
     Base.metadata.create_all(bind=engine)
     from .services.db_migration import ensure_db_schema
     ensure_db_schema(engine)
@@ -36,6 +59,8 @@ async def lifespan(_: FastAPI):
         migrate_bot_credentials(db)
         cleanup_privacy_data(db)
 
+    privacy_cleanup_task = asyncio.create_task(_privacy_cleanup_loop(SessionLocal))
+
     try:
         from extensions.bots.qq_gateway import qq_gateway_service
 
@@ -44,14 +69,18 @@ async def lifespan(_: FastAPI):
     except Exception as exc:
         print(f">>> [FastAPI Lifespan] QQ Gateway service failed: {exc} <<<", flush=True)
 
-    yield
-
     try:
-        from extensions.bots.qq_gateway import qq_gateway_service
+        yield
+    finally:
+        privacy_cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await privacy_cleanup_task
+        try:
+            from extensions.bots.qq_gateway import qq_gateway_service
 
-        await qq_gateway_service.stop()
-    except Exception:
-        pass
+            await qq_gateway_service.stop()
+        except Exception:
+            pass
 
 
 
@@ -69,6 +98,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 app.include_router(public.router)
 app.include_router(public_feed.router)

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Megaphone, X, ArrowRight } from "@phosphor-icons/react";
 import type { SiteNotice } from "@/lib/types";
+import { safeInternalPath } from "@/lib/safe-url";
 
 /**
  * Stable identity for the *version* of a notice. Admins often keep the same
@@ -62,6 +63,7 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
   };
 
   if (!visible || !notice?.enabled || !notice?.title) return null;
+  const noticeLink = safeInternalPath(notice.link_url);
 
   return (
     <aside
@@ -78,9 +80,9 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
           <span className="hidden text-[color:var(--muted)] md:inline">
             — {notice.content}
           </span>
-          {notice.link_url && notice.link_text && (
+          {noticeLink && notice.link_text && (
             <Link
-              href={notice.link_url}
+              href={noticeLink}
               className="inline-flex shrink-0 items-center gap-1 font-semibold text-[color:var(--info)] hover:underline"
             >
               {notice.link_text}

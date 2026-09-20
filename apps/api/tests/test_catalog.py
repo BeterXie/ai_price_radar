@@ -264,8 +264,9 @@ def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
         detail = get_product_detail(db, product.slug)
         assert detail is not None
         assert detail.lowest_price == Decimal("15.00")
-        assert detail.related_lowest_price == Decimal("2.60")
-        assert detail.offer_count == 3
+        # The detail summary uses the same comparable filter as its groups.
+        assert detail.related_lowest_price == Decimal("15.00")
+        assert detail.offer_count == 2
         assert detail.offer_group_count == 1
         assert detail.offer_groups[0].product_slug == "chatgpt-plus"
         assert detail.offer_groups[0].shop_count == 2
@@ -680,12 +681,12 @@ def test_group_lowest_price_matches_lowest_in_stock_and_group_offers_sorted_by_p
         prices = [o.price for o in group_offers]
         assert prices == [Decimal("20.00"), Decimal("22.00"), Decimal("23.00"), Decimal("23.50"), Decimal("30.00")]
 
-        # Querying with old empty snapshot should fall back to current snapshot rather than returning 0 offers
-        fallback_detail = get_product_detail(db, product.slug, snapshot_id=empty_old_snapshot.id)
-        assert fallback_detail is not None
-        assert len(fallback_detail.offer_groups) == 1
+        # An explicit historical snapshot is an immutable point in time. An
+        # empty snapshot stays empty instead of silently returning current data.
+        historical_detail = get_product_detail(db, product.slug, snapshot_id=empty_old_snapshot.id)
+        assert historical_detail is not None
+        assert historical_detail.snapshot_id == empty_old_snapshot.id
+        assert historical_detail.offer_groups == []
 
-        fallback_group_offers = get_group_offers(db, product.slug, group_fp, snapshot_id=empty_old_snapshot.id)
-        assert fallback_group_offers is not None
-        assert len(fallback_group_offers) == 5
-
+        historical_group_offers = get_group_offers(db, product.slug, group_fp, snapshot_id=empty_old_snapshot.id)
+        assert historical_group_offers == []

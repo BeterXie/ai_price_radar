@@ -42,6 +42,8 @@ test("watchlist thresholds are finite positive decimals", () => {
   assert.equal(normalizeWatchThreshold("1..2"), null);
   assert.equal(normalizeWatchThreshold("0"), null);
   assert.equal(normalizeWatchThreshold("Infinity"), null);
+  assert.equal(normalizeWatchThreshold("99999999.99"), "99999999.99");
+  assert.equal(normalizeWatchThreshold("100000000.00"), null);
 });
 
 test("public source URL validation rejects private IPv4-mapped IPv6", () => {

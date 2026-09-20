@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function DemoIframe({
   src,
@@ -11,36 +11,33 @@ export function DemoIframe({
   title: string;
   className?: string;
 }) {
-  const [htmlContent, setHtmlContent] = useState<string>("");
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let active = true;
     setLoading(true);
-    fetch(src)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load demo HTML");
-        return res.text();
-      })
-      .then((html) => {
-        if (active) {
-          setHtmlContent(html);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
+    setShouldLoad(false);
+    const element = containerRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((entry) => entry.isIntersecting);
+        if (visible) setLoading(true);
+        setShouldLoad(visible);
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [src]);
 
   return (
-    <div className="relative h-full w-full bg-white">
-      {loading && !htmlContent ? (
+    <div ref={containerRef} className="relative h-full w-full bg-white">
+      {shouldLoad && loading ? (
         <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-neutral-400 bg-neutral-900">
           <div className="flex items-center gap-2">
             <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent" />
@@ -48,13 +45,19 @@ export function DemoIframe({
           </div>
         </div>
       ) : null}
-      <iframe
-        srcDoc={htmlContent || undefined}
-        src={!htmlContent ? src : undefined}
-        title={title}
-        sandbox="allow-scripts"
-        className={className}
-      />
+      {shouldLoad ? (
+        <iframe
+          key={src}
+          src={src}
+          title={title}
+          sandbox="allow-scripts"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onLoad={() => setLoading(false)}
+          onError={() => setLoading(false)}
+          className={className}
+        />
+      ) : null}
     </div>
   );
 }

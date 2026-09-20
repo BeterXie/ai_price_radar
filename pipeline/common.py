@@ -1045,6 +1045,7 @@ def upsert_offer(
                     source_platform=shop.platform,
                     old_price=offer.price,
                     new_price=price,
+                    old_currency=offer.currency,
                     currency=currency,
                     product_url=raw.source_url,
                 )

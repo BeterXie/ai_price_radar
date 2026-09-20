@@ -1,0 +1,26 @@
+import type { KnownDeliveryType, ProductSlug } from "./types";
+
+export const PRODUCT_DELIVERY_TYPES = {
+  "chatgpt-account": ["finished_account", "semi_finished_account", "trial_account", "shared_pool", "verification_service"],
+  "chatgpt-plus": ["subscription_recharge", "finished_account", "semi_finished_account", "card_code", "shared_pool", "trial_account"],
+  "chatgpt-go": ["subscription_recharge", "finished_account", "card_code"],
+  "chatgpt-k12": ["team_seat", "finished_account"],
+  "chatgpt-pro-5x": ["subscription_recharge", "finished_account", "semi_finished_account", "shared_pool", "trial_account"],
+  "chatgpt-pro-20x": ["subscription_recharge", "finished_account", "semi_finished_account", "shared_pool", "trial_account"],
+  "chatgpt-pro": ["subscription_recharge", "finished_account", "semi_finished_account", "shared_pool", "trial_account"],
+  "openai-api-credit": ["api_credit", "relay_api", "card_code"],
+  "chatgpt-access-service": ["verification_service"],
+  "codex-access": ["finished_account", "subscription_recharge", "team_seat"],
+  "claude-pro": ["subscription_recharge", "finished_account", "semi_finished_account", "card_code"],
+  "claude-account": ["finished_account", "semi_finished_account", "trial_account", "shared_pool", "verification_service"],
+  "claude-api-access": ["api_credit", "relay_api"],
+  "gemini-advanced": ["subscription_recharge", "finished_account", "card_code"],
+  "gemini-account": ["finished_account", "semi_finished_account", "verification_service"],
+  "gemini-api-access": ["api_credit", "relay_api"],
+  "grok-super": ["subscription_recharge", "finished_account", "card_code"],
+  "grok-account": ["finished_account", "semi_finished_account", "trial_account"],
+  "grok-api-access": ["api_credit", "relay_api"],
+  "x-premium-basic": ["subscription_recharge", "finished_account"],
+  "x-premium": ["subscription_recharge", "finished_account"],
+  "x-premium-plus": ["subscription_recharge", "finished_account"],
+} as const satisfies Record<ProductSlug, readonly KnownDeliveryType[]>;

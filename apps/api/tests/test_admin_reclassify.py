@@ -148,6 +148,13 @@ def test_update_offer_manual_reclassify_and_unclassify():
         update_offer(offer.id, AdminOfferUpdate(product_slug=""), db)
         db.refresh(offer)
         assert offer.product_id is None
+        assert "manual_override" in offer.tags
+        assert offer.classification_confidence == 100
+
+        # Full automatic reclassification must preserve the explicit removal.
+        reclassify(db)
+        db.refresh(offer)
+        assert offer.product_id is None
 
 
 def test_reclassify_single_offer_and_status_filtering():
@@ -211,4 +218,3 @@ def test_reclassify_single_offer_and_status_filtering():
         current_stats = stats(db=db)
         assert current_stats.product_counts.get("chatgpt-plus") == 1
         assert current_stats.brand_counts.get("OpenAI") == 1
-

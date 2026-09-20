@@ -7,17 +7,18 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { SectionIntro } from "@/components/page-shell";
 import { getProducts } from "@/lib/api";
 import { exactTime, money, relativeTime } from "@/lib/format";
+import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "AI 订阅比价｜查价格、库存和交付方式",
   description: "汇总 ChatGPT、Claude、Gemini、Grok 等 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
-  alternates: { canonical: "https://ai.pricememo.cn" },
+  alternates: { canonical: SITE_URL },
   openGraph: {
     title: "AI 订阅比价｜查价格、库存和交付方式",
     description: "汇总主流 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
-    url: "https://ai.pricememo.cn",
+    url: SITE_URL,
     siteName: "AI Price Memory / AI Price Radar",
     locale: "zh_CN",
     type: "website",
@@ -32,6 +33,7 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const data = await getProducts("sort=quality");
   const products = data.items.slice(0, 6);
+  const liveProducts = data.items.filter((product) => product.in_stock_count > 0).slice(0, 3);
   return (
     <main id="main-content" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="snapshot-rail ledger-alignment semantic-search responsive-recomposition">
       <div className="snapshot-rail" data-vds-role="evidence" data-vds-cause="持续显示本轮报价的新鲜度与来源证据">
@@ -65,7 +67,7 @@ export default async function HomePage() {
               <span className={`status-pill ${data.snapshot_at ? "status-success" : "status-info"}`}>{data.snapshot_at ? `${relativeTime(data.snapshot_at)}刷新` : "暂无更新时间"}</span>
             </div>
             <div className="divide-y divide-[color:var(--line)]">
-              {products.slice(0, 3).map((product) => (
+              {liveProducts.map((product) => (
                 <Link key={product.slug} href={`/products/${encodeURIComponent(product.slug)}`} className="group grid min-h-[92px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 hover:bg-[color:var(--subtle)]">
                   <div className="min-w-0">
                     <p className="flex items-center gap-2 text-xs text-[color:var(--muted)]"><PlatformIcon platform={product.brand} size={14} />{product.brand} · {relativeTime(product.last_updated_at)}</p>
@@ -78,6 +80,9 @@ export default async function HomePage() {
                   </div>
                 </Link>
               ))}
+              {liveProducts.length === 0 ? (
+                <p className="px-5 py-8 text-sm text-[color:var(--muted)]">当前没有已确认有货的报价。</p>
+              ) : null}
             </div>
             <Link href="/products" className="live-board-link" data-vds-role="action">查看全部报价 <ArrowRight size={17} /></Link>
           </aside>

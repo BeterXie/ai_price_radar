@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Check, EyeSlash, Trash, X } from "@phosphor-icons/react";
 import { CANDIDATE_STATUS_LABELS, candidateQuery, candidateStatusLabel, funnelFromRuns, runStatusLabel } from "@/lib/source-discovery";
 
@@ -58,6 +58,8 @@ const PLATFORM_LABELS: Record<string, string> = {
   other: "其他",
 };
 
+const CANDIDATE_PAGE_SIZE = 50;
+
 export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; headers: Record<string, string> }) {
   const adminKey = headers["X-Admin-Key"];
   const [runs, setRuns] = useState<Run[]>([]);
@@ -68,26 +70,50 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [cleaning, setCleaning] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [actingId, setActingId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const requestSequence = useRef(0);
 
   async function load() {
+    const sequence = ++requestSequence.current;
     setError("");
-    const query = candidateQuery({ status: statusFilter || undefined, detected_platform: platformFilter || undefined, limit: 200 });
-    const [runsResponse, candidatesResponse] = await Promise.all([
-      fetch(`${apiBase}/api/v1/admin/source-discovery/runs?limit=100`, { headers }),
-      fetch(`${apiBase}/api/v1/admin/source-candidates${query}`, { headers }),
-    ]);
-    if (!runsResponse.ok || !candidatesResponse.ok) {
-      setError("来源发现数据加载失败，请确认管理密钥和 API 可用。");
-      return;
+    setLoading(true);
+    try {
+      const query = candidateQuery({
+        status: statusFilter || undefined,
+        detected_platform: platformFilter || undefined,
+        limit: CANDIDATE_PAGE_SIZE,
+        offset: (page - 1) * CANDIDATE_PAGE_SIZE,
+      });
+      const [runsResponse, candidatesResponse] = await Promise.all([
+        fetch(`${apiBase}/api/v1/admin/source-discovery/runs?limit=100`, { headers }),
+        fetch(`${apiBase}/api/v1/admin/source-candidates${query}`, { headers }),
+      ]);
+      if (!runsResponse.ok || !candidatesResponse.ok) throw new Error("request failed");
+      const [nextRuns, nextCandidates] = await Promise.all([
+        runsResponse.json() as Promise<Run[]>,
+        candidatesResponse.json() as Promise<Candidate[]>,
+      ]);
+      if (sequence !== requestSequence.current) return;
+      setRuns(nextRuns);
+      setCandidates(nextCandidates);
+      setTotal(Number(candidatesResponse.headers.get("x-total-count")) || nextCandidates.length);
+    } catch {
+      if (sequence === requestSequence.current) {
+        setError("来源发现数据加载失败，请确认管理密钥和 API 可用。");
+      }
+    } finally {
+      if (sequence === requestSequence.current) setLoading(false);
     }
-    setRuns(await runsResponse.json());
-    setCandidates(await candidatesResponse.json());
   }
 
   useEffect(() => {
     if (adminKey) void load();
+    return () => { requestSequence.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminKey, statusFilter, platformFilter]);
+  }, [adminKey, statusFilter, platformFilter, page]);
 
   async function act(candidateId: number, action: "retry" | "reject" | "disable" | "promote") {
     const reason =
@@ -98,13 +124,21 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
       setError("请填写原因后再操作。");
       return;
     }
-    const response = await fetch(`${apiBase}/api/v1/admin/source-candidates/${candidateId}/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({ reason }),
-    });
-    if (response.ok) await load();
-    else setError("候选状态更新失败，请刷新后重试。");
+    setActingId(candidateId);
+    setError("");
+    try {
+      const response = await fetch(`${apiBase}/api/v1/admin/source-candidates/${candidateId}/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ reason }),
+      });
+      if (!response.ok) throw new Error("request failed");
+      await load();
+    } catch {
+      setError("候选状态更新失败，请刷新后重试。");
+    } finally {
+      setActingId(null);
+    }
   }
 
   async function cleanInvalidCandidates() {
@@ -135,12 +169,13 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
   }
 
   const funnel = funnelFromRuns(runs);
+  const totalPages = Math.max(1, Math.ceil(total / CANDIDATE_PAGE_SIZE));
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">来源发现引擎</h2>
-        <button onClick={load} className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2 text-sm text-white">
-          刷新发现数据
+        <button onClick={() => void load()} disabled={loading} className="tactile rounded-[10px] bg-[color:var(--ink)] px-4 py-2 text-sm text-white disabled:opacity-50">
+          {loading ? "加载中" : "刷新发现数据"}
         </button>
       </div>
       {error && <p className="rounded-[10px] bg-[#f2d8d2] p-4 text-[color:var(--danger)]">{error}</p>}
@@ -202,11 +237,11 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
               <Trash size={15} />
               {cleaning ? "清理中..." : "清理无效候选"}
             </button>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
+            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
               <option value="">全部状态</option>
               {Object.entries(CANDIDATE_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-            <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
+            <select value={platformFilter} onChange={(event) => { setPlatformFilter(event.target.value); setPage(1); }} className="rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-sm">
               <option value="">全部平台</option>
               {Object.entries(PLATFORM_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -228,15 +263,15 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                     {expandedId === candidate.id ? "收起" : "详情"}
                   </button>
                   {["validation_failed", "no_match", "needs_re_review", "rejected", "disabled"].includes(candidate.status) && (
-                    <button onClick={() => act(candidate.id, "retry")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={15} />重试</button>
+                    <button disabled={actingId !== null} onClick={() => void act(candidate.id, "retry")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm disabled:opacity-50"><ArrowClockwise size={15} />重试</button>
                   )}
                   {["pending_review", "auto_approved", "detected"].includes(candidate.status) && (
-                    <button onClick={() => act(candidate.id, "promote")} className="tactile flex items-center gap-1 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white"><Check size={15} />转入收录</button>
+                    <button disabled={actingId !== null} onClick={() => void act(candidate.id, "promote")} className="tactile flex items-center gap-1 rounded-[10px] bg-[color:var(--ink)] px-3 py-2 text-sm text-white disabled:opacity-50"><Check size={15} />转入收录</button>
                   )}
                   {!["rejected", "disabled", "detecting", "promoted"].includes(candidate.status) && (
                     <>
-                      <button onClick={() => act(candidate.id, "reject")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm"><X size={15} />拒绝</button>
-                      <button onClick={() => act(candidate.id, "disable")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm"><EyeSlash size={15} />禁用</button>
+                      <button disabled={actingId !== null} onClick={() => void act(candidate.id, "reject")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm disabled:opacity-50"><X size={15} />拒绝</button>
+                      <button disabled={actingId !== null} onClick={() => void act(candidate.id, "disable")} className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm disabled:opacity-50"><EyeSlash size={15} />禁用</button>
                     </>
                   )}
                 </div>
@@ -259,6 +294,11 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
               )}
             </div>
           ))}
+        </div>
+        <div className="flex items-center justify-between border-t hairline px-5 py-4 text-sm">
+          <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))} className="button-secondary disabled:opacity-40">上一页</button>
+          <span className="text-black/50">第 {page} / {totalPages} 页 · 共 {total} 条</span>
+          <button type="button" disabled={page >= totalPages || loading} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="button-secondary disabled:opacity-40">下一页</button>
         </div>
       </div>
     </section>

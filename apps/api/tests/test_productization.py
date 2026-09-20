@@ -8,7 +8,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake
+from app.models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake, User
+from app.security import require_current_user
 from app.services.catalog import get_product_detail, get_product_history, list_product_cards
 from app.services.source_health import source_health
 
@@ -247,6 +248,7 @@ def test_merchant_feed_submission_accepts_public_https_and_rejects_private_host(
             yield db
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=1, email="merchant@example.com")
     try:
         client = TestClient(app)
         accepted = client.post("/api/v1/shop-requests", json={
@@ -254,6 +256,8 @@ def test_merchant_feed_submission_accepts_public_https_and_rejects_private_host(
             "shop_url": "https://merchant.example/catalog.json",
             "shop_name": "Merchant",
             "contact": "merchant@example.com",
+            "authorization_confirmed": True,
+            "consent_version": "shop-source-submission-v1",
         })
         assert accepted.status_code == 201
         assert accepted.json()["source_type"] == "merchant_feed"

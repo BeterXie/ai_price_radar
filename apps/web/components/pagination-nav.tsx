@@ -1,11 +1,13 @@
 import Link from "next/link";
 
 export const DIRECTORY_PAGE_SIZE = 50;
+export const MAX_DIRECTORY_OFFSET = 10000;
 
-export function parsePage(value: string | undefined): number {
+export function parsePage(value: string | undefined, pageSize = DIRECTORY_PAGE_SIZE): number {
   if (!value || !/^\d+$/.test(value)) return 1;
   const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
+  const maxPage = Math.floor(MAX_DIRECTORY_OFFSET / Math.max(1, pageSize)) + 1;
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= maxPage ? parsed : 1;
 }
 
 export function getTotalPages(total: number, pageSize = DIRECTORY_PAGE_SIZE): number {

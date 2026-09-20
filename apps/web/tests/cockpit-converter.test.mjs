@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -96,6 +97,104 @@ test("finds nested and batched account records", () => {
   ]);
 });
 
+test("supports top-level accountId and camelCase credentials fields", () => {
+  const result = convertJsonDocuments([
+    {
+      sourceName: "top-level.json",
+      value: {
+        email: "top@example.com",
+        accountId: "top-account",
+        accessToken: opaqueToken("top"),
+      },
+    },
+    {
+      sourceName: "credentials.json",
+      value: {
+        credentials: {
+          email: "credentials@example.com",
+          accountId: "credentials-account",
+          accessToken: opaqueToken("credentials"),
+          refreshToken: "refresh-credentials",
+        },
+      },
+    },
+  ], NOW);
+
+  assert.equal(result.issues.length, 0);
+  assert.deepEqual(result.accounts.map((item) => item.account.account_id), ["top-account", "credentials-account"]);
+  assert.equal(result.accounts[1].account.refresh_token, "refresh-credentials");
+});
+
+test("rejects conflicting record, access token, and id token identities", () => {
+  const accessToken = jwt({
+    email: "access@example.com",
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "access-account",
+      chatgpt_user_id: "access-user",
+    },
+  });
+  const idToken = jwt({
+    email: "id@example.com",
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "id-account",
+      chatgpt_user_id: "id-user",
+    },
+  });
+  const result = convertJsonDocuments([{
+    sourceName: "conflict.json",
+    value: {
+      email: "record@example.com",
+      account_id: "record-account",
+      user_id: "record-user",
+      access_token: accessToken,
+      id_token: idToken,
+    },
+  }], NOW);
+
+  assert.equal(result.accounts.length, 0);
+  assert.equal(result.issues.length, 1);
+  assert.match(result.issues[0].reason, /身份字段互相冲突/);
+});
+
+test("ignores a non-email label and falls back to a valid token email", () => {
+  const accessToken = jwt({
+    email: "claim@example.com",
+    "https://api.openai.com/auth": { chatgpt_account_id: "claim-account" },
+  });
+  const valid = convertJsonDocuments([{
+    sourceName: "label-with-claim.json",
+    value: { label: "个人账号", access_token: accessToken },
+  }], NOW);
+  assert.equal(valid.accounts.length, 1);
+  assert.equal(valid.accounts[0].account.email, "claim@example.com");
+
+  const invalid = convertJsonDocuments([{
+    sourceName: "label-only.json",
+    value: { label: "个人账号", account_id: "label-account", access_token: opaqueToken("label") },
+  }], NOW);
+  assert.equal(invalid.accounts.length, 0);
+  assert.match(invalid.issues[0].reason, /缺少 email/);
+});
+
+test("keeps scanning nested accounts after an invalid outer candidate", () => {
+  const result = convertJsonDocuments([{
+    sourceName: "wrapped.json",
+    value: {
+      email: "outer@example.com",
+      access_token: "too-short",
+      accounts: [{
+        email: "inner@example.com",
+        account_id: "inner-account",
+        access_token: opaqueToken("inner"),
+      }],
+    },
+  }], NOW);
+
+  assert.equal(result.accounts.length, 1);
+  assert.equal(result.accounts[0].account.account_id, "inner-account");
+  assert.ok(result.issues.some((issue) => /accessToken 长度不足/.test(issue.reason)));
+});
+
 test("reports documents without a convertible account", () => {
   const result = convertJsonDocuments([{ sourceName: "invalid.json", value: { hello: "world" } }], NOW);
   assert.equal(result.accounts.length, 0);
@@ -180,7 +279,7 @@ test("rejects accounts without email", () => {
   assert.match(result.issues[0].reason, /缺少 email/);
 });
 
-test("deduplicates accounts with an identical access token", () => {
+test("rejects an identical access token assigned to another account", () => {
   const sharedToken = opaqueToken("dup");
   const result = convertJsonDocuments([{
     sourceName: "duplicates.json",
@@ -194,7 +293,33 @@ test("deduplicates accounts with an identical access token", () => {
 
   assert.equal(result.accounts.length, 1);
   assert.equal(result.issues.length, 1);
-  assert.match(result.issues[0].reason, /重复账号已跳过/);
+  assert.match(result.issues[0].reason, /access_token 已关联到另一个 account_id/);
+});
+
+test("deduplicates rotated tokens by account id and keeps the newer expiry", () => {
+  const olderToken = jwt({
+    email: "rotated@example.com",
+    exp: 1786000000,
+    "https://api.openai.com/auth": { chatgpt_account_id: "rotated-account" },
+  });
+  const newerToken = jwt({
+    email: "rotated@example.com",
+    exp: 1886000000,
+    "https://api.openai.com/auth": { chatgpt_account_id: "rotated-account" },
+  });
+  const result = convertJsonDocuments([{
+    sourceName: "rotation.json",
+    value: {
+      accounts: [
+        { email: "rotated@example.com", account_id: "rotated-account", access_token: olderToken },
+        { email: "rotated@example.com", account_id: "rotated-account", access_token: newerToken },
+      ],
+    },
+  }], NOW);
+
+  assert.equal(result.accounts.length, 1);
+  assert.equal(result.accounts[0].account.access_token, newerToken);
+  assert.match(result.issues[0].reason, /令牌已轮换/);
 });
 
 test("emits expired even when a refresh token is present", () => {
@@ -273,6 +398,24 @@ test("stops parsing documents nested beyond the depth limit", () => {
   assert.equal(result.accounts.length, 0);
   assert.equal(result.issues.length, 1);
   assert.match(result.issues[0].reason, /嵌套层级超过 64/);
+});
+
+test("counts scalar array entries against the traversal budget", () => {
+  const value = Array.from({ length: COCKPIT_LIMITS.maxVisitedNodes }, () => 0);
+  const result = convertJsonDocuments([{ sourceName: "scalars.json", value }], NOW);
+
+  assert.equal(result.accounts.length, 0);
+  assert.ok(result.issues.some((issue) => /对象节点数超过/.test(issue.reason)));
+});
+
+test("shares the traversal budget across files", () => {
+  const half = Math.ceil(COCKPIT_LIMITS.maxVisitedNodes / 2);
+  const result = convertJsonDocuments([
+    { sourceName: "first-scalars.json", value: Array.from({ length: half }, () => 0) },
+    { sourceName: "second-scalars.json", value: Array.from({ length: half }, () => 0) },
+  ], NOW);
+
+  assert.ok(result.issues.some((issue) => issue.sourceName === "second-scalars.json" && /对象节点数超过/.test(issue.reason)));
 });
 
 test("caps the number of converted accounts per batch", () => {
@@ -355,7 +498,37 @@ test("duplicate records do not consume the account budget", () => {
   assert.equal(result.accounts[1].account.account_id, "good");
 });
 
+test("caps reported conversion issues", () => {
+  const value = {
+    accounts: Array.from({ length: COCKPIT_LIMITS.maxIssuesPerBatch + 100 }, (_, index) => ({
+      email: `invalid${index}@example.com`,
+      account_id: `invalid-${index}`,
+      access_token: "too-short",
+    })),
+  };
+  const result = convertJsonDocuments([{ sourceName: "many-invalid.json", value }], NOW);
+
+  assert.equal(result.issues.length, COCKPIT_LIMITS.maxIssuesPerBatch);
+  assert.match(result.issues.at(-1).reason, /问题上限/);
+});
+
 test("parses JSON text and reports invalid syntax", () => {
   assert.deepEqual(parseJsonText('{"ok":true}'), { ok: true });
   assert.throws(() => parseJsonText("{"), /JSON 解析失败/);
+  assert.throws(
+    () => parseJsonText(" ".repeat(COCKPIT_LIMITS.maxPastedTextBytes + 1)),
+    /JSON 文本超过 10 MB 上限/,
+  );
+});
+
+test("converter UI invalidates stale reads and disables analytics on the credential route", async () => {
+  const converterSource = await readFile(new URL("../components/guides/cockpit-json-converter.tsx", import.meta.url), "utf8");
+  const analyticsSource = await readFile(new URL("../components/google-analytics.tsx", import.meta.url), "utf8");
+
+  assert.match(converterSource, /const generation = \+\+readGenerationRef\.current/);
+  assert.match(converterSource, /generation !== readGenerationRef\.current/);
+  assert.match(converterSource, /function clearAll\(\): void \{\s*readGenerationRef\.current \+= 1/);
+  assert.match(converterSource, /useEffect\(\(\) => \(\) => \{\s*readGenerationRef\.current \+= 1/);
+  assert.match(converterSource, /event\.target\.value = ""/);
+  assert.match(analyticsSource, /"\/tools\/json-to-cockpit"/);
 });

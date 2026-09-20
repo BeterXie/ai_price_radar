@@ -1,12 +1,78 @@
 import type { MetadataRoute } from "next";
 import { getMeta, getProducts, getShopTokens, getSkills } from "@/lib/api";
+import type { CatalogResponse, CommunitySkillPage, ProductCard } from "@/lib/types";
+import { SITE_URL } from "@/lib/site";
 
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
-const SITE_URL = "https://ai.pricememo.cn";
 const GUIDE_LAST_MODIFIED = new Date("2026-08-03");
+const API_PAGE_SIZE = 100;
+const MAX_API_OFFSET = 10000;
+const MAX_SITEMAP_URLS = 50000;
+
+async function getAllProducts(
+  base: URLSearchParams = new URLSearchParams(),
+  requiredSnapshotId: number | null = null,
+): Promise<CatalogResponse> {
+  const items: ProductCard[] = [];
+  let offset = 0;
+  let snapshotId = requiredSnapshotId;
+  let firstPage: CatalogResponse | null = null;
+
+  while (true) {
+    const query = new URLSearchParams(base);
+    query.set("sort", "quality");
+    query.set("offset", String(offset));
+    query.set("limit", String(API_PAGE_SIZE));
+    if (snapshotId !== null) query.set("snapshot", String(snapshotId));
+    const page = await getProducts(query.toString());
+    firstPage ||= page;
+    if (snapshotId === null) snapshotId = page.snapshot_id;
+    if (page.snapshot_id !== snapshotId) throw new Error("Sitemap product pages crossed catalog snapshots");
+    items.push(...page.items);
+    if (items.length >= page.total) break;
+    if (page.items.length === 0 || offset + page.items.length > MAX_API_OFFSET) {
+      throw new Error("Sitemap product catalog exceeds the supported API pagination range");
+    }
+    offset += page.items.length;
+  }
+
+  if (!firstPage) throw new Error("Sitemap product catalog returned no page");
+  return { ...firstPage, items, total: items.length, snapshot_id: snapshotId };
+}
+
+async function getAllSkills(): Promise<CommunitySkillPage> {
+  let pageNumber = 1;
+  let firstPage: CommunitySkillPage | null = null;
+  const items: CommunitySkillPage["items"] = [];
+  while (true) {
+    const page = await getSkills(`page=${pageNumber}&page_size=${API_PAGE_SIZE}`);
+    if (!page) throw new Error("Sitemap skills endpoint returned not found");
+    firstPage ||= page;
+    items.push(...page.items);
+    if (items.length >= page.total) return { ...firstPage, items, total: items.length };
+    if (page.items.length === 0) throw new Error("Sitemap skills pagination stopped before total");
+    pageNumber += 1;
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  worker: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex++;
+      results[index] = await worker(values[index]);
+    }
+  }));
+  return results;
+}
 
 function validDate(value: string | null | undefined) {
   if (!value) return undefined;
@@ -42,13 +108,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...Object.keys(workflowGuides).map((slug) => ({ url: `${SITE_URL}/guides/workflows/${encodeURIComponent(slug)}`, lastModified: GUIDE_LAST_MODIFIED })),
   ];
 
-  // Keep each upstream request independent. A temporary failure in one catalog
-  // should not make the whole dynamic sitemap disappear for this crawl.
   const [catalog, shopTokens, meta, skillsData] = await Promise.all([
-    getProducts("sort=quality").catch(() => null),
-    getShopTokens().catch(() => [] as string[]),
-    getMeta().catch(() => null),
-    getSkills("page_size=100").catch(() => null),
+    getAllProducts(),
+    getShopTokens(),
+    getMeta(),
+    getAllSkills(),
   ]);
 
 
@@ -62,18 +126,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages.push({ url: `${SITE_URL}/advertise`, lastModified: snapshotAt });
   }
 
-  const sourceCatalogs = meta
-    ? (
-        await Promise.all(
-          meta.source_platforms.map(async (platform) => {
-            const sourceCatalog = await getProducts(
-              `source_platform=${encodeURIComponent(platform.id)}&sort=quality`,
-            ).catch(() => null);
-            return sourceCatalog ? { platform, catalog: sourceCatalog } : null;
-          }),
-        )
-      ).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-    : [];
+  const sourceCatalogs = await mapWithConcurrency(meta.source_platforms, 4, async (platform) => {
+    const query = new URLSearchParams({ source_platform: platform.id });
+    const sourceCatalog = await getAllProducts(query, catalog.snapshot_id);
+    return { platform, catalog: sourceCatalog };
+  });
 
   // Source platform pages – only include platforms with active offers.
   const sourcePlatformPages: MetadataRoute.Sitemap = sourceCatalogs
@@ -90,14 +147,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   // Product pages are emitted only when the global catalog request succeeded.
-  const productPages: MetadataRoute.Sitemap = catalog
-    ? catalog.items
-        .filter((product) => product.offer_count > 0)
-        .map((product) => ({
-          url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
-          lastModified: validDate(product.last_updated_at) || snapshotAt,
-        }))
-    : [];
+  const productPages: MetadataRoute.Sitemap = catalog.items
+    .filter((product) => product.offer_count > 0)
+    .map((product) => ({
+      url: `${SITE_URL}/products/${encodeURIComponent(product.slug)}`,
+      lastModified: validDate(product.last_updated_at) || snapshotAt,
+    }));
 
   // Only emit source/product URLs that exist in that source's own catalog.
   const sourceProductPages: MetadataRoute.Sitemap = sourceCatalogs.flatMap(({ platform, catalog: sourceCatalog }) =>
@@ -110,14 +165,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   );
 
   // Community Skills & Degradation Benchmark Lab pages
-  const skillPages: MetadataRoute.Sitemap = skillsData
-    ? skillsData.items.map((skill) => ({
-        url: `${SITE_URL}/skills/${encodeURIComponent(skill.slug)}`,
-        lastModified: validDate(skill.updated_at) || snapshotAt,
-      }))
-    : [];
+  const skillPages: MetadataRoute.Sitemap = skillsData.items.map((skill) => ({
+    url: `${SITE_URL}/skills/${encodeURIComponent(skill.slug)}`,
+    lastModified: validDate(skill.updated_at) || snapshotAt,
+  }));
 
-  return [
+  const entries: MetadataRoute.Sitemap = [
     ...staticPages,
     ...guidePages,
     ...sourcePlatformPages,
@@ -126,5 +179,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...sourceProductPages,
     ...skillPages,
   ];
+  if (entries.length > MAX_SITEMAP_URLS) {
+    throw new Error(`Sitemap has ${entries.length} URLs and must be split before it can be served`);
+  }
+  return entries;
 }
-

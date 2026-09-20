@@ -20,8 +20,9 @@ import { recordSkillCopy } from "@/lib/api";
 import { PelicanArena } from "@/components/skills/pelican-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
 import { DemoIframe } from "@/components/skills/demo-iframe";
+import { safeExternalHttpsUrl, safeInternalDemoPath } from "@/lib/safe-url";
 
-const KIND_META: Record<string, { label: string; icon: any; badgeClass: string }> = {
+const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: string }> = {
   benchmark: {
     label: "降智体检",
     icon: Fire,
@@ -46,6 +47,9 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
 
   const meta = KIND_META[skill.kind] || KIND_META.skill;
   const IconComponent = meta.icon;
+  const repoUrl = safeExternalHttpsUrl(skill.repo_url);
+  const authorUrl = safeExternalHttpsUrl(skill.author_url);
+  const demoUrl = safeInternalDemoPath(skill.demo_url);
 
   const handleCopyInstall = async () => {
     if (!skill.install_command) return;
@@ -114,9 +118,9 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
             </span>
           ) : null}
 
-          {skill.repo_url ? (
+          {repoUrl ? (
             <a
-              href={skill.repo_url}
+              href={repoUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-semibold text-[color:var(--foreground)] transition hover:bg-[color:var(--hover)]"
@@ -143,9 +147,9 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
           {skill.author_name ? (
             <div>
               原作者:{" "}
-              {skill.author_url ? (
+              {authorUrl ? (
                 <a
-                  href={skill.author_url}
+                  href={authorUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="font-semibold text-[color:var(--foreground)] underline underline-offset-2 hover:opacity-80"
@@ -226,12 +230,12 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
       ) : null}
 
       {/* Standalone Iframe Viewer (e.g. Bajie or VictorDesign) */}
-      {skill.demo_type === "iframe" && skill.demo_url ? (
+      {skill.demo_type === "iframe" && demoUrl ? (
         <div className="mt-8 rounded-2xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-[color:var(--foreground)]">在线效果演示</h2>
             <a
-              href={skill.demo_url}
+              href={demoUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--brand-strong)] underline underline-offset-2"
@@ -242,7 +246,7 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
           </div>
           <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 shadow-inner">
             <DemoIframe
-              src={skill.demo_url}
+              src={demoUrl}
               title={skill.title}
               className="h-full w-full border-0 bg-white"
             />

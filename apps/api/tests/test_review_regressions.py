@@ -139,3 +139,32 @@ def test_blank_hidden_reason_remains_public(catalog_client):
         db.get(Offer, offer_id).hidden_reason = "   "
         db.commit()
     assert client.get("/api/v1/products").json()["offer_count"] == 1
+
+
+def test_reports_store_verified_product_context_and_reject_hidden_offers(catalog_client):
+    client, engine, (_, _, _, offer_id) = catalog_client
+    message = "这是一条包含可核验上下文的价格纠错信息"
+
+    by_product = client.post(
+        "/api/v1/reports",
+        json={"product_slug": "review-product", "kind": "correction", "message": message},
+    )
+    assert by_product.status_code == 201
+    assert by_product.json()["product_slug"] == "review-product"
+
+    by_offer = client.post(
+        "/api/v1/reports",
+        json={"offer_id": offer_id, "kind": "correction", "message": message},
+    )
+    assert by_offer.status_code == 201
+    assert by_offer.json()["product_slug"] == "review-product"
+
+    with Session(engine) as db:
+        db.get(Offer, offer_id).hidden_reason = "private"
+        db.commit()
+
+    hidden_offer = client.post(
+        "/api/v1/reports",
+        json={"offer_id": offer_id, "kind": "correction", "message": message},
+    )
+    assert hidden_offer.status_code == 404

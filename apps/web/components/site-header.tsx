@@ -43,7 +43,7 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           if (!cancelled) setSession(s);
         })
         .catch(() => {
-          if (!cancelled) setSession({ authenticated: false, user: null });
+          // Keep the last confirmed session. A network failure is not logout.
         });
     };
 
@@ -61,14 +61,16 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
   useEffect(() => {
     if (!isAuthenticated) return;
     let mounted = true;
+    let stopHeartbeat: (() => void) | undefined;
     // Defer one tick so a login that happens during unmount cannot start an
     // orphaned timer (React Strict Mode double-invokes effects as well).
     const handle = window.setTimeout(() => {
-      if (mounted) initUserHeartbeat();
+      if (mounted) stopHeartbeat = initUserHeartbeat();
     }, 0);
     return () => {
       mounted = false;
       window.clearTimeout(handle);
+      stopHeartbeat?.();
     };
   }, [isAuthenticated]);
 
@@ -115,7 +117,11 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
           <Link href="/shops/submit" aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="header-action header-action-submit">
             <Storefront size={18} />申请收录
           </Link>
-          {session?.authenticated && session.user ? (
+          {session === null ? (
+            <span className="header-action opacity-60" aria-label="正在读取账户状态">
+              <User size={18} />账户
+            </span>
+          ) : session.authenticated && session.user ? (
             <Link href="/account" aria-current={current(pathname, "/account") ? "page" : undefined} className="header-action header-action-user">
               <User size={18} />
               <span className="max-w-[70px] truncate">{session.user.nickname || "个人中心"}</span>
@@ -143,7 +149,11 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
                 ))}
                 <Link href="/watchlist" onClick={closeMenu} aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="nav-link flex min-h-11"><Bell size={17} />关注清单</Link>
                 <Link href="/shops/submit" onClick={closeMenu} aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
-                {session?.authenticated && session.user ? (
+                {session === null ? (
+                  <span className="nav-link flex min-h-11 items-center gap-1.5 text-[color:var(--muted)]" aria-live="polite">
+                    <User size={17} />账户状态加载中
+                  </span>
+                ) : session.authenticated && session.user ? (
                   <Link href="/account" onClick={closeMenu} aria-current={current(pathname, "/account") ? "page" : undefined} className="nav-link flex min-h-11">
                     <User size={17} />个人中心 ({session.user.nickname || "我的账号"})
                   </Link>

@@ -73,3 +73,14 @@ def test_public_feed_endpoints(client, tmp_path: Path, monkeypatch):
     # 3. Test 404 for missing snapshot
     res_404 = client.get("/data/v1/snapshots/9999.json")
     assert res_404.status_code == 404
+
+    # Invalid characters are rejected rather than stripped into another ID.
+    res_alias = client.get("/data/v1/snapshots/12.34.json")
+    assert res_alias.status_code == 400
+
+
+def test_configured_public_data_dir_never_falls_back(tmp_path: Path, monkeypatch):
+    configured = tmp_path / "missing-shared-volume"
+    monkeypatch.setenv(public_feed.PUBLIC_DATA_DIR_ENV, str(configured))
+
+    assert public_feed._find_data_dir() == configured

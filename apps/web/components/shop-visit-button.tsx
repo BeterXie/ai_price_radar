@@ -11,6 +11,8 @@ export function ShopVisitButton({
   shopToken: string;
   sourceUrl: string;
 }) {
+  if (sourceUrl.length === 0) return null;
+
   const handleClick = () => {
     try {
       fetch(`${publicApiBase}/api/v1/shops/${encodeURIComponent(shopToken)}/click`, {

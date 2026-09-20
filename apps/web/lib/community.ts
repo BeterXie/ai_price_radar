@@ -1,5 +1,20 @@
-export const GITHUB_REPOSITORY_URL = "https://github.com/BeterXie/ai_price_radar";
-export const BUSINESS_EMAIL = "info@ai.pricememo.cn";
+function safeHttpsUrl(value: string | undefined) {
+  const candidate = value?.trim() || "";
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "https:" && !parsed.username && !parsed.password ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function safeBusinessEmail(value: string | undefined) {
+  const candidate = value?.trim().toLowerCase() || "";
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate : "";
+}
+
+export const GITHUB_REPOSITORY_URL = safeHttpsUrl(process.env.NEXT_PUBLIC_GITHUB_REPOSITORY_URL);
+export const BUSINESS_EMAIL = safeBusinessEmail(process.env.NEXT_PUBLIC_BUSINESS_EMAIL);
 
 export type SupportMethod = {
   id: "wechat" | "alipay";
@@ -21,20 +36,18 @@ const configuredSupportMethods: SupportMethod[] = [
   {
     id: "wechat",
     label: "微信支付",
-    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL || "https://ai.pricememo.cn/support/wechat.jpg"),
+    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_WECHAT_QR_URL),
   },
   {
     id: "alipay",
     label: "支付宝",
-    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL || "https://ai.pricememo.cn/support/alipay.jpg"),
+    qrUrl: safeQrUrl(process.env.NEXT_PUBLIC_SUPPORT_ALIPAY_QR_URL),
   },
 ];
 
 export const SUPPORT_METHODS = configuredSupportMethods.filter((method) => Boolean(method.qrUrl));
 
-export const SUPPORT_AVAILABLE =
-  process.env.NEXT_PUBLIC_SUPPORT_ENABLED !== "false" &&
-  SUPPORT_METHODS.length > 0;
+export const SUPPORT_AVAILABLE = process.env.NEXT_PUBLIC_SUPPORT_ENABLED === "true" && SUPPORT_METHODS.length > 0;
 
 // Community & Private Traffic Configuration
 export const COMMUNITY_QQ_GROUP = process.env.NEXT_PUBLIC_COMMUNITY_QQ_GROUP || "938741334";
@@ -42,7 +55,7 @@ export const COMMUNITY_QQ_GROUP_URL =
   process.env.NEXT_PUBLIC_COMMUNITY_QQ_URL ||
   "https://qm.qq.com/cgi-bin/qm/qr?k=community&jump_from=webapi";
 export const COMMUNITY_WECHAT_QR_URL = safeQrUrl(
-  process.env.NEXT_PUBLIC_COMMUNITY_WECHAT_QR_URL || "https://ai.pricememo.cn/support/wechat.jpg"
+  process.env.NEXT_PUBLIC_COMMUNITY_WECHAT_QR_URL
 );
 export const COMMUNITY_ENABLED = process.env.NEXT_PUBLIC_COMMUNITY_ENABLED !== "false";
 

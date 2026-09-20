@@ -46,6 +46,15 @@ except ImportError:
     render_telegram_report = None
 
 
+@pytest.fixture(autouse=True)
+def enable_test_auth_codes(monkeypatch, bot_encryption_key):
+    """This module reads login codes from its isolated database fixtures."""
+    monkeypatch.setenv("DEV_PRINT_AUTH_CODES", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 
 @pytest.fixture
 def test_db():
@@ -204,12 +213,13 @@ def test_user_center_and_qq_bot_binding(client: TestClient, test_db):
     assert st.status_code == 200
     assert st.json()["status"] == "WAITING"
 
-    # Confirm binding (e.g. user sends /bind <code_or_session> from QQ)
-    confirm = client.post(
+    # Confirm binding through the trusted bot-side sender identity. The web API
+    # intentionally has no endpoint that accepts a caller-supplied QQ/OpenID.
+    binding = complete_qq_binding(test_db, bind_code, "qq_user_123456")
+    assert binding is not None
+    assert client.post(
         f"/api/v1/user/notifications/qq/confirm?bind_code={bind_code}&target_id=qq_user_123456"
-    )
-    assert confirm.status_code == 200
-    assert confirm.json()["success"] is True
+    ).status_code == 404
 
     # Profile now reflects bound status
     profile_after = client.get("/api/v1/user/profile")
@@ -284,6 +294,17 @@ def test_price_change_event_and_formatter():
 
     # Test dispatch without throwing
     dispatch_price_changes([drop_evt, hike_evt])
+
+    assert create_price_change_event(
+        offer_id=3,
+        product_name="Currency switch",
+        shop_name="Shop",
+        source_platform="merchant_json",
+        old_price=Decimal("100.00"),
+        new_price=Decimal("20.00"),
+        old_currency="CNY",
+        currency="USD",
+    ) is None
 
 
 def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db, mock_auth):
@@ -784,6 +805,23 @@ def test_bot_secret_encryption_roundtrip():
     assert encrypted.startswith("enc:v1:")
     assert secret not in encrypted
     assert decrypt_secret(encrypted) == secret
+
+
+def test_bot_secret_rotation_reads_previous_key_and_rekeys(monkeypatch):
+    settings = get_settings()
+    old_key = "old-bot-encryption-key-material-0001"
+    new_key = "new-bot-encryption-key-material-0002"
+    monkeypatch.setattr(settings, "bot_secret_encryption_key", old_key)
+    monkeypatch.setattr(settings, "bot_secret_encryption_previous_keys", "")
+    encrypted_with_old_key = encrypt_secret("rotating-secret", settings)
+
+    monkeypatch.setattr(settings, "bot_secret_encryption_key", new_key)
+    monkeypatch.setattr(settings, "bot_secret_encryption_previous_keys", old_key)
+    assert decrypt_secret(encrypted_with_old_key, settings) == "rotating-secret"
+
+    rekeyed = encrypt_secret(encrypted_with_old_key, settings)
+    assert rekeyed != encrypted_with_old_key
+    assert decrypt_secret(rekeyed, settings) == "rotating-secret"
 
 
 def test_encrypt_secret_refuses_public_default_session_secret(monkeypatch):

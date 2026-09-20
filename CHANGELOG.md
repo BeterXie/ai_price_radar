@@ -2,6 +2,21 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.7.96] - 2026-09-21
+
+### Security and reliability
+- Complete the security review follow-up across authentication, bot credential encryption, privacy cleanup, notifications, outbox leases, source intake, public URL handling, pagination limits, and runtime safety checks.
+- Add production environment validation for app mode, mail transport, public URLs, support metadata, and independent secrets.
+
+### Catalog and operations
+- Move product history trend calculations to database-side daily aggregation with a bounded price histogram and a configurable TTL/LRU cache, preventing large `offer_history` reads from exhausting the API container.
+- Improve product catalog filtering, pagination, source discovery/intake workflows, shop-bound coupons, and public feed safety.
+- Add frontend error states, guide/product delivery mappings, watchlist/admin refinements, and deployment/CI safeguards.
+
+### Verification
+- Add regression coverage for migration compatibility, privacy/runtime safety, public URL handling, QQ gateway privacy, seed behavior, product batch filters, and price trend aggregation.
+- Release checks include API/Web/Pipeline/Detector/Crawler/Scripts tests, PostgreSQL 16 verification, Compose validation, and dependency audit.
+
 ## [3.7.95] - 2026-09-20
 
 ### Security

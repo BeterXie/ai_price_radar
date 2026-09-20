@@ -131,6 +131,14 @@ def normalize_public_https_url(value: object) -> str:
     netloc = f"{rendered_host}:{port}" if port and port != 443 else rendered_host
     return urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
 
+
+def public_https_url_or_empty(value: object) -> str:
+    """Return a normalized public HTTPS URL, or hide an unsafe legacy value."""
+    try:
+        return normalize_public_https_url(value)
+    except ValueError:
+        return ""
+
 def _ldxp_detection(url: str) -> SourceDetection | None:
     parsed = urllib.parse.urlsplit(url)
     parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]

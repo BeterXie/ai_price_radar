@@ -53,7 +53,7 @@ export default async function ShopsPage({
   if (source_platform) queryParams.set("source_platform", source_platform);
   const [{ items: shops, total }, meta] = await Promise.all([
     getShopCards(queryParams.toString()),
-    getMeta(),
+    getMeta().catch(() => ({ source_platforms: [] })),
   ]);
   const totalPages = getTotalPages(total, DIRECTORY_PAGE_SIZE);
   if (page > totalPages) redirect(pageHref(totalPages));

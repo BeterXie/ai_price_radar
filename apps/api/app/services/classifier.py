@@ -59,6 +59,7 @@ PLATFORM_16688 = "16688"
 RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率", "分组"]
 SHARED_POOL_MARKERS = ["号池", "共享池", "共享号", "拼车池", "拼车", "共享账号", "多人共享", "车位", "车号"]
 TRIAL_MARKERS = ["日抛", "体验版", "体验号", "试用号", "小时号"]
+NO_ACCOUNT_DELIVERY_MARKERS = ["不交付账号", "不提供账号", "不含账号", "没有账号", "无账号", "非账号交付"]
 GENERIC_EMAIL_MARKERS = ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱"]
 CATEGORY_COMMERCE_MARKERS = [
     "plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy",
@@ -257,6 +258,8 @@ def _delivery_type(text: str) -> str:
     ]
     if _contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代", "仅反代"]):
         return "session_token"
+    if _contains(text, RELAY_MARKERS) and _contains(text, NO_ACCOUNT_DELIVERY_MARKERS):
+        return "relay_api"
     if _contains(text, ["团队邀请", "team seat", "自动拉", "拉入团队", "子号", "team"]):
         return "team_seat"
     if any(w in text for w in ["拼车", "共享账号", "多人共享", "号池", "共享池", "共享号", "拼车池"]):
@@ -741,9 +744,18 @@ def classify_product(
     if slug != "chatgpt-k12":
         tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
     confidence = 88 if specific_match else 68 if slug else 0
-    delivery_type = _delivery_type(normalize_title(title))
-    if delivery_type == "unknown":
-        delivery_type = _delivery_type(detail_text)
+    title_delivery_type = _delivery_type(normalize_title(title))
+    description_delivery_type = _delivery_type(normalize_title(description))
+    detail_delivery_type = _delivery_type(detail_text)
+    # Restrictive semantics often live only in the description. They must win
+    # over a generic title such as "成品号", otherwise shared/trial/relay offers
+    # leak into comparable price statistics.
+    if description_delivery_type in {"shared_pool", "trial_account", "relay_api", "session_token"}:
+        delivery_type = description_delivery_type
+    elif title_delivery_type != "unknown":
+        delivery_type = title_delivery_type
+    else:
+        delivery_type = detail_delivery_type
     period = _service_period(normalize_title(title))
     if period == "unknown":
         described_period = _service_period(detail_text)

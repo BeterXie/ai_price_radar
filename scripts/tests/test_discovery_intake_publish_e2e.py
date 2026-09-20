@@ -105,7 +105,7 @@ def _upsert_claim_report(
     return candidate_id, reported.json()
 
 
-def test_dujiao_candidate_auto_approves_and_stays_excluded_from_publish(tmp_path, monkeypatch):
+def test_dujiao_candidate_stays_pending_and_never_reaches_publish(tmp_path, monkeypatch):
     engine, database_url, client = _setup(tmp_path, monkeypatch)
     try:
         candidate_id, reported = _upsert_claim_report(
@@ -116,11 +116,12 @@ def test_dujiao_candidate_auto_approves_and_stays_excluded_from_publish(tmp_path
             source_key="https://dujiao-e2e.example.com",
             source_url="https://dujiao-e2e.example.com",
         )
-        assert reported["status"] == "promoted"
-        assert reported["detected_platform"] == "dujiao_next"
+        # dujiao_next 在禁用平台清单中：候选可以完成检测，但即便
+        # discovery_dujiao_auto_approve=True 也不会被自动批准或促进为收录申请。
+        assert reported["status"] == "pending_review"
+        assert reported["promoted_intake_id"] is None
 
-        # v3.7.42 (c70e22d) 起发布器完全排除 dujiao_next：候选可以自动批准并
-        # 提升（promote）为收录申请，但发布门禁不会为它生成发布任务。
+        # 发布门禁因此没有可发布来源（与 v3.7.42 起 dujiao_next 完全排除一致）。
         pipeline_db = session_for(database_url)
         try:
             assert approved_intake_sources(pipeline_db) == []
@@ -128,11 +129,9 @@ def test_dujiao_candidate_auto_approves_and_stays_excluded_from_publish(tmp_path
             pipeline_db.close()
 
         with Session(engine) as db:
-            intake = db.scalar(select(SourceIntake).where(SourceIntake.id == reported["promoted_intake_id"]))
-            assert intake.status == "approved"
-            assert intake.origin == "discovery"
+            assert db.scalar(select(SourceIntake)) is None
             candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == candidate_id))
-            assert candidate.status == "promoted"
+            assert candidate.status == "pending_review"
     finally:
         _cleanup()
 

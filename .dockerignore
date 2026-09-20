@@ -1,5 +1,14 @@
 .git
-.env
+.env*
+**/.env*
+private_*
+**/private_*
+browser_profile
+**/browser_profile
+browser_state.json
+**/browser_state.json
+.runtime
+**/.runtime
 **/__pycache__
 **/.pytest_cache
 **/*.pyc

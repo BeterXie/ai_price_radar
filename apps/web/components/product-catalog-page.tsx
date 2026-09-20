@@ -44,8 +44,8 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   });
   const productTabBrand = activeBrand && Object.prototype.hasOwnProperty.call(PRODUCT_TABS, activeBrand)
     ? activeBrand as BrandName
-    : "OpenAI";
-  const productTabs = PRODUCT_TABS[productTabBrand];
+    : null;
+  const productTabs = productTabBrand ? PRODUCT_TABS[productTabBrand] : [];
   const scopeQuery = new URLSearchParams(detailQuery);
   if (searchQuery) scopeQuery.set("q", searchQuery);
   const filters = filterValues(rawParams);
@@ -91,18 +91,17 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
     ...(!product && searchQuery ? { q: searchQuery } : {}),
   };
   const updatedWithinLabel: Record<string, string> = { "6": "6 小时内", "24": "24 小时内", "72": "3 天内", "168": "7 天内" };
-  const headingTitle = product
-    ? `${product.display_name} 报价`
-    : searchQuery
-      ? `“${searchQuery}”的报价`
-      : activeBrand
-        ? `${activeBrand} 报价`
-        : "AI 商品报价";
-  const headingDescription = product
-    ? getProductSeoContent(product.slug, product.display_name, product.description).intro
-    : searchQuery
-      ? "匹配商品名称与来源商品标题。继续按品牌、库存、交付方式和更新时间缩小范围。"
-      : "按品牌、商品类型、交付方式、库存和更新时间筛选公开报价。";
+  let headingTitle = "AI 商品报价";
+  let headingDescription = "按品牌、商品类型、交付方式、库存和更新时间筛选公开报价。";
+  if (activeBrand) headingTitle = `${activeBrand} 报价`;
+  if (searchQuery) {
+    headingTitle = `“${searchQuery}”的报价`;
+    headingDescription = "匹配商品名称与来源商品标题。继续按品牌、库存、交付方式和更新时间缩小范围。";
+  }
+  if (product) {
+    headingTitle = `${product.display_name} 报价`;
+    headingDescription = getProductSeoContent(product.slug, product.display_name, product.description).intro;
+  }
 
   return (
     <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="scope-rails selected-summary grouped-ledger responsive-filter-disclosure">

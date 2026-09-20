@@ -65,8 +65,8 @@ const standards = [
 ] as const;
 
 export default async function AdvertisePage() {
-  const meta = await getMeta().catch(() => null);
-  if (!meta?.advertise_enabled) {
+  const meta = await getMeta();
+  if (!meta.advertise_enabled || !BUSINESS_EMAIL) {
     notFound();
   }
 

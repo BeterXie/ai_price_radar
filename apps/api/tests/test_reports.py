@@ -6,8 +6,18 @@ from starlette.requests import Request
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import NotificationOutbox, Report, ReportRateLimit, Shop, SourceIntake
+from app.models import NotificationOutbox, Report, ReportRateLimit, Shop, SourceIntake, User
 from app.routers import public
+from app.security import require_current_user
+
+
+def authorized_shop_payload(**values):
+    return {
+        "contact": "merchant@example.com",
+        "authorization_confirmed": True,
+        "consent_version": "shop-source-submission-v1",
+        **values,
+    }
 
 
 def make_request(client: str = "203.0.113.7", forwarded: str = "") -> Request:
@@ -88,14 +98,14 @@ def test_shop_request_is_validated_normalized_and_deduplicated(monkeypatch):
             yield db
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=1, email="merchant@example.com")
     try:
         client = TestClient(app)
-        payload = {
+        payload = authorized_shop_payload(**{
             "shop_url": "https://PAY.LDXP.CN/shop/JBJJWNA5/?from=merchant",
             "shop_name": "测试店铺",
-            "contact": "merchant@example.com",
             "note": "主营 AI 订阅商品，请审核公开报价。",
-        }
+        })
         created = client.post("/api/v1/shop-requests", json=payload)
         assert created.status_code == 201
         assert created.json()["status"] == "submitted"
@@ -140,11 +150,12 @@ def test_shop_request_reports_known_shop_without_creating_report(monkeypatch):
             yield db
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=1, email="merchant@example.com")
     try:
         client = TestClient(app)
         response = client.post(
             "/api/v1/shop-requests",
-            json={"shop_url": "https://pay.ldxp.cn/shop/known01", "contact": "merchant@example.com"},
+            json=authorized_shop_payload(shop_url="https://pay.ldxp.cn/shop/known01"),
         )
         assert response.status_code == 200
         assert response.json()["status"] == "already_known"
@@ -168,6 +179,7 @@ def test_shop_request_rejects_non_ldxp_url(monkeypatch):
             yield db
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=1, email="merchant@example.com")
     try:
         client = TestClient(app)
         response = client.post(
@@ -235,4 +247,3 @@ def test_admin_reports_status_filtering(monkeypatch):
         assert "店铺收录申请4" not in messages
     finally:
         app.dependency_overrides.clear()
-
