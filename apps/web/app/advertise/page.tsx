@@ -6,6 +6,10 @@ import { InfoPage, SectionIntro } from "@/components/page-shell";
 import { BUSINESS_EMAIL } from "@/lib/community";
 import { getMeta } from "@/lib/api";
 
+// Advertisement visibility is controlled by the API at runtime and must not
+// be frozen into a static build without an API service.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "商务合作 / 广告投放",
   description: "面向 AI 账号发卡平台、中转 API 服务商、合租拼车平台及相关工具团队，提供精准高转化的商业推广与合作曝光渠道。",
