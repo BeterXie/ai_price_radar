@@ -15,7 +15,7 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.7.96"
+VERSION = "3.7.97"
 PRIVACY_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 logger = logging.getLogger(__name__)
 

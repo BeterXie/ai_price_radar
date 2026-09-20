@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.7.97] - 2026-09-21
+
+### Deployment packaging
+- Allow the production prebuilt Web image to receive only `.next/standalone` and `.next/static` from the separately generated standalone bundle.
+- Bump the release version after fixing the production Docker build context gate.
+
 ## [3.7.96] - 2026-09-21
 
 ### Security and reliability
