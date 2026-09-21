@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import Base
-from app.models import AdminBroadcast, NotificationOutbox, ShopCoupon, User, UserActionLog, UserBotBinding, UserSession
+from app.models import NotificationOutbox, ShopCoupon, User, UserActionLog, UserBotBinding, UserSession
 from app.routers.admin import (
     admin_broadcast_audience,
     admin_create_broadcast,
@@ -270,7 +270,6 @@ def test_admin_broadcast_notifications():
     Base.metadata.create_all(engine)
 
     with Session(engine) as db:
-        now = datetime.now(timezone.utc)
         # User 1: email only
         u1 = User(email="u1@example.com", nickname="User 1", is_active=True)
         # User 2: email and bot

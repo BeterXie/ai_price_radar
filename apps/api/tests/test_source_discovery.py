@@ -13,7 +13,6 @@ from app.core.config import get_settings
 from app.database import Base as ApiBase, get_db
 from app.main import app
 from app.models import SourceCandidate, SourceIntake
-from app.services.source_discovery import normalize_candidate_url
 
 
 def make_client(tmp_path: Path, monkeypatch):
@@ -776,7 +775,7 @@ def test_concurrent_upsert_on_postgres_merges_into_one_candidate():
         try:
             with session_factory() as db:
                 upsert_candidate = __import__("app.services.source_discovery", fromlist=["upsert_candidate"]).upsert_candidate
-                result = upsert_candidate(
+                upsert_candidate(
                     db,
                     discovered_url="https://concurrent.example.com/products/chatgpt",
                     platform_hint="dujiao_next",

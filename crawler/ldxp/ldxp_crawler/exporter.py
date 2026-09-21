@@ -88,7 +88,10 @@ def export_results(db: StateDB, output_dir: Path, prefix: str = "ldxp_gpt_result
     candidates, matches, runs = db.rows_for_export()
     status_counts = db.status_counts()
     latest_run = runs[0] if runs else None
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Single local-time reading so the file stamp and the summary row agree.
+    # Naive local time is intentional: exports are human-facing operator reports.
+    now = datetime.now()  # noqa: DTZ005
+    stamp = now.strftime("%Y%m%d_%H%M%S")
     xlsx_path = output_dir / f"{prefix}_{stamp}.xlsx"
     shops_csv = output_dir / f"{prefix}_shops_{stamp}.csv"
     products_csv = output_dir / f"{prefix}_products_{stamp}.csv"
@@ -98,7 +101,7 @@ def export_results(db: StateDB, output_dir: Path, prefix: str = "ldxp_gpt_result
     summary.title = "运行摘要"
     summary.append(["指标", "数值"])
     summary_rows = [
-        ("导出时间", datetime.now().isoformat(timespec="seconds")),
+        ("导出时间", now.isoformat(timespec="seconds")),
         ("候选店铺总数", len(candidates)),
         ("当前匹配商品数", len(matches)),
         ("当前命中店铺数", sum(1 for row in candidates if int(row["hit_count"] or 0) > 0)),

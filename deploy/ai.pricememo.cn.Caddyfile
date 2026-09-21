@@ -60,6 +60,10 @@ ai.pricememo.cn {
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"
         Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        # Aligned with deploy/Caddyfile; frame-ancestors stays 'self' to match
+        # the SAMEORIGIN framing policy above and the /demos/* embed contract.
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://www.googletagmanager.com"
         -Server
     }
 

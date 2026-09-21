@@ -37,7 +37,7 @@ from app.models import (
 )
 from app.services.bot_binding import check_qq_binding_session, complete_qq_binding, start_qq_binding_session
 from app.services.credential_crypto import _AAD, _PREFIX, decrypt_secret, encrypt_secret
-from app.services.notification_hub import PriceChangeEvent, create_price_change_event, dispatch_price_changes
+from app.services.notification_hub import create_price_change_event, dispatch_price_changes
 
 try:
     from extensions.bots.formatter import render_qq_report, render_telegram_report
@@ -352,7 +352,7 @@ def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db, mock_a
 
 def test_bot_chat_commands(client: TestClient, test_db):
     try:
-        import extensions.bots.chat_commands
+        import extensions.bots.chat_commands  # noqa: F401  (availability probe)
     except ImportError:
         pytest.skip("extensions.bots not available in open-source environment")
 
