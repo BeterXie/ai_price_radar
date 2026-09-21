@@ -25,6 +25,7 @@ from ..models import (
     UserActionLog,
     UserBotBinding,
     UserProductSubscription,
+    UserSession,
 )
 from ..schemas import (
     BotCommandRequest,
@@ -36,7 +37,9 @@ from ..schemas import (
     CouponDropTrackRequest,
     CouponRead,
     CouponRedeemRequest,
+    PasswordUpdateResponse,
     QQBotBindingStartResponse,
+    SetPasswordRequest,
     UserBotBindingRead,
     UserBotBindingUpdate,
     UserCouponListOut,
@@ -49,7 +52,7 @@ from ..schemas import (
     UserTrackClickRequest,
 )
 from ..security import get_current_user, get_token_from_request, require_current_user
-from ..services.auth import get_session_by_token, settle_session_activity
+from ..services.auth import _session_token_digest, get_session_by_token, settle_session_activity
 from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
@@ -157,11 +160,92 @@ def get_user_profile(
             nickname=current_user.nickname or (current_user.email.split("@")[0] if current_user.email else "用户"),
             avatar_url=current_user.avatar_url or "",
             has_qq_bound=bool(current_user.qq_openid),
+            has_password=bool(current_user.password_hash),
             created_at=current_user.created_at,
         ),
         "qq_bot_binding": _binding_to_read(qq_binding) if qq_binding else None,
         "bot_enabled": _is_bot_enabled(db),
     }
+
+
+@router.post("/password", response_model=PasswordUpdateResponse)
+def set_user_password(
+    payload: SetPasswordRequest,
+    request: Request,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> PasswordUpdateResponse:
+    """Set a login password (first time) or change the existing one.
+
+    First-time setup is allowed for any authenticated session because the
+    session itself was established through a verified channel (email code or
+    QQ OAuth). Changing an existing password requires the current password.
+    """
+    from .public import _client_address, _enforce_client_rate_limit
+    from ..services.password_auth import hash_password, validate_password_strength, verify_password
+
+    # Per-user limiter: throttles in-session guessing of the current password.
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace=f"user-password-{current_user.id}",
+        max_requests=20,
+        window_seconds=600,
+        detail="密码操作过于频繁，请稍后再试",
+    )
+
+    if not (current_user.email or "").strip():
+        return PasswordUpdateResponse(
+            success=False,
+            message="当前账号未绑定邮箱，暂不支持密码登录；请使用 QQ 扫码或邮箱验证码登录",
+            has_password=bool(current_user.password_hash),
+        )
+
+    has_password = bool(current_user.password_hash)
+    if has_password:
+        if not payload.current_password:
+            return PasswordUpdateResponse(success=False, message="请输入当前密码", has_password=True)
+        if not verify_password(payload.current_password, current_user.password_hash):
+            return PasswordUpdateResponse(success=False, message="当前密码不正确", has_password=True)
+
+    policy_error = validate_password_strength(payload.password)
+    if policy_error:
+        return PasswordUpdateResponse(success=False, message=policy_error, has_password=has_password)
+
+    client_ip = _client_address(request)
+    ua = request.headers.get("user-agent", "")
+    now = datetime.now(timezone.utc)
+    current_user.password_hash = hash_password(payload.password)
+    current_user.updated_at = now
+    db.add(
+        UserActionLog(
+            user_id=current_user.id,
+            action_type="password_change" if has_password else "password_set",
+            action_name="修改登录密码" if has_password else "设置登录密码",
+            ip_address=client_ip,
+            user_agent=ua,
+            created_at=now,
+        )
+    )
+    if has_password:
+        # Credential rotation: revoke every other session so a leaked old
+        # password cannot keep an attacker's session alive. The session making
+        # this change stays signed in (match both digest and legacy plaintext).
+        current_token = get_token_from_request(request)
+        current_digest = _session_token_digest(current_token) if current_token else ""
+        db.execute(
+            delete(UserSession).where(
+                UserSession.user_id == current_user.id,
+                UserSession.token != current_digest,
+                UserSession.token != (current_token or ""),
+            )
+        )
+    db.commit()
+    return PasswordUpdateResponse(
+        success=True,
+        message="登录密码已修改，其他设备已退出登录" if has_password else "登录密码已设置，下次可直接用邮箱 + 密码登录",
+        has_password=True,
+    )
 
 
 def _subscription_to_read(

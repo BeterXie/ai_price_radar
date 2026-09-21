@@ -31,9 +31,7 @@ def sqlite_path_from_url(url: str) -> str | None:
 
 
 POSTGRES_DDL = """
-ALTER TABLE shop_coupons ADD COLUMN IF NOT EXISTS campaign_id BIGINT REFERENCES coupon_campaigns(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS ix_shop_coupons_campaign_id ON shop_coupons(campaign_id);
-CREATE INDEX IF NOT EXISTS ix_shop_coupons_user_campaign ON shop_coupons(assigned_user_id, campaign_id);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT DEFAULT '';
 """
 
 
@@ -46,19 +44,19 @@ def migrate_sqlite(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     try:
         cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(shop_coupons);")
-        columns = [row[1] for row in cursor.fetchall()]
-        if "campaign_id" not in columns:
-            cursor.execute("ALTER TABLE shop_coupons ADD COLUMN campaign_id INTEGER REFERENCES coupon_campaigns(id) ON DELETE SET NULL;")
-        cursor.execute("CREATE INDEX IF NOT EXISTS ix_shop_coupons_campaign_id ON shop_coupons(campaign_id);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS ix_shop_coupons_user_campaign ON shop_coupons(assigned_user_id, campaign_id);")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
+        if cursor.fetchone():
+            cursor.execute("PRAGMA table_info(users);")
+            cols = [row[1] for row in cursor.fetchall()]
+            if "password_hash" not in cols:
+                cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT '';")
         conn.commit()
     finally:
         conn.close()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migrate database to v18: Add campaign_id to shop_coupons.")
+    parser = argparse.ArgumentParser(description="Migrate database to v20: Add users.password_hash for password login.")
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
     parser.add_argument(
         "--sqlite-path",
@@ -73,13 +71,13 @@ def main() -> None:
         with psycopg.connect(connection_url(args.database_url)) as connection:
             migrate_postgres(connection)
             connection.commit()
-        print("Migrated PostgreSQL database to v18.")
+        print("Migrated PostgreSQL database to v20.")
     else:
         # Honor an explicit --sqlite-path first, then a sqlite:// --database-url,
         # and only fall back to the default file name.
         db_path = args.sqlite_path or sqlite_path_from_url(args.database_url or "") or "price_radar.db"
         migrate_sqlite(db_path)
-        print(f"Migrated SQLite database to v18: {db_path}")
+        print(f"Migrated SQLite database to v20: {db_path}")
 
 
 if __name__ == "__main__":

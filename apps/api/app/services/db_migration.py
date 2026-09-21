@@ -85,6 +85,7 @@ def _migrate_sqlite(conn) -> None:
             ("last_active_at", "TIMESTAMP"),
             ("total_duration_seconds", "INTEGER DEFAULT 0"),
             ("button_click_count", "INTEGER DEFAULT 0"),
+            ("password_hash", "TEXT DEFAULT ''"),
         ]
         for col_name, col_type in user_cols_to_add:
             if col_name not in existing_cols:
@@ -201,6 +202,7 @@ def _migrate_postgres(conn) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_duration_seconds INTEGER DEFAULT 0;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS button_click_count INTEGER DEFAULT 0;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT DEFAULT '';",
         "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64) DEFAULT '';",
         "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_agent TEXT DEFAULT '';",
         "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;",

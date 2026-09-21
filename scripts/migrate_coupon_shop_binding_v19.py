@@ -20,9 +20,13 @@ def sqlite_path_from_url(url: str) -> str | None:
         return None
     prefix = "sqlite+pysqlite://" if url.startswith("sqlite+pysqlite://") else "sqlite://"
     path = url[len(prefix):]
-    if path.startswith("/"):
-        # sqlite:////data/app.db -> /data/app.db ; sqlite:///./x.db -> ./x.db
-        path = path[1:] if url.startswith("sqlite:////") else path
+    if url.startswith("sqlite:////"):
+        # sqlite:////data/app.db -> /data/app.db (absolute path, 4 slashes)
+        path = path[1:]
+    elif path.startswith("/"):
+        # sqlite:///./x.db -> ./x.db (relative path, 3 slashes); keeping the
+        # leading "/" here would resolve against the filesystem root instead.
+        path = path[1:]
     return path or None
 
 
