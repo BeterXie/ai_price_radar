@@ -9,7 +9,6 @@ from sqlalchemy import text
 from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for, utcnow
 from connectors import CONNECTORS
 from publish_catalog import (
-    SourceSpec,
     approved_intake_sources,
     public_offer_count,
     publish_sources,

@@ -5,13 +5,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
 
 from common import (
     Base,
     CatalogSnapshot,
     Offer,
-    Product,
     RawProduct,
     Shop,
     ensure_products,

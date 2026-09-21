@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import statistics
-import tempfile
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal

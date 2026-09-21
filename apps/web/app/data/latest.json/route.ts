@@ -51,7 +51,12 @@ export async function GET(request: NextRequest) {
     // fallback to internal API
   }
 
-  const internalApiBase = process.env.INTERNAL_API_BASE_URL || "http://api:8000";
+  // Keep the fallback chain identical to lib/api.ts, lib/snapshot-catalog.ts
+  // and next.config.ts: local development assumes the API runs on the host.
+  const internalApiBase =
+    process.env.INTERNAL_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://127.0.0.1:8000";
   try {
     // Forward the conditional request so the API's own 304 handling is preserved.
     const forwardHeaders: Record<string, string> = { Accept: "application/json" };

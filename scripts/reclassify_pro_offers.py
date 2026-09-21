@@ -18,7 +18,7 @@ for path in [
         sys.path.insert(0, path)
 
 from app.database import SessionLocal
-from app.models import Product, Offer, RawProduct
+from app.models import Product, Offer
 from app.services.classifier import _pro_multiplier
 
 
@@ -36,7 +36,7 @@ def reclassify_pro_offers(dry_run: bool = False) -> None:
             print("[ERROR] Required products 'chatgpt-pro-5x' or 'chatgpt-pro-20x' not found in database!")
             return
 
-        print(f"[INFO] Found products:")
+        print("[INFO] Found products:")
         print(f"  - chatgpt-pro: id={pro.id}, is_visible={pro.is_visible}")
         print(f"  - chatgpt-pro-5x: id={pro_5x.id}, is_visible={pro_5x.is_visible}")
         print(f"  - chatgpt-pro-20x: id={pro_20x.id}, is_visible={pro_20x.is_visible}")
@@ -76,7 +76,7 @@ def reclassify_pro_offers(dry_run: bool = False) -> None:
             print(f"[SUCCESS] Reclassified {len(offers)} offers:")
             print(f"  - To chatgpt-pro-5x: {count_5x}")
             print(f"  - To chatgpt-pro-20x: {count_20x}")
-            print(f"  - Set chatgpt-pro is_visible: False")
+            print("  - Set chatgpt-pro is_visible: False")
 
             # Verify count
             remaining = session.query(Offer).filter(Offer.product_id == pro.id).count()

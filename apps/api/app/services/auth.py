@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode
 
 import httpx
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings

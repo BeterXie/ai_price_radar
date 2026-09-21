@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..database import get_db
-from ..models import Offer, OfferClick, Product, Report, ReportRateLimit, Shop, SourceIntake, SystemSetting, User, UserActionLog, UserSession
+from ..models import Offer, OfferClick, Product, Report, ReportRateLimit, Shop, SourceIntake, SystemSetting, User, UserActionLog
 from ..security import get_current_user, get_token_from_request, require_current_user
 from ..schemas import (
     CatalogOfferGroupPageResponse,
@@ -70,7 +70,6 @@ from ..services.catalog import (
     SnapshotNotFoundError,
 )
 from ..services.source_platform import (
-    DISABLED_SOURCE_PLATFORMS,
     SOURCE_PLATFORM_LABELS,
     canonical_source_platform,
     get_disabled_source_platforms,

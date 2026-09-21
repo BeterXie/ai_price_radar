@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import cast, delete, func, or_, select, update
+from sqlalchemy import cast, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..models import CommunitySkill, Product
