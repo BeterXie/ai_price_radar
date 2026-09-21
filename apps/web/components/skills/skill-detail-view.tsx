@@ -13,11 +13,13 @@ import {
   ShareNetwork,
   Sparkle,
   Star,
+  Sword,
   TerminalWindow,
 } from "@phosphor-icons/react";
 import type { CommunitySkillDetail } from "@/lib/types";
 import { recordSkillCopy } from "@/lib/api";
 import { PelicanArena } from "@/components/skills/pelican-arena";
+import { CrabArena } from "@/components/skills/crab-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
 import { DemoIframe } from "@/components/skills/demo-iframe";
 import { safeExternalHttpsUrl, safeInternalDemoPath } from "@/lib/safe-url";
@@ -27,6 +29,11 @@ const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: 
     label: "降智体检",
     icon: Fire,
     badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+  },
+  pk: {
+    label: "模型PK",
+    icon: Sword,
+    badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   },
   skill: {
     label: "实用技能",
@@ -227,6 +234,11 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
       {/* Interactive Pelican Arena Viewer */}
       {skill.demo_type === "pelican_arena" ? (
         <PelicanArena promptText={skill.prompt_template} skillSlug={skill.slug} />
+      ) : null}
+
+      {/* Interactive Crab Arena Viewer (Model PK) */}
+      {skill.demo_type === "crab_arena" ? (
+        <CrabArena promptText={skill.prompt_template} skillSlug={skill.slug} />
       ) : null}
 
       {/* Standalone Iframe Viewer (e.g. Bajie or VictorDesign) */}

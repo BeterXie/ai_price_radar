@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Fire, MagnifyingGlass, Sparkle, TerminalWindow } from "@phosphor-icons/react/ssr";
+import { Fire, MagnifyingGlass, Sparkle, Sword, TerminalWindow } from "@phosphor-icons/react/ssr";
 import { getSkills } from "@/lib/api";
 import { getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { SkillCard } from "@/components/skills/skill-card";
@@ -9,12 +9,12 @@ import { SkillCard } from "@/components/skills/skill-card";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "AI 技能实验室 - 降智体检、实战 Skills 与前沿技巧分享",
-  description: "全网大模型抗降智体检测试、6大真实产物在线对比，以及来自社区顶尖开发者的实用 Agent Skills（taste-skill, victor-design, agent-browser）与前沿技巧分享。",
+  title: "AI 技能实验室 - 降智体检、模型PK、实战 Skills 与前沿技巧分享",
+  description: "全网大模型抗降智体检测试、模型实测PK对决、真实动效产物在线对比，以及来自社区顶尖开发者的实用 Agent Skills（taste-skill, victor-design, agent-browser）与前沿技巧分享。",
   alternates: { canonical: "https://ai.pricememo.cn/skills" },
   openGraph: {
-    title: "AI 技能实验室 - 降智体检、实战 Skills 与前沿技巧分享",
-    description: "全网大模型抗降智体检测试、6大真实产物在线对比，以及实用 Agent Skills 库。",
+    title: "AI 技能实验室 - 降智体检、模型PK、实战 Skills 与前沿技巧分享",
+    description: "全网大模型抗降智体检测试、模型实测PK对决、6大真实产物在线对比，以及实用 Agent Skills 库。",
     url: "https://ai.pricememo.cn/skills",
     type: "website",
   },
@@ -146,6 +146,18 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
           >
             <Fire size={14} weight="fill" />
             🔥 降智检测
+          </Link>
+
+          <Link
+            href={tabHref("pk")}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs sm:text-sm font-semibold transition ${
+              kind === "pk"
+                ? "border-amber-600 bg-amber-600 text-white shadow-sm"
+                : "border-[color:var(--line)] bg-[color:var(--panel)] text-[color:var(--muted)] hover:border-amber-500/50 hover:text-amber-600"
+            }`}
+          >
+            <Sword size={14} weight="fill" />
+            ⚔️ 模型PK
           </Link>
 
           <Link

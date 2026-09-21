@@ -2,6 +2,17 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.7.99] - 2026-09-21
+
+### Features and model arena
+- Add new "模型PK" (`kind="pk"`) category to the AI Skills & Lab (`/skills`) section.
+- Create `CrabArena` interactive dual-column and single-view comparison component for head-to-head model battles.
+- Publish 3 benchmark & demo entries for the 12s self-contained Crab Riding Tricycle SVG animation test:
+  - `crab-riding-tricycle-pk`: Head-to-head arena comparison between GLM-5.3-Flash and Gemini 3.8 Flash (Medium).
+  - `crab-tricycle-glm-5-3-flash`: Standalone GLM-5.3-Flash 2D vector IK animation demo.
+  - `crab-tricycle-gemini-38-flash-medium`: Standalone Gemini 3.8 Flash 3D projective kinematics & Web Audio demo.
+- Update navigation tabs, metadata, CMS admin panel, and seed data synchronization.
+
 ## [3.7.98] - 2026-09-21
 
 ### Content and community skills

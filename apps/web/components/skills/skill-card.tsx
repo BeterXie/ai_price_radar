@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, Copy, Fire, Sparkle, Star, TerminalWindow } from "@phosphor-icons/react";
+import { Check, Copy, Fire, Sparkle, Star, Sword, TerminalWindow } from "@phosphor-icons/react";
 import type { CommunitySkillSummary } from "@/lib/types";
 import { recordSkillCopy } from "@/lib/api";
 
@@ -12,6 +12,11 @@ const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: 
     label: "降智体检",
     icon: Fire,
     badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+  },
+  pk: {
+    label: "模型PK",
+    icon: Sword,
+    badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   },
   skill: {
     label: "实用技能",

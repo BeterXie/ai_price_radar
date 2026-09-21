@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>螃蟹的三轮车 · 环形花坛骑行 12s 循环</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style>
+  html,body{height:100%;margin:0}
+  body{
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #24405a 0%, #16283a 45%, #0b1220 100%);
+    font-family: "Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:18px;
+  }
+  #stage{width:min(86vh,94vw)}
+  svg{display:block;width:100%;height:auto}
+  .card{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);
+        box-shadow:0 30px 80px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.07)}
+  /* 花朵轻摆 */
+  .sway{transform-box:fill-box;transform-origin:50% 100%;animation:sway 4.6s ease-in-out infinite alternate}
+  @keyframes sway{from{transform:rotate(-3.2deg)}to{transform:rotate(3.2deg)}}
+  /* 披风飘动 */
+  .cape{transform-box:fill-box;transform-origin:100% 20%;animation:cape 1.5s ease-in-out infinite alternate}
+  @keyframes cape{from{transform:rotate(-4deg) skewY(-2deg)}to{transform:rotate(5deg) skewY(3deg)}}
+  .btn{transition:.18s}
+  .btn:hover{background:rgba(255,255,255,.16);transform:translateY(-1px)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="mb-3 flex items-end justify-between gap-4 px-1">
+    <div>
+      <h1 class="text-white text-lg sm:text-xl font-semibold tracking-wide">🦀 螃蟹的三轮车 · 环形花坛骑行</h1>
+      <p class="text-[11px] sm:text-xs text-white/45 mt-1">2 条钳臂控把 · 6 条腿分踏 3 个曲柄 · 12 秒无缝循环</p>
+    </div>
+    <button id="toggle" class="btn shrink-0 text-white/80 text-xs px-3 py-2 rounded-lg bg-white/10 border border-white/10">⏸ 暂停</button>
+  </div>
+
+  <div class="card rounded-2xl overflow-hidden">
+  <svg id="scene" viewBox="0 0 900 900" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">
+    <defs>
+      <radialGradient id="grass" cx="50%" cy="42%" r="72%">
+        <stop offset="0%" stop-color="#8fd07a"/>
+        <stop offset="55%" stop-color="#5cab57"/>
+        <stop offset="100%" stop-color="#2f6b3c"/>
+      </radialGradient>
+      <radialGradient id="soil" cx="45%" cy="38%" r="70%">
+        <stop offset="0%" stop-color="#8a5f3d"/>
+        <stop offset="60%" stop-color="#6b452c"/>
+        <stop offset="100%" stop-color="#4a2e1d"/>
+      </radialGradient>
+      <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#d9d4c7"/>
+        <stop offset="100%" stop-color="#9d9789"/>
+      </linearGradient>
+      <linearGradient id="shell" x1="0.1" y1="0" x2="0.6" y2="1">
+        <stop offset="0%" stop-color="#ff8a5c"/>
+        <stop offset="45%" stop-color="#f4511e"/>
+        <stop offset="100%" stop-color="#c62828"/>
+      </linearGradient>
+      <linearGradient id="shellDark" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#e0402a"/>
+        <stop offset="100%" stop-color="#96211a"/>
+      </linearGradient>
+      <linearGradient id="frameG" x1="0" y1="0" x2="0.4" y2="1">
+        <stop offset="0%" stop-color="#4dd0e1"/>
+        <stop offset="55%" stop-color="#0097a7"/>
+        <stop offset="100%" stop-color="#006064"/>
+      </linearGradient>
+      <linearGradient id="tireG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#455a64"/>
+        <stop offset="100%" stop-color="#1c262e"/>
+      </linearGradient>
+      <radialGradient id="hubG" cx="35%" cy="30%" r="80%">
+        <stop offset="0%" stop-color="#fff3c4"/>
+        <stop offset="60%" stop-color="#ffca28"/>
+        <stop offset="100%" stop-color="#c98a00"/>
+      </radialGradient>
+      <radialGradient id="shadowG" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#000" stop-opacity=".55"/>
+        <stop offset="60%" stop-color="#000" stop-opacity=".22"/>
+        <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="vig" cx="50%" cy="48%" r="66%">
+        <stop offset="55%" stop-color="#000" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#000" stop-opacity=".5"/>
+      </radialGradient>
+      <linearGradient id="skyGlow" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fff8d6" stop-opacity=".5"/>
+        <stop offset="100%" stop-color="#fff8d6" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+
+    <!-- ============ 背景花园 ============ -->
+    <g id="garden">
+      <path d="M0 0 H900 V900 H0 Z" fill="url(#grass)"/>
+      <path d="M0 0 H900 V210 H0 Z" fill="url(#skyGlow)"/>
+      <g id="tufts"></g>
+      <!-- 花坛投影 -->
+      <path d="M226 486 a224 208 0 1 0 448 0 a224 208 0 1 0 -448 0 Z" fill="#000" opacity=".13"/>
+      <!-- 土壤 -->
+      <path d="M234 470 a216 216 0 1 0 432 0 a216 216 0 1 0 -432 0 Z" fill="url(#soil)"/>
+      <g id="mulch"></g>
+      <g id="flowers"></g>
+      <!-- 缘石圈（骑行线 = r192，正好是花坛边缘） -->
+      <g id="kerb"></g>
+      <path d="M0 0 H900 V900 H0 Z" fill="url(#vig)" opacity=".5"/>
+    </g>
+
+    <!-- ============ 三轮车 + 螃蟹（整体沿切线对齐轨迹） ============ -->
+    <g id="rig">
+      <!-- 车影 -->
+      <path d="M-113 8 a130 15 0 1 0 260 0 a130 15 0 1 0 -260 0 Z" fill="url(#shadowG)"/>
+
+      <!-- 远侧：3 条远腿 + 远侧辅助轮 + 远侧曲柄 -->
+      <g id="farLayer"></g>
+
+      <!-- 远侧钳臂（画在车把下层 → 真正在车把后面） -->
+      <g id="armFar"></g>
+
+      <!-- 中层：车轮 / 车架 / 车座 / 车把 -->
+      <g id="midLayer">
+        <!-- 后轮 r32 -->
+        <g transform="translate(-60,-32)">
+          <g id="spinRear">
+            <path d="M-32 0 a32 32 0 1 0 64 0 a32 32 0 1 0 -64 0 Z" fill="url(#tireG)"/>
+            <path d="M-25 0 a25 25 0 1 0 50 0 a25 25 0 1 0 -50 0 Z" fill="#e7ecf2"/>
+            <path d="M-29 0 a29 29 0 1 0 58 0 a29 29 0 1 0 -58 0 Z" fill="none" stroke="#90a4ae" stroke-width="1.6" stroke-dasharray="7 9"/>
+            <g id="spokesRear" stroke="#b7c2cc" stroke-width="2.1" stroke-linecap="round"></g>
+            <path d="M-6 0 a6 6 0 1 0 12 0 a6 6 0 1 0 -12 0 Z" fill="url(#hubG)"/>
+          </g>
+        </g>
+
+        <!-- 辅助轮支架 -->
+        <path d="M-60 -32 L-96 -24" stroke="#006064" stroke-width="7" stroke-linecap="round" fill="none"/>
+        <!-- 远侧辅助轮 r24 -->
+        <g transform="translate(-96,-24)">
+          <g id="spinTrainF">
+            <path d="M-24 0 a24 24 0 1 0 48 0 a24 24 0 1 0 -48 0 Z" fill="#33414c"/>
+            <path d="M-18 0 a18 18 0 1 0 36 0 a18 18 0 1 0 -36 0 Z" fill="#cfd8e0"/>
+            <g id="spokesTrainF" stroke="#a9b6c1" stroke-width="1.9" stroke-linecap="round"></g>
+            <path d="M-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0 Z" fill="url(#hubG)"/>
+          </g>
+        </g>
+        <!-- 近侧辅助轮 r24 -->
+        <path d="M-60 -32 L-24 -24" stroke="url(#frameG)" stroke-width="8" stroke-linecap="round" fill="none"/>
+        <g transform="translate(-24,-24)">
+          <g id="spinTrainN">
+            <path d="M-24 0 a24 24 0 1 0 48 0 a24 24 0 1 0 -48 0 Z" fill="url(#tireG)"/>
+            <path d="M-18 0 a18 18 0 1 0 36 0 a18 18 0 1 0 -36 0 Z" fill="#e7ecf2"/>
+            <path d="M-21.5 0 a21.5 21.5 0 1 0 43 0 a21.5 21.5 0 1 0 -43 0 Z" fill="none" stroke="#90a4ae" stroke-width="1.4" stroke-dasharray="6 8"/>
+            <g id="spokesTrainN" stroke="#b7c2cc" stroke-width="2" stroke-linecap="round"></g>
+            <path d="M-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0 Z" fill="url(#hubG)"/>
+          </g>
+        </g>
+
+        <!-- 前挡泥板 -->
+        <path d="M46 -66 A54 54 0 0 1 144 -66" fill="none" stroke="#00838f" stroke-width="8" stroke-linecap="round"/>
+        <!-- 前轮 r48（随转向做透视压缩） -->
+        <g id="wrapFront" transform="translate(95,-48)">
+          <g id="spinFront">
+            <path d="M-48 0 a48 48 0 1 0 96 0 a48 48 0 1 0 -96 0 Z" fill="url(#tireG)"/>
+            <path d="M-39 0 a39 39 0 1 0 78 0 a39 39 0 1 0 -78 0 Z" fill="#e7ecf2"/>
+            <path d="M-43.5 0 a43.5 43.5 0 1 0 87 0 a43.5 43.5 0 1 0 -87 0 Z" fill="none" stroke="#90a4ae" stroke-width="1.8" stroke-dasharray="9 11"/>
+            <g id="spokesFront" stroke="#b7c2cc" stroke-width="2.6" stroke-linecap="round"></g>
+            <path d="M-8 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 Z" fill="url(#hubG)"/>
+            <path d="M-3.2 -43 a3.2 3.2 0 1 0 6.4 0 a3.2 3.2 0 1 0 -6.4 0 Z" fill="#ef5350"/>
+          </g>
+        </g>
+
+        <!-- 后挡泥板 -->
+        <path d="M-93 -30 A35 35 0 0 1 -27 -30" fill="none" stroke="#00838f" stroke-width="7" stroke-linecap="round"/>
+
+        <!-- 车架 -->
+        <g stroke="url(#frameG)" fill="none" stroke-linecap="round">
+          <path d="M-60 -32 L-14 -72" stroke-width="11"/>
+          <path d="M-14 -70 L-14 -88" stroke-width="10"/>
+          <path d="M-14 -80 L70 -96" stroke-width="10"/>
+          <path d="M-14 -66 L66 -84" stroke-width="7" opacity=".55"/>
+          <path d="M70 -98 L95 -48" stroke-width="10"/>
+          <path d="M74 -78 L95 -52" stroke-width="6" opacity=".55"/>
+        </g>
+        <!-- 车座 -->
+        <path d="M-36 -86 Q-16 -99 6 -86 Q-15 -76 -36 -86 Z" fill="#37474f"/>
+        <path d="M-30 -88 Q-16 -95 -2 -88" fill="none" stroke="#78909c" stroke-width="2" opacity=".7"/>
+
+        <!-- 车把（随转向整体旋转，握把位置实时算出） -->
+        <g id="barGroup">
+          <path d="M70 -96 L64 -120" stroke="#00838f" stroke-width="8" stroke-linecap="round" fill="none"/>
+          <path d="M46 -126 Q66 -136 90 -118" stroke="#455a64" stroke-width="7" stroke-linecap="round" fill="none"/>
+          <path d="M46 -126 L42 -128" stroke="#ffca28" stroke-width="12" stroke-linecap="round" fill="none"/>
+          <path d="M90 -118 L97 -115" stroke="#ffca28" stroke-width="12" stroke-linecap="round" fill="none"/>
+          <!-- 车把彩带 -->
+          <g stroke="#f06292" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".95">
+            <path d="M97 -115 q10 -6 14 4 q3 8 11 6"/>
+            <path d="M97 -115 q9 2 16 -4"/>
+          </g>
+          <g stroke="#ffd54f" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".95">
+            <path d="M42 -128 q-10 -8 -16 2 q-4 8 -12 4"/>
+          </g>
+          <!-- 车铃 -->
+          <path d="M62 -128 a6.5 6.5 0 1 0 13 0 a6.5 6.5 0 1 0 -13 0 Z" fill="#ffca28"/>
+        </g>
+      </g>
+
+      <!-- ============ 螃蟹身体（始终在车座正上方） ============ -->
+      <g id="crab">
+        <!-- 披风 -->
+        <g class="cape">
+          <path d="M-50 -118 q-30 -4 -44 16 q16 6 22 20 q10 -14 26 -14 Z" fill="#c62828" opacity=".9"/>
+        </g>
+        <!-- 眼柄 + 眼睛 -->
+        <path d="M-8 -140 C-12 -152 -10 -160 -4 -166" fill="none" stroke="#d84315" stroke-width="5" stroke-linecap="round"/>
+        <path d="M12 -136 C18 -146 22 -152 24 -158" fill="none" stroke="#d84315" stroke-width="5" stroke-linecap="round"/>
+        <path d="M-13 -166 a9 9 0 1 0 18 0 a9 9 0 1 0 -18 0 Z" fill="#fffde7"/>
+        <path d="M-9 -165 a4.6 4.6 0 1 0 9.2 0 a4.6 4.6 0 1 0 -9.2 0 Z" fill="#212121"/>
+        <path d="M-8.4 -168 a1.8 1.8 0 1 0 3.6 0 a1.8 1.8 0 1 0 -3.6 0 Z" fill="#fff"/>
+        <path d="M16 -160 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0 Z" fill="#fffde7"/>
+        <path d="M20 -159 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 Z" fill="#212121"/>
+        <path d="M20.6 -162 a1.6 1.6 0 1 0 3.2 0 a1.6 1.6 0 1 0 -3.2 0 Z" fill="#fff"/>
+        <!-- 壳体 -->
+        <path d="M-58 -110 C-58 -132 -40 -146 -16 -146 C8 -146 26 -132 26 -110 C26 -94 8 -80 -16 -80 C-40 -80 -58 -94 -58 -110 Z" fill="url(#shell)"/>
+        <path d="M-52 -104 C-52 -122 -38 -134 -20 -137" fill="none" stroke="#ffd9c2" stroke-width="3" opacity=".45" stroke-linecap="round"/>
+        <path d="M-46 -96 C-40 -110 -26 -119 -8 -121" fill="none" stroke="#8e1c14" stroke-width="2.4" opacity=".35" fill-rule="evenodd" stroke-linecap="round"/>
+        <path d="M-34 -88 C-26 -98 -12 -103 4 -103" fill="none" stroke="#8e1c14" stroke-width="2.2" opacity=".28" stroke-linecap="round"/>
+        <!-- 壳顶小刺 -->
+        <g fill="#c62828" opacity=".9">
+          <path d="M-40 -139 l4 -9 l5 8 Z"/><path d="M-22 -145 l4 -9 l5 8 Z"/><path d="M-2 -144 l5 -8 l4 9 Z"/>
+        </g>
+        <!-- 嘴 / 腮红 -->
+        <path d="M4 -100 Q12 -92 21 -100" fill="none" stroke="#7f1d12" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M-6 -100 a5 3.4 0 1 0 10 0 a5 3.4 0 1 0 -10 0 Z" fill="#fff" opacity=".35"/>
+        <path d="M-26 -104 a6 4 0 1 0 12 0 a6 4 0 1 0 -12 0 Z" fill="#ff8a80" opacity=".55"/>
+      </g>
+
+      <!-- 近侧：曲柄 / 踏板 / 3 条近腿 / 近侧钳臂 -->
+      <g id="nearLayer"></g>
+    </g>
+  </svg>
+  </div>
+
+  <div class="mt-3 px-1">
+    <div class="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+      <div id="prog" class="h-full w-0 bg-gradient-to-r from-amber-300 to-rose-400"></div>
+    </div>
+    <p class="mt-2 text-[10.5px] leading-relaxed text-white/40">
+      轨迹半径 192 = 花坛边缘 ｜ 前轮 r48（4 圈/圈）、后轮 r32（6 圈/圈）、辅助轮 r24（8 圈/圈）→ 全部整数转，12s 严格闭环 ｜
+      车身随切线自动对齐，螃蟹重心恒在车座正上方，所有轮触地点落在同一条边缘线上。
+    </p>
+  </div>
+</div>
+
+<script>
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const $=id=>document.getElementById(id);
+const el=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+
+/* ---------- 圆 → path（全部用路径，不用 circle/ellipse/img） ---------- */
+const CP=(cx,cy,r)=>`M${(cx-r).toFixed(2)} ${cy.toFixed(2)} a${r} ${r} 0 1 0 ${2*r} 0 a${r} ${r} 0 1 0 ${-2*r} 0 Z`;
+const EP=(cx,cy,rx,ry)=>`M${(cx-rx).toFixed(2)} ${cy.toFixed(2)} a${rx} ${ry} 0 1 0 ${2*rx} 0 a${rx} ${ry} 0 1 0 ${-2*rx} 0 Z`;
+
+/* ================= 花坛装饰 ================= */
+(function kerb(){
+  const g=$('kerb'); const R1=192,R2=218,N=40;
+  for(let i=0;i<N;i++){
+    const a0=i/N*Math.PI*2, a1=(i+0.88)/N*Math.PI*2;
+    const p=(r,a)=>[450+r*Math.cos(a),470+r*Math.sin(a)];
+    const A=p(R1,a0),B=p(R1,a1),C=p(R2,a1),D=p(R2,a0);
+    g.appendChild(el('path',{d:`M${A} A${R1} ${R1} 0 0 1 ${B} L${C} A${R2} ${R2} 0 0 0 ${D} Z`,
+      fill: i%2? 'url(#stone)':'#b6b0a2', stroke:'#8b8578','stroke-width':1}));
+  }
+})();
+(function mulch(){
+  const g=$('mulch'); let s=7;
+  const rnd=()=>{s=(s*16807)%2147483647;return s/2147483647;};
+  for(let i=0;i<90;i++){
+    const a=rnd()*Math.PI*2, r=Math.sqrt(rnd())*178;
+    const x=450+Math.cos(a)*r, y=470+Math.sin(a)*r;
+    const w=2+rnd()*3.4;
+    g.appendChild(el('path',{d:`M${x.toFixed(1)} ${y.toFixed(1)} q${w.toFixed(1)} ${(-w*0.7).toFixed(1)} ${(w*2).toFixed(1)} 0 q${(-w).toFixed(1)} ${(w*0.8).toFixed(1)} ${(-w*2).toFixed(1)} 0 Z`,
+      fill: rnd()>.5?'#54341f':'#7a5334', opacity:.75}));
+  }
+})();
+(function flowers(){
+  const g=$('flowers'); let s=99; const rnd=()=>{s=(s*48271)%2147483647;return s/2147483647;};
+  const pal=[['#ffd54f','#ff8f00'],['#f48fb1','#ad1457'],['#fff3e0','#ef6c00'],['#ce93d8','#6a1b9a'],['#b39ddb','#4527a0'],['#ffffff','#f8bbd0']];
+  for(let i=0;i<22;i++){
+    const a=(i/22)*Math.PI*2+rnd()*0.22, r=42+rnd()*136;
+    const x=450+Math.cos(a)*r, y=470+Math.sin(a)*r;
+    const sc=0.62+rnd()*0.6, h=Math.random;
+    const [pc,cc]=pal[i%pal.length];
+    /* 外层负责定位（transform 属性），内层才做 CSS 摆动，避免相互覆盖 */
+    const outer=el('g',{transform:`translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${sc.toFixed(2)})`});
+    const fg=el('g',{class:'sway'});
+    fg.style.animationDelay=(-rnd()*5).toFixed(2)+'s';
+    outer.appendChild(fg);
+    fg.appendChild(el('path',{d:`M0 0 C${(-4-rnd()*4).toFixed(1)} -11 ${4} -20 ${0} -${(28+rnd()*10).toFixed(1)}`,
+      stroke:'#3d7a3a','stroke-width':2.6,fill:'none','stroke-linecap':'round'}));
+    fg.appendChild(el('path',{d:`M0 -12 C-11 -15 -16 -9 -18 -3 C-10 -3 -3 -7 0 -12 Z`,fill:'#4e9247'}));
+    fg.appendChild(el('path',{d:`M0 -18 C11 -21 17 -15 19 -8 C10 -9 3 -13 0 -18 Z`,fill:'#3d7a3a'}));
+    const hy=-(28+rnd()*10);
+    for(let p=0;p<6;p++){
+      const pg=el('g',{transform:`rotate(${(p*60+rnd()*8).toFixed(1)})`});
+      pg.appendChild(el('path',{d:EP(0,hy-11,5.6,10.5),fill:pc,stroke:cc,'stroke-width':1,opacity:.97}));
+      fg.appendChild(pg);
+    }
+    fg.appendChild(el('path',{d:CP(0,hy,5),fill:cc}));
+    g.appendChild(outer);
+  }
+})();
+(function tufts(){
+  const g=$('tufts'); let s=1234; const rnd=()=>{s=(s*16807)%2147483647;return s/2147483647;};
+  for(let i=0;i<64;i++){
+    const a=rnd()*Math.PI*2, r=232+rnd()*230;
+    const x=450+Math.cos(a)*r, y=470+Math.sin(a)*r, k=0.6+rnd()*1.3;
+    g.appendChild(el('path',{d:`M${x.toFixed(1)} ${y.toFixed(1)} q${(-4*k).toFixed(1)} ${(-11*k).toFixed(1)} ${(-1*k).toFixed(1)} ${(-17*k).toFixed(1)}
+      M${x.toFixed(1)} ${y.toFixed(1)} q0 ${(-13*k).toFixed(1)} ${(2*k).toFixed(1)} ${(-19*k).toFixed(1)}
+      M${x.toFixed(1)} ${y.toFixed(1)} q${(5*k).toFixed(1)} ${(-10*k).toFixed(1)} ${(7*k).toFixed(1)} ${(-15*k).toFixed(1)}`,
+      stroke: rnd()>.5?'#2f6b3c':'#498f4a','stroke-width':2.1*k,fill:'none','stroke-linecap':'round',opacity:.85}));
+  }
+})();
+
+/* ================= 车轮辐条（旋转可见） ================= */
+function spokes(id,n,rOut,rIn,col){
+  const g=$(id); if(!g)return; if(col)g.setAttribute('stroke',col);
+  for(let i=0;i<n;i++){
+    const a=i/n*Math.PI*2;
+    g.appendChild(el('path',{d:`M${(rIn*Math.cos(a)).toFixed(2)} ${(rIn*Math.sin(a)).toFixed(2)} L${(rOut*Math.cos(a)).toFixed(2)} ${(rOut*Math.sin(a)).toFixed(2)}`}));
+  }
+}
+spokes('spokesFront',10,37.5,9);
+spokes('spokesRear',9,24,7);
+spokes('spokesTrainN',8,17.5,6);
+spokes('spokesTrainF',8,17.5,6,'#9fb0bb');
+
+/* ================= 运动学参数 ================= */
+const CX=450, CY=470, R=192, REF=17, DUR=12, T0=-Math.PI/2;
+
+/* 车轮：r 必须使 R/r 为整数 → 12s 无缝循环 */
+const WHEEL={   /* ph0 = 该轮曲柄初相（踏板与腿共用同一角度源 → 严格绑定） */
+  front :{c:[95,-48], r:48, crank:26, ph0:0.00, spin:'spinFront'},
+  rear  :{c:[-60,-32],r:32, crank:18, ph0:0.95, spin:'spinRear'},
+  trainN:{c:[-24,-24],r:24, crank:13, ph0:2.15, spin:'spinTrainN'},
+  trainF:{c:[-96,-24],r:24, crank:13, ph0:2.15, spin:'spinTrainF'}
+};
+
+/* 6 条步足：足端严格锁在对应车轮曲柄的踏板上（近/远各一，相位差 180°） */
+const LEGS=[
+  {w:'front',  hip:[20.4,-96.0], L1:66,L2:60, far:false, w:11, bow: 7, foot:15},
+  {w:'front',  hip:[13.7,-89.4], L1:66,L2:60, far:true,  w:9,  bow: 6, foot:13},
+  {w:'rear',   hip:[-8.7,-80.5], L1:52,L2:48, far:false, w:10, bow:-6, foot:13},
+  {w:'rear',   hip:[-23.3,-80.5],L1:52,L2:48, far:true,  w:8,  bow:-5, foot:11},
+  {w:'trainN', hip:[-37.0,-84.3],L1:54,L2:50, far:false, w:10, bow: 6, foot:13},
+  {w:'trainF', hip:[-48.2,-89.4],L1:54,L2:50, far:true,  w:8,  bow: 5, foot:11}
+];
+/* 2 条钳足：IK 到随转向旋转的车把握把 */
+const ARMS=[
+  {key:'near', hip:[23.5,-122.9], L1:40,L2:36, far:false, w:10, bow:8, claw:1},
+  {key:'far',  hip:[13.7,-134.6], L1:22,L2:20, far:true,  w:8,  bow:6, claw:0.78}
+];
+const GRIP={near:[90,-118], far:[46,-126]};   // 车把局部坐标（未转向）
+
+/* ---------- 图元工厂 ---------- */
+function crankSet(parent,color){
+  const arm=el('path',{fill:'none',stroke:color,'stroke-width':6.5,'stroke-linecap':'round'});
+  const pd =el('g',{});
+  pd.appendChild(el('path',{d:EP(0,-1,11,4.4),fill:'#263238'}));
+  pd.appendChild(el('path',{d:EP(0,-3.2,11,3),fill:'#546e7a'}));
+  parent.appendChild(arm); parent.appendChild(pd);
+  return {arm,pd};
+}
+function makeLimb(parent,cfg,kind){
+  const cNear= kind==='leg' ? '#e8481f' : '#f0562a';
+  const cFar = kind==='leg' ? '#a8291a' : '#b5361f';
+  const col= cfg.far? cFar : cNear;
+  const g=el('g',{});
+  const thigh=el('path',{fill:'none',stroke:col,'stroke-width':cfg.w,'stroke-linecap':'round'});
+  const shin =el('path',{fill:'none',stroke:col,'stroke-width':cfg.w*0.66,'stroke-linecap':'round'});
+  const joint=el('path',{fill:cfg.far?'#8e2013':'#c73f18'});
+  const foot =el('path',{fill:cfg.far?'#7f1c11':'#b5361f'});
+  g.appendChild(thigh); g.appendChild(shin); g.appendChild(joint); g.appendChild(foot);
+  parent.appendChild(g);
+  return {g,thigh,shin,joint,foot,cfg};
+}
+const farL=$('farLayer'), nearL=$('nearLayer');
+
+/* 曲柄/踏板：远侧画在车轮后面，近侧画在车轮前面 */
+const cranks={};
+cranks.frontFar =crankSet(farL,'#78909c');
+cranks.rearFar  =crankSet(farL,'#78909c');
+cranks.trainFFar=crankSet(farL,'#78909c');
+cranks.frontNear=crankSet(nearL,'#455a64');
+cranks.rearNear =crankSet(nearL,'#455a64');
+cranks.trainNNear=crankSet(nearL,'#455a64');
+const CRANK_OF={
+  front :[cranks.frontNear,cranks.frontFar],
+  rear  :[cranks.rearNear, cranks.rearFar],
+  trainN:[cranks.trainNNear,null],
+  trainF:[null,cranks.trainFFar]
+};
+
+/* 腿：远侧 → farLayer；近侧 → nearLayer */
+const legObjs=LEGS.map(c=>makeLimb(c.far?farL:nearL,c,'leg'));
+/* 钳臂：远臂在 farLayer（车把之前绘制在其后……此处放在 farLayer 顶层，位于车把下方层） */
+const armNearObj=makeLimb(nearL,ARMS[0],'arm');
+/* 近侧钳臂的“手掌 + 钳指”：画在车把之上 → 真正包住握把 */
+const nearPalm=el('path',{fill:'#f0562a'}); nearL.appendChild(nearPalm);
+const nearPincer=el('g',{}); nearL.appendChild(nearPincer);
+['M-2 -7 Q11 -10 17 -1 Q9 -3.5 -1 -1 Z','M-2 7 Q11 10 17 1 Q9 3.5 -1 1 Z']
+  .forEach(d=>nearPincer.appendChild(el('path',{d,fill:'#d93c17'})));
+armNearObj.palm=nearPalm; armNearObj.pincer=nearPincer;
+
+/* 远侧钳臂：臂身在车把后，钳指在车把前 */
+let armFarObj;
+(function(){
+  const c=ARMS[1], col='#b5361f';
+  const g=el('g',{}); $('armFar').appendChild(g);
+  const thigh=el('path',{fill:'none',stroke:col,'stroke-width':c.w,'stroke-linecap':'round'});
+  const shin =el('path',{fill:'none',stroke:col,'stroke-width':c.w*0.66,'stroke-linecap':'round'});
+  const joint=el('path',{fill:'#8e2013'});
+  g.appendChild(thigh); g.appendChild(shin); g.appendChild(joint);
+  const palm=el('path',{d:CP(0,0,8),fill:col});
+  $('armFar').appendChild(palm);
+  const f1=el('path',{d:'M-2 -6 Q10 -9 15 -1 Q8 -3 -1 -1 Z',fill:col});
+  const f2=el('path',{d:'M-2 6 Q10 9 15 1 Q8 3 -1 1 Z',fill:col});
+  const pincer=el('g',{}); pincer.appendChild(f1); pincer.appendChild(f2);
+  $('midLayer').appendChild(pincer);          // 钳指画在车把前面 → 真正“握住”
+  armFarObj={thigh,shin,joint,palm,pincer,cfg:c};
+})();
+
+/* ---------- 双骨骼 IK ---------- */
+function ik(H,F,L1,L2){
+  let dx=F[0]-H[0], dy=F[1]-H[1], d=Math.hypot(dx,dy);
+  const mx=L1+L2-0.4, mn=Math.abs(L1-L2)+0.4;
+  if(d>mx){const s=mx/d;dx*=s;dy*=s;d=mx;F=[H[0]+dx,H[1]+dy];}
+  if(d<mn){const s=mn/(d||1);dx*=s;dy*=s;d=mn;F=[H[0]+dx,H[1]+dy];}
+  const a=(L1*L1-L2*L2+d*d)/(2*d), h=Math.sqrt(Math.max(0,L1*L1-a*a));
+  const ux=dx/d, uy=dy/d, kx=H[0]+a*ux, ky=H[1]+a*uy;
+  const k1=[kx-uy*h,ky+ux*h], k2=[kx+uy*h,ky-ux*h];
+  return {K:(k1[1]<k2[1])?k1:k2, F};      // 膝盖取较高一侧（蟹腿外拱）
+}
+function seg(p,A,B,bow){
+  const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2;
+  const dx=B[0]-A[0], dy=B[1]-A[1], L=Math.hypot(dx,dy)||1;
+  p.setAttribute('d',`M${A[0].toFixed(2)} ${A[1].toFixed(2)} Q${(mx-dy/L*bow).toFixed(2)} ${(my+dx/L*bow).toFixed(2)} ${B[0].toFixed(2)} ${B[1].toFixed(2)}`);
+}
+function drawFoot(obj,F,K,dir){
+  const ang=Math.atan2(F[1]-K[1],F[0]-K[0])*180/Math.PI;
+  obj.foot.setAttribute('d',`M-2 ${(-obj.cfg.foot*0.32).toFixed(2)} Q${(obj.cfg.foot*0.7).toFixed(2)} ${(-obj.cfg.foot*0.42).toFixed(2)} ${obj.cfg.foot} 0 Q${(obj.cfg.foot*0.7).toFixed(2)} ${(obj.cfg.foot*0.42).toFixed(2)} -2 ${(obj.cfg.foot*0.32).toFixed(2)} Q0.5 0 -2 ${(-obj.cfg.foot*0.32).toFixed(2)} Z`);
+  obj.foot.setAttribute('transform',`translate(${F[0].toFixed(2)} ${F[1].toFixed(2)}) rotate(${ang.toFixed(2)})`);
+}
+
+/* ---------- 主循环 ---------- */
+const rig=$('rig'), barGroup=$('barGroup'), wrapFront=$('wrapFront'),
+      spinFront=$('spinFront'), spinRear=$('spinRear'),
+      spinTN=$('spinTrainN'), spinTF=$('spinTrainF'), prog=$('prog');
+
+const wheelSpin={front:spinFront,rear:spinRear,trainN:spinTN,trainF:spinTF};
+let playing=true, t=0, last=null;
+
+function pose(){
+  const th=T0+t/DUR*Math.PI*2;
+  const px=CX+R*Math.cos(th), py=CY+R*Math.sin(th);
+  const phi=Math.atan2(Math.cos(th),-Math.sin(th))*180/Math.PI;   // 切线方向
+  rig.setAttribute('transform',`translate(${px.toFixed(3)} ${py.toFixed(3)}) rotate(${phi.toFixed(3)}) translate(${-REF} 0)`);
+
+  /* 车轮转角 = 弧长/半径（顺时针为正，与前进方向一致） */
+  const turn=(t/DUR)*Math.PI*2;
+  const ang={};
+  for(const k in WHEEL){ ang[k]=turn*R/WHEEL[k].r*180/Math.PI; wheelSpin[k].setAttribute('transform',`rotate(${ang[k].toFixed(3)})`); }
+
+  /* 转向：车把摆动 + 前轮透视压缩，2 条钳足跟随握把 */
+  const st=Math.sin(t/DUR*Math.PI*2*4)*10;                        // 与曲柄同周期
+  barGroup.setAttribute('transform',`rotate(${st.toFixed(3)} 70 -96)`);
+  wrapFront.setAttribute('transform',`translate(95,-48) scale(${Math.cos(st*Math.PI/180*2.1).toFixed(4)} 1) translate(-95,48)`);
+  const cs=Math.cos(st*Math.PI/180), ss=Math.sin(st*Math.PI/180);
+  const grip={};
+  for(const k in GRIP){
+    const dx=GRIP[k][0]-70, dy=GRIP[k][1]+96;
+    grip[k]=[70+dx*cs-dy*ss, -96+dx*ss+dy*cs];
+  }
+
+  /* 曲柄 + 踏板 + 腿 */
+  for(const k in WHEEL){
+    const w=WHEEL[k], a=(ang[k]+0)*Math.PI/180;
+    const pair=CRANK_OF[k];
+    for(let i=0;i<2;i++){
+      const cset=pair[i]; if(!cset)continue;
+      const pa=a+w.ph0+i*Math.PI;
+      const fx=w.c[0]+w.crank*Math.cos(pa), fy=w.c[1]+w.crank*Math.sin(pa);
+      cset.arm.setAttribute('d',`M${w.c[0]} ${w.c[1]} L${fx.toFixed(2)} ${fy.toFixed(2)}`);
+      cset.pd.setAttribute('transform',`translate(${fx.toFixed(2)} ${fy.toFixed(2)})`);
+      cset.pt=[fx,fy];
+    }
+  }
+  LEGS.forEach((c,i)=>{
+    const w=WHEEL[c.w], a=ang[c.w]*Math.PI/180+w.ph0+(c.far?Math.PI:0);
+    const F=[w.c[0]+w.crank*Math.cos(a), w.c[1]+w.crank*Math.sin(a)];
+    const r=ik(c.hip,F,c.L1,c.L2), o=legObjs[i];
+    seg(o.thigh,c.hip,r.K,c.bow); seg(o.shin,r.K,r.F,-c.bow*0.45);
+    o.joint.setAttribute('d',CP(r.K[0],r.K[1],o.cfg.w*0.52));
+    drawFoot(o,r.F,r.K);
+  });
+
+  /* 钳臂 */
+  ARMS.forEach((c,i)=>{
+    const F=grip[c.key], o=(i===0)?armNearObj:armFarObj;
+    const r=ik(c.hip,F,c.L1,c.L2);
+    seg(o.thigh,c.hip,r.K,c.bow); seg(o.shin,r.K,r.F,-c.bow*0.5);
+    o.joint.setAttribute('d',CP(r.K[0],r.K[1],c.w*0.5));
+    if(i===0){
+      o.palm.setAttribute('d',CP(r.F[0],r.F[1],8.5));
+      o.pincer.setAttribute('transform',`translate(${r.F[0].toFixed(2)} ${r.F[1].toFixed(2)}) rotate(${(st*0.5).toFixed(2)})`);
+    }else{
+      o.palm.setAttribute('transform',`translate(${r.F[0].toFixed(2)} ${r.F[1].toFixed(2)}) scale(${c.claw})`);
+      o.pincer.setAttribute('transform',`translate(${r.F[0].toFixed(2)} ${r.F[1].toFixed(2)}) scale(${c.claw}) rotate(${(st*0.5).toFixed(2)})`);
+    }
+  });
+
+  prog.style.width=(t/DUR*100).toFixed(2)+'%';
+}
+
+function loop(ts){
+  if(last===null)last=ts;
+  const dt=Math.min(0.05,(ts-last)/1000); last=ts;
+  if(playing){ t=(t+dt)%DUR; pose(); }
+  requestAnimationFrame(loop);
+}
+pose(); requestAnimationFrame(loop);
+
+$('toggle').addEventListener('click',e=>{
+  playing=!playing; last=null;
+  e.target.textContent = playing? '⏸ 暂停' : '▶ 播放';
+});
+addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault();$('toggle').click();} });
+})();
+</script>
+</body>
+</html>

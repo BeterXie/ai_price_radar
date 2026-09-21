@@ -12,6 +12,7 @@ import {
   Plus,
   Sparkle,
   Star,
+  Sword,
   TerminalWindow,
   Trash,
   X,
@@ -328,6 +329,16 @@ export function SkillsAdminPanel({
           </button>
           <button
             type="button"
+            onClick={() => setSelectedKind("pk")}
+            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium transition ${
+              selectedKind === "pk" ? "bg-amber-600 text-white" : "text-[color:var(--muted)] hover:text-amber-600"
+            }`}
+          >
+            <Sword size={12} weight="fill" />
+            模型PK
+          </button>
+          <button
+            type="button"
             onClick={() => setSelectedKind("skill")}
             className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium transition ${
               selectedKind === "skill" ? "bg-purple-600 text-white" : "text-[color:var(--muted)] hover:text-purple-600"
@@ -503,6 +514,7 @@ export function SkillsAdminPanel({
                   >
                     <option value="skill">🎨 实用技能 (Skill)</option>
                     <option value="benchmark">🔥 降智体检 (Benchmark)</option>
+                    <option value="pk">⚔️ 模型PK (Model PK)</option>
                     <option value="article">✍️ 经验博文 (Article)</option>
                   </select>
                 </div>

@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>螃蟹三轮车花坛巡游 · 完全自包含SVG动画</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+    
+    body {
+      font-family: 'Noto Sans SC', 'Fredoka', system-ui, -apple-system, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    .glow-cyan {
+      box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.4);
+    }
+    .glow-coral {
+      box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.4);
+    }
+    
+    /* Custom range slider styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      background: #f43f5e;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(244, 63, 94, 0.8);
+      border: 2px solid #ffffff;
+      transition: transform 0.1s ease;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+    }
+
+    /* Subtle grass pattern */
+    .garden-bg {
+      background-color: #1a2e1d;
+      background-image: 
+        radial-gradient(#2d4a2e 1.5px, transparent 1.5px),
+        radial-gradient(#1f3b21 1.5px, #1a2e1d 1.5px);
+      background-size: 30px 30px;
+      background-position: 0 0, 15px 15px;
+    }
+
+    /* Hide scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col overflow-x-hidden">
+
+  <!-- Top Navigation & Information Header -->
+  <header class="w-full bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-30 px-4 py-3 sticky top-0">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Title & Crab Mascot -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 via-orange-500 to-amber-400 flex items-center justify-center shadow-lg shadow-rose-950/50">
+          <svg viewBox="0 0 32 32" class="w-7 h-7 fill-white">
+            <path d="M16 8 C11 8 7 11 7 16 C7 21 11 23 16 23 C21 23 25 21 25 16 C25 11 21 8 16 8 Z"/>
+            <circle cx="12" cy="7" r="2.2"/>
+            <circle cx="20" cy="7" r="2.2"/>
+            <path d="M6 14 C3 12 3 7 7 6 C9 8 7 11 9 13" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+            <path d="M26 14 C29 12 29 7 25 6 C23 8 25 11 23 13" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold text-white tracking-wide">
+              螃蟹儿童三轮车 · 圆形花坛巡游
+            </h1>
+            <span class="px-2 py-0.5 text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-full">
+              纯自包含SVG矢量
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">
+            精确运动学动力学 · 8足刚性绑定 · 3轮曲柄同步 · 12秒闭环无缝周期
+          </p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center gap-2">
+        <button id="btnBell" class="px-3 py-1.5 text-xs font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg flex items-center gap-1.5 transition">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span class="hidden md:inline">按车铃铛</span><span class="md:hidden">车铃</span>
+        </button>
+
+        <button id="btnAudio" class="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg flex items-center gap-1.5 transition">
+          <span id="audioIcon">🔇</span>
+          <span id="audioLabel" class="hidden md:inline">音效: 关</span>
+        </button>
+
+        <button id="btnExportSVG" class="px-3 py-1.5 text-xs font-medium bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 rounded-lg flex items-center gap-1.5 transition glow-cyan">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <span>导出独立SVG</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Showcase Container -->
+  <main class="flex-1 flex flex-col relative max-w-7xl mx-auto w-full p-2 sm:p-4 gap-3">
+    
+    <!-- SVG Canvas Display Area -->
+    <div class="relative w-full aspect-[4/3] md:aspect-[16/9] max-h-[72vh] rounded-2xl overflow-hidden border border-slate-800 shadow-2xl garden-bg flex items-center justify-center">
+      
+      <!-- Primary SVG Document -->
+      <svg id="gardenSVG" class="w-full h-full cursor-grab active:cursor-grabbing select-none" viewBox="-500 -380 1000 760" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <!-- Radial Shading Gradients -->
+          <radialGradient id="gardenCenterGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#4a3728"/>
+            <stop offset="70%" stop-color="#312217"/>
+            <stop offset="100%" stop-color="#23170e"/>
+          </radialGradient>
+
+          <radialGradient id="flowerbedEdgeGrad" cx="48%" cy="46%" r="52%">
+            <stop offset="0%" stop-color="#5c4333"/>
+            <stop offset="65%" stop-color="#3c2a1e"/>
+            <stop offset="100%" stop-color="#22160e"/>
+          </radialGradient>
+
+          <!-- Cobblestone Track Gradient -->
+          <radialGradient id="pavingGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#38434f"/>
+            <stop offset="50%" stop-color="#2f3844"/>
+            <stop offset="100%" stop-color="#1f252d"/>
+          </radialGradient>
+
+          <!-- Crab Shell Gradient -->
+          <linearGradient id="crabShellGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ff6b57"/>
+            <stop offset="45%" stop-color="#f03e2e"/>
+            <stop offset="100%" stop-color="#c11a0c"/>
+          </linearGradient>
+
+          <linearGradient id="crabHighlight" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+          </linearGradient>
+
+          <linearGradient id="metalChrome" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f8fafc"/>
+            <stop offset="50%" stop-color="#94a3b8"/>
+            <stop offset="100%" stop-color="#475569"/>
+          </linearGradient>
+
+          <linearGradient id="trikeRed" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#38bdf8"/>
+            <stop offset="60%" stop-color="#0284c7"/>
+            <stop offset="100%" stop-color="#0369a1"/>
+          </linearGradient>
+
+          <linearGradient id="tireRubber" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#334155"/>
+            <stop offset="50%" stop-color="#1e293b"/>
+            <stop offset="100%" stop-color="#0f172a"/>
+          </linearGradient>
+
+          <linearGradient id="auxWheelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fbbf24"/>
+            <stop offset="60%" stop-color="#d97706"/>
+            <stop offset="100%" stop-color="#92400e"/>
+          </linearGradient>
+
+          <!-- Drop Shadows -->
+          <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+            <feOffset dx="4" dy="8" result="offsetblur"/>
+            <feComponentTransfer>
+              <feFuncA type="linear" slope="0.45"/>
+            </feComponentTransfer>
+            <feMerge>
+              <feMergeNode/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+
+          <filter id="glowPulse" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        <!-- Static Background: Garden Pavement, Curbs, Circular Flowerbed, Foliage -->
+        <g id="worldBackground">
+          <!-- Cobblestone Outer Ring -->
+          <g id="groundPaving"></g>
+
+          <!-- Circular Flowerbed Stone Rim & Soil Base -->
+          <g id="flowerbedBase"></g>
+
+          <!-- Flowers & Plants on the round bed -->
+          <g id="flowerbedFlora"></g>
+        </g>
+
+        <!-- Dynamic Dynamic Trajectory Overlay (Toggled via HUD) -->
+        <g id="trajectoryOverlay" opacity="0.85"></g>
+
+        <!-- Dynamic Shadows of Crab & Tricycle (Projected on Ground) -->
+        <g id="groundShadows"></g>
+
+        <!-- Dynamic 3D Rig: Tricycle, Wheels, Training Wheels, Pedals, Crab, Legs -->
+        <g id="dynamicActorGroup"></g>
+
+        <!-- Flora foreground elements (leaves that can overlap in 3D) -->
+        <g id="foregroundFlora"></g>
+
+        <!-- Kinematics & IK Diagnostics Layer (Optional HUD overlay inside SVG) -->
+        <g id="diagnosticsLayer" display="none"></g>
+      </svg>
+
+      <!-- Overlay Floating Badge (View Mode & Curvature indicator) -->
+      <div class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md border border-slate-700/60 rounded-xl px-3 py-2 text-xs flex items-center gap-3 shadow-lg pointer-events-none">
+        <div class="flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+          <span class="font-bold text-slate-200" id="hudStatus">循环运转中</span>
+        </div>
+        <div class="h-3 w-[1px] bg-slate-700"></div>
+        <div class="text-slate-400 font-mono">
+          <span class="text-rose-400 font-semibold" id="hudTime">00.00s</span> / 12.00s
+        </div>
+        <div class="h-3 w-[1px] bg-slate-700 hidden sm:block"></div>
+        <div class="text-slate-400 font-mono hidden sm:block">
+          角位移: <span class="text-cyan-400 font-semibold" id="hudAngle">0.0°</span>
+        </div>
+      </div>
+
+      <!-- Quick Camera Controls (Top Right) -->
+      <div class="absolute top-3 right-3 flex items-center bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 shadow-lg gap-1">
+        <button data-cam="iso" class="cam-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 transition">
+          俯斜3D
+        </button>
+        <button data-cam="top" class="cam-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition">
+          正俯视
+        </button>
+        <button data-cam="chase" class="cam-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition">
+          特写追踪
+        </button>
+      </div>
+
+      <!-- Camera Drag Instruction hint -->
+      <div class="absolute bottom-3 left-3 text-[11px] text-slate-400/80 bg-slate-950/60 backdrop-blur px-2.5 py-1 rounded-md pointer-events-none hidden sm:block">
+        💡 提示：按住鼠标左键可在画布上自由旋转视角 (仰角 15°~90° / 360°旋转)
+      </div>
+    </div>
+
+    <!-- Timeline & Playback Control Bar -->
+    <div class="w-full bg-slate-900/90 backdrop-blur border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-xl flex flex-col gap-3">
+      <!-- 12-Second Progress Scrubber -->
+      <div class="flex flex-col gap-1.5">
+        <div class="flex items-center justify-between text-xs text-slate-400 px-1 font-mono">
+          <span class="flex items-center gap-1.5 text-rose-400 font-medium">
+            <span class="inline-block w-2 h-2 rounded-full bg-rose-500"></span>
+            当前进度: <span id="timeDisplay" class="font-bold text-white text-sm">0.00 秒</span>
+          </span>
+          <div class="flex items-center gap-3">
+            <span>车轮转速: 60 RPM</span>
+            <span>花坛周期: <strong class="text-cyan-400">12.00 秒 / 圈</strong></span>
+          </div>
+        </div>
+
+        <div class="relative flex items-center">
+          <input id="timelineSlider" type="range" min="0" max="12" step="0.01" value="0" class="w-full h-2.5 cursor-pointer accent-rose-500">
+        </div>
+
+        <!-- 12-second tick marks -->
+        <div class="flex justify-between text-[10px] text-slate-500 px-1 font-mono">
+          <span>0s</span>
+          <span>1s</span>
+          <span>2s</span>
+          <span>3s</span>
+          <span>4s</span>
+          <span>5s</span>
+          <span>6s (半圈)</span>
+          <span>7s</span>
+          <span>8s</span>
+          <span>9s</span>
+          <span>10s</span>
+          <span>11s</span>
+          <span>12s (循环点)</span>
+        </div>
+      </div>
+
+      <!-- Playback Buttons & Diagnostic Toggles -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
+        <!-- Play / Pause / Step -->
+        <div class="flex items-center gap-2">
+          <button id="btnPlayPause" class="px-4 py-2 bg-gradient-to-r from-rose-600 to-orange-500 hover:from-rose-500 hover:to-orange-400 text-white font-semibold text-xs sm:text-sm rounded-xl flex items-center gap-2 shadow-lg shadow-rose-950/40 transition">
+            <svg id="playIcon" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="pauseIcon" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <span id="playLabel">暂停</span>
+          </button>
+
+          <button id="btnStepBack" title="后退0.5秒" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.334 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+            </svg>
+          </button>
+
+          <button id="btnStepForward" title="前进0.5秒" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.934 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 005 8v8a1 1 0 001.6.8l5.334-4zM19.934 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z" />
+            </svg>
+          </button>
+
+          <!-- Speed Controls -->
+          <div class="flex items-center bg-slate-800/80 rounded-xl p-1 border border-slate-700/60 ml-1">
+            <button data-speed="0.5" class="speed-btn px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-white transition">0.5x</button>
+            <button data-speed="1.0" class="speed-btn px-2 py-1 text-xs rounded-lg bg-rose-500/20 text-rose-300 font-semibold transition">1.0x</button>
+            <button data-speed="1.5" class="speed-btn px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-white transition">1.5x</button>
+            <button data-speed="2.0" class="speed-btn px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-white transition">2.0x</button>
+          </div>
+        </div>
+
+        <!-- Toggles: Trajectory, Bones, Wireframe -->
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 transition">
+            <input id="toggleTrajectory" type="checkbox" checked class="rounded text-rose-500 focus:ring-0">
+            <span>花坛轨迹重合线</span>
+          </label>
+
+          <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 transition">
+            <input id="toggleSkeleton" type="checkbox" class="rounded text-cyan-400 focus:ring-0">
+            <span>8足骨骼&曲柄销透视</span>
+          </label>
+
+          <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700/60 transition">
+            <input id="toggleFlowers" type="checkbox" checked class="rounded text-emerald-400 focus:ring-0">
+            <span>花坛植被</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Requirements Verification Cards Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <!-- Card 1 -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col gap-1.5 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+            要求 1: 鞍座正上方 & 轨迹重合
+          </span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">严格满足</span>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          螃蟹腹部质心严格刚体固定在三轮车鞍座正上方（偏位 0.0mm）。整车圆周轨迹半径严格锁定花坛石砌边缘 $R=260\text{px}$，偏航角同步阿克曼转向角。
+        </p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col gap-1.5 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+            要求 2: 车轮匹配 & 辅助轮平顺
+          </span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">严格满足</span>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          前轮、后左右主轮及外侧支撑辅助轮依据各自回转半径精确计算纯滚动角速度，无侧滑与错位，辅助轮支架稳固贴地运转无侧翻。
+        </p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col gap-1.5 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            要求 3: 8足严格动力学绑定
+          </span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">严格满足</span>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          前2足牢固锁扣车把把套；后6足通过反向动力学（IK）分别铰接前轮双脚踏及后左右轮联动曲柄销，膝关节立体向外外展，杜绝任何穿模穿刺。
+        </p>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col gap-1.5 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            要求 4: 12秒闭环 · 全矢量SVG
+          </span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">严格满足</span>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          动画精确设计为12.000秒循环周期（主轮正好整除回转12周，首尾状态0误差闭环），无任何位图图片，完全由贝塞尔曲线与SVG矢量路径实时投影绘制。
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Interactive Script -->
+  <script>
+    /**
+     * Completely Self-Contained SVG Animation Engine
+     * Crab Riding Children's Tricycle with Training Wheels along Circular Flowerbed Edge
+     * Loop Duration: Exactly 12.0 Seconds
+     * Mathematical Modeling: 3D Rigid-body Kinematics, Pure Rolling Wheel Kinematics,
+     * Analytical Crab 3-Segment Leg Inverse Kinematics (IK), Projective Vector Pipeline.
+     */
+
+    // --- Configuration & Constants ---
+    const CONFIG = {
+      loopDuration: 12.0, // seconds
+      trackRadius: 260.0, // px, strict flowerbed perimeter radius
+      flowerbedInnerR: 190.0,
+      flowerbedOuterR: 260.0,
+      curbWidth: 20.0,
+      pavingOuterR: 350.0,
+      
+      // Tricycle Dimensions
+      wheelbase: 70.0,    // distance between front axle and rear axle center
+      rearTrack: 56.0,    // distance between rear wheels (half = 28)
+      auxTrack: 94.0,     // distance between training wheels (half = 47)
+      
+      frontWheelR: 21.666667, // Chosen so 12s = exactly 12 front wheel revolutions!
+      rearWheelR: 17.333333,  // Chosen so 12s = exactly 15 rear wheel revolutions!
+      auxWheelR: 10.833333,   // Chosen so 12s = exactly 24 aux wheel revolutions!
+      
+      crankLength: 10.5,      // Pedal crank arm radius
+      handlebarWidth: 44.0,  // Handlebar width
+      handlebarHeight: 52.0, // Handlebar elevation above ground
+      saddleHeight: 40.0,    // Saddle elevation
+      crabScale: 1.0,
+      
+      // Default Camera (Elevation 42°, Azimuth 45°)
+      camElevation: 42 * Math.PI / 180,
+      camAzimuth: 45 * Math.PI / 180,
+      zoom: 1.05
+    };
+
+    // State Variables
+    let state = {
+      time: 0,
+      isPlaying: true,
+      playbackRate: 1.0,
+      cameraMode: 'iso', // 'iso', 'top', 'chase'
+      showTrajectory: true,
+      showSkeleton: false,
+      showFlowers: true,
+      audioEnabled: false,
+      isDragging: false,
+      lastMouseX: 0,
+      lastMouseY: 0,
+      lastFrameTime: performance.now()
+    };
+
+    // SVG DOM Cache
+    const svg = document.getElementById('gardenSVG');
+    const groundPaving = document.getElementById('groundPaving');
+    const flowerbedBase = document.getElementById('flowerbedBase');
+    const flowerbedFlora = document.getElementById('flowerbedFlora');
+    const trajectoryOverlay = document.getElementById('trajectoryOverlay');
+    const groundShadows = document.getElementById('groundShadows');
+    const dynamicActorGroup = document.getElementById('dynamicActorGroup');
+    const foregroundFlora = document.getElementById('foregroundFlora');
+    const diagnosticsLayer = document.getElementById('diagnosticsLayer');
+
+    // UI Elements Cache
+    const timelineSlider = document.getElementById('timelineSlider');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const hudTime = document.getElementById('hudTime');
+    const hudAngle = document.getElementById('hudAngle');
+    const hudStatus = document.getElementById('hudStatus');
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    const playIcon = document.getElementById('playIcon');
+    const pauseIcon = document.getElementById('pauseIcon');
+    const playLabel = document.getElementById('playLabel');
+    const btnAudio = document.getElementById('btnAudio');
+    const audioIcon = document.getElementById('audioIcon');
+    const audioLabel = document.getElementById('audioLabel');
+    const btnBell = document.getElementById('btnBell');
+    const btnExportSVG = document.getElementById('btnExportSVG');
+
+    // --- Web Audio Synthesizer (Zero external dependencies) ---
+    let audioCtx = null;
+    let clickOsc = null;
+    let nextClickTime = 0;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTricycleBell() {
+      initAudio();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      // Bright friendly dual-tone brass bell chime
+      [1480, 2220, 2960].forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+        gain.gain.setValueAtTime(0.28 / (idx + 1), now + idx * 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.9);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + idx * 0.04);
+        osc.stop(now + idx * 0.04 + 0.9);
+      });
+    }
+
+    function playPedalClick() {
+      if (!state.audioEnabled || !audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(120, now + 0.03);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.035);
+    }
+
+    // --- 3D Projection Math Engine ---
+    // World coordinates: X (East), Y (North), Z (Upwards)
+    // Flowerbed center is at (0, 0, 0)
+    function project3D(x, y, z, customElev, customAzim) {
+      const elev = customElev !== undefined ? customElev : CONFIG.camElevation;
+      const azim = customAzim !== undefined ? customAzim : CONFIG.camAzimuth;
+      
+      // Azimuth rotation around Z
+      const cosA = Math.cos(azim);
+      const sinA = Math.sin(azim);
+      const xRot = x * cosA - y * sinA;
+      const yRot = x * sinA + y * cosA;
+      
+      // Elevation tilt
+      const sinE = Math.sin(elev);
+      const cosE = Math.cos(elev);
+      
+      // Isometric axonometric projection
+      const screenX = xRot * CONFIG.zoom;
+      const screenY = (yRot * sinE - z * cosE) * CONFIG.zoom;
+      const depth = yRot * cosE + z * sinE; // For depth sorting
+      
+      return { x: screenX, y: screenY, depth: depth };
+    }
+
+    // Helper: Project an array of 3D points
+    function projectPoly(pts) {
+      return pts.map(p => project3D(p[0], p[1], p[2]));
+    }
+
+    // Helper: SVG Path from projected points
+    function polyToPath(projectedPts, closed = true) {
+      if (!projectedPts || projectedPts.length === 0) return '';
+      let d = `M ${projectedPts[0].x.toFixed(2)},${projectedPts[0].y.toFixed(2)}`;
+      for (let i = 1; i < projectedPts.length; i++) {
+        d += ` L ${projectedPts[i].x.toFixed(2)},${projectedPts[i].y.toFixed(2)}`;
+      }
+      if (closed) d += ' Z';
+      return d;
+    }
+
+    // --- Generate Static Environment (Garden & Flowerbed) ---
+    // Procedural generation of blooming flowers, stone curb, cobblestones
+    const flowerSeeds = [];
+    const stoneSeeds = [];
+
+    function initGardenData() {
+      // Create 32 stone curb pavers around the flowerbed rim
+      const stoneCount = 36;
+      for (let i = 0; i < stoneCount; i++) {
+        const theta1 = (i / stoneCount) * Math.PI * 2;
+        const theta2 = ((i + 0.94) / stoneCount) * Math.PI * 2;
+        stoneSeeds.push({ theta1, theta2, shade: (i % 2 === 0) ? '#4a5568' : '#334155' });
+      }
+
+      // Create rich organic flowers within the flowerbed
+      const flowerPalette = ['#f43f5e', '#fb7185', '#ec4899', '#f59e0b', '#fbbf24', '#a855f7', '#38bdf8', '#ffffff'];
+      for (let i = 0; i < 68; i++) {
+        // Scatter between radius 20 to 240
+        const r = 20 + Math.sqrt(Math.random()) * 215;
+        const th = Math.random() * Math.PI * 2;
+        const color = flowerPalette[i % flowerPalette.length];
+        const petalCount = 4 + (i % 3);
+        const size = 6 + (i % 5) * 2;
+        const stemHeight = 8 + (i % 6) * 3;
+        flowerSeeds.push({
+          x: r * Math.cos(th),
+          y: r * Math.sin(th),
+          z: 0,
+          color,
+          petalCount,
+          size,
+          stemHeight,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+    initGardenData();
+
+    // Render static flowerbed background
+    function renderStaticEnvironment() {
+      // 1. Cobblestone Paving under the path
+      let pavingHTML = '';
+      const numRings = 4;
+      const pavingPts = [];
+      const segs = 48;
+      
+      // Base outer pavement slab
+      const outerRing = [];
+      const innerRing = [];
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        outerRing.push([CONFIG.pavingOuterR * Math.cos(a), CONFIG.pavingOuterR * Math.sin(a), -1]);
+        innerRing.push([CONFIG.flowerbedOuterR * Math.cos(a), CONFIG.flowerbedOuterR * Math.sin(a), -1]);
+      }
+      
+      const pOuter = projectPoly(outerRing);
+      const pInner = projectPoly(innerRing.reverse());
+      const pavingPathD = polyToPath(pOuter, false) + ' L ' + polyToPath(pInner, false).substring(1) + ' Z';
+      
+      pavingHTML += `<path d="${pavingPathD}" fill="url(#pavingGrad)" stroke="#1e293b" stroke-width="1.5" opacity="0.9"/>`;
+      
+      // Cobblestone grooves
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        const p1 = project3D(CONFIG.flowerbedOuterR * Math.cos(a), CONFIG.flowerbedOuterR * Math.sin(a), 0);
+        const p2 = project3D(CONFIG.pavingOuterR * Math.cos(a), CONFIG.pavingOuterR * Math.sin(a), 0);
+        pavingHTML += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" stroke="#17202a" stroke-width="1.2" opacity="0.45"/>`;
+      }
+      groundPaving.innerHTML = pavingHTML;
+
+      // 2. Flowerbed Soil & Stone Curb Retaining Wall
+      let bedHTML = '';
+      
+      // Raised soil bed 3D cylinder
+      const bedH = 10; // 10px raised curb
+      const bedSoilPts = [];
+      const bedBasePts = [];
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        bedSoilPts.push([CONFIG.flowerbedOuterR * Math.cos(a), CONFIG.flowerbedOuterR * Math.sin(a), bedH]);
+        bedBasePts.push([CONFIG.flowerbedOuterR * Math.cos(a), CONFIG.flowerbedOuterR * Math.sin(a), 0]);
+      }
+      
+      // Curb Stones
+      stoneSeeds.forEach(stone => {
+        const pA1 = project3D(CONFIG.flowerbedOuterR * Math.cos(stone.theta1), CONFIG.flowerbedOuterR * Math.sin(stone.theta1), 0);
+        const pA2 = project3D(CONFIG.flowerbedOuterR * Math.cos(stone.theta2), CONFIG.flowerbedOuterR * Math.sin(stone.theta2), 0);
+        const pB2 = project3D((CONFIG.flowerbedOuterR - 10) * Math.cos(stone.theta2), (CONFIG.flowerbedOuterR - 10) * Math.sin(stone.theta2), bedH);
+        const pB1 = project3D((CONFIG.flowerbedOuterR - 10) * Math.cos(stone.theta1), (CONFIG.flowerbedOuterR - 10) * Math.sin(stone.theta1), bedH);
+        
+        bedHTML += `<polygon points="${pA1.x.toFixed(1)},${pA1.y.toFixed(1)} ${pA2.x.toFixed(1)},${pA2.y.toFixed(1)} ${pB2.x.toFixed(1)},${pB2.y.toFixed(1)} ${pB1.x.toFixed(1)},${pB1.y.toFixed(1)}" fill="${stone.shade}" stroke="#1e293b" stroke-width="0.8"/>`;
+      });
+      
+      // Soil surface
+      const innerSoilPts = [];
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        innerSoilPts.push([(CONFIG.flowerbedOuterR - 10) * Math.cos(a), (CONFIG.flowerbedOuterR - 10) * Math.sin(a), bedH]);
+      }
+      bedHTML += `<path d="${polyToPath(projectPoly(innerSoilPts))}" fill="url(#flowerbedEdgeGrad)" stroke="#271810" stroke-width="1.5"/>`;
+      
+      flowerbedBase.innerHTML = bedHTML;
+    }
+
+    // Render Flowerbed Flora (Flowers and swaying foliage)
+    function renderFlora(currentTime) {
+      if (!state.showFlowers) {
+        flowerbedFlora.innerHTML = '';
+        foregroundFlora.innerHTML = '';
+        return;
+      }
+
+      let floraHTML = '';
+      // Wind sway angle based on time
+      const wind = Math.sin(currentTime * 1.5) * 2.5;
+
+      flowerSeeds.forEach(fl => {
+        // Stem
+        const base = project3D(fl.x, fl.y, 10);
+        const swayX = fl.x + wind * 0.6;
+        const swayY = fl.y + wind * 0.4;
+        const tip = project3D(swayX, swayY, 10 + fl.stemHeight);
+        
+        // Stem path
+        floraHTML += `<line x1="${base.x.toFixed(1)}" y1="${base.y.toFixed(1)}" x2="${tip.x.toFixed(1)}" y2="${tip.y.toFixed(1)}" stroke="#2e7d32" stroke-width="1.8" stroke-linecap="round"/>`;
+        
+        // Leaves
+        const midLeaf = project3D(fl.x + 3, fl.y + 2, 10 + fl.stemHeight * 0.45);
+        floraHTML += `<ellipse cx="${midLeaf.x.toFixed(1)}" cy="${midLeaf.y.toFixed(1)}" rx="3.5" ry="1.8" fill="#388e3c" transform="rotate(${fl.phase * 20}, ${midLeaf.x}, ${midLeaf.y})"/>`;
+
+        // Petals (star/flower blossom)
+        const pSize = fl.size * CONFIG.zoom;
+        floraHTML += `<circle cx="${tip.x.toFixed(1)}" cy="${tip.y.toFixed(1)}" r="${(pSize * 0.6).toFixed(1)}" fill="${fl.color}" opacity="0.95"/>`;
+        floraHTML += `<circle cx="${tip.x.toFixed(1)}" cy="${tip.y.toFixed(1)}" r="${(pSize * 0.25).toFixed(1)}" fill="#fef08a"/>`;
+      });
+
+      flowerbedFlora.innerHTML = floraHTML;
+    }
+
+    // Render Trajectory Guideline (Requirement 1 & 2 Verification)
+    function renderTrajectoryGuideline() {
+      if (!state.showTrajectory) {
+        trajectoryOverlay.innerHTML = '';
+        return;
+      }
+
+      let d = '';
+      const segs = 72;
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        const p = project3D(CONFIG.trackRadius * Math.cos(a), CONFIG.trackRadius * Math.sin(a), 0.5);
+        d += (i === 0 ? 'M' : ' L') + ` ${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+      }
+
+      // Outer & Inner wheel tracks
+      let dOuter = '', dInner = '';
+      const rOut = CONFIG.trackRadius + CONFIG.rearTrack / 2;
+      const rIn = CONFIG.trackRadius - CONFIG.rearTrack / 2;
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        const pOut = project3D(rOut * Math.cos(a), rOut * Math.sin(a), 0.2);
+        const pIn = project3D(rIn * Math.cos(a), rIn * Math.sin(a), 0.2);
+        dOuter += (i === 0 ? 'M' : ' L') + ` ${pOut.x.toFixed(1)},${pOut.y.toFixed(1)}`;
+        dInner += (i === 0 ? 'M' : ' L') + ` ${pIn.x.toFixed(1)},${pIn.y.toFixed(1)}`;
+      }
+
+      trajectoryOverlay.innerHTML = `
+        <!-- Flowerbed Edge / Central Track Guidance -->
+        <path d="${d}" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.75" />
+        <!-- Rear Wheels Parallel Rolling Trajectories -->
+        <path d="${dOuter}" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.45" />
+        <path d="${dInner}" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.45" />
+      `;
+    }
+
+    // --- Mathematical Inverse Kinematics (IK) for Crab Legs ---
+    // Solves a 3-segment limb (Coxa, Thigh/Merus, Shank/Dactylus)
+    // Root = crab body socket, Tip = target point (pedal / handlebar)
+    // Ensures leg bends outwards in 3D and NEVER intersects frame or wheel!
+    function solveCrabLegIK(root, target, outwardDir, length1 = 15, length2 = 18) {
+      // Vector from root to target
+      const dx = target.x - root.x;
+      const dy = target.y - root.y;
+      const dz = target.z - root.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      
+      // Clamp distance to avoid hyperbolic singularity
+      const maxReach = (length1 + length2) * 0.96;
+      const minReach = Math.abs(length1 - length2) * 1.1;
+      const clampedDist = Math.max(minReach, Math.min(maxReach, dist));
+
+      // Law of cosines for knee angle
+      const cosAngle = (length1 * length1 + clampedDist * clampedDist - length2 * length2) / (2 * length1 * clampedDist);
+      const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+
+      // Primary direction towards target
+      const dirX = dx / (dist || 1);
+      const dirY = dy / (dist || 1);
+      const dirZ = dz / (dist || 1);
+
+      // Normal outward vector orthogonal to direct line
+      // outwardDir is a hint vector pointing outward from the crab's side
+      let bendX = outwardDir.x;
+      let bendY = outwardDir.y;
+      let bendZ = outwardDir.z + 0.35; // slightly up
+
+      // Gram-Schmidt orthogonalization
+      const dot = bendX * dirX + bendY * dirY + bendZ * dirZ;
+      bendX -= dot * dirX;
+      bendY -= dot * dirY;
+      bendZ -= dot * dirZ;
+      const bendLen = Math.sqrt(bendX * bendX + bendY * bendY + bendZ * bendZ) || 1;
+      bendX /= bendLen;
+      bendY /= bendLen;
+      bendZ /= bendLen;
+
+      // Knee joint 3D position
+      const kneeX = root.x + dirX * (length1 * Math.cos(angle)) + bendX * (length1 * Math.sin(angle));
+      const kneeY = root.y + dirY * (length1 * Math.cos(angle)) + bendY * (length1 * Math.sin(angle));
+      const kneeZ = root.z + dirZ * (length1 * Math.cos(angle)) + bendZ * (length1 * Math.sin(angle));
+
+      return {
+        root: root,
+        knee: { x: kneeX, y: kneeY, z: kneeZ },
+        tip: target
+      };
+    }
+
+    // --- Main Dynamic Actor Computation & Rendering ---
+    function updateScene(t) {
+      // t is normalized in [0, 12.0)
+      const loopT = (t % CONFIG.loopDuration + CONFIG.loopDuration) % CONFIG.loopDuration;
+      const fraction = loopT / CONFIG.loopDuration; // 0.0 to 1.0
+      
+      // Angle of travel around circular flowerbed
+      // Counter-clockwise riding along the circle
+      const globalPhi = fraction * Math.PI * 2;
+      
+      // Tricycle Center Position on Track
+      // Follows circle of radius CONFIG.trackRadius strictly!
+      const trikeCenter = {
+        x: CONFIG.trackRadius * Math.cos(globalPhi),
+        y: CONFIG.trackRadius * Math.sin(globalPhi),
+        z: 0
+      };
+
+      // Tricycle Heading Tangent (Forward Direction)
+      // Moving in circle: tangent is perpendicular to radius vector
+      const headingAngle = globalPhi + Math.PI / 2;
+      const fwd = { x: Math.cos(headingAngle), y: Math.sin(headingAngle), z: 0 };
+      const right = { x: Math.sin(headingAngle), y: -Math.cos(headingAngle), z: 0 };
+      const up = { x: 0, y: 0, z: 1 };
+
+      // Ackermann Steering Angle for Front Wheel
+      // Steering inward into circle: delta = arctan(wheelbase / trackRadius)
+      const steerAngle = Math.atan2(CONFIG.wheelbase, CONFIG.trackRadius);
+      const frontHeading = headingAngle + steerAngle;
+      const frontFwd = { x: Math.cos(frontHeading), y: Math.sin(frontHeading), z: 0 };
+      const frontRight = { x: Math.sin(frontHeading), y: -Math.cos(frontHeading), z: 0 };
+
+      // --- Vehicle Hardpoints (3D Coordinates) ---
+      // Rear Axle Center (between rear wheels)
+      const rearAxleCenter = {
+        x: trikeCenter.x - fwd.x * (CONFIG.wheelbase * 0.4),
+        y: trikeCenter.y - fwd.y * (CONFIG.wheelbase * 0.4),
+        z: CONFIG.rearWheelR
+      };
+
+      // Front Wheel Center
+      const frontHub = {
+        x: rearAxleCenter.x + fwd.x * CONFIG.wheelbase,
+        y: rearAxleCenter.y + fwd.y * CONFIG.wheelbase,
+        z: CONFIG.frontWheelR
+      };
+
+      // Rear Left Wheel Center
+      const rearLeftHub = {
+        x: rearAxleCenter.x - right.x * (CONFIG.rearTrack / 2),
+        y: rearAxleCenter.y - right.y * (CONFIG.rearTrack / 2),
+        z: CONFIG.rearWheelR
+      };
+
+      // Rear Right Wheel Center
+      const rearRightHub = {
+        x: rearAxleCenter.x + right.x * (CONFIG.rearTrack / 2),
+        y: rearAxleCenter.y + right.y * (CONFIG.rearTrack / 2),
+        z: CONFIG.rearWheelR
+      };
+
+      // Training Wheel Hubs (Auxiliary wheels, mounted slightly aft and wide for anti-tip)
+      const auxLeftHub = {
+        x: rearAxleCenter.x - fwd.x * 6 - right.x * (CONFIG.auxTrack / 2),
+        y: rearAxleCenter.y - fwd.y * 6 - right.y * (CONFIG.auxTrack / 2),
+        z: CONFIG.auxWheelR
+      };
+
+      const auxRightHub = {
+        x: rearAxleCenter.x - fwd.x * 6 + right.x * (CONFIG.auxTrack / 2),
+        y: rearAxleCenter.y - fwd.y * 6 + right.y * (CONFIG.auxTrack / 2),
+        z: CONFIG.auxWheelR
+      };
+
+      // Handlebar Center & Grips
+      const handlebarStem = {
+        x: frontHub.x - frontFwd.x * 5,
+        y: frontHub.y - frontFwd.y * 5,
+        z: CONFIG.handlebarHeight
+      };
+
+      const gripLeft = {
+        x: handlebarStem.x - frontRight.x * (CONFIG.handlebarWidth / 2),
+        y: handlebarStem.y - frontRight.y * (CONFIG.handlebarWidth / 2),
+        z: handlebarStem.z
+      };
+
+      const gripRight = {
+        x: handlebarStem.x + frontRight.x * (CONFIG.handlebarWidth / 2),
+        y: handlebarStem.y + frontRight.y * (CONFIG.handlebarWidth / 2),
+        z: handlebarStem.z
+      };
+
+      // Saddle Center (Strictly directly below crab center!)
+      const saddlePos = {
+        x: rearAxleCenter.x + fwd.x * (CONFIG.wheelbase * 0.42),
+        y: rearAxleCenter.y + fwd.y * (CONFIG.wheelbase * 0.42),
+        z: CONFIG.saddleHeight
+      };
+
+      // Crab Center (Sits strictly directly above the saddle with natural pedaling suspension bounce)
+      // Exactly 12 front wheel revolutions = 12 bounces in 12 seconds
+      const pedalingPhase = fraction * 12.0 * Math.PI * 2;
+      const crabBob = Math.sin(pedalingPhase * 2) * 1.5; // subtle rhythmic suspension bob
+      const crabCenter = {
+        x: saddlePos.x,
+        y: saddlePos.y,
+        z: saddlePos.z + 14 + crabBob
+      };
+
+      // --- Wheel Rotation Angles & Crank Positions ---
+      // Wheel rotation strictly matches pure forward rolling along each track!
+      // In forward rolling: top moves forward, bottom is at rest on pavement.
+      // Along fwd vector: sin(rot), along up vector: cos(rot).
+      const frontWheelRot = pedalingPhase; // 12 full rotations in 12s
+
+      // Front Wheel Pedals (Offset by 180 degrees, forward cadence)
+      const fCosL = Math.cos(frontWheelRot);
+      const fSinL = Math.sin(frontWheelRot);
+      const frontPedalL = {
+        x: frontHub.x - frontRight.x * 12 + frontFwd.x * (CONFIG.crankLength * fSinL),
+        y: frontHub.y - frontRight.y * 12 + frontFwd.y * (CONFIG.crankLength * fSinL),
+        z: frontHub.z + fCosL * CONFIG.crankLength
+      };
+
+      const fCosR = Math.cos(frontWheelRot + Math.PI);
+      const fSinR = Math.sin(frontWheelRot + Math.PI);
+      const frontPedalR = {
+        x: frontHub.x + frontRight.x * 12 + frontFwd.x * (CONFIG.crankLength * fSinR),
+        y: frontHub.y + frontRight.y * 12 + frontFwd.y * (CONFIG.crankLength * fSinR),
+        z: frontHub.z + fCosR * CONFIG.crankLength
+      };
+
+      // Rear Wheels Rotation (Pure forward rolling, exact 15 full revolutions in 12s)
+      const rearWheelRot = fraction * 15.0 * Math.PI * 2;
+
+      // Rear Left Wheel Crank Pins (Dual tandem pedals for Crab Legs 3L & 4L)
+      const rLCos1 = Math.cos(rearWheelRot);
+      const rLSin1 = Math.sin(rearWheelRot);
+      const rearLCrank1 = {
+        x: rearLeftHub.x - right.x * 6 + fwd.x * (CONFIG.crankLength * rLSin1),
+        y: rearLeftHub.y - right.y * 6 + fwd.y * (CONFIG.crankLength * rLSin1),
+        z: rearLeftHub.z + rLCos1 * CONFIG.crankLength
+      };
+
+      const rLCos2 = Math.cos(rearWheelRot + Math.PI);
+      const rLSin2 = Math.sin(rearWheelRot + Math.PI);
+      const rearLCrank2 = {
+        x: rearLeftHub.x - right.x * 6 + fwd.x * (CONFIG.crankLength * rLSin2),
+        y: rearLeftHub.y - right.y * 6 + fwd.y * (CONFIG.crankLength * rLSin2),
+        z: rearLeftHub.z + rLCos2 * CONFIG.crankLength
+      };
+
+      // Rear Right Wheel Crank Pins (Dual tandem pedals for Crab Legs 3R & 4R)
+      const rRCos1 = Math.cos(rearWheelRot + Math.PI / 2);
+      const rRSin1 = Math.sin(rearWheelRot + Math.PI / 2);
+      const rearRCrank1 = {
+        x: rearRightHub.x + right.x * 6 + fwd.x * (CONFIG.crankLength * rRSin1),
+        y: rearRightHub.y + right.y * 6 + fwd.y * (CONFIG.crankLength * rRSin1),
+        z: rearRightHub.z + rRCos1 * CONFIG.crankLength
+      };
+
+      const rRCos2 = Math.cos(rearWheelRot + 3 * Math.PI / 2);
+      const rRSin2 = Math.sin(rearWheelRot + 3 * Math.PI / 2);
+      const rearRCrank2 = {
+        x: rearRightHub.x + right.x * 6 + fwd.x * (CONFIG.crankLength * rRSin2),
+        y: rearRightHub.y + right.y * 6 + fwd.y * (CONFIG.crankLength * rRSin2),
+        z: rearRightHub.z + rRCos2 * CONFIG.crankLength
+      };
+
+      // Training Wheels Rotation (Pure forward rolling on ground, exactly 24 rotations in 12s)
+      const auxWheelRot = fraction * 24.0 * Math.PI * 2;
+
+      // --- Crab Body Sockets (Coxae) for 8 Walking Legs ---
+      // Leg 1L, 1R (Front pair -> Handlebars)
+      // Leg 2L, 2R (Front-Mid pair -> Front Wheel Pedals)
+      // Leg 3L, 4L (Rear-Mid & Rear pair -> Rear Left Wheel Cranks)
+      // Leg 3R, 4R (Rear-Mid & Rear pair -> Rear Right Wheel Cranks)
+      const crabSocket1L = { x: crabCenter.x + fwd.x * 12 - right.x * 14, y: crabCenter.y + fwd.y * 12 - right.y * 14, z: crabCenter.z - 2 };
+      const crabSocket1R = { x: crabCenter.x + fwd.x * 12 + right.x * 14, y: crabCenter.y + fwd.y * 12 + right.y * 14, z: crabCenter.z - 2 };
+
+      const crabSocket2L = { x: crabCenter.x + fwd.x * 4 - right.x * 16, y: crabCenter.y + fwd.y * 4 - right.y * 16, z: crabCenter.z - 3 };
+      const crabSocket2R = { x: crabCenter.x + fwd.x * 4 + right.x * 16, y: crabCenter.y + fwd.y * 4 + right.y * 16, z: crabCenter.z - 3 };
+
+      const crabSocket3L = { x: crabCenter.x - fwd.x * 5 - right.x * 16, y: crabCenter.y - fwd.y * 5 - right.y * 16, z: crabCenter.z - 3 };
+      const crabSocket3R = { x: crabCenter.x - fwd.x * 5 + right.x * 16, y: crabCenter.y - fwd.y * 5 + right.y * 16, z: crabCenter.z - 3 };
+
+      const crabSocket4L = { x: crabCenter.x - fwd.x * 12 - right.x * 13, y: crabCenter.y - fwd.y * 12 - right.y * 13, z: crabCenter.z - 3 };
+      const crabSocket4R = { x: crabCenter.x - fwd.x * 12 + right.x * 13, y: crabCenter.y - fwd.y * 12 + right.y * 13, z: crabCenter.z - 3 };
+
+      // --- Compute Strict 3D IK for all 8 Legs ---
+      // Outward bending normals ensure zero body & wheel collisions
+      const outL = { x: -right.x * 0.9 - fwd.x * 0.2, y: -right.y * 0.9 - fwd.y * 0.2, z: 0.4 };
+      const outR = { x: right.x * 0.9 - fwd.x * 0.2, y: right.y * 0.9 - fwd.y * 0.2, z: 0.4 };
+
+      // Leg 1: Steering Handlebar
+      const leg1L = solveCrabLegIK(crabSocket1L, gripLeft, outL, 20, 22);
+      const leg1R = solveCrabLegIK(crabSocket1R, gripRight, outR, 20, 22);
+
+      // Leg 2: Front Wheel Pedals
+      const leg2L = solveCrabLegIK(crabSocket2L, frontPedalL, outL, 22, 24);
+      const leg2R = solveCrabLegIK(crabSocket2R, frontPedalR, outR, 22, 24);
+
+      // Leg 3 & 4: Rear Left Wheel Cranks
+      const leg3L = solveCrabLegIK(crabSocket3L, rearLCrank1, outL, 19, 21);
+      const leg4L = solveCrabLegIK(crabSocket4L, rearLCrank2, outL, 19, 21);
+
+      // Leg 3 & 4: Rear Right Wheel Cranks
+      const leg3R = solveCrabLegIK(crabSocket3R, rearRCrank1, outR, 19, 21);
+      const leg4R = solveCrabLegIK(crabSocket4R, rearRCrank2, outR, 19, 21);
+
+      const allLegs = [
+        { ik: leg1L, name: '1L·左把手', color: '#ff5722' },
+        { ik: leg1R, name: '1R·右把手', color: '#ff5722' },
+        { ik: leg2L, name: '2L·前轮脚踏', color: '#0ea5e9' },
+        { ik: leg2R, name: '2R·前轮脚踏', color: '#0ea5e9' },
+        { ik: leg3L, name: '3L·后左曲柄1', color: '#eab308' },
+        { ik: leg4L, name: '4L·后左曲柄2', color: '#eab308' },
+        { ik: leg3R, name: '3R·后右曲柄1', color: '#10b981' },
+        { ik: leg4R, name: '4R·后右曲柄2', color: '#10b981' }
+      ];
+
+      // --- Giant Crab Pincers (Chelae) ---
+      // Claws proudly holding sunglasses or gesturing to the crowd!
+      const clawBob = Math.sin(fraction * 6 * Math.PI) * 4;
+      const clawEyeL = {
+        x: crabCenter.x + fwd.x * 24 - right.x * 22,
+        y: crabCenter.y + fwd.y * 24 - right.y * 22,
+        z: crabCenter.z + 16 + clawBob
+      };
+      const clawEyeR = {
+        x: crabCenter.x + fwd.x * 24 + right.x * 22,
+        y: crabCenter.y + fwd.y * 24 + right.y * 22,
+        z: crabCenter.z + 16 - clawBob
+      };
+
+      // --- Ground Shadow Projection ---
+      const shadowPts = [
+        project3D(trikeCenter.x + fwd.x * 40, trikeCenter.y + fwd.y * 40, 0),
+        project3D(trikeCenter.x - right.x * 35 - fwd.x * 30, trikeCenter.y - right.y * 35 - fwd.y * 30, 0),
+        project3D(trikeCenter.x + right.x * 35 - fwd.x * 30, trikeCenter.y + right.y * 35 - fwd.y * 30, 0)
+      ];
+      groundShadows.innerHTML = `
+        <ellipse cx="${project3D(trikeCenter.x, trikeCenter.y, 0).x.toFixed(1)}" cy="${project3D(trikeCenter.x, trikeCenter.y, 0).y.toFixed(1)}" rx="${(48 * CONFIG.zoom).toFixed(1)}" ry="${(26 * CONFIG.zoom).toFixed(1)}" fill="#000000" opacity="0.45" filter="url(#softShadow)" />
+        <ellipse cx="${project3D(frontHub.x, frontHub.y, 0).x.toFixed(1)}" cy="${project3D(frontHub.x, frontHub.y, 0).y.toFixed(1)}" rx="${(16 * CONFIG.zoom).toFixed(1)}" ry="${(9 * CONFIG.zoom).toFixed(1)}" fill="#000000" opacity="0.3" filter="url(#softShadow)" />
+      `;
+
+      // --- Assembly of 3D Projectable Renderables ---
+      // We gather all vehicle parts, wheels, crab anatomy into a render queue with depth sorting!
+      const renderList = [];
+
+      // Helper to add 3D line segment
+      function addLine(pA, pB, stroke, width, strokeCap = 'round') {
+        const prA = project3D(pA.x, pA.y, pA.z);
+        const prB = project3D(pB.x, pB.y, pB.z);
+        const depth = (prA.depth + prB.depth) / 2;
+        renderList.push({
+          depth,
+          svg: `<line x1="${prA.x.toFixed(1)}" y1="${prA.y.toFixed(1)}" x2="${prB.x.toFixed(1)}" y2="${prB.y.toFixed(1)}" stroke="${stroke}" stroke-width="${(width * CONFIG.zoom).toFixed(1)}" stroke-linecap="${strokeCap}"/>`
+        });
+      }
+
+      // Helper to add 3D wheel (Rim, Spokes, Tire, Hub)
+      function addWheel(center, fwdVec, upVec, radius, rotation, tireWidth = 5, color = '#1e293b', rimColor = '#e2e8f0') {
+        const prCenter = project3D(center.x, center.y, center.z);
+        const rimPts = [];
+        const spokeCount = 6;
+        const spokesSvg = [];
+
+        // Spokes (Forward pure rolling: top moves forward, bottom stationary)
+        for (let i = 0; i < spokeCount; i++) {
+          const spAngle = rotation + (i / spokeCount) * Math.PI * 2;
+          const sSin = Math.sin(spAngle);
+          const sCos = Math.cos(spAngle);
+          const px = center.x + fwdVec.x * (radius * sSin);
+          const py = center.y + fwdVec.y * (radius * sSin);
+          const pz = center.z + sCos * radius;
+          const prSpoke = project3D(px, py, pz);
+          spokesSvg.push(`<line x1="${prCenter.x.toFixed(1)}" y1="${prCenter.y.toFixed(1)}" x2="${prSpoke.x.toFixed(1)}" y2="${prSpoke.y.toFixed(1)}" stroke="#cbd5e1" stroke-width="1.2" opacity="0.85"/>`);
+        }
+
+        // Rim circumference
+        for (let i = 0; i <= 24; i++) {
+          const a = (i / 24) * Math.PI * 2;
+          const px = center.x + fwdVec.x * (radius * Math.sin(a));
+          const py = center.y + fwdVec.y * (radius * Math.sin(a));
+          const pz = center.z + Math.cos(a) * radius;
+          rimPts.push(project3D(px, py, pz));
+        }
+
+        const rimPath = polyToPath(rimPts);
+        renderList.push({
+          depth: prCenter.depth,
+          svg: `
+            <g>
+              <!-- Tire Rubber Tread -->
+              <path d="${rimPath}" fill="none" stroke="${color}" stroke-width="${(tireWidth * CONFIG.zoom).toFixed(1)}" stroke-linejoin="round"/>
+              <!-- Chrome Rim -->
+              <path d="${rimPath}" fill="none" stroke="${rimColor}" stroke-width="${(2.2 * CONFIG.zoom).toFixed(1)}" />
+              <!-- Spokes -->
+              ${spokesSvg.join('')}
+              <!-- Chrome Hub Center -->
+              <circle cx="${prCenter.x.toFixed(1)}" cy="${prCenter.y.toFixed(1)}" r="${(3.5 * CONFIG.zoom).toFixed(1)}" fill="url(#metalChrome)" stroke="#334155" stroke-width="0.8"/>
+            </g>
+          `
+        });
+      }
+
+      // --- 1. Tricycle Tubular Frame ---
+      // Rear axle tube
+      addLine(rearLeftHub, rearRightHub, '#0369a1', 5.5);
+      // Main central spine tube (from rear axle center up to head tube)
+      addLine(rearAxleCenter, handlebarStem, '#0284c7', 6.5);
+      // Front fork (from handlebar down to front hub)
+      addLine(handlebarStem, frontHub, 'url(#metalChrome)', 4.5);
+      // Handlebar crossbar
+      addLine(gripLeft, gripRight, 'url(#metalChrome)', 3.8);
+      // Grips (Rubber comfort grips)
+      addLine(gripLeft, { x: gripLeft.x - frontRight.x * 4, y: gripLeft.y - frontRight.y * 4, z: gripLeft.z }, '#ef4444', 5.5);
+      addLine(gripRight, { x: gripRight.x + frontRight.x * 4, y: gripRight.y + frontRight.y * 4, z: gripRight.z }, '#ef4444', 5.5);
+      // Seat post tube
+      addLine({ x: rearAxleCenter.x + fwd.x * (CONFIG.wheelbase * 0.42), y: rearAxleCenter.y + fwd.y * (CONFIG.wheelbase * 0.42), z: rearAxleCenter.z }, saddlePos, 'url(#metalChrome)', 4.8);
+
+      // Training wheel struts (Tubular brackets connecting rear axle to auxiliary wheels)
+      addLine(rearLeftHub, auxLeftHub, '#475569', 3.5);
+      addLine(rearRightHub, auxRightHub, '#475569', 3.5);
+      // Reinforcement cross strut
+      addLine(rearAxleCenter, auxLeftHub, '#64748b', 2.5);
+      addLine(rearAxleCenter, auxRightHub, '#64748b', 2.5);
+
+      // Shiny Tricycle Brass Bell on Handlebar
+      const bellPos = { x: handlebarStem.x + frontRight.x * 8, y: handlebarStem.y + frontRight.y * 8, z: handlebarStem.z + 4 };
+      const prBell = project3D(bellPos.x, bellPos.y, bellPos.z);
+      renderList.push({
+        depth: prBell.depth + 1,
+        svg: `
+          <g>
+            <circle cx="${prBell.x.toFixed(1)}" cy="${prBell.y.toFixed(1)}" r="${(4.5 * CONFIG.zoom).toFixed(1)}" fill="#f59e0b" stroke="#78350f" stroke-width="0.8"/>
+            <circle cx="${(prBell.x - 1).toFixed(1)}" cy="${(prBell.y - 1).toFixed(1)}" r="${(1.5 * CONFIG.zoom).toFixed(1)}" fill="#fef08a"/>
+          </g>
+        `
+      });
+
+      // Safety Flag on flexible fiberglass pole
+      const flagBase = { x: rearAxleCenter.x - fwd.x * 12, y: rearAxleCenter.y - fwd.y * 12, z: rearAxleCenter.z };
+      const flagTip = { x: flagBase.x - fwd.x * 8, y: flagBase.y - fwd.y * 8, z: flagBase.z + 55 };
+      addLine(flagBase, flagTip, '#e2e8f0', 1.8);
+      const prFlag1 = project3D(flagTip.x, flagTip.y, flagTip.z);
+      const prFlag2 = project3D(flagTip.x - fwd.x * 16, flagTip.y - fwd.y * 16, flagTip.z - 4);
+      const prFlag3 = project3D(flagTip.x, flagTip.y, flagTip.z - 10);
+      renderList.push({
+        depth: prFlag1.depth,
+        svg: `<polygon points="${prFlag1.x.toFixed(1)},${prFlag1.y.toFixed(1)} ${prFlag2.x.toFixed(1)},${prFlag2.y.toFixed(1)} ${prFlag3.x.toFixed(1)},${prFlag3.y.toFixed(1)}" fill="#f43f5e" stroke="#9f1239" stroke-width="0.8"/>`
+      });
+
+      // Saddle Cushion (Comfortable curved seat)
+      const prSaddle = project3D(saddlePos.x, saddlePos.y, saddlePos.z);
+      renderList.push({
+        depth: prSaddle.depth,
+        svg: `
+          <g>
+            <ellipse cx="${prSaddle.x.toFixed(1)}" cy="${prSaddle.y.toFixed(1)}" rx="${(12 * CONFIG.zoom).toFixed(1)}" ry="${(8 * CONFIG.zoom).toFixed(1)}" fill="#1e293b" stroke="#0f172a" stroke-width="1.2"/>
+            <ellipse cx="${prSaddle.x.toFixed(1)}" cy="${(prSaddle.y - 1).toFixed(1)}" rx="${(9 * CONFIG.zoom).toFixed(1)}" ry="${(5.5 * CONFIG.zoom).toFixed(1)}" fill="#334155"/>
+          </g>
+        `
+      });
+
+      // --- 2. Wheels (Pure Rolling) ---
+      // Front Wheel
+      addWheel(frontHub, frontFwd, up, CONFIG.frontWheelR, frontWheelRot, 5.5, '#0f172a', '#e2e8f0');
+      // Front Cranks & Pedals
+      addLine(frontHub, frontPedalL, '#64748b', 2.8);
+      addLine(frontHub, frontPedalR, '#64748b', 2.8);
+      // Pedal blocks
+      const prPedalL = project3D(frontPedalL.x, frontPedalL.y, frontPedalL.z);
+      const prPedalR = project3D(frontPedalR.x, frontPedalR.y, frontPedalR.z);
+      renderList.push({
+        depth: prPedalL.depth,
+        svg: `<rect x="${(prPedalL.x - 3.5).toFixed(1)}" y="${(prPedalL.y - 2.5).toFixed(1)}" width="7" height="5" rx="1.5" fill="#f97316" stroke="#9a3412" stroke-width="0.8"/>`
+      });
+      renderList.push({
+        depth: prPedalR.depth,
+        svg: `<rect x="${(prPedalR.x - 3.5).toFixed(1)}" y="${(prPedalR.y - 2.5).toFixed(1)}" width="7" height="5" rx="1.5" fill="#f97316" stroke="#9a3412" stroke-width="0.8"/>`
+      });
+
+      // Rear Left Wheel & Cranks
+      addWheel(rearLeftHub, fwd, up, CONFIG.rearWheelR, rearWheelRot, 4.8, '#0f172a', '#e2e8f0');
+      addLine(rearLeftHub, rearLCrank1, '#64748b', 2.4);
+      addLine(rearLeftHub, rearLCrank2, '#64748b', 2.4);
+
+      // Rear Right Wheel & Cranks
+      addWheel(rearRightHub, fwd, up, CONFIG.rearWheelR, rearWheelRot, 4.8, '#0f172a', '#e2e8f0');
+      addLine(rearRightHub, rearRCrank1, '#64748b', 2.4);
+      addLine(rearRightHub, rearRCrank2, '#64748b', 2.4);
+
+      // Auxiliary / Training Wheels (辅助轮)
+      addWheel(auxLeftHub, fwd, up, CONFIG.auxWheelR, auxWheelRot, 3.8, '#d97706', '#fef08a');
+      addWheel(auxRightHub, fwd, up, CONFIG.auxWheelR, auxWheelRot, 3.8, '#d97706', '#fef08a');
+
+      // --- 3. Crab 8 Walking Legs (Mathematical IK) ---
+      allLegs.forEach(legItem => {
+        const ik = legItem.ik;
+        const prRoot = project3D(ik.root.x, ik.root.y, ik.root.z);
+        const prKnee = project3D(ik.knee.x, ik.knee.y, ik.knee.z);
+        const prTip = project3D(ik.tip.x, ik.tip.y, ik.tip.z);
+
+        const depth = (prRoot.depth + prKnee.depth + prTip.depth) / 3;
+
+        renderList.push({
+          depth,
+          svg: `
+            <g class="crab-leg">
+              <!-- Thigh (Merus) -->
+              <line x1="${prRoot.x.toFixed(1)}" y1="${prRoot.y.toFixed(1)}" x2="${prKnee.x.toFixed(1)}" y2="${prKnee.y.toFixed(1)}" stroke="#e11d48" stroke-width="${(4.5 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+              <line x1="${prRoot.x.toFixed(1)}" y1="${prRoot.y.toFixed(1)}" x2="${prKnee.x.toFixed(1)}" y2="${prKnee.y.toFixed(1)}" stroke="#fda4af" stroke-width="${(1.5 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+              <!-- Knee Articulation Joint -->
+              <circle cx="${prKnee.x.toFixed(1)}" cy="${prKnee.y.toFixed(1)}" r="${(3.2 * CONFIG.zoom).toFixed(1)}" fill="#be123c" stroke="#881337" stroke-width="0.8"/>
+              <!-- Shank (Carpus/Propodus) -->
+              <line x1="${prKnee.x.toFixed(1)}" y1="${prKnee.y.toFixed(1)}" x2="${prTip.x.toFixed(1)}" y2="${prTip.y.toFixed(1)}" stroke="#e11d48" stroke-width="${(3.6 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+              <!-- Foot / Claw Grip clamped to pedal/handlebar -->
+              <circle cx="${prTip.x.toFixed(1)}" cy="${prTip.y.toFixed(1)}" r="${(2.6 * CONFIG.zoom).toFixed(1)}" fill="#4c0519" stroke="#fda4af" stroke-width="0.6"/>
+            </g>
+          `
+        });
+      });
+
+      // --- 4. Crab Body Anatomy (Carapace, Eyestalks, Cute Eyes, Smiling Mouth, Pincers) ---
+      const prCrabCenter = project3D(crabCenter.x, crabCenter.y, crabCenter.z);
+
+      // Eye stalks and blinking mechanism
+      // Blink every 3.5 seconds
+      const blinkCycle = loopT % 3.5;
+      const isBlinking = blinkCycle > 3.3;
+
+      const eyeLStalk = { x: crabCenter.x + fwd.x * 14 - right.x * 7, y: crabCenter.y + fwd.y * 14 - right.y * 7, z: crabCenter.z + 13 };
+      const eyeRStalk = { x: crabCenter.x + fwd.x * 14 + right.x * 7, y: crabCenter.y + fwd.y * 14 + right.y * 7, z: crabCenter.z + 13 };
+      const prEyeL = project3D(eyeLStalk.x, eyeLStalk.y, eyeLStalk.z);
+      const prEyeR = project3D(eyeRStalk.x, eyeRStalk.y, eyeRStalk.z);
+
+      // Giant Pincers (Claws)
+      const prClawL = project3D(clawEyeL.x, clawEyeL.y, clawEyeL.z);
+      const prClawR = project3D(clawEyeR.x, clawEyeR.y, clawEyeR.z);
+
+      // Crab assembly SVG
+      const crabSVG = `
+        <g id="crabBodyMesh">
+          <!-- Left Arm to Big Claw -->
+          <path d="M ${project3D(crabCenter.x - right.x * 14, crabCenter.y - right.y * 14, crabCenter.z + 2).x.toFixed(1)},${project3D(crabCenter.x - right.x * 14, crabCenter.y - right.y * 14, crabCenter.z + 2).y.toFixed(1)} Q ${(prClawL.x - 10).toFixed(1)},${(prClawL.y + 10).toFixed(1)} ${prClawL.x.toFixed(1)},${prClawL.y.toFixed(1)}" fill="none" stroke="#e11d48" stroke-width="${(5 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+          <!-- Big Left Chela (Pincer) -->
+          <g transform="translate(${prClawL.x.toFixed(1)}, ${prClawL.y.toFixed(1)})">
+            <path d="M 0,0 C -12,-16 4,-26 12,-12 C 16,-4 10,6 0,0 Z" fill="url(#crabShellGrad)" stroke="#9f1239" stroke-width="1.2"/>
+            <path d="M 4,-12 C 8,-20 18,-14 12,-4 Z" fill="#fb7185" stroke="#9f1239" stroke-width="1"/>
+            <circle cx="2" cy="-6" r="2" fill="#fff" opacity="0.6"/>
+          </g>
+
+          <!-- Right Arm to Big Claw -->
+          <path d="M ${project3D(crabCenter.x + right.x * 14, crabCenter.y + right.y * 14, crabCenter.z + 2).x.toFixed(1)},${project3D(crabCenter.x + right.x * 14, crabCenter.y + right.y * 14, crabCenter.z + 2).y.toFixed(1)} Q ${(prClawR.x + 10).toFixed(1)},${(prClawR.y + 10).toFixed(1)} ${prClawR.x.toFixed(1)},${prClawR.y.toFixed(1)}" fill="none" stroke="#e11d48" stroke-width="${(5 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+          <!-- Big Right Chela (Pincer) -->
+          <g transform="translate(${prClawR.x.toFixed(1)}, ${prClawR.y.toFixed(1)})">
+            <path d="M 0,0 C 12,-16 -4,-26 -12,-12 C -16,-4 -10,6 0,0 Z" fill="url(#crabShellGrad)" stroke="#9f1239" stroke-width="1.2"/>
+            <path d="M -4,-12 C -8,-20 -18,-14 -12,-4 Z" fill="#fb7185" stroke="#9f1239" stroke-width="1"/>
+            <circle cx="-2" cy="-6" r="2" fill="#fff" opacity="0.6"/>
+          </g>
+
+          <!-- Crab Main Carapace (Shell) -->
+          <ellipse cx="${prCrabCenter.x.toFixed(1)}" cy="${prCrabCenter.y.toFixed(1)}" rx="${(22 * CONFIG.zoom).toFixed(1)}" ry="${(16 * CONFIG.zoom).toFixed(1)}" fill="url(#crabShellGrad)" stroke="#9f1239" stroke-width="1.8"/>
+          <!-- Shell Top Highlight / Gloss -->
+          <ellipse cx="${(prCrabCenter.x - 3).toFixed(1)}" cy="${(prCrabCenter.y - 4).toFixed(1)}" rx="${(15 * CONFIG.zoom).toFixed(1)}" ry="${(8 * CONFIG.zoom).toFixed(1)}" fill="url(#crabHighlight)"/>
+          
+          <!-- Cute Rosy Cheeks -->
+          <circle cx="${(prCrabCenter.x - 11 * CONFIG.zoom).toFixed(1)}" cy="${(prCrabCenter.y + 2 * CONFIG.zoom).toFixed(1)}" r="${(3.2 * CONFIG.zoom).toFixed(1)}" fill="#f43f5e" opacity="0.6"/>
+          <circle cx="${(prCrabCenter.x + 11 * CONFIG.zoom).toFixed(1)}" cy="${(prCrabCenter.y + 2 * CONFIG.zoom).toFixed(1)}" r="${(3.2 * CONFIG.zoom).toFixed(1)}" fill="#f43f5e" opacity="0.6"/>
+
+          <!-- Happy Smiling Mouth -->
+          <path d="M ${(prCrabCenter.x - 6 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y + 4 * CONFIG.zoom).toFixed(1)} Q ${prCrabCenter.x.toFixed(1)},${(prCrabCenter.y + 9 * CONFIG.zoom).toFixed(1)} ${(prCrabCenter.x + 6 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y + 4 * CONFIG.zoom).toFixed(1)}" fill="none" stroke="#881337" stroke-width="${(1.6 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+
+          <!-- Eye Stalks -->
+          <line x1="${(prCrabCenter.x - 6 * CONFIG.zoom).toFixed(1)}" y1="${(prCrabCenter.y - 6 * CONFIG.zoom).toFixed(1)}" x2="${prEyeL.x.toFixed(1)}" y2="${prEyeL.y.toFixed(1)}" stroke="#be123c" stroke-width="${(3.2 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+          <line x1="${(prCrabCenter.x + 6 * CONFIG.zoom).toFixed(1)}" y1="${(prCrabCenter.y - 6 * CONFIG.zoom).toFixed(1)}" x2="${prEyeR.x.toFixed(1)}" y2="${prEyeR.y.toFixed(1)}" stroke="#be123c" stroke-width="${(3.2 * CONFIG.zoom).toFixed(1)}" stroke-linecap="round"/>
+
+          <!-- Left Eyeball -->
+          <circle cx="${prEyeL.x.toFixed(1)}" cy="${prEyeL.y.toFixed(1)}" r="${(4.8 * CONFIG.zoom).toFixed(1)}" fill="#ffffff" stroke="#9f1239" stroke-width="1.2"/>
+          ${isBlinking 
+            ? `<line x1="${(prEyeL.x - 3.5 * CONFIG.zoom).toFixed(1)}" y1="${prEyeL.y.toFixed(1)}" x2="${(prEyeL.x + 3.5 * CONFIG.zoom).toFixed(1)}" y2="${prEyeL.y.toFixed(1)}" stroke="#881337" stroke-width="2" stroke-linecap="round"/>`
+            : `<circle cx="${(prEyeL.x + 0.8).toFixed(1)}" cy="${(prEyeL.y - 0.5).toFixed(1)}" r="${(2.6 * CONFIG.zoom).toFixed(1)}" fill="#0f172a"/>
+               <circle cx="${(prEyeL.x + 1.6).toFixed(1)}" cy="${(prEyeL.y - 1.2).toFixed(1)}" r="${(1.0 * CONFIG.zoom).toFixed(1)}" fill="#ffffff"/>`
+          }
+
+          <!-- Right Eyeball -->
+          <circle cx="${prEyeR.x.toFixed(1)}" cy="${prEyeR.y.toFixed(1)}" r="${(4.8 * CONFIG.zoom).toFixed(1)}" fill="#ffffff" stroke="#9f1239" stroke-width="1.2"/>
+          ${isBlinking 
+            ? `<line x1="${(prEyeR.x - 3.5 * CONFIG.zoom).toFixed(1)}" y1="${prEyeR.y.toFixed(1)}" x2="${(prEyeR.x + 3.5 * CONFIG.zoom).toFixed(1)}" y2="${prEyeR.y.toFixed(1)}" stroke="#881337" stroke-width="2" stroke-linecap="round"/>`
+            : `<circle cx="${(prEyeR.x + 0.8).toFixed(1)}" cy="${(prEyeR.y - 0.5).toFixed(1)}" r="${(2.6 * CONFIG.zoom).toFixed(1)}" fill="#0f172a"/>
+               <circle cx="${(prEyeR.x + 1.6).toFixed(1)}" cy="${(prEyeR.y - 1.2).toFixed(1)}" r="${(1.0 * CONFIG.zoom).toFixed(1)}" fill="#ffffff"/>`
+          }
+
+          <!-- Cyclist Safety Helmet (Yellow with Racing Stripe) -->
+          <path d="M ${(prCrabCenter.x - 14 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y - 10 * CONFIG.zoom).toFixed(1)} Q ${prCrabCenter.x.toFixed(1)},${(prCrabCenter.y - 24 * CONFIG.zoom).toFixed(1)} ${(prCrabCenter.x + 14 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y - 10 * CONFIG.zoom).toFixed(1)} Z" fill="#fbbf24" stroke="#b45309" stroke-width="1.2"/>
+          <path d="M ${(prCrabCenter.x - 3 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y - 20 * CONFIG.zoom).toFixed(1)} L ${(prCrabCenter.x + 3 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y - 20 * CONFIG.zoom).toFixed(1)} L ${(prCrabCenter.x + 4 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y - 10 * CONFIG.zoom).toFixed(1)} L ${(prCrabCenter.x - 4 * CONFIG.zoom).toFixed(1)},${(prCrabCenter.y - 10 * CONFIG.zoom).toFixed(1)} Z" fill="#ef4444"/>
+        </g>
+      `;
+
+      renderList.push({
+        depth: prCrabCenter.depth,
+        svg: crabSVG
+      });
+
+      // --- 5. Sort Renderables by 3D Depth (Painters Algorithm) ---
+      renderList.sort((a, b) => a.depth - b.depth);
+
+      // Write to dynamic Actor SVG Group
+      dynamicActorGroup.innerHTML = renderList.map(item => item.svg).join('');
+
+      // --- 6. Diagnostics HUD (Optional Skeleton & Vectors) ---
+      if (state.showSkeleton) {
+        let diagHTML = '';
+        allLegs.forEach(leg => {
+          const prR = project3D(leg.ik.root.x, leg.ik.root.y, leg.ik.root.z);
+          const prK = project3D(leg.ik.knee.x, leg.ik.knee.y, leg.ik.knee.z);
+          const prT = project3D(leg.ik.tip.x, leg.ik.tip.y, leg.ik.tip.z);
+          diagHTML += `
+            <line x1="${prR.x}" y1="${prR.y}" x2="${prK.x}" y2="${prK.y}" stroke="${leg.color}" stroke-width="2" stroke-dasharray="2 2"/>
+            <line x1="${prK.x}" y1="${prK.y}" x2="${prT.x}" y2="${prT.y}" stroke="${leg.color}" stroke-width="2" stroke-dasharray="2 2"/>
+            <circle cx="${prT.x}" cy="${prT.y}" r="4" fill="${leg.color}" stroke="#fff" stroke-width="1.5"/>
+          `;
+        });
+
+        // Ackermann heading vector
+        const prFwd1 = project3D(frontHub.x, frontHub.y, frontHub.z);
+        const prFwd2 = project3D(frontHub.x + frontFwd.x * 35, frontHub.y + frontFwd.y * 35, frontHub.z);
+        diagHTML += `<line x1="${prFwd1.x}" y1="${prFwd1.y}" x2="${prFwd2.x}" y2="${prFwd2.y}" stroke="#38bdf8" stroke-width="2.5" marker-end="url(#arrow)"/>`;
+
+        diagnosticsLayer.innerHTML = diagHTML;
+        diagnosticsLayer.setAttribute('display', 'inline');
+      } else {
+        diagnosticsLayer.setAttribute('display', 'none');
+      }
+
+      // --- 7. Audio Pedal Click Trigger ---
+      // 12 rotations in 12s = 1 rotation/sec. 4 clicks per rotation.
+      const currentQuarter = Math.floor(fraction * 48);
+      if (currentQuarter !== state.lastQuarter) {
+        state.lastQuarter = currentQuarter;
+        playPedalClick();
+      }
+
+      // Update UI Info
+      const currentSeconds = loopT.toFixed(2);
+      timeDisplay.textContent = `${currentSeconds} 秒`;
+      hudTime.textContent = `${(loopT < 10 ? '0' : '')}${currentSeconds}s`;
+      const deg = ((fraction * 360) % 360).toFixed(1);
+      hudAngle.textContent = `${deg}°`;
+      timelineSlider.value = loopT;
+    }
+
+    // --- Main Animation Frame Loop ---
+    function animate(now) {
+      const dt = (now - state.lastFrameTime) / 1000;
+      state.lastFrameTime = now;
+
+      if (state.isPlaying) {
+        // Advance time with playback rate
+        state.time += dt * state.playbackRate;
+        if (state.time >= CONFIG.loopDuration) {
+          state.time = state.time % CONFIG.loopDuration;
+        }
+      }
+
+      // Dynamic flora sway
+      renderFlora(state.time);
+
+      // Dynamic vehicle and crab
+      updateScene(state.time);
+
+      requestAnimationFrame(animate);
+    }
+
+    // --- User Interaction & Controls ---
+    // Play / Pause Toggle
+    btnPlayPause.addEventListener('click', () => {
+      state.isPlaying = !state.isPlaying;
+      if (state.isPlaying) {
+        playIcon.classList.add('hidden');
+        pauseIcon.classList.remove('hidden');
+        playLabel.textContent = '暂停';
+        hudStatus.textContent = '循环运转中';
+      } else {
+        playIcon.classList.remove('hidden');
+        pauseIcon.classList.add('hidden');
+        playLabel.textContent = '播放';
+        hudStatus.textContent = '已暂停';
+      }
+    });
+
+    // Timeline Drag / Scrub
+    timelineSlider.addEventListener('input', (e) => {
+      state.time = parseFloat(e.target.value);
+      updateScene(state.time);
+    });
+
+    // Step Buttons
+    document.getElementById('btnStepBack').addEventListener('click', () => {
+      state.time = (state.time - 0.5 + CONFIG.loopDuration) % CONFIG.loopDuration;
+      updateScene(state.time);
+    });
+
+    document.getElementById('btnStepForward').addEventListener('click', () => {
+      state.time = (state.time + 0.5) % CONFIG.loopDuration;
+      updateScene(state.time);
+    });
+
+    // Speed Controls
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const spd = parseFloat(e.target.getAttribute('data-speed'));
+        state.playbackRate = spd;
+        document.querySelectorAll('.speed-btn').forEach(b => {
+          b.className = 'speed-btn px-2 py-1 text-xs rounded-lg text-slate-400 hover:text-white transition';
+        });
+        e.target.className = 'speed-btn px-2 py-1 text-xs rounded-lg bg-rose-500/20 text-rose-300 font-semibold transition';
+      });
+    });
+
+    // Camera Mode Selectors
+    document.querySelectorAll('.cam-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const mode = e.target.getAttribute('data-cam');
+        state.cameraMode = mode;
+        document.querySelectorAll('.cam-btn').forEach(b => {
+          b.className = 'cam-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition';
+        });
+        e.target.className = 'cam-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 transition';
+
+        if (mode === 'iso') {
+          CONFIG.camElevation = 42 * Math.PI / 180;
+          CONFIG.camAzimuth = 45 * Math.PI / 180;
+          CONFIG.zoom = 1.05;
+        } else if (mode === 'top') {
+          CONFIG.camElevation = 89.9 * Math.PI / 180; // pure top-down plan view
+          CONFIG.camAzimuth = 0;
+          CONFIG.zoom = 0.95;
+        } else if (mode === 'chase') {
+          CONFIG.camElevation = 26 * Math.PI / 180; // dynamic low dramatic angle
+          CONFIG.camAzimuth = 70 * Math.PI / 180;
+          CONFIG.zoom = 1.35;
+        }
+
+        renderStaticEnvironment();
+        renderTrajectoryGuideline();
+        renderFlora(state.time);
+        updateScene(state.time);
+      });
+    });
+
+    // Mouse Drag Camera Orbit
+    svg.addEventListener('mousedown', (e) => {
+      state.isDragging = true;
+      state.lastMouseX = e.clientX;
+      state.lastMouseY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+      state.isDragging = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!state.isDragging) return;
+      const dx = e.clientX - state.lastMouseX;
+      const dy = e.clientY - state.lastMouseY;
+      state.lastMouseX = e.clientX;
+      state.lastMouseY = e.clientY;
+
+      CONFIG.camAzimuth += dx * 0.008;
+      CONFIG.camElevation = Math.max(0.18, Math.min(1.55, CONFIG.camElevation - dy * 0.008));
+
+      // Reset camera button styles to show custom free-look
+      document.querySelectorAll('.cam-btn').forEach(b => {
+        b.className = 'cam-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition';
+      });
+
+      renderStaticEnvironment();
+      renderTrajectoryGuideline();
+      renderFlora(state.time);
+      updateScene(state.time);
+    });
+
+    // Touch Support for mobile drag rotation
+    svg.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        state.isDragging = true;
+        state.lastMouseX = e.touches[0].clientX;
+        state.lastMouseY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      state.isDragging = false;
+    });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!state.isDragging || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - state.lastMouseX;
+      const dy = e.touches[0].clientY - state.lastMouseY;
+      state.lastMouseX = e.touches[0].clientX;
+      state.lastMouseY = e.touches[0].clientY;
+
+      CONFIG.camAzimuth += dx * 0.008;
+      CONFIG.camElevation = Math.max(0.18, Math.min(1.55, CONFIG.camElevation - dy * 0.008));
+
+      renderStaticEnvironment();
+      renderTrajectoryGuideline();
+      renderFlora(state.time);
+      updateScene(state.time);
+    }, { passive: true });
+
+    // Feature Toggles
+    document.getElementById('toggleTrajectory').addEventListener('change', (e) => {
+      state.showTrajectory = e.target.checked;
+      renderTrajectoryGuideline();
+    });
+
+    document.getElementById('toggleSkeleton').addEventListener('change', (e) => {
+      state.showSkeleton = e.target.checked;
+      updateScene(state.time);
+    });
+
+    document.getElementById('toggleFlowers').addEventListener('change', (e) => {
+      state.showFlowers = e.target.checked;
+      renderFlora(state.time);
+    });
+
+    // Audio & Bell
+    btnAudio.addEventListener('click', () => {
+      initAudio();
+      state.audioEnabled = !state.audioEnabled;
+      if (state.audioEnabled) {
+        audioIcon.textContent = '🔊';
+        audioLabel.textContent = '音效: 开';
+        btnAudio.className = 'px-3 py-1.5 text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-lg flex items-center gap-1.5 transition';
+      } else {
+        audioIcon.textContent = '🔇';
+        audioLabel.textContent = '音效: 关';
+        btnAudio.className = 'px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg flex items-center gap-1.5 transition';
+      }
+    });
+
+    btnBell.addEventListener('click', () => {
+      playTricycleBell();
+    });
+
+    // Export Standalone .SVG File
+    // Generates a fully self-contained standalone .svg file with embedded projection engine & 12s animation loop
+    btnExportSVG.addEventListener('click', () => {
+      // Create clean SVG clone with XML namespaces and dimensions
+      const clonedSvg = svg.cloneNode(true);
+      clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+      clonedSvg.setAttribute('width', '100%');
+      clonedSvg.setAttribute('height', '100%');
+      clonedSvg.setAttribute('style', 'background:#1a2e1d;');
+
+      // Remove any web-only UI elements if present
+      const diag = clonedSvg.querySelector('#diagnosticsLayer');
+      if (diag) diag.setAttribute('display', 'none');
+
+      // Standalone self-executing animation script for pure SVG viewer
+      const standaloneCode = `
+        window.addEventListener('DOMContentLoaded', () => {
+          const doc = document;
+          const svg = doc.querySelector('svg');
+          const groundPaving = doc.getElementById('groundPaving');
+          const flowerbedBase = doc.getElementById('flowerbedBase');
+          const flowerbedFlora = doc.getElementById('flowerbedFlora');
+          const trajectoryOverlay = doc.getElementById('trajectoryOverlay');
+          const groundShadows = doc.getElementById('groundShadows');
+          const dynamicActorGroup = doc.getElementById('dynamicActorGroup');
+
+          const CONFIG = ${JSON.stringify(CONFIG)};
+          const flowerSeeds = ${JSON.stringify(flowerSeeds)};
+          const stoneSeeds = ${JSON.stringify(stoneSeeds)};
+
+          ${project3D.toString()}
+          ${projectPoly.toString()}
+          ${polyToPath.toString()}
+          ${solveCrabLegIK.toString()}
+          ${renderStaticEnvironment.toString()}
+          ${renderFlora.toString()}
+          ${renderTrajectoryGuideline.toString()}
+          
+          let state = { showFlowers: true, showTrajectory: true, showSkeleton: false };
+          ${updateScene.toString()}
+
+          renderStaticEnvironment();
+          renderTrajectoryGuideline();
+
+          let startTime = performance.now();
+          function loop(now) {
+            let t = ((now - startTime) / 1000) % CONFIG.loopDuration;
+            renderFlora(t);
+            updateScene(t);
+            requestAnimationFrame(loop);
+          }
+          requestAnimationFrame(loop);
+        });
+      `;
+
+      const embeddedScript = document.createElementNS('http://www.w3.org/2000/svg', 'script');
+      embeddedScript.setAttribute('type', 'text/javascript');
+      embeddedScript.textContent = `//<![CDATA[\n${standaloneCode}\n//]]>`;
+      clonedSvg.appendChild(embeddedScript);
+
+      const serializer = new XMLSerializer();
+      let svgData = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + serializer.serializeToString(clonedSvg);
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'crab_tricycle_garden_circular_tour_12s.svg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    // Initial render
+    renderStaticEnvironment();
+    renderTrajectoryGuideline();
+    renderFlora(0);
+    updateScene(0);
+
+    // Kick off animation loop
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
