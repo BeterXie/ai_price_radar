@@ -6,13 +6,15 @@ import { Megaphone, X, ArrowRight } from "@phosphor-icons/react";
 import type { SiteNotice } from "@/lib/types";
 import { safeInternalPath } from "@/lib/safe-url";
 
+export const DISMISS_KEY_PREFIX = "apr:notice:dismissed:";
+
 /**
  * Stable identity for the *version* of a notice. Admins often keep the same
  * title while updating the body or link, so dismissing must be keyed on the
  * whole content, not on a title prefix — otherwise users who closed the old
  * version would never see the update.
  */
-function noticeVersionKey(notice: SiteNotice): string {
+export function noticeVersionKey(notice: SiteNotice): string {
   const parts = [
     notice.badge ?? "",
     notice.title ?? "",
@@ -31,6 +33,27 @@ function noticeVersionKey(notice: SiteNotice): string {
   return `${(hash >>> 0).toString(36)}-${raw.length}`;
 }
 
+/**
+ * Dismissals are keyed per notice version, so every admin edit would leave an
+ * orphan key behind. Drop every stored dismissal except the current one — a
+ * best-effort sweep that keeps localStorage bounded without changing which
+ * version the user has dismissed.
+ */
+export function pruneStaleDismissKeys(currentKey: string): void {
+  try {
+    const stale: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && key.startsWith(DISMISS_KEY_PREFIX) && key !== currentKey) {
+        stale.push(key);
+      }
+    }
+    stale.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Storage might be disabled; pruning is best-effort.
+  }
+}
+
 export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
   const [visible, setVisible] = useState(false);
 
@@ -39,8 +62,9 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
       setVisible(false);
       return;
     }
+    const dismissedKey = `${DISMISS_KEY_PREFIX}${noticeVersionKey(notice)}`;
     try {
-      const dismissedKey = `apr:notice:dismissed:${noticeVersionKey(notice)}`;
+      pruneStaleDismissKeys(dismissedKey);
       if (localStorage.getItem(dismissedKey)) {
         setVisible(false);
         return;
@@ -54,7 +78,9 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
   const dismiss = () => {
     try {
       if (notice) {
-        localStorage.setItem(`apr:notice:dismissed:${noticeVersionKey(notice)}`, "1");
+        const dismissedKey = `${DISMISS_KEY_PREFIX}${noticeVersionKey(notice)}`;
+        localStorage.setItem(dismissedKey, "1");
+        pruneStaleDismissKeys(dismissedKey);
       }
     } catch {
       // Storage might be disabled

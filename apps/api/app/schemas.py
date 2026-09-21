@@ -944,6 +944,7 @@ class UserRead(BaseModel):
     nickname: str = ""
     avatar_url: str = ""
     has_qq_bound: bool = False
+    has_password: bool = False
     created_at: datetime
 
 
@@ -975,6 +976,33 @@ class EmailVerifyRequest(BaseModel):
 class AuthSessionResponse(BaseModel):
     authenticated: bool
     user: UserRead | None = None
+
+
+class PasswordLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=200)
+    # Deliberately permissive bounds: the authoritative policy lives in
+    # services.password_auth and only applies when *setting* a password. A
+    # stricter login-side pattern would answer 422 (schema) instead of the
+    # generic 400 and leak which credentials can exist.
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email_address(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class SetPasswordRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+    # Required only when the account already has a password (change flow);
+    # the router enforces that conditionally.
+    current_password: str | None = Field(default=None, max_length=128)
+
+
+class PasswordUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    has_password: bool = True
 
 
 class UserBotBindingRead(BaseModel):

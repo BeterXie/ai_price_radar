@@ -12,15 +12,26 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..database import get_db
 from ..models import User
-from ..schemas import AuthSessionResponse, EmailCodeRequest, EmailCodeResponse, EmailVerifyRequest, UserRead
+from ..schemas import (
+    AuthSessionResponse,
+    EmailCodeRequest,
+    EmailCodeResponse,
+    EmailVerifyRequest,
+    PasswordLoginRequest,
+    UserRead,
+)
 from ..security import get_current_user, get_token_from_request
 from ..services.auth import (
+    authenticate_with_password,
     build_qq_auth_url,
+    check_password_failure_throttle,
+    clear_password_failures,
     create_user_session,
     delete_user_session,
     exchange_qq_oauth,
     find_or_create_qq_user,
     get_issued_session_token,
+    record_password_failure,
     send_email_login_code,
     verify_email_login_code,
 )
@@ -41,6 +52,7 @@ def _user_to_read(user: User) -> UserRead:
         nickname=user.nickname or (user.email.split("@")[0] if user.email else "用户"),
         avatar_url=user.avatar_url or "",
         has_qq_bound=bool(user.qq_openid),
+        has_password=bool(user.password_hash),
         created_at=user.created_at,
     )
 
@@ -107,6 +119,55 @@ def verify_email_code(
     user, error_msg = verify_email_login_code(db, payload.email, payload.code, client_ip=client_ip)
     if user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg or "验证失败")
+
+    ua = request.headers.get("user-agent", "")
+    session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)
+    _set_auth_cookie(response, get_issued_session_token(session))
+
+    return AuthSessionResponse(
+        authenticated=True,
+        user=_user_to_read(user),
+    )
+
+
+@router.post("/password/login", response_model=AuthSessionResponse)
+def login_with_password(
+    payload: PasswordLoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> AuthSessionResponse:
+    """Email + password login for accounts that have set a password."""
+    from .public import _client_address, _enforce_client_rate_limit
+
+    client_ip = _client_address(request)
+    # Layer 1 (persistent, shared across restarts): per-IP volume limiter.
+    # Committed inside the limiter so failed attempts consume the budget.
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace="auth-password-login",
+        max_requests=30,
+        window_seconds=600,
+        detail="登录尝试过于频繁，请稍后再试",
+    )
+
+    email_for_throttle = payload.email.strip().casefold()
+    # Layer 2 (in-process): per-email failed-attempt throttle against targeted
+    # guessing from rotating sources.
+    if not check_password_failure_throttle(email_for_throttle):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="该邮箱密码错误次数过多，请在 10 分钟后重试，或使用邮箱验证码登录",
+        )
+
+    user = authenticate_with_password(db, payload.email, payload.password)
+    if user is None:
+        record_password_failure(email_for_throttle)
+        # Generic message: never reveal whether the account or the password
+        # was the part that did not match.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="邮箱或密码错误")
+    clear_password_failures(email_for_throttle)
 
     ua = request.headers.get("user-agent", "")
     session = create_user_session(db, user, ip_address=client_ip, user_agent=ua)

@@ -74,6 +74,42 @@ export async function logout(): Promise<void> {
   broadcastAuthChange();
 }
 
+/** Email + password login for accounts that have set a password. */
+export async function loginWithPassword(email: string, password: string): Promise<AuthSessionState> {
+  const session = await jsonFetch<AuthSessionState>("/api/v1/auth/password/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  if (session?.authenticated) {
+    broadcastAuthChange();
+  }
+  return session;
+}
+
+export interface PasswordUpdateResult {
+  success: boolean;
+  message: string;
+  has_password: boolean;
+}
+
+/**
+ * Set a login password (first time, e.g. right after the first email-code
+ * login) or change the existing one (requires current_password).
+ */
+export async function setAccountPassword(input: {
+  password: string;
+  current_password?: string;
+}): Promise<PasswordUpdateResult> {
+  const result = await jsonFetch<PasswordUpdateResult>("/api/v1/user/password", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (result?.success) {
+    broadcastAuthChange();
+  }
+  return result;
+}
+
 /**
  * Removes cached watchlist entries for the account that just logged out.
  * Kept here (rather than importing the component) to avoid a circular import.

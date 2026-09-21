@@ -33,6 +33,54 @@ _verify_rate_lock = threading.Lock()
 _verify_rate_buckets: dict[str, deque[float]] = {}
 _email_issue_lock = threading.Lock()
 
+# Per-email password failure throttle. Complements the persistent per-IP DB
+# limiter on the login endpoint: the IP limiter stops volume attacks from one
+# source, this one slows targeted guessing against a single account even when
+# the attacker rotates sources. In-process like the verify limiter above (the
+# API runs one uvicorn process per container); only failed attempts count and
+# a success clears the bucket.
+PASSWORD_FAIL_WINDOW_SECONDS = 600
+PASSWORD_FAIL_MAX_ATTEMPTS = 5
+_password_fail_lock = threading.Lock()
+_password_fail_buckets: dict[str, deque[float]] = {}
+
+
+def check_password_failure_throttle(email: str) -> bool:
+    """Return False when this email has too many recent password failures."""
+    if not email:
+        return True
+    now = time.monotonic()
+    with _password_fail_lock:
+        bucket = _password_fail_buckets.get(email)
+        if not bucket:
+            return True
+        while bucket and now - bucket[0] > PASSWORD_FAIL_WINDOW_SECONDS:
+            bucket.popleft()
+        return len(bucket) < PASSWORD_FAIL_MAX_ATTEMPTS
+
+
+def record_password_failure(email: str) -> None:
+    if not email:
+        return
+    now = time.monotonic()
+    with _password_fail_lock:
+        bucket = _password_fail_buckets.setdefault(email, deque())
+        while bucket and now - bucket[0] > PASSWORD_FAIL_WINDOW_SECONDS:
+            bucket.popleft()
+        bucket.append(now)
+        # Opportunistic cleanup to bound memory (same policy as verify buckets).
+        if len(_password_fail_buckets) > 10000:
+            stale = [k for k, v in _password_fail_buckets.items() if not v or now - v[-1] > 3600]
+            for k in stale:
+                _password_fail_buckets.pop(k, None)
+
+
+def clear_password_failures(email: str) -> None:
+    if not email:
+        return
+    with _password_fail_lock:
+        _password_fail_buckets.pop(email, None)
+
 
 def _check_verify_rate_limit(client_ip: str) -> bool:
     """Simple in-process sliding-window limiter for verification attempts."""
@@ -458,6 +506,33 @@ def verify_email_login_code(
     db.commit()
     db.refresh(user)
     return user, ""
+
+
+def authenticate_with_password(db: Session, raw_email: str, password: str) -> User | None:
+    """Resolve a user by email + password.
+
+    Returns None for unknown addresses, accounts without a password set, wrong
+    passwords and deactivated users. Missing accounts and passwordless accounts
+    burn one dummy hash so response timing does not reveal which case applied.
+    """
+    from .password_auth import dummy_verify, verify_password
+
+    try:
+        email = normalize_email(raw_email)
+    except ValueError:
+        return None
+    if not EMAIL_REGEX.match(email) or not password:
+        return None
+
+    user = db.scalar(select(User).where(func.lower(User.email) == email))
+    if user is None or not (user.password_hash or ""):
+        dummy_verify()
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    if not user.is_active:
+        return None
+    return user
 
 
 def build_qq_auth_url(state: str, settings: Settings | None = None) -> str:

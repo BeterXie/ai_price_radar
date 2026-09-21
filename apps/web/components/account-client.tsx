@@ -12,6 +12,7 @@ import {
   Copy,
   Envelope,
   Gift,
+  LockKey,
   SignOut,
   Sparkle,
   Ticket,
@@ -32,7 +33,9 @@ import {
   bindCurrentLoggedInQQ,
   fetchUserCoupons,
   redeemCoupon,
+  setAccountPassword,
 } from "@/lib/auth-client";
+import { validatePasswordConfirmation } from "@/lib/password-policy";
 import { LoginModal } from "@/components/login-modal";
 
 export function AccountClient() {
@@ -57,6 +60,14 @@ export function AccountClient() {
   const [bindError, setBindError] = useState<string | null>(null);
   const [bindSuccess, setBindSuccess] = useState<string | null>(null);
   const [prefSaving, setPrefSaving] = useState(false);
+
+  // Login password (account security) states
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -221,6 +232,54 @@ export function AccountClient() {
     }
   };
 
+  const resetPasswordForm = () => {
+    setShowPasswordForm(false);
+    setPwCurrent("");
+    setPwNew("");
+    setPwConfirm("");
+    setPwMsg(null);
+  };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const hasPassword = Boolean(profile?.user?.has_password);
+    if (hasPassword && !pwCurrent) {
+      setPwMsg({ type: "error", text: "请输入当前密码" });
+      return;
+    }
+    const policyError = validatePasswordConfirmation(pwNew, pwConfirm);
+    if (policyError) {
+      setPwMsg({ type: "error", text: policyError });
+      return;
+    }
+    setPwSaving(true);
+    setPwMsg(null);
+    try {
+      const result = await setAccountPassword(
+        hasPassword
+          ? { password: pwNew, current_password: pwCurrent }
+          : { password: pwNew }
+      );
+      if (result.success) {
+        setPwMsg({ type: "success", text: result.message });
+        setPwCurrent("");
+        setPwNew("");
+        setPwConfirm("");
+        // Collapse the form; the success banner stays visible below the grid.
+        setShowPasswordForm(false);
+        // Refresh has_password (and keep the success banner from the form).
+        const data = await fetchUserProfile();
+        setProfile(data);
+      } else {
+        setPwMsg({ type: "error", text: result.message });
+      }
+    } catch (err: any) {
+      setPwMsg({ type: "error", text: err.message || "密码保存失败，请稍后重试" });
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
   const handleRedeem = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = redeemCode.trim();
@@ -372,7 +431,138 @@ export function AccountClient() {
             <ChatCircleDots size={18} className="text-[color:var(--muted)] shrink-0" />
             <span>QQ 状态：{user.has_qq_bound ? "已绑定快捷登录" : "未绑定"}</span>
           </div>
+          <div className="flex items-center justify-between gap-3 text-[color:var(--ink)]">
+            <div className="flex items-center gap-3">
+              <LockKey size={18} className="text-[color:var(--muted)] shrink-0" />
+              <span>登录密码：{user.has_password ? "已设置" : "未设置"}</span>
+            </div>
+            {user.email ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordForm((prev) => !prev);
+                  setPwMsg(null);
+                }}
+                className="button-secondary tactile px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0"
+              >
+                {user.has_password ? "修改密码" : "设置密码"}
+              </button>
+            ) : null}
+          </div>
         </div>
+
+        {pwMsg && !showPasswordForm && (
+          <div
+            className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${
+              pwMsg.type === "success"
+                ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800"
+                : "bg-rose-500/10 border border-rose-500/20 text-rose-800"
+            }`}
+          >
+            {pwMsg.type === "success" ? (
+              <CheckCircle size={16} weight="fill" className="shrink-0" />
+            ) : (
+              <WarningCircle size={16} weight="fill" className="shrink-0" />
+            )}
+            <span>{pwMsg.text}</span>
+          </div>
+        )}
+
+        {showPasswordForm && user.email ? (
+          <form onSubmit={handleSavePassword} className="mt-6 pt-6 border-t hairline space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-[color:var(--ink)] mb-1">
+                {user.has_password ? "修改登录密码" : "设置登录密码"}
+              </h3>
+              <p className="text-xs text-[color:var(--muted)] leading-relaxed">
+                {user.has_password
+                  ? "修改成功后，其他设备上的登录会话将自动退出，当前设备保持登录。"
+                  : "设置后可在登录弹窗使用「邮箱 + 密码」快捷登录。密码需 8-64 位，且同时包含字母和数字。"}
+              </p>
+            </div>
+
+            {user.has_password && (
+              <div>
+                <label className="block text-xs font-semibold text-[color:var(--ink)] mb-1.5">当前密码</label>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="请输入当前密码"
+                  value={pwCurrent}
+                  disabled={pwSaving}
+                  onChange={(e) => setPwCurrent(e.target.value)}
+                  className="field text-xs sm:text-sm py-2 px-3.5 rounded-xl w-full"
+                />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-[color:var(--ink)] mb-1.5">新密码</label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="8-64 位，需包含字母和数字"
+                maxLength={64}
+                value={pwNew}
+                disabled={pwSaving}
+                onChange={(e) => setPwNew(e.target.value)}
+                className="field text-xs sm:text-sm py-2 px-3.5 rounded-xl w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[color:var(--ink)] mb-1.5">确认新密码</label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="再次输入新密码"
+                maxLength={64}
+                value={pwConfirm}
+                disabled={pwSaving}
+                onChange={(e) => setPwConfirm(e.target.value)}
+                className="field text-xs sm:text-sm py-2 px-3.5 rounded-xl w-full"
+              />
+            </div>
+
+            {pwMsg && (
+              <div
+                className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                  pwMsg.type === "success"
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800"
+                    : "bg-rose-500/10 border border-rose-500/20 text-rose-800"
+                }`}
+              >
+                {pwMsg.type === "success" ? (
+                  <CheckCircle size={16} weight="fill" className="shrink-0" />
+                ) : (
+                  <WarningCircle size={16} weight="fill" className="shrink-0" />
+                )}
+                <span>{pwMsg.text}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={
+                  pwSaving ||
+                  !pwNew ||
+                  !pwConfirm ||
+                  (user.has_password && !pwCurrent)
+                }
+                className="button-primary tactile px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
+              >
+                <LockKey size={14} weight="fill" />
+                <span>{pwSaving ? "正在保存..." : user.has_password ? "确认修改" : "保存密码"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={resetPasswordForm}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[color:var(--muted)] hover:text-[color:var(--ink)] transition"
+              >
+                取消
+              </button>
+            </div>
+          </form>
+        ) : null}
       </section>
 
       {/* 2. Coupon Wallet Section */}

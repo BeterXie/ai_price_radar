@@ -336,6 +336,7 @@ export type User = {
   nickname: string;
   avatar_url: string;
   has_qq_bound: boolean;
+  has_password?: boolean;
   created_at: string;
 };
 

@@ -383,6 +383,10 @@ class User(Base):
     nickname: Mapped[str] = mapped_column(String(100), default="")
     avatar_url: Mapped[str] = mapped_column(Text, default="")
     qq_openid: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True, index=True)
+    # PBKDF2-SHA256 password hash ("pbkdf2_sha256$<iterations>$<salt>$<hash>").
+    # Empty string means the user has not set a password yet (email-code / QQ
+    # login only). Never expose this value outside the auth service.
+    password_hash: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_ip: Mapped[str] = mapped_column(String(64), default="")
