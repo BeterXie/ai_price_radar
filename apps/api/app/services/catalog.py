@@ -1067,6 +1067,7 @@ def list_product_cards(
         trusted = [x for x in comparable if _is_trusted_offer(x, medians)]
         median_price = price_median(x.price for x in comparable)
         all_tags = sorted({tag_value for offer in group for tag_value in (offer.tags or [])})
+        quality_score, quality_label = _data_quality(group, trusted, comparable)
         cards.append(ProductCard(
             slug=product.slug,
             platform=product.platform,
@@ -1083,8 +1084,8 @@ def list_product_cards(
             trusted_offer_count=len(trusted),
             median_price=median_price,
             source_count=len({x.shop_id for x in group}),
-            data_quality_score=_data_quality(group, trusted, comparable)[0],
-            data_quality_label=_data_quality(group, trusted, comparable)[1],
+            data_quality_score=quality_score,
+            data_quality_label=quality_label,
             official_reference=asdict(reference) if (reference := official_reference_for(product.slug)) else None,
             last_updated_at=max((x.observed_at for x in group), default=None),
             tags=all_tags[:8],
@@ -1199,6 +1200,7 @@ def get_product_detail(
         filters=filters,
         snapshot=snapshot,
     )
+    quality_score, quality_label = _data_quality(offers, trusted_in_stock, comparable_in_stock)
     return ProductDetail(
         slug=product.slug,
         platform=product.platform,
@@ -1217,8 +1219,8 @@ def get_product_detail(
         trusted_offer_count=len(trusted_in_stock),
         median_price=median_price,
         source_count=len({x.shop_id for x in offers}),
-        data_quality_score=_data_quality(offers, trusted_in_stock, comparable_in_stock)[0],
-        data_quality_label=_data_quality(offers, trusted_in_stock, comparable_in_stock)[1],
+        data_quality_score=quality_score,
+        data_quality_label=quality_label,
         official_reference=asdict(reference) if (reference := official_reference_for(product.slug)) else None,
         offer_group_count=group_count,
         last_updated_at=max((x.observed_at for x in offers), default=None),

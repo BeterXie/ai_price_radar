@@ -1,7 +1,7 @@
 import sys
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 

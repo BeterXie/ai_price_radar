@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import NotificationOutbox, Report, Shop, SourceIntake, User
+from app.routers import public as public_router
 from app.security import require_current_user
 from app.services import outbox
 from app.services.outbox import process_once
@@ -30,11 +31,19 @@ def api_client(monkeypatch):
     engine = _engine()
     Base.metadata.create_all(engine)
     settings = get_settings()
-    monkeypatch.setattr(settings, "admin_api_key", "admin-test")
+    # public.py captures its own Settings reference at import time. After the
+    # conftest teardown calls get_settings.cache_clear(), the singleton this
+    # fixture patches can be a *different* object, so values read through
+    # public.settings (rate-limit budget, site URL, rate-limit key salt) would
+    # silently fall back to defaults. Patch both objects to keep the test
+    # contract identical regardless of settings-cache state.
+    settings_targets = {id(settings): settings, id(public_router.settings): public_router.settings}
+    for target in settings_targets.values():
+        monkeypatch.setattr(target, "admin_api_key", "admin-test")
+        monkeypatch.setattr(target, "report_rate_limit_count", 100)
+        monkeypatch.setattr(target, "public_site_url", "https://ai.pricememo.cn")
     monkeypatch.setattr(settings, "intake_worker_key", "worker-test")
     monkeypatch.setattr(settings, "detector_worker_key", "detector-test")
-    monkeypatch.setattr(settings, "report_rate_limit_count", 100)
-    monkeypatch.setattr(settings, "public_site_url", "https://ai.pricememo.cn")
     monkeypatch.setattr(settings, "shop_intake_auto_approve", False)
     monkeypatch.setattr(settings, "shop_intake_admin_emails", "admin@example.com")
 

@@ -84,6 +84,42 @@ def test_report_endpoint_returns_429(monkeypatch):
         app.dependency_overrides.clear()
 
 
+def test_failed_reports_still_consume_rate_limit_budget(monkeypatch):
+    """Attempts rejected by validation (404/422) must still count against the
+    rate limit; otherwise probing invalid payloads would be free."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(public.settings, "report_rate_limit_count", 2)
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        payload = {
+            "kind": "correction",
+            "message": "这是一条指向不存在商品的纠错信息",
+            "product_slug": "does-not-exist",
+        }
+        assert client.post("/api/v1/reports", json=payload).status_code == 404
+        assert client.post("/api/v1/reports", json=payload).status_code == 404
+        response = client.post("/api/v1/reports", json=payload)
+        assert response.status_code == 429
+
+        with Session(engine) as db:
+            rate = db.scalar(select(ReportRateLimit))
+            assert rate is not None
+            assert rate.request_count == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_shop_request_is_validated_normalized_and_deduplicated(monkeypatch):
     engine = create_engine(
         "sqlite://",

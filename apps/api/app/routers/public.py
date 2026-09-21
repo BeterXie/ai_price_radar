@@ -166,6 +166,9 @@ def _enforce_client_rate_limit(
     rate = db.get(ReportRateLimit, client_key)
     if rate is None:
         db.add(ReportRateLimit(client_key=client_key, window_started_at=now, request_count=1))
+        # Commit immediately so the attempt is still counted when the endpoint
+        # later fails validation and its transaction is rolled back/closed.
+        db.commit()
         return
 
     started_at = rate.window_started_at
@@ -175,6 +178,7 @@ def _enforce_client_rate_limit(
     if elapsed >= window:
         rate.window_started_at = now
         rate.request_count = 1
+        db.commit()
         return
     if rate.request_count >= max_requests:
         retry_after = max(1, math.ceil((window - elapsed).total_seconds()))
@@ -184,6 +188,7 @@ def _enforce_client_rate_limit(
             headers={"Retry-After": str(retry_after)},
         )
     rate.request_count += 1
+    db.commit()
 
 
 def _enforce_report_rate_limit(request: Request, db: Session) -> None:

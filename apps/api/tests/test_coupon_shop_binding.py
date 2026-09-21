@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import CouponCampaign, Shop, ShopCoupon, User, UserSession
+from app.models import Shop, ShopCoupon, User, UserSession
 from app.security import require_admin
 
 

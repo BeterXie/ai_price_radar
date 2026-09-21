@@ -10,7 +10,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Report, Shop, SourceIntake, User
 from app.security import require_current_user
-from app.services.catalog import get_product_detail, get_product_history, list_product_cards
+from app.services.catalog import get_product_history, list_product_cards
 from app.services.source_health import source_health
 
 

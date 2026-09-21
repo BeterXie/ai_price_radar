@@ -206,9 +206,13 @@ class QQGatewayService:
                 # 3. Start Heartbeat background task: only send the next beat once
                 # the previous one was acknowledged, so a half-open connection is
                 # detected instead of silently heartbeating forever.
+                # Late binding is intentional: interval_sec is fixed for this
+                # connection (the task is cancelled in the finally block before
+                # the next iteration reassigns it), and last_seq must reflect the
+                # newest sequence number seen by the receive loop at send time.
                 async def _heartbeat_loop(ws_conn: websockets.ClientConnection):
                     while True:
-                        await asyncio.sleep(interval_sec * 0.9)
+                        await asyncio.sleep(interval_sec * 0.9)  # noqa: B023
                         if not ack_state["acked"]:
                             logger.warning(
                                 "QQ Gateway [%s] heartbeat not acknowledged; closing connection",
@@ -218,7 +222,7 @@ class QQGatewayService:
                             return
                         ack_state["acked"] = False
                         ack_state["last_sent"] = time.time()
-                        hb_msg = json.dumps({"op": 1, "d": last_seq})
+                        hb_msg = json.dumps({"op": 1, "d": last_seq})  # noqa: B023
                         await ws_conn.send(hb_msg)
 
                 heartbeat_task = asyncio.create_task(_heartbeat_loop(ws))
