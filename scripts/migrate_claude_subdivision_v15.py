@@ -25,7 +25,7 @@ for path in [
         sys.path.insert(0, path)
 
 from app.database import SessionLocal
-from app.models import Offer, Product, RawProduct
+from app.models import Offer, Product
 
 
 def migrate_claude_subdivision(dry_run: bool = False) -> None:
@@ -35,7 +35,7 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
         pro_5x = session.query(Product).filter(Product.slug == "claude-pro").first()
         if pro_5x:
             if pro_5x.display_name != "Claude Pro (5x)":
-                print(f"[MIGRATE] Updating claude-pro display_name to 'Claude Pro (5x)'")
+                print("[MIGRATE] Updating claude-pro display_name to 'Claude Pro (5x)'")
                 pro_5x.display_name = "Claude Pro (5x)"
                 pro_5x.subtitle = "Pro 5x 个人会员订阅"
         else:
@@ -169,7 +169,7 @@ def migrate_claude_subdivision(dry_run: bool = False) -> None:
 
         if not dry_run:
             session.commit()
-            print(f"[SUCCESS] Claude offers reclassification complete:")
+            print("[SUCCESS] Claude offers reclassification complete:")
             print(f"  - Claude Pro (5x): {count_5x}")
             print(f"  - Claude Pro 20x: {count_20x}")
             print(f"  - Claude Team:    {count_team}")

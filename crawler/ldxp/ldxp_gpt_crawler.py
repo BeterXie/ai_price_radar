@@ -5,9 +5,8 @@ import argparse
 import json
 import logging
 import os
-import sys
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from ldxp_crawler import __version__
 from ldxp_crawler.browser_worker import BrowserScanSupervisor
@@ -615,7 +614,6 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     logger = make_logger(args.verbose)
-    keywords = merge_unique(args.keywords)
     db = StateDB(Path(args.db))
     try:
         if args.command == "bootstrap":

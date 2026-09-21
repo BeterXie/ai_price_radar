@@ -5,7 +5,6 @@ import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Sequence
-from typing import Any
 
 import requests
 

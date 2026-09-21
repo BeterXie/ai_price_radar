@@ -7,8 +7,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
-from statistics import median
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Float, Text, and_, case, cast, false, func, literal, not_, or_, select
 from sqlalchemy.orm import Session, contains_eager
@@ -30,13 +29,18 @@ from .official_pricing import official_reference_for
 from .pricing import MIN_TRUSTED_PRICE, is_trusted_price, low_price_warning, price_median
 from .source_health import source_health
 from .source_platform import (
-    DISABLED_SOURCE_PLATFORMS,
     get_disabled_source_platforms,
     public_https_url_or_empty,
     source_kind,
     source_kind_label,
     source_platform_label,
 )
+
+if TYPE_CHECKING:
+    # Imported lazily inside list_public_shops() to avoid a circular import at
+    # module load; declared here so the return annotation resolves for type
+    # checkers and get_type_hints().
+    from ..schemas import ShopListResponse
 
 
 DEFAULT_OFFER_PAGE_SIZE = 30

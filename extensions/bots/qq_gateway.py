@@ -15,7 +15,6 @@ import logging
 import os
 import re
 import time
-from typing import Any
 
 from sqlalchemy import select
 import websockets

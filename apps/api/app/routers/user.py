@@ -25,7 +25,6 @@ from ..models import (
     UserActionLog,
     UserBotBinding,
     UserProductSubscription,
-    UserSession,
 )
 from ..schemas import (
     BotCommandRequest,
@@ -54,7 +53,6 @@ from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.bot_binding import (
     bind_current_user_qq,
     check_qq_binding_session,
-    complete_qq_binding,
     get_user_bindings,
     start_qq_binding_session,
     unbind_user_channel,

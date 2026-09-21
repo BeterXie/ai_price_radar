@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
-from typing import Any, Iterable
+from typing import Any
 
 from currencies import normalize_currency
 from price_radar_http import PinnedHTTPSClient, PinnedResponse

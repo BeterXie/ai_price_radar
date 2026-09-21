@@ -1,6 +1,5 @@
 import signal
 import time
-from pathlib import Path
 
 import pytest
 

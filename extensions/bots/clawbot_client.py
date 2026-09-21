@@ -13,7 +13,6 @@ import base64
 import logging
 import secrets
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 

@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, contains_eager
 
 from app.database import SessionLocal
-from app.models import CatalogSnapshot, Offer, OfferHistory, Product, Shop, User, UserBotBinding
+from app.models import CatalogSnapshot, Offer, OfferHistory, Product, Shop, UserBotBinding
 from app.services.bot_binding import complete_qq_binding
 from app.services.catalog import (
     _base_public_offer_query,

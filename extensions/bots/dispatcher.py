@@ -10,7 +10,6 @@ from sqlalchemy import select
 
 from app.services.credential_crypto import decrypt_secret
 
-from .clawbot_client import ClawBotClient
 from .formatter import render_qq_report, render_telegram_report
 from .qq_bot import QQBotClient
 from .telegram_bot import TelegramBotClient

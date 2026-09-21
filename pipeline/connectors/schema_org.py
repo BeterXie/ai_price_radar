@@ -263,7 +263,7 @@ def _entry_pages(
     )
     try:
         _sitemap_locations(response.body)
-    except ValueError as exc:
+    except ValueError:
         nodes = _jsonld_nodes(response.body)
         if any(_has_type(node, "Product") for node in nodes):
             return [entry_url], {entry_url: response}

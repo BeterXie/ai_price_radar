@@ -104,7 +104,6 @@ from ..services.source_intake import email_statuses, enqueue_transition_notifica
 from ..services.source_platform import (
     _16688_detection,
     _ldxp_detection,
-    prepare_source_submission,
     public_https_url_or_empty,
     workflow_status,
 )
@@ -1477,7 +1476,7 @@ def admin_sync_ldxp_coupons(
     try:
         batches = _fetch_ldxp_batches(use_token)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"调用 LDXP 接口失败: {e}")
+        raise HTTPException(status_code=502, detail=f"调用 LDXP 接口失败: {e}") from e
 
     # Auto-resolve shop for LDXP
     matched_shop = db.scalar(select(Shop).where(Shop.token == "pricememo"))
