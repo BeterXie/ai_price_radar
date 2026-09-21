@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.7.98] - 2026-09-21
+
+### Content and community skills
+- Add 3 in-depth articles to the "技巧与博文" (`kind="article"`) category:
+  - `jev-1-13-system-one-model`: Detailed breakdown of TypeSafe AI's Jev 1.13 System One Model, $0.042/1M input pricing, sub-500ms latency, and dual-engine agent routing.
+  - `multi-model-workflow-routing-2026`: Practical multi-model routing guide and 4-tier funnel architecture to reduce production inference costs by up to 90%.
+  - `glm-5-3-infra-agent-recursive-self-improvement`: Analysis of Z.ai's 100k-accelerator infrastructure optimization by GLM-5.3 Infra Agent and feedback loop best practices for AI-assisted engineering.
+- Automatically seed new articles on API startup and include them in XML sitemaps.
+
 ## [3.7.97] - 2026-09-21
 
 ### Deployment packaging
