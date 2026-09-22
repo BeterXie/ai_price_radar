@@ -38,3 +38,22 @@ export function safeInternalDemoPath(value: string | null | undefined): string |
     return null;
   }
 }
+
+export interface SafeNoticeLink {
+  href: string;
+  isExternal: boolean;
+}
+
+export function safeNoticeLink(value: string | null | undefined): SafeNoticeLink | null {
+  const raw = value?.trim() || "";
+  if (!raw) return null;
+  const internal = safeInternalPath(raw);
+  if (internal) {
+    return { href: internal, isExternal: false };
+  }
+  const external = safeExternalHttpsUrl(raw);
+  if (external) {
+    return { href: external, isExternal: true };
+  }
+  return null;
+}

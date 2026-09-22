@@ -165,7 +165,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     </section>
     <div class="section-header">
       <div class="section-title">热销数字化技术服务</div>
-      <div style="font-size:11px;color:var(--text-muted);">支持支付宝 / 微信安全结算</div>
+      <div style="font-size:11px;color:var(--text-muted);">正规自营交付 · 在线实时核验开通</div>
     </div>
     <section class="product-grid">
       <article class="product-card">

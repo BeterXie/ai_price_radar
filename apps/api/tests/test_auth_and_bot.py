@@ -161,6 +161,20 @@ def test_email_login_flow(client: TestClient, test_db):
     assert me_after.json()["authenticated"] is False
 
 
+def test_email_code_shop_scene(client: TestClient, test_db: Session) -> None:
+    email = "shopuser@example.com"
+    resp = client.post("/api/v1/auth/email/code", json={"email": email, "scene": "shop"})
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    outbox = test_db.query(NotificationOutbox).filter_by(recipient=email).first()
+    assert outbox is not None
+    assert "彩头软件" in outbox.subject
+    assert "shop.pricememo.cn" in outbox.text_body
+    assert "湖南湘江新区彩头软件开发工作室" in outbox.text_body
+
+
+
 def test_qq_mock_oauth_callback(client: TestClient, test_db, mock_auth):
     resp = client.get("/api/v1/auth/qq/callback?mock=true", follow_redirects=False)
     assert resp.status_code == 303

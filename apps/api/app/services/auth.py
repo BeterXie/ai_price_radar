@@ -303,6 +303,7 @@ def _send_email_login_code_locked(
     db: Session,
     email: str,
     *,
+    scene: str = "login",
     mail_ready: bool,
     settings: Settings,
 ) -> tuple[bool, int, str]:
@@ -350,19 +351,34 @@ def _send_email_login_code_locked(
     )
     db.add(auth_code)
 
-    # Enqueue in notification_outbox so existing worker / SMTP / Resend sends it
-    outbox = NotificationOutbox(
-        event_type="auth_login_code",
-        recipient=email,
-        subject="【PriceMemo】您的登录验证码",
-        text_body=(
+    if scene == "shop":
+        subject = "【彩头软件】官方移动端商城服务开通验证码"
+        text_body = (
+            f"尊敬的用户：\n\n"
+            f"您好！\n\n"
+            f"您正在 湖南湘江新区彩头软件开发工作室 官方移动端商城（shop.pricememo.cn）办理技术服务订购与开通核验，您的验证码为：\n\n"
+            f"    {code}\n\n"
+            f"验证码有效期为 10 分钟。请勿将验证码泄露给他人。\n"
+            f"如非您本人操作，请忽略此邮件。\n\n"
+            f"—— 湖南湘江新区彩头软件开发工作室"
+        )
+    else:
+        subject = "【PriceMemo】您的登录验证码"
+        text_body = (
             f"您好！\n\n"
             f"您在 PriceMemo 比价雷达的登录验证码为：\n\n"
             f"    {code}\n\n"
             f"验证码有效期为 10 分钟。请勿将验证码泄露给他人。\n"
             f"如非您本人操作，请忽略此邮件。\n\n"
             f"—— PriceMemo 团队"
-        ),
+        )
+
+    # Enqueue in notification_outbox so existing worker / SMTP / Resend sends it
+    outbox = NotificationOutbox(
+        event_type="auth_login_code",
+        recipient=email,
+        subject=subject,
+        text_body=text_body,
         dedupe_key=f"auth-code:{email}:{int(now.timestamp())}",
         status="pending",
         next_attempt_at=now,
@@ -397,7 +413,7 @@ def _send_email_login_code_locked(
     return True, 60, "验证码已发送至您的邮箱，请查收"
 
 
-def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
+def send_email_login_code(db: Session, raw_email: str, scene: str = "login") -> tuple[bool, int, str]:
     """Generate one login code under a per-address database serialization lock."""
     try:
         email = normalize_email(raw_email)
@@ -422,6 +438,7 @@ def send_email_login_code(db: Session, raw_email: str) -> tuple[bool, int, str]:
         return _send_email_login_code_locked(
             db,
             email,
+            scene=scene,
             mail_ready=mail_ready,
             settings=settings,
         )

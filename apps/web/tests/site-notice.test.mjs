@@ -6,10 +6,11 @@ import {
   noticeVersionKey,
   pruneStaleDismissKeys,
 } from "../components/site-notice.tsx";
+import { safeNoticeLink } from "../lib/safe-url.ts";
 
-function withFakeLocalStorage(store, run) {
-  const original = globalThis.localStorage;
-  globalThis.localStorage = {
+function withFakeSessionStorage(store, run) {
+  const original = globalThis.sessionStorage;
+  globalThis.sessionStorage = {
     getItem: (key) => store.get(key) ?? null,
     setItem: (key, value) => store.set(key, String(value)),
     removeItem: (key) => store.delete(key),
@@ -21,8 +22,8 @@ function withFakeLocalStorage(store, run) {
   try {
     return run();
   } finally {
-    if (original === undefined) delete globalThis.localStorage;
-    else globalThis.localStorage = original;
+    if (original === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = original;
   }
 }
 
@@ -46,7 +47,31 @@ test("notice version key is stable and content-sensitive", () => {
   assert.equal(typeof noticeVersionKey({ enabled: true, title: "x" }), "string");
 });
 
-test("prune removes stale dismissal keys but keeps the current one", () => {
+test("safeNoticeLink supports internal routes and external HTTPS URLs", () => {
+  // Internal relative paths
+  assert.deepEqual(safeNoticeLink("/developers"), { href: "/developers", isExternal: false });
+  assert.deepEqual(safeNoticeLink("/skills?tab=all#top"), { href: "/skills?tab=all#top", isExternal: false });
+
+  // External HTTPS URLs (e.g. QQ group link)
+  assert.deepEqual(safeNoticeLink("https://qm.qq.com/q/zAbYAfRPji"), {
+    href: "https://qm.qq.com/q/zAbYAfRPji",
+    isExternal: true,
+  });
+  assert.deepEqual(safeNoticeLink("https://example.com/path"), {
+    href: "https://example.com/path",
+    isExternal: true,
+  });
+
+  // Invalid or insecure URLs
+  assert.equal(safeNoticeLink("javascript:alert(1)"), null);
+  assert.equal(safeNoticeLink("http://insecure.example.com"), null);
+  assert.equal(safeNoticeLink("https://user:pass@example.com"), null);
+  assert.equal(safeNoticeLink("//protocol-relative.example.com"), null);
+  assert.equal(safeNoticeLink(""), null);
+  assert.equal(safeNoticeLink(null), null);
+});
+
+test("prune removes stale dismissal keys in sessionStorage but keeps the current one", () => {
   const currentKey = `${DISMISS_KEY_PREFIX}${noticeVersionKey(NOTICE)}`;
   const store = new Map([
     [`${DISMISS_KEY_PREFIX}old-version-1`, "1"],
@@ -56,7 +81,7 @@ test("prune removes stale dismissal keys but keeps the current one", () => {
     ["unrelated", "value"],
   ]);
 
-  withFakeLocalStorage(store, () => pruneStaleDismissKeys(currentKey));
+  withFakeSessionStorage(store, () => pruneStaleDismissKeys(currentKey));
 
   assert.equal(store.has(currentKey), true);
   assert.equal(store.has(`${DISMISS_KEY_PREFIX}old-version-1`), false);
@@ -66,12 +91,13 @@ test("prune removes stale dismissal keys but keeps the current one", () => {
   assert.equal(store.get("unrelated"), "value");
 });
 
-test("prune tolerates a missing localStorage", () => {
-  const original = globalThis.localStorage;
-  delete globalThis.localStorage;
+test("prune tolerates a missing sessionStorage", () => {
+  const original = globalThis.sessionStorage;
+  delete globalThis.sessionStorage;
   try {
     assert.doesNotThrow(() => pruneStaleDismissKeys("apr:notice:dismissed:x"));
   } finally {
-    if (original !== undefined) globalThis.localStorage = original;
+    if (original !== undefined) globalThis.sessionStorage = original;
   }
 });
+

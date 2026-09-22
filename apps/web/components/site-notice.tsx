@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Megaphone, X, ArrowRight } from "@phosphor-icons/react";
 import type { SiteNotice } from "@/lib/types";
-import { safeInternalPath } from "@/lib/safe-url";
+import { safeNoticeLink } from "@/lib/safe-url";
 
 export const DISMISS_KEY_PREFIX = "apr:notice:dismissed:";
 
@@ -34,21 +34,20 @@ export function noticeVersionKey(notice: SiteNotice): string {
 }
 
 /**
- * Dismissals are keyed per notice version, so every admin edit would leave an
- * orphan key behind. Drop every stored dismissal except the current one — a
- * best-effort sweep that keeps localStorage bounded without changing which
- * version the user has dismissed.
+ * Dismissals are keyed per notice version in sessionStorage so closing the
+ * notice only hides it for the current browsing session. When the user re-enters
+ * the website after closing the browser / page, the notice displays again.
  */
 export function pruneStaleDismissKeys(currentKey: string): void {
   try {
     const stale: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
+    for (let index = 0; index < sessionStorage.length; index += 1) {
+      const key = sessionStorage.key(index);
       if (key && key.startsWith(DISMISS_KEY_PREFIX) && key !== currentKey) {
         stale.push(key);
       }
     }
-    stale.forEach((key) => localStorage.removeItem(key));
+    stale.forEach((key) => sessionStorage.removeItem(key));
   } catch {
     // Storage might be disabled; pruning is best-effort.
   }
@@ -64,8 +63,20 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
     }
     const dismissedKey = `${DISMISS_KEY_PREFIX}${noticeVersionKey(notice)}`;
     try {
+      // Clean up any historical permanent localStorage dismissals
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (key && key.startsWith(DISMISS_KEY_PREFIX)) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Storage might be disabled
+    }
+
+    try {
       pruneStaleDismissKeys(dismissedKey);
-      if (localStorage.getItem(dismissedKey)) {
+      if (sessionStorage.getItem(dismissedKey)) {
         setVisible(false);
         return;
       }
@@ -79,7 +90,7 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
     try {
       if (notice) {
         const dismissedKey = `${DISMISS_KEY_PREFIX}${noticeVersionKey(notice)}`;
-        localStorage.setItem(dismissedKey, "1");
+        sessionStorage.setItem(dismissedKey, "1");
         pruneStaleDismissKeys(dismissedKey);
       }
     } catch {
@@ -89,7 +100,7 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
   };
 
   if (!visible || !notice?.enabled || !notice?.title) return null;
-  const noticeLink = safeInternalPath(notice.link_url);
+  const noticeLink = safeNoticeLink(notice.link_url);
 
   return (
     <aside
@@ -107,13 +118,25 @@ export function SiteNoticePrompt({ notice }: { notice?: SiteNotice | null }) {
             — {notice.content}
           </span>
           {noticeLink && notice.link_text && (
-            <Link
-              href={noticeLink}
-              className="inline-flex shrink-0 items-center gap-1 font-semibold text-[color:var(--info)] hover:underline"
-            >
-              {notice.link_text}
-              <ArrowRight size={13} weight="bold" />
-            </Link>
+            noticeLink.isExternal ? (
+              <a
+                href={noticeLink.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center gap-1 font-semibold text-[color:var(--info)] hover:underline"
+              >
+                {notice.link_text}
+                <ArrowRight size={13} weight="bold" />
+              </a>
+            ) : (
+              <Link
+                href={noticeLink.href}
+                className="inline-flex shrink-0 items-center gap-1 font-semibold text-[color:var(--info)] hover:underline"
+              >
+                {notice.link_text}
+                <ArrowRight size={13} weight="bold" />
+              </Link>
+            )
           )}
         </div>
 

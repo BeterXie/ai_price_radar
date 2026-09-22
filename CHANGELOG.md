@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.8.2] - 2026-09-23
+
+### Bug Fixes and UI Improvements
+- Fix site notice link handling (`SiteNoticePrompt`): support safe external HTTPS URLs (such as QQ group invite `https://qm.qq.com/...`) alongside internal paths, restoring the missing join/action button.
+- Switch site notice dismissal storage from `localStorage` to `sessionStorage`:
+  - Closing the notice hides it for the active browsing session.
+  - Re-entering the website after closing the browser or tab displays the notice again if enabled in backend settings.
+  - Automatically prune legacy permanent `localStorage` dismissals.
+- Support official mobile mall (`shop.pricememo.cn`) email verification code flow and notification templates.
+
 ## [3.8.1] - 2026-09-23
 
 ### Features and Integrations

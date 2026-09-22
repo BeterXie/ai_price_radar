@@ -97,8 +97,18 @@ def request_email_code(
         window_seconds=600,
         detail="验证码请求过于频繁，请稍后再试",
     )
-    db.commit()
-    success, retry_after, message = send_email_login_code(db, payload.email)
+    host = request.headers.get("host", "").lower()
+    origin = request.headers.get("origin", "").lower()
+    referer = request.headers.get("referer", "").lower()
+    is_shop = (
+        (payload.scene or "").lower() == "shop"
+        or "shop.pricememo.cn" in host
+        or "shop.pricememo.cn" in origin
+        or "shop.pricememo.cn" in referer
+    )
+    scene = "shop" if is_shop else "login"
+
+    success, retry_after, message = send_email_login_code(db, payload.email, scene=scene)
     if not success and retry_after > 0:
         return EmailCodeResponse(success=False, retry_after=retry_after, message=message)
     if not success:

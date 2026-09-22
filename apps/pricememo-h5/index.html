@@ -739,29 +739,26 @@
       border-color: var(--primary);
     }
 
-    .payment-icons {
-      display: flex;
-      gap: 12px;
-      margin-top: 6px;
-    }
-
-    .payment-option {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border: 1px solid var(--border-line);
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .payment-option.active {
-      border-color: var(--primary);
+    .btn-send-code {
+      flex-shrink: 0;
+      padding: 0 14px;
+      height: 42px;
       background: var(--primary-light);
       color: var(--primary);
+      border: 1px solid rgba(37, 99, 235, 0.3);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .btn-send-code:disabled {
+      background: #f1f5f9;
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      cursor: not-allowed;
     }
 
     /* Toast 提示浮层 */
@@ -860,7 +857,7 @@
     <!-- 服务商品陈列区 -->
     <div class="section-header">
       <div class="section-title">热销数字化技术服务</div>
-      <div class="section-sub">支持支付宝 / 微信安全结算</div>
+      <div class="section-sub">正规自营交付 · 在线实时核验开通</div>
     </div>
 
     <section class="product-grid" id="productGrid">
@@ -985,10 +982,10 @@
         </div>
         <div class="trust-item">
           <div class="trust-icon-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
           </div>
-          <div class="trust-name">安全合规支付</div>
-          <div class="trust-sub">支付宝 / 微信直连</div>
+          <div class="trust-name">安全结算保障</div>
+          <div class="trust-sub">合规签约 · 交付保障</div>
         </div>
         <div class="trust-item">
           <div class="trust-icon-wrap">
@@ -1124,23 +1121,18 @@
           <div style="font-size:18px; font-weight:800; color:var(--danger);" id="orderItemPrice">¥0.00</div>
         </div>
         <div class="order-form-item">
-          <label class="form-label">联系手机号码 / 微信（用于接收开通通知）</label>
-          <input type="tel" class="form-input" id="orderContact" placeholder="请输入您的11位手机号码" maxlength="11">
-        </div>
-        <div class="order-form-item">
-          <label class="form-label">支持的支付方式</label>
-          <div class="payment-icons">
-            <div class="payment-option active" onclick="selectPayment(this)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#1677ff"><circle cx="12" cy="12" r="10"/></svg>
-              <span>支付宝支付</span>
-            </div>
-            <div class="payment-option" onclick="selectPayment(this)">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#07c160"><circle cx="12" cy="12" r="10"/></svg>
-              <span>微信支付</span>
-            </div>
+          <label class="form-label">接收开通通知与交付邮箱 <span style="color:var(--danger)">*</span></label>
+          <div style="display:flex; gap:8px;">
+            <input type="email" class="form-input" id="orderEmail" placeholder="请输入您的常用电子邮箱" style="flex:1;">
+            <button type="button" class="btn-send-code" id="btnSendCode" onclick="sendOrderEmailCode()">获取验证码</button>
           </div>
         </div>
-        <button class="btn-copy-url" style="margin-top:14px;" onclick="submitOrder()">确认提交并咨询开通</button>
+        <div class="order-form-item">
+          <label class="form-label">邮箱验证码 <span style="color:var(--danger)">*</span></label>
+          <input type="text" class="form-input" id="orderEmailCode" placeholder="请输入6位邮箱数字验证码" maxlength="6" inputmode="numeric">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:5px;">验证通过后将向该邮箱下发服务对接确认与交付凭证</div>
+        </div>
+        <button class="btn-copy-url" style="margin-top:14px;" id="btnSubmitOrder" onclick="submitOrder()">验证邮箱并确认订购</button>
       </div>
     </div>
   </div>
@@ -1259,29 +1251,118 @@
       }
     }
 
+    let codeCountdownTimer = null;
+
     function openOrderModal(name, price) {
       document.getElementById('orderItemName').value = name;
       document.getElementById('orderItemPrice').textContent = '¥' + price;
       openModal('orderModal');
     }
 
-    function selectPayment(el) {
-      document.querySelectorAll('.payment-option').forEach(p => p.classList.remove('active'));
-      el.classList.add('active');
+    function sendOrderEmailCode() {
+      const emailInput = document.getElementById('orderEmail');
+      const email = emailInput ? emailInput.value.trim() : '';
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || !emailRegex.test(email)) {
+        showToast('请输入有效的电子邮箱地址');
+        if (emailInput) emailInput.focus();
+        return;
+      }
+
+      const btn = document.getElementById('btnSendCode');
+      btn.disabled = true;
+      btn.textContent = '发送中...';
+
+      fetch('/api/v1/auth/email/code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, scene: 'shop' })
+      })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || data.message || '验证码发送失败，请稍后重试');
+        }
+        showToast(data.message || '验证码已发送至您的邮箱，请查收');
+        let remaining = data.retry_after || 60;
+        btn.textContent = remaining + 's 后重新获取';
+
+        if (codeCountdownTimer) clearInterval(codeCountdownTimer);
+        codeCountdownTimer = setInterval(() => {
+          remaining--;
+          if (remaining > 0) {
+            btn.textContent = remaining + 's 后重新获取';
+          } else {
+            clearInterval(codeCountdownTimer);
+            codeCountdownTimer = null;
+            btn.disabled = false;
+            btn.textContent = '获取验证码';
+          }
+        }, 1000);
+      })
+      .catch(err => {
+        showToast(err.message || '请求失败，请稍后再试');
+        btn.disabled = false;
+        btn.textContent = '获取验证码';
+      });
     }
 
     function submitOrder() {
-      const contact = document.getElementById('orderContact').value.trim();
-      if (!contact) {
-        showToast('请填写联系手机号码');
+      const emailInput = document.getElementById('orderEmail');
+      const codeInput = document.getElementById('orderEmailCode');
+      const email = emailInput ? emailInput.value.trim() : '';
+      const code = codeInput ? codeInput.value.trim() : '';
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!email || !emailRegex.test(email)) {
+        showToast('请先输入有效的电子邮箱');
+        if (emailInput) emailInput.focus();
         return;
       }
-      const orderNo = 'CT' + new Date().toISOString().replace(/\D/g, '').slice(0, 14);
-      showToast('订购申请已提交！订单编号：' + orderNo);
-      setTimeout(() => {
-        closeModal('orderModal');
-        document.getElementById('orderContact').value = '';
-      }, 1500);
+      if (!code || code.length !== 6) {
+        showToast('请输入完整的6位邮箱验证码');
+        if (codeInput) codeInput.focus();
+        return;
+      }
+
+      const submitBtn = document.getElementById('btnSubmitOrder');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '核验中...';
+
+      fetch('/api/v1/auth/email/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, code: code })
+      })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || data.message || '验证码错误或已失效');
+        }
+        const orderNo = 'CT' + new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+        showToast('邮箱核验成功！服务订购申请已提交');
+        setTimeout(() => {
+          closeModal('orderModal');
+          if (emailInput) emailInput.value = '';
+          if (codeInput) codeInput.value = '';
+          submitBtn.disabled = false;
+          submitBtn.textContent = '验证邮箱并确认订购';
+          if (codeCountdownTimer) {
+            clearInterval(codeCountdownTimer);
+            codeCountdownTimer = null;
+          }
+          const btnCode = document.getElementById('btnSendCode');
+          if (btnCode) {
+            btnCode.disabled = false;
+            btnCode.textContent = '获取验证码';
+          }
+        }, 1500);
+      })
+      .catch(err => {
+        showToast(err.message || '验证码核验失败，请重试');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '验证邮箱并确认订购';
+      });
     }
 
     function openLegalModal(type) {
@@ -1298,7 +1379,7 @@
       } else if (type === 'privacy') {
         titleEl.textContent = '隐私权保护政策';
         bodyEl.innerHTML = `
-          <p><strong>一、信息收集与使用</strong><br>我们仅在用户下单、咨询或技术支持对接时收集必要的联系方式（如手机号、邮箱），严格保密，绝不向任何无关第三方转让或泄露。</p>
+          <p><strong>一、信息收集与使用</strong><br>我们仅在用户下单、咨询或技术支持对接时收集必要的联系方式（如电子邮箱），严格保密，绝不向任何无关第三方转让或泄露。</p>
           <p style="margin-top:8px;"><strong>二、数据安全</strong><br>本平台采用行业标准 TLS/SSL 高强度加密传输协议，确保用户与商城之间数据传输的保密性与完整性。</p>
         `;
       } else if (type === 'refund') {

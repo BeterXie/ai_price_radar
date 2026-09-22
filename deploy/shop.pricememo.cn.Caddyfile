@@ -1,9 +1,25 @@
 shop.pricememo.cn {
     encode zstd gzip
 
-    root * /opt/ai-price-radar-v3/apps/pricememo-h5
-    file_server
-    try_files {path} /index.html
+    @api path /api/*
+    handle @api {
+        reverse_proxy ai-radar-api:8000 {
+            lb_try_duration 5s
+            lb_try_interval 200ms
+            transport http {
+                dial_timeout 5s
+                response_header_timeout 30s
+                keepalive 300s
+                keepalive_idle_conns 100
+            }
+        }
+    }
+
+    handle {
+        root * /data/shop-h5
+        file_server
+        try_files {path} /index.html
+    }
 
     header {
         Strict-Transport-Security "max-age=31536000"
