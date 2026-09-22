@@ -2,6 +2,17 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.8.0] - 2026-09-22
+
+### Security, authentication and project audit
+- Add password authentication system (`POST /api/v1/auth/password/login`, `POST /api/v1/user/password`) with PBKDF2-HMAC-SHA256 (600k iterations).
+- Support initial password setup flow after first login (skippable), and password management/invalidation across other active sessions in the user account panel.
+- Implement rate limiting with memory-backed email failure throttling and IP-based database rate limiting.
+- Perform comprehensive project audit fixes across dependencies, import hygiene, config consistency, rate-limit persistence, and production CSP parity.
+- Add migration script `scripts/migrate_user_password_v20.py` to add `password_hash` column to `users` table.
+- Enhance `notification_worker` resilience with exception handling and exponential backoff retry to prevent transient network/database errors from terminating the service.
+- Clean up legacy site notice dismiss keys from localStorage and fix `sqlite_path_from_url` relative URL handling.
+
 ## [3.7.99] - 2026-09-21
 
 ### Features and model arena

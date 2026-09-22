@@ -316,6 +316,15 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_coupon_shop_binding_v19.py
 
+# 用户密码字段迁移 (v20)；users 增加 password_hash 字段以支持密码登录，幂等安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_user_password_v20.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
