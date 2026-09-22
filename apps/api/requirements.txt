@@ -5,7 +5,7 @@ psycopg[binary]>=3.2,<4
 pydantic-settings>=2.8,<3
 python-multipart>=0.0.20,<1
 httpx>=0.28,<1
-resend>=2,<3
+resend>=2.47.0,<3
 # admin.py imports requests directly for the LDXP merchant API; declare it
 # explicitly instead of relying on resend's transitive dependency.
 requests>=2.32,<3
