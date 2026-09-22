@@ -352,11 +352,11 @@ class ReportOut(BaseModel):
 class ShopRequestCreate(BaseModel):
     source_type: Literal[
         "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
-        "woocommerce", "schema_org", "other",
+        "woocommerce", "schema_org", "acg_faka", "other",
     ] = "auto"
     declared_platform: Literal[
         "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
-        "woocommerce", "schema_org", "other",
+        "woocommerce", "schema_org", "acg_faka", "other",
     ] | None = None
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)
@@ -440,11 +440,11 @@ class SourceIntakeReject(BaseModel):
 
 
 class SourceIntakeUpdatePlatform(BaseModel):
-    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "other"]
+    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "acg_faka", "other"]
 
 
 class SourceIntakeApprove(BaseModel):
-    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "other"] | None = None
+    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "acg_faka", "other"] | None = None
 
 
 
@@ -470,7 +470,7 @@ class SourceDetectionResult(BaseModel):
     status: Literal["pending_review", "validation_failed"]
     attempt_count: int = Field(ge=1)
     detected_platform: Literal[
-        "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other", "unknown",
+        "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka", "other", "unknown",
     ] = "unknown"
     source_url: str = Field(default="", max_length=2000)
     source_key: str = Field(default="", max_length=300)
@@ -1166,6 +1166,12 @@ class AdminCouponStats(BaseModel):
     dynamic_drop: bool
     daily_drop_limit: int
     drop_trigger_count: int = 0
+    expired_unassigned_coupons: int = 0
+
+
+class AdminCouponCleanupExpiredOut(BaseModel):
+    deleted_count: int
+    message: str
 
 
 class AdminCouponSettingsUpdate(BaseModel):

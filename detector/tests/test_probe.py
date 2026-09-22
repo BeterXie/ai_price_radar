@@ -41,6 +41,7 @@ def test_detector_recognizes_merchant_feed_after_dujiao_probe_fails():
     client = StubClient([
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
         response({"items": [{"name": "ChatGPT Plus"}], "shop": {"name": "Feed Store"}}),
     ])
     result = probe_source("https://feed.example/catalog.json", client=client)
@@ -88,11 +89,36 @@ def test_detector_recognizes_woocommerce_store_api_before_generic_json():
     assert result.product_count == 12
 
 
+def test_detector_recognizes_acg_faka_store():
+    client = StubClient([
+        ProbeResponse(404, {}, b""),  # dujiao
+        ProbeResponse(404, {}, b""),  # woo
+        response({
+            "code": 200,
+            "data": [
+                {"id": 1, "name": "ChatGPT Plus", "price": "120.00"},
+                {"id": 2, "name": "Claude Pro", "price": "130.00"},
+            ],
+        }),  # acg commodity
+        ProbeResponse(
+            200,
+            {"content-type": "text/html"},
+            b"<html><head><title>\xe8\xb4\xad\xe7\x89\xa9 - ACG Store</title></head></html>",
+        ),  # home title
+    ])
+    result = probe_source("https://acg.example.com", client=client)
+    assert result.detected_platform == "acg_faka"
+    assert result.source_url == "https://acg.example.com"
+    assert result.shop_name == "ACG Store"
+    assert result.product_count == 2
+
+
 def test_detector_recognizes_schema_org_product_page():
     document = b"""<html><script type="application/ld+json">
     {"@context":"https://schema.org","@type":"Product","name":"ChatGPT Plus"}
     </script></html>"""
     client = StubClient([
+        ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
@@ -116,6 +142,7 @@ def test_detector_finds_schema_org_product_through_same_origin_sitemap():
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
         ProbeResponse(200, {"content-type": "text/html"}, b"<html></html>"),
         ProbeResponse(200, {"content-type": "application/xml"}, sitemap),
         ProbeResponse(200, {"content-type": "text/html"}, product),
@@ -133,6 +160,7 @@ def test_detector_recognizes_direct_nonstandard_sitemap_entry():
     {"@type":"Product","name":"ChatGPT Plus"}
     </script>"""
     client = StubClient([
+        ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),
         ProbeResponse(404, {}, b""),

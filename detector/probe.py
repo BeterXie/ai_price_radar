@@ -287,6 +287,36 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         pass
 
     try:
+        acg_response = client.get(
+            f"{origin}/user/api/index/commodity",
+            accept="application/json",
+        )
+        document = _json(acg_response)
+        if (
+            isinstance(document, dict)
+            and document.get("code") == 200
+            and isinstance(document.get("data"), list)
+        ):
+            items = document["data"]
+            if items and all(isinstance(item, dict) and "id" in item and "name" in item for item in items[:5]):
+                shop_name = host
+                try:
+                    home_page = client.get(origin, accept="text/html,application/xhtml+xml")
+                    if home_page.status == 200:
+                        m = re.search(r"<title>(.*?)</title>", home_page.body.decode("utf-8", errors="replace"), re.I)
+                        if m:
+                            parts = [p.strip() for p in m.group(1).split("-") if p.strip()]
+                            for p in reversed(parts):
+                                if p not in {"购物", "首页", "Home", "Shop", "商城"}:
+                                    shop_name = p
+                                    break
+                except Exception:
+                    pass
+                return ProbeResult("acg_faka", origin, origin, shop_name, len(items))
+    except (OSError, TimeoutError, ValueError, json.JSONDecodeError):
+        pass
+
+    try:
         document = _json(client.get(normalized, accept="application/json"))
         items = document if isinstance(document, list) else document.get("items") if isinstance(document, dict) else None
         if isinstance(items, list) and all(isinstance(item, dict) for item in items):

@@ -1276,3 +1276,41 @@ def test_detection_resolves_to_already_known_shop_notifies_applicant(api_client)
         assert notification is not None
         assert "橘子Ai源头" in notification.text_body
         assert "https://wzyp.cn/shop/KFLA" in notification.text_body
+
+
+def test_approve_acg_faka_intake_includes_shop_platform_url(api_client):
+    client, engine = api_client
+    admin_headers = {"X-Admin-Key": "admin-test"}
+    with Session(engine) as db:
+        intake = SourceIntake(
+            source_type="acg_faka",
+            detected_platform="acg_faka",
+            source_url="https://aiaimallss.cn/",
+            source_key="https://aiaimallss.cn",
+            shop_name="一站式 AI 杂货铺",
+            contact_email="test@example.com",
+            status="pending_review",
+        )
+        db.add(intake)
+        db.commit()
+        intake_id = intake.id
+
+    resp = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/approve",
+        headers=admin_headers,
+        json={"platform": "acg_faka"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "approved"
+
+    with Session(engine) as db:
+        approved_mail = db.scalar(
+            select(NotificationOutbox).where(
+                NotificationOutbox.event_type == "shop_request.approved",
+                NotificationOutbox.recipient == "test@example.com",
+            )
+        )
+        assert approved_mail is not None
+        assert "本站收录页面：https://ai.pricememo.cn/shops/acg-faka-f3d199c644dc0ae318539bf3" in approved_mail.text_body
+        assert "店铺名称：一站式 AI 杂货铺" in approved_mail.text_body
+        assert "店铺地址：https://aiaimallss.cn/" in approved_mail.text_body

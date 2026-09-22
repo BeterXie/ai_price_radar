@@ -5,6 +5,7 @@ export const SOURCE_INTAKE_OPTIONS = [
   { id: "dujiao_next", label: "Dujiao-Next（暂停收录）", disabled: true },
   { id: "woocommerce", label: "WooCommerce" },
   { id: "schema_org", label: "Schema.org 独立站" },
+  { id: "acg_faka", label: "异次元/ACG-Faka" },
   { id: "merchant_json", label: "商家 JSON Feed" },
   { id: "other", label: "其他独立站" },
 ];
@@ -39,6 +40,11 @@ export const SOURCE_INTAKE_COPY = {
     fieldLabel: "独立站或商品页地址",
     placeholder: "https://shop.example.com/products/example",
     hint: "站点须通过 Sitemap 和 Schema.org Product/Offer JSON-LD 公开商品信息。",
+  },
+  acg_faka: {
+    fieldLabel: "异次元/ACG-Faka 店铺地址",
+    placeholder: "https://shop.example.com",
+    hint: "请输入公开店铺根地址；系统会自动读取公开分类与商品接口。",
   },
   merchant_json: {
     fieldLabel: "公开 JSON Feed 地址",

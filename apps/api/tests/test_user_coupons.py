@@ -528,3 +528,150 @@ def test_record_coupon_drop_trigger_and_stats(client: TestClient, test_db):
     # 4. Verify stats reflects drop_trigger_count == 2
     stats = _get_coupon_stats(test_db)
     assert stats.drop_trigger_count == 2
+
+
+def test_expired_unassigned_coupons_do_not_trigger_drop(client: TestClient, test_db):
+    from app.routers.admin import _get_coupon_stats
+    now = datetime.now(timezone.utc)
+
+    # Only expired unassigned coupons in db
+    expired_coupon = ShopCoupon(
+        name="已过期测试券",
+        code="EXPIRED_CODE_1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        is_used=False,
+        expires_at=now - timedelta(hours=2),
+    )
+    test_db.add(expired_coupon)
+    test_db.commit()
+
+    # 1. Drop status reports 0 stock, no stock, 0 probability
+    status_res = client.get("/api/v1/user/coupons/drop-status")
+    assert status_res.status_code == 200
+    status_data = status_res.json()
+    assert status_data["has_stock"] is False
+    assert status_data["remaining_stock"] == 0
+    assert status_data["probability"] == 0
+
+    # 2. Triggering drop returns ineligible and no claim token
+    trigger_res = client.post(
+        "/api/v1/user/coupons/record-drop-trigger",
+        json={"page": "/compare/chatgpt-vs-claude"},
+    )
+    assert trigger_res.status_code == 200
+    trigger_data = trigger_res.json()
+    assert trigger_data["eligible"] is False
+    assert trigger_data["claim_token"] == ""
+
+    # 3. Admin stats accurately shows droppable inventory == 0 and expired unassigned == 1
+    stats = _get_coupon_stats(test_db)
+    assert stats.unassigned_coupons == 0
+    assert stats.expired_unassigned_coupons == 1
+
+
+def test_admin_coupons_filter_and_cleanup_expired(client: TestClient, test_db):
+    from app.routers.admin import admin_cleanup_expired_coupons, admin_list_coupons
+    now = datetime.now(timezone.utc)
+
+    valid_c = ShopCoupon(
+        name="有效券",
+        code="VALID_1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        is_used=False,
+        expires_at=now + timedelta(days=5),
+    )
+    expired_c1 = ShopCoupon(
+        name="过期券1",
+        code="EXP_1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        is_used=False,
+        expires_at=now - timedelta(days=1),
+    )
+    expired_c2 = ShopCoupon(
+        name="过期券2",
+        code="EXP_2",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        is_used=False,
+        expires_at=now - timedelta(days=2),
+    )
+    assigned_c = ShopCoupon(
+        name="已领入卡包券",
+        code="ASSIGNED_1",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=True,
+        is_used=False,
+        expires_at=now - timedelta(days=1),  # user's expired wallet coupon
+    )
+    test_db.add_all([valid_c, expired_c1, expired_c2, assigned_c])
+    test_db.commit()
+
+    # Query unassigned: strictly only the valid unexpired coupon
+    unassigned_page = admin_list_coupons(status="unassigned", db=test_db)
+    assert unassigned_page.total == 1
+    assert unassigned_page.items[0].code == "VALID_1"
+
+    # Query expired: strictly the 2 expired unassigned coupons
+    expired_page = admin_list_coupons(status="expired", db=test_db)
+    assert expired_page.total == 2
+    codes = {item.code for item in expired_page.items}
+    assert codes == {"EXP_1", "EXP_2"}
+
+    # Cleanup expired: batch removes the 2 expired unassigned coupons
+    res = admin_cleanup_expired_coupons(db=test_db)
+    assert res.deleted_count == 2
+
+    # Remaining in DB: valid coupon + user's assigned coupon (protected!)
+    remaining = test_db.query(ShopCoupon).all()
+    remaining_codes = {c.code for c in remaining}
+    assert remaining_codes == {"VALID_1", "ASSIGNED_1"}
+
+
+def test_privacy_cleanup_purges_expired_unassigned_coupons(test_db):
+    from app.services.privacy import cleanup_privacy_data
+    now = datetime.now(timezone.utc)
+
+    valid_c = ShopCoupon(
+        name="有效券",
+        code="PRIVACY_VALID",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        is_used=False,
+        expires_at=now + timedelta(days=2),
+    )
+    expired_c = ShopCoupon(
+        name="过期券",
+        code="PRIVACY_EXP",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=False,
+        is_used=False,
+        expires_at=now - timedelta(days=1),
+    )
+    assigned_c = ShopCoupon(
+        name="用户券",
+        code="PRIVACY_ASSIGNED",
+        discount_amount=Decimal("5.00"),
+        min_spend=Decimal("15.00"),
+        is_assigned=True,
+        is_used=False,
+        expires_at=now - timedelta(days=1),
+    )
+    test_db.add_all([valid_c, expired_c, assigned_c])
+    test_db.commit()
+
+    stats = cleanup_privacy_data(test_db)
+    assert stats["expired_unassigned_coupons"] == 1
+
+    remaining = test_db.query(ShopCoupon).all()
+    remaining_codes = {c.code for c in remaining}
+    assert remaining_codes == {"PRIVACY_VALID", "PRIVACY_ASSIGNED"}

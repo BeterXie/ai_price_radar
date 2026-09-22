@@ -44,6 +44,7 @@ from ..schemas import (
     AdminBroadcastCreate,
     AdminBroadcastItem,
     AdminCampaignCreate,
+    AdminCouponCleanupExpiredOut,
     AdminCouponImportRequest,
     AdminCouponImportResponse,
     AdminCouponPageOut,
@@ -100,7 +101,7 @@ from ..services.source_discovery import (
     recover_unpromoted_candidates,
 )
 from ..services.outbox import refresh_broadcast_status
-from ..services.source_intake import email_statuses, enqueue_transition_notification, utcnow
+from ..services.source_intake import email_statuses, enqueue_transition_notification, site_url, utcnow
 from ..services.source_platform import (
     _16688_detection,
     _ldxp_detection,
@@ -658,7 +659,7 @@ def approve_source_intake(
         if intake.source_type == "ldxp":
             intake.status = "queued"
             next_step = "等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"}:
             intake.status = "approved"
             next_step = "等待下一次完整目录发布"
         elif intake.source_type == "other":
@@ -670,6 +671,17 @@ def approve_source_intake(
             raise HTTPException(status_code=409, detail="来源尚未完成安全检测")
         intake.approved_at = utcnow()
         intake.decision_note = f"已通过初审，{next_step}"
+
+        shop_page_url = ""
+        if intake.source_type == "acg_faka":
+            raw_target = intake.source_url.rstrip("/")
+            digest = hashlib.sha256(raw_target.encode("utf-8")).hexdigest()[:24]
+            shop_page_url = site_url(f"/shops/acg-faka-{digest}")
+        elif intake.source_key and intake.source_type in {"ldxp", "16688"}:
+            shop_page_url = site_url(f"/shops/{intake.source_key}")
+
+        shop_page_line = f"本站收录页面：{shop_page_url}\n" if shop_page_url else ""
+
         enqueue_transition_notification(
             db,
             intake,
@@ -679,6 +691,7 @@ def approve_source_intake(
                 f"你的店铺收录申请（#{intake.id}）已通过初审。\n"
                 f"店铺名称：{intake.shop_name or '未填写'}\n"
                 f"店铺地址：{intake.source_url}\n"
+                f"{shop_page_line}"
                 f"当前状态：{next_step}；商品成功进入完整快照后才会正式收录。"
             ),
         )
@@ -777,7 +790,7 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
         elif intake.source_type == "ldxp":
             intake.status = "queued"
             decision_note = "已重新排队，等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"}:
             intake.status = "approved" if intake.approved_at is not None else "pending_review"
             decision_note = (
                 "已恢复，等待下一次完整目录发布"
@@ -1255,9 +1268,28 @@ def _admin_campaign_to_read(c: CouponCampaign) -> CampaignRead:
 
 
 def _get_coupon_stats(db: Session) -> AdminCouponStats:
+    now = datetime.now(timezone.utc)
     total = db.scalar(select(func.count(ShopCoupon.id))) or 0
     assigned = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_assigned.is_(True))) or 0
-    unassigned = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_assigned.is_(False))) or 0
+    unassigned = (
+        db.scalar(
+            select(func.count(ShopCoupon.id)).where(
+                ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.is_used.is_(False),
+                ShopCoupon.expires_at > now,
+            )
+        )
+        or 0
+    )
+    expired_unassigned = (
+        db.scalar(
+            select(func.count(ShopCoupon.id)).where(
+                ShopCoupon.is_assigned.is_(False),
+                ShopCoupon.expires_at <= now,
+            )
+        )
+        or 0
+    )
     used = db.scalar(select(func.count(ShopCoupon.id)).where(ShopCoupon.is_used.is_(True))) or 0
     campaigns = db.scalar(select(func.count(CouponCampaign.id))) or 0
 
@@ -1283,6 +1315,7 @@ def _get_coupon_stats(db: Session) -> AdminCouponStats:
         dynamic_drop=get_setting_bool(db, "coupon_dynamic_drop", default=True),
         daily_drop_limit=get_setting_int(db, "coupon_daily_drop_limit", default=100),
         drop_trigger_count=drop_trigger_count,
+        expired_unassigned_coupons=expired_unassigned,
     )
 
 
@@ -1337,33 +1370,49 @@ def admin_list_coupons(
     search: str = Query(default=""),
     db: Session = Depends(get_db),
 ) -> AdminCouponPageOut:
+    now = datetime.now(timezone.utc)
+    page_val = page if isinstance(page, int) else 1
+    page_size_val = page_size if isinstance(page_size, int) else 50
+    status_val = status if isinstance(status, str) else "all"
+    shop_id_val = shop_id if isinstance(shop_id, int) else None
+    search_val = search.strip() if isinstance(search, str) else ""
+
     stmt = select(ShopCoupon)
-    if status == "assigned":
+    if status_val == "assigned":
         stmt = stmt.where(ShopCoupon.is_assigned.is_(True))
-    elif status == "unassigned":
-        stmt = stmt.where(ShopCoupon.is_assigned.is_(False))
-    elif status == "used":
+    elif status_val == "unassigned":
+        stmt = stmt.where(
+            ShopCoupon.is_assigned.is_(False),
+            ShopCoupon.is_used.is_(False),
+            ShopCoupon.expires_at > now,
+        )
+    elif status_val == "expired":
+        stmt = stmt.where(
+            ShopCoupon.is_assigned.is_(False),
+            ShopCoupon.expires_at <= now,
+        )
+    elif status_val == "used":
         stmt = stmt.where(ShopCoupon.is_used.is_(True))
 
-    if shop_id is not None:
-        stmt = stmt.where(ShopCoupon.shop_id == shop_id)
+    if shop_id_val is not None:
+        stmt = stmt.where(ShopCoupon.shop_id == shop_id_val)
 
-    if search.strip():
-        term = f"%{search.strip()}%"
+    if search_val:
+        term = f"%{search_val}%"
         stmt = stmt.where(or_(ShopCoupon.code.ilike(term), ShopCoupon.name.ilike(term), ShopCoupon.shop_name.ilike(term)))
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     items = db.scalars(
         stmt.order_by(ShopCoupon.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .offset((page_val - 1) * page_size_val)
+        .limit(page_size_val)
     ).all()
 
     return AdminCouponPageOut(
         items=[_admin_coupon_to_read(c) for c in items],
         total=total,
-        page=page,
-        page_size=page_size,
+        page=page_val,
+        page_size=page_size_val,
     )
 
 
@@ -1554,6 +1603,29 @@ def admin_delete_coupon(
     db.delete(coupon)
     db.commit()
     return {"ok": True, "id": coupon_id}
+
+
+@router.post("/coupons/cleanup-expired", response_model=AdminCouponCleanupExpiredOut)
+def admin_cleanup_expired_coupons(
+    db: Session = Depends(get_db),
+) -> AdminCouponCleanupExpiredOut:
+    """Batch delete unassigned coupons that have already expired."""
+    now = datetime.now(timezone.utc)
+    stmt = (
+        delete(ShopCoupon)
+        .where(
+            ShopCoupon.is_assigned.is_(False),
+            ShopCoupon.expires_at <= now,
+        )
+        .execution_options(synchronize_session="fetch")
+    )
+    result = db.execute(stmt)
+    db.commit()
+    deleted = result.rowcount or 0
+    return AdminCouponCleanupExpiredOut(
+        deleted_count=deleted,
+        message=f"已成功清理 {deleted} 张待领取已过期的优惠券",
+    )
 
 
 @router.get("/coupons/campaigns", response_model=list[CampaignRead])

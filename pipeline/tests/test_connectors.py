@@ -16,8 +16,10 @@ def test_connector_registry_includes_all_structured_platform_loaders():
     assert "16688" in get_connector.__globals__["CONNECTORS"]
     assert "woocommerce-store" in get_connector.__globals__["CONNECTORS"]
     assert "schema-org" in get_connector.__globals__["CONNECTORS"]
+    assert "acg-faka" in get_connector.__globals__["CONNECTORS"]
     assert callable(get_connector("woocommerce-store"))
     assert callable(get_connector("schema-org"))
+    assert callable(get_connector("acg-faka"))
 
 
 def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):

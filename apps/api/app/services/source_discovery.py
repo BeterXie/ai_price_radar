@@ -22,10 +22,10 @@ from .source_platform import (
 
 
 DETECTED_PLATFORMS = frozenset(
-    {"unknown", "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "other"}
+    {"unknown", "ldxp", "dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka", "other"}
 )
-ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce"})
-PROMOTABLE_PLATFORMS = frozenset({"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org"})
+ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce", "acg_faka"})
+PROMOTABLE_PLATFORMS = frozenset({"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"})
 AUTO_APPROVE_SETTING = {
     "dujiao_next": "discovery_dujiao_auto_approve",
     "woocommerce": "discovery_woocommerce_auto_approve",

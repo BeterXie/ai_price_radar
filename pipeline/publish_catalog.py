@@ -169,7 +169,7 @@ def approved_intake_sources(db: Session) -> list[SourceSpec]:
     rows = db.execute(text(
         "SELECT id, source_type, source_url FROM source_intakes "
         "WHERE status IN ('approved', 'published') "
-        "AND source_type IN ('merchant_json', 'woocommerce', '16688', 'schema_org') "
+        "AND source_type IN ('merchant_json', 'woocommerce', '16688', 'schema_org', 'acg_faka') "
         "AND detected_platform=source_type "
         "ORDER BY id"
     )).mappings()
@@ -179,6 +179,7 @@ def approved_intake_sources(db: Session) -> list[SourceSpec]:
         "woocommerce": "woocommerce-store",
         "16688": "16688",
         "schema_org": "schema-org",
+        "acg_faka": "acg-faka",
     }
     return [
         SourceSpec(connector_by_type[row["source_type"]], row["source_url"], (int(row["id"]),))

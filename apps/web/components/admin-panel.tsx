@@ -88,7 +88,7 @@ type Report = {
   created_at: string;
 };
 
-type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "woocommerce" | "16688" | "schema_org" | "other";
+type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "woocommerce" | "16688" | "schema_org" | "acg_faka" | "other";
 
 type SourceIntake = {
   id: number;
@@ -814,6 +814,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     dujiao_next: "Dujiao-Next",
     woocommerce: "WooCommerce",
     schema_org: "Schema.org 独立站",
+    acg_faka: "异次元/ACG-Faka",
     merchant_json: "商家 JSON Feed",
     other: "其他独立站",
   };
@@ -1339,6 +1340,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                             <option value="dujiao_next" disabled>独角数卡 (dujiao_next - 已暂停)</option>
                             <option value="16688">16688发卡 (16688)</option>
                             <option value="woocommerce">WooCommerce</option>
+                            <option value="acg_faka">异次元/ACG-Faka (acg_faka)</option>
                             <option value="merchant_json">商家 JSON Feed</option>
                             <option value="schema_org">Schema.org</option>
                             <option value="other">其他独立站</option>
@@ -1351,7 +1353,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                       <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email ? intake.contact_email : <span className="text-black/40">未填写（公网爬虫发现）</span>} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                       {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
                       {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">提示：如该店铺为链动小铺、独角数卡等支持的平台，可在上方切换类型或点击“重新检测”；点击批准将自动按检测平台接入。</p>}
-                      {["merchant_json", "woocommerce", "16688", "schema_org"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
+                      {["merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
                       {intake.failure_reason && <p className="mt-2 rounded-[10px] bg-[color:var(--danger-soft)] px-3 py-2 text-sm leading-6 text-[color:var(--danger)]">失败原因：{intake.failure_reason}</p>}
                       {!intake.contact_email ? (
                         <p className="mt-3 text-xs text-black/40">无联系邮箱（系统爬虫自动发现，不发送邮件通知）</p>

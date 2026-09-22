@@ -12,6 +12,7 @@ from ..models import (
     OfferClick,
     QQBindingSession,
     ReportRateLimit,
+    ShopCoupon,
     User,
     UserActionLog,
     UserSession,
@@ -63,6 +64,14 @@ def cleanup_privacy_data(db: Session, settings: Settings | None = None) -> dict[
     old_offer_clicks = db.execute(
         delete(OfferClick).where(OfferClick.created_at < cutoff)
     ).rowcount or 0
+    expired_unassigned_coupons = db.execute(
+        delete(ShopCoupon)
+        .where(
+            ShopCoupon.is_assigned.is_(False),
+            ShopCoupon.expires_at < now,
+        )
+        .execution_options(synchronize_session="fetch")
+    ).rowcount or 0
     anonymized_users = db.execute(
         update(User)
         .where(User.last_login_at.is_not(None), User.last_login_at < cutoff, User.last_login_ip != "")
@@ -79,5 +88,6 @@ def cleanup_privacy_data(db: Session, settings: Settings | None = None) -> dict[
         "expired_auth_codes": int(expired_auth_codes),
         "notification_outbox": int(old_notifications),
         "offer_clicks": int(old_offer_clicks),
+        "expired_unassigned_coupons": int(expired_unassigned_coupons),
         "anonymized_users": int(anonymized_users),
     }

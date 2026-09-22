@@ -955,6 +955,21 @@ def record_coupon_drop_trigger(
 
     user_id = current_user.id if current_user else None
 
+    # Authenticated user 24h frequency check: prevent popping eggs when user is on cooldown
+    cooldown_cutoff = now - timedelta(hours=24)
+    already_claimed_recent = False
+    if current_user:
+        already_claimed_recent = (
+            db.scalar(
+                select(UserActionLog.id).where(
+                    UserActionLog.user_id == current_user.id,
+                    UserActionLog.action_type == "coupon_drop_claim_token",
+                    UserActionLog.created_at >= cooldown_cutoff,
+                )
+            )
+            is not None
+        )
+
     remaining_stock = (
         db.scalar(
             select(func.count(ShopCoupon.id)).where(
@@ -966,7 +981,11 @@ def record_coupon_drop_trigger(
         or 0
     )
     enabled = _get_setting_bool(db, "coupon_drop_enabled", default=True)
-    probability = _drop_probability(db, remaining_stock) if enabled and remaining_stock > 0 else 0
+    probability = (
+        _drop_probability(db, remaining_stock)
+        if enabled and remaining_stock > 0 and not already_claimed_recent
+        else 0
+    )
     eligible = probability > 0 and secrets.randbelow(10_000) < probability * 100
 
     log = UserActionLog(

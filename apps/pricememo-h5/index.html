@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>彩头软件 · 官方移动端商城 - 湖南湘江新区彩头软件开发工作室</title>
+  <meta name="description" content="湖南湘江新区彩头软件开发工作室官方移动端商城，提供专业软件定制开发、智能数字化工具订阅、技术咨询与系统运维服务。">
+  <meta name="keywords" content="彩头软件, 软件开发, 技术服务, 数字化工具, 在线商城, shop.pricememo.cn">
+  <!-- Open Graph / 社交分享元标签 -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="彩头软件 · 官方移动商城">
+  <meta property="og:description" content="湖南湘江新区彩头软件开发工作室官方商城，专业技术服务与软件开发，即时在线交付。">
+  <meta property="og:url" content="https://shop.pricememo.cn/">
+
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --accent: #10b981;
+      --accent-light: #ecfdf5;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+      --bg-body: #f8fafc;
+      --bg-card: #ffffff;
+      --border-line: #e2e8f0;
+      --border-subtle: #f1f5f9;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 10px 25px rgba(15, 23, 42, 0.12);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      line-height: 1.5;
+      font-size: 14px;
+      padding-bottom: calc(72px + var(--safe-bottom));
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 顶部导航栏 */
+    .header-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: 52px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.3px;
+    }
+
+    .brand-tag {
+      font-size: 10px;
+      background: var(--accent-light);
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    /* 右上角分享按钮 */
+    .btn-share {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-share:active {
+      transform: scale(0.96);
+      background: #dbeafe;
+    }
+
+    .btn-share svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    /* 容器 */
+    .app-container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 12px 14px;
+    }
+
+    /* 顶部 Banner */
+    .hero-banner {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-radius: var(--radius-lg);
+      padding: 20px 18px;
+      color: #ffffff;
+      box-shadow: var(--shadow-md);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+
+    .hero-banner::after {
+      content: '';
+      position: absolute;
+      right: -20px;
+      bottom: -30px;
+      width: 140px;
+      height: 140px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.35) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: #93c5fd;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      margin-bottom: 10px;
+    }
+
+    .hero-title {
+      font-size: 19px;
+      font-weight: 800;
+      line-height: 1.3;
+      margin-bottom: 6px;
+    }
+
+    .hero-desc {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .hero-features {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+
+    .hero-feat-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .hero-feat-item svg {
+      width: 13px;
+      height: 13px;
+      color: var(--accent);
+    }
+
+    /* 分类标签导航 */
+    .category-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 2px 10px 2px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .category-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-btn {
+      white-space: nowrap;
+      padding: 7px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-full);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+    }
+
+    /* 区域标题 */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 12px 2px 10px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-title::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 14px;
+      background: var(--primary);
+      border-radius: 2px;
+    }
+
+    .section-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* 商品列表 */
+    .product-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .product-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      gap: 14px;
+      position: relative;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .product-card:active {
+      transform: scale(0.99);
+    }
+
+    .product-thumb {
+      width: 84px;
+      height: 84px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border-line);
+    }
+
+    .product-thumb svg {
+      width: 40px;
+      height: 40px;
+      color: #64748b;
+    }
+
+    .product-badge-corner {
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: var(--accent);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-bottom-right-radius: 6px;
+    }
+
+    .product-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .product-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.35;
+      margin-bottom: 4px;
+    }
+
+    .product-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .product-tags {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .tag-chip {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--bg-body);
+      color: var(--text-muted);
+      border: 1px solid var(--border-line);
+    }
+
+    .product-foot {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+
+    .price-box {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .price-symbol {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--danger);
+    }
+
+    .price-val {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--danger);
+      letter-spacing: -0.5px;
+    }
+
+    .price-original {
+      font-size: 11px;
+      color: var(--text-light);
+      text-decoration: line-through;
+    }
+
+    .btn-buy {
+      padding: 6px 14px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+      transition: background 0.15s;
+    }
+
+    .btn-buy:active {
+      background: var(--primary-dark);
+    }
+
+    /* 服务保障模块 */
+    .trust-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-top: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .trust-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      text-align: center;
+    }
+
+    .trust-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .trust-icon-wrap {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .trust-icon-wrap svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .trust-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .trust-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* 商户主体与资质公示 */
+    .merchant-profile {
+      background: var(--bg-card);
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-top: 14px;
+    }
+
+    .profile-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .profile-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      line-height: 1.8;
+      border-bottom: 1px dashed var(--border-subtle);
+      padding: 3px 0;
+    }
+
+    .profile-row:last-child {
+      border-bottom: none;
+    }
+
+    .profile-label {
+      color: var(--text-muted);
+    }
+
+    .profile-value {
+      font-weight: 500;
+      color: var(--text-main);
+      text-align: right;
+    }
+
+    /* 资质协议链接 */
+    .legal-links {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin: 18px 0 10px;
+      font-size: 11px;
+    }
+
+    .legal-links a {
+      color: var(--text-muted);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    /* 底部合规 ICP 与工信部备案声明 */
+    .icp-footer {
+      text-align: center;
+      padding: 14px 12px 10px;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.7;
+    }
+
+    .icp-link {
+      color: var(--primary);
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .icp-link:hover, .icp-link:active {
+      text-decoration: underline;
+    }
+
+    .copyright {
+      color: var(--text-light);
+      font-size: 10px;
+      margin-top: 4px;
+    }
+
+    /* 底部固定 Tab 导航 */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: calc(56px + var(--safe-bottom));
+      padding-bottom: var(--safe-bottom);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border-line);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      z-index: 99;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .nav-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px 12px;
+      border: none;
+      background: transparent;
+      transition: color 0.15s;
+    }
+
+    .nav-tab.active {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .nav-tab svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* 弹窗通用样式 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.55);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-sheet {
+      width: 100%;
+      max-width: 640px;
+      background: #ffffff;
+      border-top-left-radius: var(--radius-lg);
+      border-top-right-radius: var(--radius-lg);
+      padding: 20px 18px calc(20px + var(--safe-bottom));
+      max-height: 85vh;
+      overflow-y: auto;
+      animation: slideUp 0.25s ease-out;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border-line);
+      padding-bottom: 12px;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .btn-close-modal {
+      background: var(--bg-body);
+      border: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    /* 分享弹窗内容 */
+    .share-content {
+      text-align: center;
+      padding: 10px 0;
+    }
+
+    .share-qr {
+      width: 140px;
+      height: 140px;
+      margin: 0 auto 12px;
+      border-radius: var(--radius-md);
+      padding: 8px;
+      background: #fff;
+      border: 1px solid var(--border-line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .share-qr svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .share-url-box {
+      background: var(--bg-body);
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: monospace;
+      font-size: 13px;
+      color: var(--primary);
+      word-break: break-all;
+      margin-bottom: 14px;
+      text-align: left;
+    }
+
+    .btn-copy-url {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+
+    /* 订购表单样式 */
+    .order-form-item {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+    }
+
+    .payment-icons {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .payment-option {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border-line);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .payment-option.active {
+      border-color: var(--primary);
+      background: var(--primary-light);
+      color: var(--primary);
+    }
+
+    /* Toast 提示浮层 */
+    .toast {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(15, 23, 42, 0.9);
+      color: #fff;
+      font-size: 13px;
+      padding: 10px 20px;
+      border-radius: var(--radius-full);
+      box-shadow: var(--shadow-lg);
+      z-index: 300;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 顶部导航栏 -->
+  <header class="header-bar">
+    <div class="brand-wrap">
+      <div class="brand-logo">彩</div>
+      <div class="brand-title">彩头软件 · 移动商城</div>
+      <span class="brand-tag">官方自营</span>
+    </div>
+
+    <!-- 右上角分享按钮 -->
+    <button class="btn-share" id="btnTopShare" title="分享商城" onclick="handleShareClick()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="18" cy="5" r="3"></circle>
+        <circle cx="6" cy="12" r="3"></circle>
+        <circle cx="18" cy="19" r="3"></circle>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+      </svg>
+      <span>分享</span>
+    </button>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="app-container">
+
+    <!-- 顶部 Banner -->
+    <section class="hero-banner">
+      <div class="hero-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        官方正品自营 · 企业实名认证保障
+      </div>
+      <h1 class="hero-title">彩头软件移动端服务中心</h1>
+      <p class="hero-desc">专业从事计算机软件定制开发、智能数字化工具订阅、技术咨询与系统运维保障服务。</p>
+      <div class="hero-features">
+        <div class="hero-feat-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          即时开通交付
+        </div>
+        <div class="hero-feat-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          实体资质认证
+        </div>
+        <div class="hero-feat-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          专业售后保障
+        </div>
+      </div>
+    </section>
+
+    <!-- 分类滑动选择 -->
+    <nav class="category-tabs" id="categoryNav">
+      <button class="tab-btn active" onclick="switchCategory('all', this)">全部服务</button>
+      <button class="tab-btn" onclick="switchCategory('ai', this)">软件定制</button>
+      <button class="tab-btn" onclick="switchCategory('cloud', this)">算力与云服</button>
+      <button class="tab-btn" onclick="switchCategory('enterprise', this)">企服数字化</button>
+      <button class="tab-btn" onclick="switchCategory('support', this)">技术咨询</button>
+    </nav>
+
+    <!-- 服务商品陈列区 -->
+    <div class="section-header">
+      <div class="section-title">热销数字化技术服务</div>
+      <div class="section-sub">支持支付宝 / 微信安全结算</div>
+    </div>
+
+    <section class="product-grid" id="productGrid">
+      <!-- 商品 1 -->
+      <article class="product-card" data-category="ai">
+        <div class="product-thumb">
+          <div class="product-badge-corner">爆款</div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        </div>
+        <div class="product-info">
+          <div>
+            <h2 class="product-name">AI 智能生产力旗舰年付订阅服务</h2>
+            <p class="product-desc">整合前沿智能化大模型技术，办公文本辅助与知识库助手，个人与工作室提效首选。</p>
+            <div class="product-tags">
+              <span class="tag-chip">自动交付</span>
+              <span class="tag-chip">独立账号</span>
+              <span class="tag-chip">365天保固</span>
+            </div>
+          </div>
+          <div class="product-foot">
+            <div class="price-box">
+              <span class="price-symbol">¥</span>
+              <span class="price-val">399.00</span>
+              <span class="price-original">¥599.00</span>
+            </div>
+            <button class="btn-buy" onclick="openOrderModal('AI 智能生产力旗舰年付订阅服务', '399.00')">立即订购</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- 商品 2 -->
+      <article class="product-card" data-category="cloud">
+        <div class="product-thumb">
+          <div class="product-badge-corner">现货</div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
+        </div>
+        <div class="product-info">
+          <div>
+            <h2 class="product-name">高性能技术开发 API 调用资源包 (1000万额度)</h2>
+            <p class="product-desc">高可用云端专线接入，高并发稳定吞吐，适配业务系统、微服务及数据接口集成。</p>
+            <div class="product-tags">
+              <span class="tag-chip">实时划拨</span>
+              <span class="tag-chip">接口统一</span>
+              <span class="tag-chip">长期有效</span>
+            </div>
+          </div>
+          <div class="product-foot">
+            <div class="price-box">
+              <span class="price-symbol">¥</span>
+              <span class="price-val">199.00</span>
+              <span class="price-original">¥280.00</span>
+            </div>
+            <button class="btn-buy" onclick="openOrderModal('高性能技术开发 API 调用资源包 (1000万额度)', '199.00')">立即订购</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- 商品 3 -->
+      <article class="product-card" data-category="enterprise">
+        <div class="product-thumb">
+          <div class="product-badge-corner">专属</div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        </div>
+        <div class="product-info">
+          <div>
+            <h2 class="product-name">企业业务系统与知识库私有化部署方案</h2>
+            <p class="product-desc">专属数据隔离存储与检索增强，本地化安全部署，含首年维保支持与操作培训。</p>
+            <div class="product-tags">
+              <span class="tag-chip">远程/驻场部署</span>
+              <span class="tag-chip">源码交付</span>
+              <span class="tag-chip">技术培训</span>
+            </div>
+          </div>
+          <div class="product-foot">
+            <div class="price-box">
+              <span class="price-symbol">¥</span>
+              <span class="price-val">1,299.00</span>
+              <span class="price-original">¥1,999.00</span>
+            </div>
+            <button class="btn-buy" onclick="openOrderModal('企业业务系统与知识库私有化部署方案', '1299.00')">在线咨询</button>
+          </div>
+        </div>
+      </article>
+
+      <!-- 商品 4 -->
+      <article class="product-card" data-category="support">
+        <div class="product-thumb">
+          <div class="product-badge-corner">优选</div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        </div>
+        <div class="product-info">
+          <div>
+            <h2 class="product-name">高级软件工程师一对一技术咨询与故障排查 (单次)</h2>
+            <p class="product-desc">资深全栈软件工程师一对一定向攻坚，服务器运维、性能调优与故障排查诊断。</p>
+            <div class="product-tags">
+              <span class="tag-chip">预约服务</span>
+              <span class="tag-chip">无效果退款</span>
+              <span class="tag-chip">附诊断报告</span>
+            </div>
+          </div>
+          <div class="product-foot">
+            <div class="price-box">
+              <span class="price-symbol">¥</span>
+              <span class="price-val">99.00</span>
+              <span class="price-original">¥150.00</span>
+            </div>
+            <button class="btn-buy" onclick="openOrderModal('高级软件工程师一对一技术咨询与故障排查', '99.00')">立即预约</button>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- 服务保障 -->
+    <section class="trust-section">
+      <div class="trust-grid">
+        <div class="trust-item">
+          <div class="trust-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </div>
+          <div class="trust-name">正品自营保障</div>
+          <div class="trust-sub">工作室直签 · 真实有效</div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+          </div>
+          <div class="trust-name">安全合规支付</div>
+          <div class="trust-sub">支付宝 / 微信直连</div>
+        </div>
+        <div class="trust-item">
+          <div class="trust-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          </div>
+          <div class="trust-name">服务履约保障</div>
+          <div class="trust-sub">合规透明 · 售后无忧</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 商户主体资质公示区 -->
+    <section class="merchant-profile">
+      <div class="profile-title">
+        <span>商户经营主体资质公示</span>
+        <span style="color:var(--accent); font-weight:normal; font-size:11px;">已通过实名核验</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-label">主办单位名称</span>
+        <span class="profile-value">湖南湘江新区彩头软件开发工作室（个体工商户）</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-label">商户服务域名</span>
+        <span class="profile-value">shop.pricememo.cn</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-label">工信部备案号</span>
+        <span class="profile-value">湘ICP备2026030136号-1</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-label">经营业务范围</span>
+        <span class="profile-value">软件开发；信息技术咨询服务；技术服务</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-label">服务交付方式</span>
+        <span class="profile-value">数字化在线交付 / 远程技术支持</span>
+      </div>
+    </section>
+
+    <!-- 协议条款入口 -->
+    <div class="legal-links">
+      <a onclick="openLegalModal('terms')">《用户服务协议》</a>
+      <a onclick="openLegalModal('privacy')">《隐私权保护政策》</a>
+      <a onclick="openLegalModal('refund')">《售后与退款保障规则》</a>
+    </div>
+
+    <!-- 底部工信部 ICP 备案声明 -->
+    <footer class="icp-footer">
+      <div>
+        <span>工信部ICP备案号：</span>
+        <a class="icp-link" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
+          湘ICP备2026030136号-1
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        </a>
+      </div>
+      <div>主办单位：湖南湘江新区彩头软件开发工作室（个体工商户）</div>
+      <div class="copyright">Copyright © 2026 湖南湘江新区彩头软件开发工作室（个体工商户） 版权所有</div>
+    </footer>
+  </main>
+
+  <!-- 底部固定 Tab 导航 -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" onclick="switchTab(this, 'home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+      <span>首页</span>
+    </button>
+    <button class="nav-tab" onclick="switchTab(this, 'category')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+      <span>服务分类</span>
+    </button>
+    <button class="nav-tab" onclick="switchTab(this, 'profile')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      <span>商户资质</span>
+    </button>
+    <button class="nav-tab" onclick="handleShareClick()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      <span>分享商城</span>
+    </button>
+  </nav>
+
+  <!-- 弹窗 1：分享弹窗 -->
+  <div class="modal-overlay" id="shareModal" onclick="closeModalOnBackdrop(event, 'shareModal')">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div class="modal-title">分享商城给好友</div>
+        <button class="btn-close-modal" onclick="closeModal('shareModal')">✕</button>
+      </div>
+      <div class="share-content">
+        <!-- 页面预览二维码 (SVG 绘制) -->
+        <div class="share-qr">
+          <svg viewBox="0 0 100 100" fill="#0f172a">
+            <rect x="0" y="0" width="30" height="30" fill="#2563eb" rx="4"/>
+            <rect x="5" y="5" width="20" height="20" fill="#fff" rx="2"/>
+            <rect x="10" y="10" width="10" height="10" fill="#2563eb"/>
+            <rect x="70" y="0" width="30" height="30" fill="#2563eb" rx="4"/>
+            <rect x="75" y="5" width="20" height="20" fill="#fff" rx="2"/>
+            <rect x="80" y="10" width="10" height="10" fill="#2563eb"/>
+            <rect x="0" y="70" width="30" height="30" fill="#2563eb" rx="4"/>
+            <rect x="5" y="75" width="20" height="20" fill="#fff" rx="2"/>
+            <rect x="10" y="80" width="10" height="10" fill="#2563eb"/>
+            <rect x="40" y="10" width="10" height="10"/>
+            <rect x="40" y="30" width="20" height="10"/>
+            <rect x="10" y="40" width="20" height="10"/>
+            <rect x="40" y="50" width="10" height="30"/>
+            <rect x="60" y="40" width="10" height="20"/>
+            <rect x="60" y="70" width="30" height="10"/>
+            <rect x="80" y="50" width="10" height="10"/>
+          </svg>
+        </div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+          扫描二维码或复制下方链接，快速分享访问彩头软件官方商城：
+        </p>
+        <div class="share-url-box" id="shareUrlDisplay">https://shop.pricememo.cn/</div>
+        <button class="btn-copy-url" onclick="copyCurrentShareLink()">一键复制商城链接</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 2：立即订购 / 咨询弹窗 -->
+  <div class="modal-overlay" id="orderModal" onclick="closeModalOnBackdrop(event, 'orderModal')">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div class="modal-title">技术服务订购与咨询</div>
+        <button class="btn-close-modal" onclick="closeModal('orderModal')">✕</button>
+      </div>
+      <div id="orderFormWrap">
+        <div class="order-form-item">
+          <label class="form-label">所选技术服务项目</label>
+          <input type="text" class="form-input" id="orderItemName" readonly style="background:#f8fafc; font-weight:600;">
+        </div>
+        <div class="order-form-item">
+          <label class="form-label">应付费用 / 服务金额</label>
+          <div style="font-size:18px; font-weight:800; color:var(--danger);" id="orderItemPrice">¥0.00</div>
+        </div>
+        <div class="order-form-item">
+          <label class="form-label">联系手机号码 / 微信（用于接收开通通知）</label>
+          <input type="tel" class="form-input" id="orderContact" placeholder="请输入您的11位手机号码" maxlength="11">
+        </div>
+        <div class="order-form-item">
+          <label class="form-label">支持的支付方式</label>
+          <div class="payment-icons">
+            <div class="payment-option active" onclick="selectPayment(this)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#1677ff"><circle cx="12" cy="12" r="10"/></svg>
+              <span>支付宝支付</span>
+            </div>
+            <div class="payment-option" onclick="selectPayment(this)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#07c160"><circle cx="12" cy="12" r="10"/></svg>
+              <span>微信支付</span>
+            </div>
+          </div>
+        </div>
+        <button class="btn-copy-url" style="margin-top:14px;" onclick="submitOrder()">确认提交并咨询开通</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 弹窗 3：法律条款展示 -->
+  <div class="modal-overlay" id="legalModal" onclick="closeModalOnBackdrop(event, 'legalModal')">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <div class="modal-title" id="legalModalTitle">协议条款</div>
+        <button class="btn-close-modal" onclick="closeModal('legalModal')">✕</button>
+      </div>
+      <div id="legalModalBody" style="font-size:12px; color:var(--text-muted); line-height:1.7; max-height:60vh; overflow-y:auto;">
+        <!-- 协议内容 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 统一轻量 Toast -->
+  <div class="toast" id="appToast">链接已复制到剪贴板</div>
+
+  <script>
+    function getStandardH5Url() {
+      if (window.location.protocol.startsWith('http') && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        return window.location.origin + window.location.pathname;
+      }
+      return 'https://shop.pricememo.cn/';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlBox = document.getElementById('shareUrlDisplay');
+      if (urlBox) {
+        urlBox.textContent = getStandardH5Url();
+      }
+    });
+
+    function handleShareClick() {
+      const targetUrl = getStandardH5Url();
+      if (navigator.share && /mobile|android|iphone|ipad/i.test(navigator.userAgent)) {
+        navigator.share({
+          title: '彩头软件 · 官方移动商城',
+          text: '湖南湘江新区彩头软件开发工作室官方商城，提供专业数字化与软件技术服务。',
+          url: targetUrl
+        }).catch(() => {
+          openShareModal();
+        });
+      } else {
+        openShareModal();
+      }
+    }
+
+    function openShareModal() {
+      const urlBox = document.getElementById('shareUrlDisplay');
+      if (urlBox) {
+        urlBox.textContent = getStandardH5Url();
+      }
+      openModal('shareModal');
+    }
+
+    function copyCurrentShareLink() {
+      const targetUrl = getStandardH5Url();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(targetUrl).then(() => {
+          showToast('商城链接已成功复制到剪贴板！');
+          setTimeout(() => closeModal('shareModal'), 1200);
+        }).catch(() => {
+          fallbackCopyText(targetUrl);
+        });
+      } else {
+        fallbackCopyText(targetUrl);
+      }
+    }
+
+    function fallbackCopyText(text) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast('商城链接已成功复制到剪贴板！');
+        setTimeout(() => closeModal('shareModal'), 1200);
+      } catch (err) {
+        showToast('复制失败，请手动长按复制网址');
+      }
+      document.body.removeChild(textArea);
+    }
+
+    function switchCategory(cat, btn) {
+      document.querySelectorAll('#categoryNav .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const cards = document.querySelectorAll('#productGrid .product-card');
+      cards.forEach(card => {
+        if (cat === 'all' || card.getAttribute('data-category') === cat) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function switchTab(btn, tab) {
+      document.querySelectorAll('.bottom-nav .nav-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (tab === 'home') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (tab === 'category') {
+        const catNav = document.getElementById('categoryNav');
+        catNav.scrollIntoView({ behavior: 'smooth' });
+      } else if (tab === 'profile') {
+        const profile = document.querySelector('.merchant-profile');
+        profile.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function openOrderModal(name, price) {
+      document.getElementById('orderItemName').value = name;
+      document.getElementById('orderItemPrice').textContent = '¥' + price;
+      openModal('orderModal');
+    }
+
+    function selectPayment(el) {
+      document.querySelectorAll('.payment-option').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    function submitOrder() {
+      const contact = document.getElementById('orderContact').value.trim();
+      if (!contact) {
+        showToast('请填写联系手机号码');
+        return;
+      }
+      const orderNo = 'CT' + new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+      showToast('订购申请已提交！订单编号：' + orderNo);
+      setTimeout(() => {
+        closeModal('orderModal');
+        document.getElementById('orderContact').value = '';
+      }, 1500);
+    }
+
+    function openLegalModal(type) {
+      const titleEl = document.getElementById('legalModalTitle');
+      const bodyEl = document.getElementById('legalModalBody');
+
+      if (type === 'terms') {
+        titleEl.textContent = '用户服务协议';
+        bodyEl.innerHTML = `
+          <p><strong>一、服务原则</strong><br>本商城由 湖南湘江新区彩头软件开发工作室（个体工商户）运营，提供合规数字软件开发、接口调用及技术运维咨询服务。用户使用本平台服务即视为认同本协议。</p>
+          <p style="margin-top:8px;"><strong>二、服务交付</strong><br>软件产品与技术服务订购后，由工作室技术人员在约定时间内完成对接与交付。交付凭证以系统记录及双方确认日志为准。</p>
+          <p style="margin-top:8px;"><strong>三、法律适用</strong><br>本协议适用中华人民共和国法律法规。争议应首先友好协商解决。</p>
+        `;
+      } else if (type === 'privacy') {
+        titleEl.textContent = '隐私权保护政策';
+        bodyEl.innerHTML = `
+          <p><strong>一、信息收集与使用</strong><br>我们仅在用户下单、咨询或技术支持对接时收集必要的联系方式（如手机号、邮箱），严格保密，绝不向任何无关第三方转让或泄露。</p>
+          <p style="margin-top:8px;"><strong>二、数据安全</strong><br>本平台采用行业标准 TLS/SSL 高强度加密传输协议，确保用户与商城之间数据传输的保密性与完整性。</p>
+        `;
+      } else if (type === 'refund') {
+        titleEl.textContent = '售后与退款保障规则';
+        bodyEl.innerHTML = `
+          <p><strong>一、虚拟商品与技术服务特性</strong><br>根据相关法律法规，数字化软件与技术开发服务在未开通、未交付前支持全额无条件退款。</p>
+          <p style="margin-top:8px;"><strong>二、咨询与定制服务保障</strong><br>对于技术运维与开发咨询服务，若因我方原因未能达到约定交付效果的，可申请免费重调或按未履约比例退还款项。</p>
+          <p style="margin-top:8px;"><strong>三、售后响应</strong><br>我们承诺在 24 小时内完成退款与售后诉求核验，保障用户合法权益。</p>
+        `;
+      }
+      openModal('legalModal');
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    function closeModalOnBackdrop(e, id) {
+      if (e.target.id === id) {
+        closeModal(id);
+      }
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('appToast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2200);
+    }
+  </script>
+</body>
+</html>

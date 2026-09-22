@@ -14,6 +14,7 @@ SOURCE_PLATFORM_LABELS = {
     "woocommerce": "WooCommerce",
     "16688": "16688",
     "schema_org": "独立站",
+    "acg_faka": "异次元/ACG-Faka",
     "other": "其他独立站",
 }
 
@@ -24,6 +25,7 @@ SOURCE_KIND_BY_PLATFORM = {
     "woocommerce": "public_api",
     "16688": "public_api",
     "schema_org": "structured_data",
+    "acg_faka": "public_api",
     "other": "public_page",
 }
 

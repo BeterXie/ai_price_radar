@@ -2,6 +2,20 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.8.1] - 2026-09-23
+
+### Features and Integrations
+- Support ACG-Faka (开源个人二次元发卡系统) shop integration:
+  - Add connector `pipeline/connectors/acg_faka.py` supporting `/user/api/index/data` categories and `/user/api/index/commodity` commodity list parsing.
+  - Add probe detection for ACG-Faka stores in `detector/probe.py`.
+  - Add platform type `acg_faka` across backend models, schemas, and discovery services.
+  - Automatically include direct platform shop URL (`https://ai.pricememo.cn/shops/acg-faka-...`) in approval transition and catalog onboarding notification emails.
+  - Add database migration script `scripts/migrate_source_platform_acg_faka_v21.py` and auto-migration in `_migrate_postgres` for `source_intakes` and `source_candidates` check constraints.
+- Coupon system fixes and improvements:
+  - Fix coupon drop easter egg remaining stock calculation to exclude expired unassigned coupons (`expires_at > now`).
+  - Add 24-hour claim frequency check for authenticated users to avoid unwanted easter egg popups when on cooldown.
+  - Add expired unassigned coupon counter and batch cleanup endpoint in admin coupon management.
+
 ## [3.8.0] - 2026-09-22
 
 ### Security, authentication and project audit

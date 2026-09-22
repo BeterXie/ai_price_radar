@@ -416,6 +416,7 @@ export type AdminCouponStats = {
   dynamic_drop: boolean;
   daily_drop_limit: number;
   drop_trigger_count: number;
+  expired_unassigned_coupons?: number;
 };
 
 export type AdminCouponSettingsUpdate = {

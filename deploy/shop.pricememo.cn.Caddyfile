@@ -1,0 +1,25 @@
+shop.pricememo.cn {
+    encode zstd gzip
+
+    root * /opt/ai-price-radar-v3/apps/pricememo-h5
+    file_server
+    try_files {path} /index.html
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output stdout
+        format filter {
+            wrap json
+            fields {
+                request>uri delete
+            }
+        }
+    }
+}

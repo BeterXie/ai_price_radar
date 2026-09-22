@@ -1,0 +1,8 @@
+name = "shop-pricememo-h5"
+compatibility_date = "2026-09-01"
+main = "_worker.js"
+
+# 绑定域名配置（如果使用 Wrangler CLI 部署）:
+# routes = [
+#   { pattern = "shop.pricememo.cn/*", zone_name = "pricememo.cn" }
+# ]

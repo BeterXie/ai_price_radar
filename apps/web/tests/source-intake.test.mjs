@@ -12,6 +12,7 @@ test("source intake defaults to auto and exposes source-specific examples", () =
   assert.match(SOURCE_INTAKE_COPY.dujiao_next.hint, /店铺根地址/);
   assert.match(SOURCE_INTAKE_COPY.woocommerce.hint, /Store API/);
   assert.match(SOURCE_INTAKE_COPY.schema_org.hint, /Schema\.org/);
+  assert.match(SOURCE_INTAKE_COPY.acg_faka.hint, /公开店铺根地址/);
   assert.match(SOURCE_INTAKE_COPY.merchant_json.placeholder, /ai-price-radar\.json/);
 });
 

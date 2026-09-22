@@ -58,10 +58,11 @@ export function CouponsAdminPanel({
   const [coupons, setCoupons] = useState<ShopCoupon[]>([]);
   const [couponTotal, setCouponTotal] = useState(0);
   const [couponPage, setCouponPage] = useState(1);
-  const [couponStatus, setCouponStatus] = useState<"all" | "unassigned" | "assigned" | "used">("all");
+  const [couponStatus, setCouponStatus] = useState<"all" | "unassigned" | "expired" | "assigned" | "used">("all");
   const [couponSearch, setCouponSearch] = useState("");
   const [loadingCoupons, setLoadingCoupons] = useState(false);
   const [deletingCouponId, setDeletingCouponId] = useState<number | null>(null);
+  const [cleaningExpired, setCleaningExpired] = useState(false);
   const couponRequestSeqRef = useRef(0);
 
   // Campaigns
@@ -298,6 +299,42 @@ export function CouponsAdminPanel({
       showToast(`删除失败: ${e.message}`);
     } finally {
       setDeletingCouponId(null);
+    }
+  };
+
+  // Cleanup Expired Unassigned Coupons
+  const handleCleanupExpired = async () => {
+    const countText =
+      stats?.expired_unassigned_coupons !== undefined && stats.expired_unassigned_coupons > 0
+        ? `（共 ${stats.expired_unassigned_coupons} 张）`
+        : "";
+    if (
+      !window.confirm(
+        `确定要一键清理所有待领取且已过期的优惠券码吗${countText}？已领入用户卡包或已核销的券码不受影响。`
+      )
+    ) {
+      return;
+    }
+    setCleaningExpired(true);
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/coupons/cleanup-expired`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || `成功清理 ${data.deleted_count} 张已过期未领券`);
+        fetchStats();
+        fetchCoupons(1);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(`清理失败: ${err.detail || "操作不允许"}`);
+      }
+    } catch (e: any) {
+      showToast(`清理请求失败: ${e.message}`);
+    } finally {
+      setCleaningExpired(false);
     }
   };
 
@@ -840,6 +877,25 @@ export function CouponsAdminPanel({
             <span>批量导入券码</span>
           </button>
 
+          <button
+            type="button"
+            onClick={handleCleanupExpired}
+            disabled={cleaningExpired}
+            title="一键清理所有待领取且已过期的优惠券码"
+            className="tactile inline-flex items-center gap-1.5 rounded-[10px] border hairline border-rose-500/30 bg-rose-50/50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100/70 disabled:opacity-50"
+          >
+            <Trash size={14} className="text-rose-600" />
+            <span>
+              {cleaningExpired
+                ? "清理中..."
+                : `清理已过期券${
+                    stats?.expired_unassigned_coupons !== undefined && stats.expired_unassigned_coupons > 0
+                      ? ` (${stats.expired_unassigned_coupons})`
+                      : ""
+                  }`}
+            </span>
+          </button>
+
           {activeSubTab === "campaigns" && (
             <button
               type="button"
@@ -863,6 +919,7 @@ export function CouponsAdminPanel({
                 {[
                   { id: "all", label: "全部券码" },
                   { id: "unassigned", label: "待领取 / 可用" },
+                  { id: "expired", label: "待领取已过期" },
                   { id: "assigned", label: "已领入卡包" },
                   { id: "used", label: "已核销" },
                 ].map((tab) => (
