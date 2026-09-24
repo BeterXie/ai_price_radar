@@ -30,7 +30,6 @@ BRAND_MARKERS = {
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai", "super gro"],
     "x": ["x premium", "xpremium", "twitter", "推特"],
     "cursor": ["cursor", "cursor ai", "cursor pro", "cursor business"],
-    "zhipu": ["智谱", "智谱清言", "智普", "智普清言", "glm", "chatglm", "bigmodel", "zhipu"],
 }
 
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
@@ -464,8 +463,6 @@ def _detect_brand(title_text: str, category_text: str, description_text: str = "
             return "x"
         if any(m in desc_norm for m in ["cursor pro", "cursor", "cursor ai"]):
             return "cursor"
-        if any(m in desc_norm for m in ["智谱", "智谱清言", "智普", "glm", "chatglm", "bigmodel"]):
-            return "zhipu"
         if any(m in desc_norm for m in ["codex", "cc switch", "codex++"]):
             return "codex"
 
@@ -635,16 +632,6 @@ def _classify_identity(
         ) or _contains(tier_text, ["cursor pro"]):
             return "cursor-pro", True
         return "cursor-account", False
-
-    if brand == "zhipu":
-        if _contains(
-            identity_text,
-            ["api", "api key", "apikey", "token", "额度", "开放平台", "bigmodel", "资源包", "glm-4", "glm4", "glm"],
-        ):
-            return "zhipu-api-credit", True
-        if _contains(identity_text, ["vip", "会员", "清言会员", "清言vip", "订阅", "代充", "直充", "充值", "月卡", "包月"]):
-            return "zhipu-qingyan-vip", True
-        return "zhipu-account", False
 
     if _contains(identity_text, CHATGPT_API_MARKERS):
         if _contains(identity_text, ["中转", "倍率"]):

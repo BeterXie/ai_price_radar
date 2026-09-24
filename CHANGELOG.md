@@ -2,6 +2,16 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.0] - 2026-09-24
+
+### Ad slots, relay hub and catalog fixes
+- Add admin-managed ad slots (`ad_slots`): placements `home_hero`, `catalog_top`, `product_offers`, `relay_hub`, with sort order, schedule window, per-slot click counting and a global `ad_slots_enabled` switch. Public reads (`GET /api/v1/ads`) only return live slots and scrub any non-HTTPS legacy link; every rendered card carries a visible “广告 / 赞助” badge.
+- Add the “中转站” platform: an admin-managed relay-station directory (`relay_stations`, `GET /api/v1/relays`, `/relays` page) with model coverage, pricing / billing notes, tags, sponsored ordering and a `relay_hub_enabled` switch. The entry appears in the header, brand rail and home quick links; relay offers stay outside standard-product price statistics.
+- Add the “广告与中转站” admin tab (`PromoAdminPanel`) for CRUD of both catalogs plus the two global switches.
+- Retire the 智谱 (Zhipu / GLM) brand: remove it from brand tabs, demo seed, API + pipeline classifiers and bot commands; startup migration and `ensure_products` hide legacy `zhipu-*` products instead of deleting them.
+- Fix products opening with an empty offer ledger: product cards count every public offer while the workspace defaulted to the comparable-only scope, so products whose offers are all relays / shared pools / trial accounts showed “0 条报价”. The page now widens to all offers automatically (with an explanatory notice) when no comparable offer exists and no explicit scope was chosen.
+- Fix “包含相关商品” sending `comparable=false` to the API, which returned only non-comparable offers instead of all offers.
+
 ## [3.8.2] - 2026-09-23
 
 ### Bug Fixes and UI Improvements

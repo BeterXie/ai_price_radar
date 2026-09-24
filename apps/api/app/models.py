@@ -595,3 +595,51 @@ class AdminBroadcast(Base):
     status: Mapped[str] = mapped_column(String(30), default="sent")
     created_by: Mapped[str] = mapped_column(String(100), default="admin")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class AdSlot(Base):
+    """Admin-configured sponsored placement rendered on public pages."""
+
+    __tablename__ = "ad_slots"
+    __table_args__ = (
+        Index("ix_ad_slots_placement_enabled", "placement", "is_enabled"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    placement: Mapped[str] = mapped_column(String(40), default="catalog_top", index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    sponsor_name: Mapped[str] = mapped_column(String(100), default="")
+    badge: Mapped[str] = mapped_column(String(20), default="广告")
+    cta_text: Mapped[str] = mapped_column(String(40), default="了解详情")
+    link_url: Mapped[str] = mapped_column(Text, default="")
+    image_url: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    click_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class RelayStation(Base):
+    """Admin-configured API relay / proxy provider listed on the 中转站 hub."""
+
+    __tablename__ = "relay_stations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    url: Mapped[str] = mapped_column(Text, default="")
+    tagline: Mapped[str] = mapped_column(String(160), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    supported_models: Mapped[list[str]] = mapped_column(JSON, default=list)
+    price_note: Mapped[str] = mapped_column(String(200), default="")
+    billing_note: Mapped[str] = mapped_column(String(120), default="")
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    is_sponsored: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    click_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

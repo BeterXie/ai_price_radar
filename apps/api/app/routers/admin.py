@@ -18,8 +18,10 @@ RECLASSIFY_BATCH_SIZE = 200
 
 from ..database import get_db
 from ..models import (
+    AdSlot,
     AdminBroadcast,
     NotificationOutbox,
+    RelayStation,
     Offer,
     Product,
     RawProduct,
@@ -40,6 +42,12 @@ from ..models import (
     UserSession,
 )
 from ..schemas import (
+    AdSlotCreate,
+    AdSlotOut,
+    AdSlotUpdate,
+    RelayStationCreate,
+    RelayStationOut,
+    RelayStationUpdate,
     AdminBroadcastAudienceOut,
     AdminBroadcastCreate,
     AdminBroadcastItem,
@@ -85,6 +93,7 @@ from ..schemas import (
 )
 from ..security import require_admin
 from ..services.classifier import classify_product
+from ..services.promo import AD_SLOTS_ENABLED_KEY, RELAY_HUB_ENABLED_KEY
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
     admin_create_community_skill,
@@ -149,6 +158,8 @@ def get_setting_int(db: Session, key: str, default: int = 0) -> int:
 def get_admin_settings(db: Session = Depends(get_db)) -> AdminSettingsOut:
     return AdminSettingsOut(
         advertise_enabled=get_setting_bool(db, "advertise_enabled", default=False),
+        ad_slots_enabled=get_setting_bool(db, AD_SLOTS_ENABLED_KEY, default=True),
+        relay_hub_enabled=get_setting_bool(db, RELAY_HUB_ENABLED_KEY, default=True),
         bot_enabled=get_setting_bool(db, "bot_enabled", default=True),
         site_notice_enabled=get_setting_bool(db, "site_notice_enabled", default=True),
         site_notice_badge=get_setting_str(db, "site_notice_badge", default="最新动态"),
@@ -172,6 +183,10 @@ def update_admin_settings(
 ) -> AdminSettingsOut:
     if payload.advertise_enabled is not None:
         set_setting_str(db, "advertise_enabled", "true" if payload.advertise_enabled else "false")
+    if payload.ad_slots_enabled is not None:
+        set_setting_str(db, AD_SLOTS_ENABLED_KEY, "true" if payload.ad_slots_enabled else "false")
+    if payload.relay_hub_enabled is not None:
+        set_setting_str(db, RELAY_HUB_ENABLED_KEY, "true" if payload.relay_hub_enabled else "false")
     if payload.bot_enabled is not None:
         set_setting_str(db, "bot_enabled", "true" if payload.bot_enabled else "false")
     if payload.site_notice_enabled is not None:
@@ -2218,3 +2233,113 @@ def admin_list_broadcasts(
 ) -> list[AdminBroadcast]:
     stmt = select(AdminBroadcast).order_by(AdminBroadcast.created_at.desc()).limit(limit).offset(offset)
     return list(db.scalars(stmt))
+
+
+# ---------------------------------------------------------------------------
+# Ad slots (广告栏位)
+# ---------------------------------------------------------------------------
+
+
+def _validate_ad_schedule(starts_at: datetime | None, ends_at: datetime | None) -> None:
+    if starts_at is not None and ends_at is not None and ends_at <= starts_at:
+        raise HTTPException(status_code=422, detail="结束时间必须晚于开始时间")
+
+
+@router.get("/ads", response_model=list[AdSlotOut])
+def admin_list_ad_slots(
+    placement: str = Query(default="", max_length=40),
+    db: Session = Depends(get_db),
+) -> list[AdSlot]:
+    stmt = select(AdSlot)
+    if placement.strip():
+        stmt = stmt.where(AdSlot.placement == placement.strip())
+    return list(db.scalars(stmt.order_by(AdSlot.placement.asc(), AdSlot.sort_order.asc(), AdSlot.id.asc())))
+
+
+@router.post("/ads", response_model=AdSlotOut, status_code=201)
+def admin_create_ad_slot(payload: AdSlotCreate, db: Session = Depends(get_db)) -> AdSlot:
+    _validate_ad_schedule(payload.starts_at, payload.ends_at)
+    slot = AdSlot(**payload.model_dump())
+    db.add(slot)
+    db.commit()
+    db.refresh(slot)
+    return slot
+
+
+@router.patch("/ads/{slot_id}", response_model=AdSlotOut)
+def admin_update_ad_slot(slot_id: int, payload: AdSlotUpdate, db: Session = Depends(get_db)) -> AdSlot:
+    slot = db.get(AdSlot, slot_id)
+    if slot is None:
+        raise HTTPException(status_code=404, detail="ad slot not found")
+    data = payload.model_dump(exclude_unset=True)
+    clear_schedule = bool(data.pop("clear_schedule", False))
+    if clear_schedule:
+        slot.starts_at = None
+        slot.ends_at = None
+        data.pop("starts_at", None)
+        data.pop("ends_at", None)
+    for field, value in data.items():
+        setattr(slot, field, value)
+    _validate_ad_schedule(slot.starts_at, slot.ends_at)
+    db.commit()
+    db.refresh(slot)
+    return slot
+
+
+@router.delete("/ads/{slot_id}", status_code=204)
+def admin_delete_ad_slot(slot_id: int, db: Session = Depends(get_db)) -> Response:
+    slot = db.get(AdSlot, slot_id)
+    if slot is None:
+        raise HTTPException(status_code=404, detail="ad slot not found")
+    db.delete(slot)
+    db.commit()
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Relay stations (中转站)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/relays", response_model=list[RelayStationOut])
+def admin_list_relay_stations(db: Session = Depends(get_db)) -> list[RelayStation]:
+    return list(db.scalars(
+        select(RelayStation).order_by(
+            RelayStation.is_sponsored.desc(), RelayStation.sort_order.asc(), RelayStation.id.asc()
+        )
+    ))
+
+
+@router.post("/relays", response_model=RelayStationOut, status_code=201)
+def admin_create_relay_station(payload: RelayStationCreate, db: Session = Depends(get_db)) -> RelayStation:
+    station = RelayStation(**payload.model_dump())
+    db.add(station)
+    db.commit()
+    db.refresh(station)
+    return station
+
+
+@router.patch("/relays/{station_id}", response_model=RelayStationOut)
+def admin_update_relay_station(
+    station_id: int,
+    payload: RelayStationUpdate,
+    db: Session = Depends(get_db),
+) -> RelayStation:
+    station = db.get(RelayStation, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="relay station not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(station, field, value)
+    db.commit()
+    db.refresh(station)
+    return station
+
+
+@router.delete("/relays/{station_id}", status_code=204)
+def admin_delete_relay_station(station_id: int, db: Session = Depends(get_db)) -> Response:
+    station = db.get(RelayStation, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="relay station not found")
+    db.delete(station)
+    db.commit()
+    return Response(status_code=204)

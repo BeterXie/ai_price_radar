@@ -547,10 +547,11 @@ def test_bot_chat_commands(client: TestClient, test_db):
     assert resp_cursor.status_code == 200
     assert "Cursor 全系列最低报价一览" in resp_cursor.json()["reply"]
 
-    # B6. Test `智谱` brand aggregation command
+    # B6. 智谱 was retired from the catalog: the bot must no longer resolve it
+    # to a brand aggregation.
     resp_zhipu = client.post("/api/v1/user/notifications/bot/command", json={"text": "智谱"})
     assert resp_zhipu.status_code == 200
-    assert "智谱 (GLM) 全系列最低报价一览" in resp_zhipu.json()["reply"]
+    assert "智谱 (GLM) 全系列最低报价一览" not in resp_zhipu.json()["reply"]
 
     # C. Test `行情` command
     resp_mkt = client.post("/api/v1/user/notifications/bot/command", json={"text": "行情"})

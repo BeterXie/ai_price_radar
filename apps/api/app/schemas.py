@@ -320,6 +320,9 @@ class MetaResponse(BaseModel):
     product_types: list[str]
     tags: list[str]
     advertise_enabled: bool = False
+    ad_slots_enabled: bool = True
+    relay_hub_enabled: bool = True
+    relay_station_count: int = 0
     bot_enabled: bool = True
     site_notice: SiteNoticeOut | None = None
     community_notice: CommunityNoticeOut | None = None
@@ -718,6 +721,8 @@ class AdminStats(BaseModel):
 
 class AdminSettingsOut(BaseModel):
     advertise_enabled: bool = False
+    ad_slots_enabled: bool = True
+    relay_hub_enabled: bool = True
     bot_enabled: bool = True
     site_notice_enabled: bool = True
     site_notice_badge: str = "最新动态"
@@ -735,6 +740,8 @@ class AdminSettingsOut(BaseModel):
 
 class AdminSettingsUpdate(BaseModel):
     advertise_enabled: bool | None = None
+    ad_slots_enabled: bool | None = None
+    relay_hub_enabled: bool | None = None
     bot_enabled: bool | None = None
     site_notice_enabled: bool | None = None
     site_notice_badge: str | None = None
@@ -1411,3 +1418,277 @@ class UserHeartbeatResponse(BaseModel):
     status: str = "ok"
     online_seconds: int = 0
     is_online: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Ad slots (广告栏位) and relay stations (中转站)
+# ---------------------------------------------------------------------------
+
+AD_PLACEMENTS = ("home_hero", "catalog_top", "product_offers", "relay_hub", "sidebar")
+AdPlacement = Literal["home_hero", "catalog_top", "product_offers", "relay_hub", "sidebar"]
+
+
+def _clean_public_link(value: str | None, *, allow_internal: bool = True) -> str | None:
+    """Accept an internal path or a public HTTPS URL; reject anything else."""
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    if re.search(r"[\x00-\x20\x7f]", cleaned):
+        raise ValueError("链接包含非法空白或控制字符")
+    if allow_internal and cleaned.startswith("/") and not cleaned.startswith("//"):
+        decoded = urllib.parse.unquote(cleaned)
+        path = decoded.split("?", 1)[0].split("#", 1)[0]
+        if "\\" in decoded or any(segment in {".", ".."} for segment in path.split("/")):
+            raise ValueError("站内链接无效")
+        parsed_internal = urllib.parse.urlsplit(cleaned)
+        if parsed_internal.scheme or parsed_internal.netloc:
+            raise ValueError("站内链接无效")
+        return cleaned
+    return normalize_public_https_url(cleaned)
+
+
+def _clean_string_list(value: list[str] | None, *, max_items: int, max_length: int) -> list[str] | None:
+    if value is None:
+        return None
+    cleaned: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        if len(text) > max_length:
+            raise ValueError(f"条目长度不能超过 {max_length} 个字符")
+        if text not in cleaned:
+            cleaned.append(text)
+    if len(cleaned) > max_items:
+        raise ValueError(f"最多只能填写 {max_items} 个条目")
+    return cleaned
+
+
+class AdSlotBase(BaseModel):
+    placement: AdPlacement = "catalog_top"
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=600)
+    sponsor_name: str = Field(default="", max_length=100)
+    badge: str = Field(default="广告", max_length=20)
+    cta_text: str = Field(default="了解详情", max_length=40)
+    link_url: str = Field(default="", max_length=1000)
+    image_url: str = Field(default="", max_length=1000)
+    sort_order: int = Field(default=100, ge=0, le=100000)
+    is_enabled: bool = True
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+    @field_validator("title", "description", "sponsor_name", "badge", "cta_text")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("link_url")
+    @classmethod
+    def validate_link_url(cls, value: str) -> str:
+        return _clean_public_link(value) or ""
+
+    @field_validator("image_url")
+    @classmethod
+    def validate_image_url(cls, value: str) -> str:
+        return _clean_public_link(value, allow_internal=True) or ""
+
+
+class AdSlotCreate(AdSlotBase):
+    pass
+
+
+class AdSlotUpdate(BaseModel):
+    placement: AdPlacement | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=600)
+    sponsor_name: str | None = Field(default=None, max_length=100)
+    badge: str | None = Field(default=None, max_length=20)
+    cta_text: str | None = Field(default=None, max_length=40)
+    link_url: str | None = Field(default=None, max_length=1000)
+    image_url: str | None = Field(default=None, max_length=1000)
+    sort_order: int | None = Field(default=None, ge=0, le=100000)
+    is_enabled: bool | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    clear_schedule: bool = False
+
+    @field_validator("title", "description", "sponsor_name", "badge", "cta_text")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @field_validator("link_url", "image_url")
+    @classmethod
+    def validate_links(cls, value: str | None) -> str | None:
+        return _clean_public_link(value)
+
+
+class AdSlotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    placement: str
+    title: str
+    description: str = ""
+    sponsor_name: str = ""
+    badge: str = "广告"
+    cta_text: str = "了解详情"
+    link_url: str = ""
+    image_url: str = ""
+    sort_order: int = 100
+    is_enabled: bool = True
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    click_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class AdSlotPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    placement: str
+    title: str
+    description: str = ""
+    sponsor_name: str = ""
+    badge: str = "广告"
+    cta_text: str = "了解详情"
+    link_url: str = ""
+    image_url: str = ""
+
+
+class AdSlotListOut(BaseModel):
+    items: list[AdSlotPublic]
+    enabled: bool = True
+
+
+class RelayStationBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    url: str = Field(default="", max_length=1000)
+    tagline: str = Field(default="", max_length=160)
+    description: str = Field(default="", max_length=2000)
+    supported_models: list[str] = Field(default_factory=list)
+    price_note: str = Field(default="", max_length=200)
+    billing_note: str = Field(default="", max_length=120)
+    tags: list[str] = Field(default_factory=list)
+    is_sponsored: bool = False
+    is_enabled: bool = True
+    sort_order: int = Field(default=100, ge=0, le=100000)
+
+    @field_validator("name", "tagline", "description", "price_note", "billing_note")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        return normalize_public_https_url(cleaned)
+
+    @field_validator("supported_models")
+    @classmethod
+    def validate_models(cls, value: list[str]) -> list[str]:
+        return _clean_string_list(value, max_items=40, max_length=60) or []
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: list[str]) -> list[str]:
+        return _clean_string_list(value, max_items=12, max_length=30) or []
+
+
+class RelayStationCreate(RelayStationBase):
+    pass
+
+
+class RelayStationUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    url: str | None = Field(default=None, max_length=1000)
+    tagline: str | None = Field(default=None, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
+    supported_models: list[str] | None = None
+    price_note: str | None = Field(default=None, max_length=200)
+    billing_note: str | None = Field(default=None, max_length=120)
+    tags: list[str] | None = None
+    is_sponsored: bool | None = None
+    is_enabled: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=100000)
+
+    @field_validator("name", "tagline", "description", "price_note", "billing_note")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        return normalize_public_https_url(cleaned)
+
+    @field_validator("supported_models")
+    @classmethod
+    def validate_models(cls, value: list[str] | None) -> list[str] | None:
+        return _clean_string_list(value, max_items=40, max_length=60)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: list[str] | None) -> list[str] | None:
+        return _clean_string_list(value, max_items=12, max_length=30)
+
+
+class RelayStationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    url: str = ""
+    tagline: str = ""
+    description: str = ""
+    supported_models: list[str] = Field(default_factory=list)
+    price_note: str = ""
+    billing_note: str = ""
+    tags: list[str] = Field(default_factory=list)
+    is_sponsored: bool = False
+    is_enabled: bool = True
+    sort_order: int = 100
+    click_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RelayStationPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    url: str = ""
+    tagline: str = ""
+    description: str = ""
+    supported_models: list[str] = Field(default_factory=list)
+    price_note: str = ""
+    billing_note: str = ""
+    tags: list[str] = Field(default_factory=list)
+    is_sponsored: bool = False
+    click_count: int = 0
+    updated_at: datetime | None = None
+
+
+class RelayStationListOut(BaseModel):
+    items: list[RelayStationPublic]
+    total: int = 0
+    enabled: bool = True
+
+
+class PromoClickResponse(BaseModel):
+    status: str = "ok"
+    click_count: int = 0

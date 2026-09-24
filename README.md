@@ -23,6 +23,7 @@
 - 记录报价历史，并保留人工审核、隐藏和重新分类状态
 - 自动发现店铺、周期扫描、SQLite 校验、快照与 PostgreSQL 幂等同步
 - 提供举报纠错和不公开暴露入口的基础管理后台
+- 后台可配置的广告栏位与「中转站」平台目录，前台带明确的广告 / 赞助标识
 - 提供动态 Sitemap、自引用 canonical、产品结构化数据、独特产品说明与社交分享图
 - 提供官方价格参考、数据质量、来源扫描健康、聚合趋势、浏览器本地关注清单与 Atom Feed
 - 支持公开纠错记录、商家回应、LDXP 与通用商家 JSON Feed Connector
@@ -132,6 +133,8 @@ GET  /api/v1/offers/{id}/description
 GET  /api/v1/snapshot
 GET  /api/v1/shops/{token}
 GET  /api/v1/meta
+GET  /api/v1/ads?placement=catalog_top
+GET  /api/v1/relays
 GET  /api/v1/corrections
 GET  /api/v1/watch.atom?targets=chatgpt-plus:100
 POST /api/v1/reports
@@ -139,6 +142,8 @@ POST /api/v1/shop-requests
 ```
 
 管理接口位于 `/api/v1/admin/*`，通过 `X-Admin-Key` 请求头保护。请勿在客户端代码、截图、日志或公开 Issue 中粘贴管理密钥。
+
+广告栏位（`/api/v1/admin/ads`）与中转站目录（`/api/v1/admin/relays`）在后台「广告与中转站」标签页维护：广告按栏位（首页、报价目录、商品页、中转站专区）投放并支持排序与上下线时间，前台一律带「广告 / 赞助」标识；中转站作为独立的「中转站」平台入口展示在 `/relays`，不参与标准产品的报价统计。两者的跳转链接只接受站内路径或公开 HTTPS 地址，并可在后台一键全局开关。
 
 商家可通过 `/shops/submit` 提交店铺首页、商品页面或公开 HTTPS JSON Feed。系统默认自动识别链动小铺、Dujiao-Next、Merchant JSON 与其他独立站，保存声明类型和检测类型，并复用举报限流与后台审核队列；审核通过不等于发布，只有成功进入完整公开快照后才会公开。Connector 说明见 [docs/CONNECTORS.md](docs/CONNECTORS.md)。
 
@@ -250,7 +255,7 @@ docs/              架构、部署与数据政策
 
 ## 版本与发布
 
-当前代码版本：`3.8.2`。正式发布前请完成 `docs/RELEASE_CHECKLIST.md`，并为待发布版本准备对应发布说明。
+当前代码版本：`3.9.0`。正式发布前请完成 `docs/RELEASE_CHECKLIST.md`，并为待发布版本准备对应发布说明。
 
 ## 开源协议
 

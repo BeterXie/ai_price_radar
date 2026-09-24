@@ -125,6 +125,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 }
 .header-action:hover { border-color: var(--ink); background: var(--subtle); }
 .header-action-watch,
+.header-action-account,
 .brand-nav-link { display: none; }
 .github-action { display: none; border-radius: 8px; background: var(--ink); color: #fff; }
 .github-action:hover { background: #000; }
@@ -499,7 +500,8 @@ article h2, article h3 { text-wrap: balance; }
 table { font-variant-numeric: tabular-nums; }
 
 @media (min-width: 640px) {
-  .header-action-watch { display: inline-flex; }
+  .header-action-watch,
+  .header-action-account { display: inline-flex; }
 }
 @media (min-width: 768px) {
   .github-action { display: grid; }
@@ -548,6 +550,83 @@ table { font-variant-numeric: tabular-nums; }
   .offer-filter-form { padding: 14px; }
   .status-pill { font-size: 0.6875rem; }
   .fact-ledger-row { grid-template-columns: 1fr; gap: 9px; padding: 20px 0; }
+}
+
+/* Ad slots (广告栏位) ------------------------------------------------------- */
+.ad-slot { display: grid; gap: 12px; }
+.ad-slot-banner { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.ad-slot-compact { gap: 8px; }
+.ad-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--accent);
+  border-radius: 11px;
+  background: var(--panel);
+  padding: 14px 16px;
+}
+.ad-card-media { display: block; width: 88px; height: 56px; overflow: hidden; border-radius: 8px; background: var(--subtle); }
+.ad-card-media img { width: 100%; height: 100%; object-fit: cover; }
+.ad-card:not(:has(.ad-card-media)) { grid-template-columns: minmax(0, 1fr) auto; }
+.ad-card-body { min-width: 0; }
+.ad-card-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.6875rem; font-weight: 700; }
+.ad-badge {
+  flex: none;
+  border: 1px solid var(--warning);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--warning);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.ad-card-title { margin-top: 4px; font-size: 0.9375rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.35; overflow-wrap: anywhere; }
+.ad-card-title a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ad-card-desc { margin-top: 4px; color: var(--muted); font-size: 0.8125rem; line-height: 1.55; overflow-wrap: anywhere; }
+.ad-card-cta { min-height: 36px !important; padding-inline: 12px !important; font-size: 0.75rem !important; white-space: nowrap; }
+.ad-slot-compact .ad-card { padding: 11px 13px; gap: 10px 12px; }
+.ad-slot-compact .ad-card-media { width: 64px; height: 44px; }
+.ad-slot-compact .ad-card-title { font-size: 0.875rem; }
+
+/* Relay hub (中转站) -------------------------------------------------------- */
+.relay-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.relay-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: var(--panel);
+  padding: 18px;
+}
+.relay-card[data-sponsored="true"] { border-color: var(--warning); box-shadow: inset 0 3px 0 var(--accent); }
+.relay-card-title { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.3; overflow-wrap: anywhere; }
+.relay-card-tagline { color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
+.relay-card-desc { color: var(--muted); font-size: 0.8125rem; line-height: 1.65; overflow-wrap: anywhere; }
+.relay-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.relay-chip {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--subtle);
+  padding: 2px 7px;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+.relay-chip.mono { font-family: var(--font-geist-mono), ui-monospace, monospace; }
+.relay-facts { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 0.8125rem; }
+.relay-facts > div { display: flex; justify-content: space-between; gap: 12px; }
+.relay-facts dt { color: var(--muted); flex: none; }
+.relay-facts dd { margin: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
+.relay-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
+
+@media (max-width: 639px) {
+  .ad-card { grid-template-columns: minmax(0, 1fr); }
+  .ad-card:not(:has(.ad-card-media)) { grid-template-columns: minmax(0, 1fr); }
+  .ad-card-media { width: 100%; height: 120px; }
+  .ad-card-cta { justify-content: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {

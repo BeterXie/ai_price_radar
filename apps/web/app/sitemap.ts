@@ -127,6 +127,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (meta?.advertise_enabled) {
     staticPages.push({ url: `${SITE_URL}/advertise`, lastModified: snapshotAt });
   }
+  if (meta?.relay_hub_enabled !== false && (meta?.relay_station_count ?? 0) > 0) {
+    staticPages.push({ url: `${SITE_URL}/relays`, lastModified: snapshotAt });
+  }
 
   const sourceCatalogs = await mapWithConcurrency(meta.source_platforms, 4, async (platform) => {
     const query = new URLSearchParams({ source_platform: platform.id });

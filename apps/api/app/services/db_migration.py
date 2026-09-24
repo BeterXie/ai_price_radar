@@ -62,6 +62,23 @@ def _rebuild_sqlite_offer_clicks(conn, existing_cols: set[str]) -> None:
     _ensure_sqlite_offer_click_indexes(conn)
 
 
+# Standard products retired from the public catalog. Historical rows stay in
+# the database for audit, but they must never be listed or classified again.
+RETIRED_PRODUCT_SLUGS = ("zhipu-qingyan-vip", "zhipu-api-credit", "zhipu-account")
+
+
+def _hide_retired_products(conn) -> None:
+    from sqlalchemy import inspect
+
+    if "products" not in inspect(conn).get_table_names():
+        return
+    for slug in RETIRED_PRODUCT_SLUGS:
+        conn.execute(
+            text("UPDATE products SET is_visible = :hidden WHERE slug = :slug AND is_visible = :visible"),
+            {"slug": slug, "hidden": False, "visible": True},
+        )
+
+
 def ensure_db_schema(engine: Engine) -> None:
     """Safely inspects and adds missing columns and tables for SQLite or Postgres."""
     dialect_name = engine.dialect.name
@@ -72,6 +89,8 @@ def ensure_db_schema(engine: Engine) -> None:
             _migrate_postgres(conn)
         else:
             logger.info("Skipping schema auto-migration for dialect %s", dialect_name)
+            return
+        _hide_retired_products(conn)
 
 
 def _migrate_sqlite(conn) -> None:

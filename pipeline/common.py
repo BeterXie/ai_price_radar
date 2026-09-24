@@ -160,7 +160,6 @@ BRAND_MARKERS = {
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai", "super gro"],
     "x": ["x premium", "xpremium", "twitter", "推特"],
     "cursor": ["cursor"],
-    "zhipu": ["智谱", "智普", "清言", "chatglm", "glm"],
 }
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
 CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
@@ -708,16 +707,6 @@ def classify_identity(
         ) or contains(title_text, ["cursor pro"]):
             return "cursor-pro", True
         return "cursor-account", False
-    if brand == "zhipu":
-        if contains(
-            identity_text,
-            ["api", "api key", "apikey", "token", "额度", "开放平台", "bigmodel", "资源包", "glm-4", "glm4", "glm"],
-        ):
-            return "zhipu-api-credit", True
-        if contains(identity_text, ["清言", "会员", "vip", "订阅", "充值", "代充", "直充", "包月", "月卡"]):
-            return "zhipu-qingyan-vip", True
-        return "zhipu-account", False
-
     if contains(identity_text, CHATGPT_API_MARKERS):
         if contains(identity_text, ["中转", "倍率"]):
             return None, False
@@ -894,6 +883,9 @@ def stock_status(value: str, count: int | None) -> str:
     return "unknown"
 
 
+RETIRED_PRODUCT_SLUGS = ("zhipu-qingyan-vip", "zhipu-api-credit", "zhipu-account")
+
+
 def ensure_products(db: Session) -> dict[str, Product]:
     definitions = [
         ("chatgpt-account", "OpenAI", "ChatGPT Free", "Free 普号与基础账号", "account", "聚合公开售卖的 ChatGPT Free 普号和基础账号。"),
@@ -923,9 +915,6 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("cursor-pro", "Cursor", "Cursor Pro", "Pro 个人会员订阅", "subscription", "聚合 Cursor Pro 个人订阅与代充公开报价。"),
         ("cursor-business", "Cursor", "Cursor Business", "Business 团队席位", "subscription", "聚合 Cursor Business 商业版与团队席位公开报价。"),
         ("cursor-account", "Cursor", "Cursor 账号", "基础账号与访问类商品", "account", "聚合 Cursor 基础账号与新号公开报价。"),
-        ("zhipu-qingyan-vip", "智谱", "智谱清言会员", "清言会员与订阅充值", "subscription", "聚合智谱清言个人会员与权益公开报价。"),
-        ("zhipu-api-credit", "智谱", "智谱 GLM API", "BigModel API 额度与 Key", "api", "聚合智谱开放平台 GLM API 额度与资源包公开报价。"),
-        ("zhipu-account", "智谱", "智谱账号", "基础账号与开发者账号", "account", "聚合智谱清言与开放平台基础账号公开报价。"),
     ]
     existing = {x.slug: x for x in db.scalars(select(Product))}
     for slug, platform, name, subtitle, product_type, description in definitions:
@@ -946,6 +935,12 @@ def ensure_products(db: Session) -> dict[str, Product]:
     legacy_pro = existing.get("chatgpt-pro")
     if legacy_pro is not None:
         legacy_pro.is_visible = False
+    # 智谱 (Zhipu / GLM) was retired from the public catalog; keep historical
+    # rows for audit but never surface them again.
+    for retired_slug in RETIRED_PRODUCT_SLUGS:
+        retired = existing.get(retired_slug)
+        if retired is not None:
+            retired.is_visible = False
     db.flush()
     return existing
 

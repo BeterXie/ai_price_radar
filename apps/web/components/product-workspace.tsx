@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowSquareOut, Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { AdSlot } from "@/components/ad-slot";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
 import { JsonLd } from "@/components/structured-data";
@@ -22,9 +23,17 @@ export function single(params: RawSearchParams, key: string) {
 
 const FILTER_KEYS = ["delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price", "source_platform"] as const;
 
+/**
+ * Build the API query for an offer scope.
+ *
+ * `comparable=false` in the page URL means "包含相关商品" (include everything),
+ * so the API filter is simply omitted; `comparable=true` restricts the scope
+ * to directly comparable offers. Sending `false` to the API would instead
+ * return *only* non-comparable offers, which is never what the UI offers.
+ */
 export function offerQuery(params: RawSearchParams) {
   const query = new URLSearchParams();
-  query.set("comparable", single(params, "comparable") === "false" ? "false" : "true");
+  if (single(params, "comparable") !== "false") query.set("comparable", "true");
   if (single(params, "in_stock") === "true") query.set("in_stock", "true");
   for (const key of FILTER_KEYS) {
     const value = single(params, key);
@@ -54,6 +63,7 @@ export function ProductWorkspace({
   filterAction,
   resetHref,
   hiddenFields = {},
+  scopeExpanded = false,
 }: {
   product: ProductDetail;
   rawParams: RawSearchParams;
@@ -61,6 +71,8 @@ export function ProductWorkspace({
   filterAction: string;
   resetHref: string;
   hiddenFields?: Record<string, string>;
+  /** True when the page widened the scope to all offers because no directly comparable offer existed. */
+  scopeExpanded?: boolean;
 }) {
   const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
@@ -99,7 +111,13 @@ export function ProductWorkspace({
     };
   }
   const filters = filterValues(rawParams);
+  if (scopeExpanded) filters.comparable = "false";
   const guideFaq = productGuide?.faq[0];
+  const comparableHref = (() => {
+    const next = new URLSearchParams(query);
+    next.set("comparable", "true");
+    return `${filterAction}?${next.toString()}`;
+  })();
 
   return (
     <>
@@ -133,11 +151,19 @@ export function ProductWorkspace({
 
       <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
 
+      <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />
+
       <section className="pb-12">
         <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
           <h2 className="text-3xl font-semibold tracking-[-.04em]">报价</h2>
           <p className="mt-2 text-sm text-[color:var(--muted)]">相同商品会合并显示。共 {product.offer_group_count} 组报价，展开后可查看店铺、交付方式和商品原文。</p>
         </div>
+        {scopeExpanded ? (
+          <p role="status" className="mb-5 rounded-[9px] border border-[color:var(--warning)]/40 bg-[color:var(--warning-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--warning)]" data-vds-role="explanation">
+            该商品当前没有可直接比较的报价（官方直充、成品账号等），已自动显示全部相关报价，包括号池、中转、体验号等不参与主最低价的形态。
+            <Link href={comparableHref} className="ml-1 underline underline-offset-4">只看可直接比较</Link>
+          </p>
+        ) : null}
         <OfferGroupTable
           key={`${product.slug}:${product.snapshot_id || "current"}:${query.toString()}`}
           groups={product.offer_groups}
