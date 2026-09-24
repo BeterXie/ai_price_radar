@@ -123,16 +123,16 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
             <Storefront size={18} />申请收录
           </Link>
           {session === null ? (
-            <span className="header-action opacity-60" aria-label="正在读取账户状态">
+            <span className="header-action header-action-account opacity-60" aria-label="正在读取账户状态">
               <User size={18} />账户
             </span>
           ) : session.authenticated && session.user ? (
-            <Link href="/account" aria-current={current(pathname, "/account") ? "page" : undefined} className="header-action header-action-user">
+            <Link href="/account" aria-current={current(pathname, "/account") ? "page" : undefined} className="header-action header-action-account header-action-user">
               <User size={18} />
               <span className="max-w-[70px] truncate">{session.user.nickname || "个人中心"}</span>
             </Link>
           ) : (
-            <button type="button" onClick={() => setShowLoginModal(true)} className="header-action header-action-login">
+            <button type="button" onClick={() => setShowLoginModal(true)} className="header-action header-action-account header-action-login">
               <User size={18} />登录
             </button>
           )}
@@ -147,6 +147,20 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
             </summary>
             <div className="mobile-nav-panel">
               <nav aria-label="移动端导航" className="grid p-2">
+                {session === null ? (
+                  <span className="nav-link flex min-h-11 items-center gap-1.5 text-[color:var(--muted)]" aria-live="polite">
+                    <User size={17} />账户状态加载中
+                  </span>
+                ) : session.authenticated && session.user ? (
+                  <Link href="/account" onClick={closeMenu} aria-current={current(pathname, "/account") ? "page" : undefined} className="nav-link flex min-h-11">
+                    <User size={17} />个人中心 · {session.user.nickname || "我的账号"}
+                  </Link>
+                ) : (
+                  <button type="button" onClick={() => { closeMenu(); setShowLoginModal(true); }} className="nav-link flex min-h-11 w-full text-left items-center gap-1.5">
+                    <User size={17} />登录 / 注册
+                  </button>
+                )}
+                <span className="mx-2 my-1 h-px bg-[color:var(--line)]" aria-hidden="true" />
                 {primaryLinks.map((item) => (
                   <Link key={item.href} href={item.href} onClick={closeMenu} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link flex min-h-11">
                     {item.label}
@@ -154,19 +168,6 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
                 ))}
                 <Link href="/watchlist" onClick={closeMenu} aria-current={current(pathname, "/watchlist") ? "page" : undefined} className="nav-link flex min-h-11"><Bell size={17} />关注清单</Link>
                 <Link href="/shops/submit" onClick={closeMenu} aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
-                {session === null ? (
-                  <span className="nav-link flex min-h-11 items-center gap-1.5 text-[color:var(--muted)]" aria-live="polite">
-                    <User size={17} />账户状态加载中
-                  </span>
-                ) : session.authenticated && session.user ? (
-                  <Link href="/account" onClick={closeMenu} aria-current={current(pathname, "/account") ? "page" : undefined} className="nav-link flex min-h-11">
-                    <User size={17} />个人中心 ({session.user.nickname || "我的账号"})
-                  </Link>
-                ) : (
-                  <button type="button" onClick={() => { closeMenu(); setShowLoginModal(true); }} className="nav-link flex min-h-11 w-full text-left items-center gap-1.5">
-                    <User size={17} />登录 / 注册
-                  </button>
-                )}
                 {advertiseEnabled ? (
                   <Link href="/advertise" onClick={closeMenu} aria-current={current(pathname, "/advertise") ? "page" : undefined} className="nav-link flex min-h-11"><Tag size={17} />商务合作</Link>
                 ) : null}

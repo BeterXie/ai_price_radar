@@ -125,6 +125,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 }
 .header-action:hover { border-color: var(--ink); background: var(--subtle); }
 .header-action-watch,
+.header-action-account,
 .brand-nav-link { display: none; }
 .github-action { display: none; border-radius: 8px; background: var(--ink); color: #fff; }
 .github-action:hover { background: #000; }
@@ -499,7 +500,8 @@ article h2, article h3 { text-wrap: balance; }
 table { font-variant-numeric: tabular-nums; }
 
 @media (min-width: 640px) {
-  .header-action-watch { display: inline-flex; }
+  .header-action-watch,
+  .header-action-account { display: inline-flex; }
 }
 @media (min-width: 768px) {
   .github-action { display: grid; }
