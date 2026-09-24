@@ -438,6 +438,16 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 .filter-chip:hover { border-color: var(--line-strong); background: var(--panel); color: var(--ink); }
 .filter-chip[aria-current="page"] { border-color: var(--ink); background: var(--ink); color: white; }
 .filter-label { flex: none; padding-inline: 4px 10px; color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.filter-group { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+.filter-all { flex-shrink: 0; }
+.filter-options { display: flex; align-items: center; gap: 5px; }
+
+@media (min-width: 769px) {
+  .filter-group,
+  .filter-options {
+    display: contents;
+  }
+}
 .catalog-stats {
   display: flex;
   flex-wrap: wrap;
@@ -530,6 +540,61 @@ table { font-variant-numeric: tabular-nums; }
   .decision-list li:nth-child(even) { border-left: 0; padding-left: 0; }
   .decision-list li:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
   .decision-list li:last-child { border-bottom: 0; }
+}
+
+@media (max-width: 768px) {
+  .filter-rail {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-x: visible;
+    gap: 5px;
+    padding-block: 6px 4px;
+  }
+  .filter-label {
+    width: 100%;
+    flex: none;
+    padding-inline: 2px;
+    margin-bottom: 2px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .filter-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+  }
+  .filter-all {
+    flex-shrink: 0;
+  }
+  .filter-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .filter-chip {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 0.75rem;
+    gap: 5px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .filter-chip:hover {
+    border-color: var(--ink);
+    background: var(--subtle);
+  }
+  .filter-chip[aria-current="page"] {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: white;
+  }
 }
 
 @media (max-width: 639px) {

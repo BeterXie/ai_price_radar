@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.2] - 2026-09-24
+
+### Catalog Relay Consistency & Mobile Tab Indentation
+- Fix catalog brand consistency for "中转站" (`/?brand=中转站`): avoid navigating away to the empty `/relays` directory; preserve standard catalog layout (brand, product types, platforms, selected filters, metrics overview, and offer table) by mapping to scraped `delivery_type=relay_api` offers while keeping a dedicated link banner to `/relays`.
+- Implement responsive mobile tab auto-wrapping with structured indentation (`.filter-group` & `.filter-options`): locks the master category button ("全部" / "全部商品" / "全部来源") to the left, allowing wrapped brand options on the second line to indent neatly under the first option (`OpenAI`), preventing vertical overlap/collision with the "全部" column.
+- Use `display: contents;` on desktop (`> 768px`) for zero layout regression on wide screens.
+
 ## [3.9.1] - 2026-09-24
 
 ### Header Navigation Layout & UI

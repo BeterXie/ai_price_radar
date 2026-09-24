@@ -117,13 +117,17 @@ export default async function RelaysPage() {
       <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="平台切换">
         <nav className="filter-rail" aria-label="品牌筛选">
           <span className="filter-label">品牌</span>
-          <Link href="/products" prefetch={true} className="filter-chip"><PlatformIcon platform="" />全部</Link>
-          {BRAND_TABS.map((brand) => (
-            <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} prefetch={true} className="filter-chip">
-              <PlatformIcon platform={brand} />{brand}
-            </Link>
-          ))}
-          <Link href="/relays" aria-current="page" className="filter-chip"><PlatformIcon platform="中转站" />中转站</Link>
+          <div className="filter-group">
+            <Link href="/products" prefetch={true} className="filter-chip filter-all"><PlatformIcon platform="" />全部</Link>
+            <div className="filter-options">
+              {BRAND_TABS.map((brand) => (
+                <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} prefetch={true} className="filter-chip">
+                  <PlatformIcon platform={brand} />{brand}
+                </Link>
+              ))}
+              <Link href="/relays" aria-current="page" className="filter-chip"><PlatformIcon platform="中转站" />中转站</Link>
+            </div>
+          </div>
         </nav>
       </section>
 
