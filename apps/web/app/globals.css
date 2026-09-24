@@ -105,6 +105,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
   color: var(--muted);
   font-size: 0.8125rem;
   font-weight: 650;
+  white-space: nowrap;
   transition: background-color 150ms ease, color 150ms ease;
 }
 .nav-link:hover { background: var(--subtle); color: var(--ink); }

@@ -11,14 +11,6 @@ import type { AuthSessionState } from "@/lib/types";
 import { initUserHeartbeat } from "@/lib/analytics";
 import { LoginModal } from "@/components/login-modal";
 
-const primaryLinks = [
-  { href: "/products", label: "报价目录" },
-  { href: "/skills", label: "技能与实验室" },
-  { href: "/guides", label: "购买指南" },
-  { href: "/methodology", label: "数据方法" },
-];
-
-
 const brandLinks = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 
 function current(pathname: string, href: string) {
@@ -30,6 +22,14 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
   const menuRef = useRef<HTMLDetailsElement>(null);
   const [session, setSession] = useState<AuthSessionState | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  const navLinks = [
+    { href: "/products", label: "报价目录" },
+    ...(relayHubEnabled ? [{ href: "/relays", label: "中转站" }] : []),
+    { href: "/skills", label: "技能与实验室" },
+    { href: "/guides", label: "购买指南" },
+    { href: "/methodology", label: "数据方法" },
+  ];
 
   // Load the session from any login entry point (header modal, account page,
   // QQ callback). AUTH_CHANGE_EVENT is dispatched by auth-client on every
@@ -97,22 +97,11 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
         </Link>
 
         <nav aria-label="主要导航" className="hidden items-center gap-1 rounded-[14px] border border-[color:var(--line)] bg-[color:var(--panel)]/72 p-1 shadow-[0_8px_28px_rgba(18,19,15,.05)] lg:flex">
-          {primaryLinks.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link inline-flex">
+          {navLinks.map((item) => (
+            <Link key={item.href} href={item.href} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link">
               {item.label}
             </Link>
           ))}
-          <span className="mx-1 h-5 w-px bg-[color:var(--line)]" aria-hidden="true" />
-          {brandLinks.slice(0, 4).map((brand) => (
-            <Link key={brand} href={`/products?platform=${encodeURIComponent(brand)}`} className="nav-link brand-nav-link">
-              <PlatformIcon platform={brand} size={14} />{brand}
-            </Link>
-          ))}
-          {relayHubEnabled ? (
-            <Link href="/relays" aria-current={current(pathname, "/relays") ? "page" : undefined} className="nav-link brand-nav-link">
-              <PlatformIcon platform="中转站" size={14} />中转站
-            </Link>
-          ) : null}
         </nav>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -161,7 +150,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
                   </button>
                 )}
                 <span className="mx-2 my-1 h-px bg-[color:var(--line)]" aria-hidden="true" />
-                {primaryLinks.map((item) => (
+                {navLinks.map((item) => (
                   <Link key={item.href} href={item.href} onClick={closeMenu} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link flex min-h-11">
                     {item.label}
                   </Link>
@@ -180,11 +169,6 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
                       <PlatformIcon platform={brand} size={15} />{brand}
                     </Link>
                   ))}
-                  {relayHubEnabled ? (
-                    <Link href="/relays" onClick={closeMenu} aria-current={current(pathname, "/relays") ? "page" : undefined} className="nav-link flex min-h-11">
-                      <PlatformIcon platform="中转站" size={15} />中转站
-                    </Link>
-                  ) : null}
                 </div>
               </div>
             </div>

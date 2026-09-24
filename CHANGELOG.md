@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.1] - 2026-09-24
+
+### Header Navigation Layout & UI
+- Optimize global desktop header navigation: remove flat horizontal brand filter links from header to avoid overcrowding and two-line text wrapping; preserve clean top channels (报价目录, 中转站, 技能与实验室, 购买指南, 数据方法).
+- Add `white-space: nowrap;` to `.nav-link` to prevent Chinese navigation text from wrapping into multiple lines.
+- Keep model brands under the hero search "常用入口" and within the mobile drawer menu.
+
 ## [3.9.0] - 2026-09-24
 
 ### Ad slots, relay hub and catalog fixes
