@@ -51,6 +51,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const meta = await getMeta().catch(() => null);
   const advertiseEnabled = Boolean(meta?.advertise_enabled);
+  const relayHubEnabled = meta?.relay_hub_enabled !== false;
 
   return (
     <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`}>
@@ -59,7 +60,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <GoogleAnalytics />
         <a href="#page-content" className="skip-link">跳到主要内容</a>
         <SiteNoticePrompt notice={meta?.site_notice} />
-        <SiteHeader advertiseEnabled={advertiseEnabled} />
+        <SiteHeader advertiseEnabled={advertiseEnabled} relayHubEnabled={relayHubEnabled} />
         <div id="page-content" tabIndex={-1}>{children}</div>
         <BackToTop />
         <SiteFooter advertiseEnabled={advertiseEnabled} />

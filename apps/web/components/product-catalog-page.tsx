@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { AdSlot } from "@/components/ad-slot";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { SectionIntro } from "@/components/page-shell";
@@ -11,25 +12,55 @@ import { SearchBox } from "@/components/search-box";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
 import { getProductSeoContent } from "@/lib/product-seo";
+import type { Meta } from "@/lib/types";
 
 import { BRAND_TABS, type BrandName, PRODUCT_TABS } from "@/lib/catalog";
 
-const EMPTY_META = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
+const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
 function withQuery(path: string, query: URLSearchParams) {
   const value = query.toString();
   return value ? `${path}?${value}` : path;
 }
 
+const NARROWING_KEYS = ["source_platform", "delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price", "in_stock"] as const;
+
+/** True when the URL narrows the offer scope beyond the default comparable filter. */
+export function hasNarrowingFilters(rawParams: RawSearchParams) {
+  return NARROWING_KEYS.some((key) => Boolean(single(rawParams, key)));
+}
+
 export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
-  const detailQuery = offerQuery(rawParams);
+  let detailQuery = offerQuery(rawParams);
   const searchQuery = single(rawParams, "q").trim();
-  const [product, metaResult] = await Promise.all([
+  const [initialProduct, metaResult] = await Promise.all([
     productSlug ? getProduct(productSlug, detailQuery.toString()) : Promise.resolve(null),
     getMeta().catch(() => null),
   ]);
   const meta = metaResult || EMPTY_META;
-  if (productSlug && !product) notFound();
+  if (productSlug && !initialProduct) notFound();
+  let product = initialProduct;
+  // Product cards count every public offer, but the workspace defaults to the
+  // "仅可直接比较" scope. A product whose offers are all shared pools, relays or
+  // trial accounts would therefore open with an empty ledger even though the
+  // card promised offers. When the visitor did not choose the scope explicitly,
+  // widen it to all offers and say so instead of showing nothing.
+  let scopeExpanded = false;
+  if (
+    product &&
+    product.offer_group_count === 0 &&
+    single(rawParams, "comparable") === "" &&
+    !hasNarrowingFilters(rawParams)
+  ) {
+    const widened = new URLSearchParams(detailQuery);
+    widened.delete("comparable");
+    const fallback = await getProduct(product.slug, widened.toString()).catch(() => null);
+    if (fallback && fallback.offer_group_count > 0) {
+      product = fallback;
+      detailQuery = widened;
+      scopeExpanded = true;
+    }
+  }
 
   const activeBrand = product?.brand || single(rawParams, "brand") || single(rawParams, "platform");
   const activeSourcePlatform = single(rawParams, "source_platform");
@@ -125,6 +156,12 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
               <PlatformIcon platform={brand} />{brand}
             </Link>
           ))}
+          {meta.relay_hub_enabled !== false ? (
+            <Link href="/relays" prefetch={true} className="filter-chip" title="API 中转站目录（后台维护）">
+              <PlatformIcon platform="中转站" />中转站
+              {meta.relay_station_count ? <span className="mono text-[10px] opacity-70">{meta.relay_station_count}</span> : null}
+            </Link>
+          ) : null}
         </nav>
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
           <span className="filter-label">商品类型</span>
@@ -172,9 +209,11 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           filterAction={`/products/${encodeURIComponent(product.slug)}`}
           resetHref={navigationHref}
           hiddenFields={hiddenFields}
+          scopeExpanded={scopeExpanded}
         />
       ) : catalog ? (
         <>
+          <AdSlot placement="catalog_top" limit={2} className="mt-6" />
           <section className="catalog-stats" aria-label="目录报价概况">
             <p><ShieldCheck size={15} /><span>{catalog.trusted_offer_count} 条纳入统计</span></p>
             <p><Package size={15} /><span>{catalog.in_stock_count} 条有货</span></p>

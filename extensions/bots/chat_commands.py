@@ -86,12 +86,6 @@ BRAND_GROUPS: dict[str, dict[str, Any]] = {
         "slugs": ["cursor-pro", "cursor-business", "cursor-account"],
         "hint": "发送具体型号（如「cursor pro」、「cursor 账号」）可查看前 5 家店铺深度比价。",
     },
-    "智谱": {
-        "title": "智谱 (GLM) 全系列最低报价一览",
-        "aliases": ["智谱", "zhipu", "glm", "chatglm", "清言", "智谱清言"],
-        "slugs": ["zhipu-qingyan-vip", "zhipu-api-credit", "zhipu-account"],
-        "hint": "发送具体型号（如「清言」、「glm」、「智谱账号」）可查看前 5 家店铺深度比价。",
-    },
 }
 
 BRAND_ALIASES: dict[str, str] = {}
@@ -181,19 +175,6 @@ PRODUCT_ALIASES: dict[str, str] = {
     "cursor-business": "cursor-business",
     "cursor 账号": "cursor-account",
     "cursor-account": "cursor-account",
-    # 智谱 (GLM) models
-    "智谱": "zhipu-qingyan-vip",
-    "清言": "zhipu-qingyan-vip",
-    "智谱清言": "zhipu-qingyan-vip",
-    "zhipu": "zhipu-qingyan-vip",
-    "zhipu-qingyan-vip": "zhipu-qingyan-vip",
-    "glm": "zhipu-api-credit",
-    "glm api": "zhipu-api-credit",
-    "glm-api": "zhipu-api-credit",
-    "chatglm": "zhipu-api-credit",
-    "zhipu-api-credit": "zhipu-api-credit",
-    "智谱账号": "zhipu-account",
-    "zhipu-account": "zhipu-account",
 }
 
 

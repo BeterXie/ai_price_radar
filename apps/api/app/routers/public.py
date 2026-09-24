@@ -17,10 +17,26 @@ from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
 from ..database import get_db
-from ..models import Offer, OfferClick, Product, Report, ReportRateLimit, Shop, SourceIntake, SystemSetting, User, UserActionLog
+from ..models import (
+    AdSlot,
+    Offer,
+    OfferClick,
+    Product,
+    RelayStation,
+    Report,
+    ReportRateLimit,
+    Shop,
+    SourceIntake,
+    SystemSetting,
+    User,
+    UserActionLog,
+)
 from ..security import get_current_user, get_token_from_request, require_current_user
 from ..schemas import (
+    AdSlotListOut,
     CatalogOfferGroupPageResponse,
+    PromoClickResponse,
+    RelayStationListOut,
     CatalogResponse,
     CatalogSnapshotPublic,
     GroupOffersResponse,
@@ -47,6 +63,15 @@ from ..services.community_skills import (
     get_community_skill_by_slug,
     list_community_skills,
     record_community_skill_copy,
+)
+from ..services.promo import (
+    AD_SLOTS_ENABLED_KEY,
+    RELAY_HUB_ENABLED_KEY,
+    count_enabled_relay_stations,
+    is_ad_live,
+    list_enabled_relay_stations,
+    list_live_ad_slots,
+    setting_enabled,
 )
 from ..services.source_intake import enqueue_submission_notifications
 from ..services.auth import get_session_by_token, settle_session_activity
@@ -658,6 +683,8 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
 
     bot_setting = db.scalar(select(SystemSetting).where(SystemSetting.key == "bot_enabled"))
     bot_enabled = True if not bot_setting or not bot_setting.value else bot_setting.value.strip().lower() in ("true", "1", "yes", "on")
+    ad_slots_enabled = setting_enabled(db, AD_SLOTS_ENABLED_KEY, default=True)
+    relay_hub_enabled = setting_enabled(db, RELAY_HUB_ENABLED_KEY, default=True)
 
     return MetaResponse(
         platforms=brands,
@@ -670,6 +697,9 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         product_types=product_types,
         tags=tags,
         advertise_enabled=advertise_enabled,
+        ad_slots_enabled=ad_slots_enabled,
+        relay_hub_enabled=relay_hub_enabled,
+        relay_station_count=count_enabled_relay_stations(db) if relay_hub_enabled else 0,
         bot_enabled=bot_enabled,
         site_notice=site_notice,
         community_notice=community_notice,
@@ -1180,3 +1210,65 @@ def record_shop_click(
         db.commit()
 
     return OfferClickResponse(success=True, recorded=True, click_count=0)
+
+
+# ---------------------------------------------------------------------------
+# Ad slots (广告栏位) and relay stations (中转站)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ads", response_model=AdSlotListOut)
+def public_ad_slots(
+    placement: str = Query(default="", max_length=40),
+    limit: int = Query(default=6, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> AdSlotListOut:
+    if not setting_enabled(db, AD_SLOTS_ENABLED_KEY, default=True):
+        return AdSlotListOut(items=[], enabled=False)
+    return AdSlotListOut(items=list_live_ad_slots(db, placement=placement.strip(), limit=limit), enabled=True)
+
+
+@router.post("/ads/{slot_id}/click", response_model=PromoClickResponse)
+def record_ad_click(slot_id: int, request: Request, db: Session = Depends(get_db)) -> PromoClickResponse:
+    slot = db.get(AdSlot, slot_id)
+    if slot is None or not is_ad_live(slot) or not setting_enabled(db, AD_SLOTS_ENABLED_KEY, default=True):
+        raise HTTPException(status_code=404, detail="ad slot not found")
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace=f"ad-click:{slot_id}",
+        max_requests=5,
+        window_seconds=60,
+        detail="点击过于频繁，请稍后再试",
+    )
+    db.execute(update(AdSlot).where(AdSlot.id == slot_id).values(click_count=AdSlot.click_count + 1))
+    db.commit()
+    refreshed = db.get(AdSlot, slot_id)
+    return PromoClickResponse(status="ok", click_count=int(refreshed.click_count or 0) if refreshed else 0)
+
+
+@router.get("/relays", response_model=RelayStationListOut)
+def public_relay_stations(db: Session = Depends(get_db)) -> RelayStationListOut:
+    if not setting_enabled(db, RELAY_HUB_ENABLED_KEY, default=True):
+        return RelayStationListOut(items=[], total=0, enabled=False)
+    items = list_enabled_relay_stations(db)
+    return RelayStationListOut(items=items, total=len(items), enabled=True)
+
+
+@router.post("/relays/{station_id}/click", response_model=PromoClickResponse)
+def record_relay_click(station_id: int, request: Request, db: Session = Depends(get_db)) -> PromoClickResponse:
+    station = db.get(RelayStation, station_id)
+    if station is None or not station.is_enabled or not setting_enabled(db, RELAY_HUB_ENABLED_KEY, default=True):
+        raise HTTPException(status_code=404, detail="relay station not found")
+    _enforce_client_rate_limit(
+        request,
+        db,
+        namespace=f"relay-click:{station_id}",
+        max_requests=5,
+        window_seconds=60,
+        detail="点击过于频繁，请稍后再试",
+    )
+    db.execute(update(RelayStation).where(RelayStation.id == station_id).values(click_count=RelayStation.click_count + 1))
+    db.commit()
+    refreshed = db.get(RelayStation, station_id)
+    return PromoClickResponse(status="ok", click_count=int(refreshed.click_count or 0) if refreshed else 0)

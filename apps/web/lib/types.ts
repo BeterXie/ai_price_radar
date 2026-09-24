@@ -222,9 +222,98 @@ export type Meta = {
   product_types: string[];
   tags: string[];
   advertise_enabled?: boolean;
+  ad_slots_enabled?: boolean;
+  relay_hub_enabled?: boolean;
+  relay_station_count?: number;
   bot_enabled?: boolean;
   site_notice?: SiteNotice | null;
   community_notice?: CommunityNotice | null;
+};
+
+export const AD_PLACEMENTS = ["home_hero", "catalog_top", "product_offers", "relay_hub", "sidebar"] as const;
+export type AdPlacement = (typeof AD_PLACEMENTS)[number];
+
+export type AdSlotPublic = {
+  id: number;
+  placement: AdPlacement | string;
+  title: string;
+  description: string;
+  sponsor_name: string;
+  badge: string;
+  cta_text: string;
+  link_url: string;
+  image_url: string;
+};
+
+export type AdSlotListOut = {
+  items: AdSlotPublic[];
+  enabled: boolean;
+};
+
+export type AdSlotAdmin = AdSlotPublic & {
+  sort_order: number;
+  is_enabled: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  click_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AdSlotInput = {
+  placement: AdPlacement;
+  title: string;
+  description: string;
+  sponsor_name: string;
+  badge: string;
+  cta_text: string;
+  link_url: string;
+  image_url: string;
+  sort_order: number;
+  is_enabled: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+};
+
+export type RelayStationPublic = {
+  id: number;
+  name: string;
+  url: string;
+  tagline: string;
+  description: string;
+  supported_models: string[];
+  price_note: string;
+  billing_note: string;
+  tags: string[];
+  is_sponsored: boolean;
+  click_count: number;
+  updated_at: string | null;
+};
+
+export type RelayStationListOut = {
+  items: RelayStationPublic[];
+  total: number;
+  enabled: boolean;
+};
+
+export type RelayStationAdmin = RelayStationPublic & {
+  is_enabled: boolean;
+  sort_order: number;
+  created_at: string | null;
+};
+
+export type RelayStationInput = {
+  name: string;
+  url: string;
+  tagline: string;
+  description: string;
+  supported_models: string[];
+  price_note: string;
+  billing_note: string;
+  tags: string[];
+  is_sponsored: boolean;
+  is_enabled: boolean;
+  sort_order: number;
 };
 
 export type CatalogResponse = {

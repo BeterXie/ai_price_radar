@@ -5,6 +5,7 @@ import {
   ArrowClockwise,
   Article,
   Broadcast,
+  Megaphone,
   ChatCircleDots,
   Check,
   Eye,
@@ -25,12 +26,13 @@ import { money, stockLabel } from "@/lib/format";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { CouponsAdminPanel } from "@/components/coupons-admin-panel";
+import { PromoAdminPanel } from "@/components/promo-admin-panel";
 import { UsersAdminPanel } from "@/components/users-admin-panel";
 import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-export type AdminTab = "settings" | "users" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
+export type AdminTab = "settings" | "promo" | "users" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
 type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
 type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
@@ -149,6 +151,9 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
   const [intakeReasons, setIntakeReasons] = useState<Record<number, string>>({});
   const [advertiseEnabled, setAdvertiseEnabled] = useState<boolean>(false);
   const [updatingAdvertise, setUpdatingAdvertise] = useState<boolean>(false);
+  const [adSlotsEnabled, setAdSlotsEnabled] = useState<boolean>(true);
+  const [relayHubEnabled, setRelayHubEnabled] = useState<boolean>(true);
+  const [updatingPromoSetting, setUpdatingPromoSetting] = useState<boolean>(false);
   const [botEnabled, setBotEnabled] = useState<boolean>(true);
   const [updatingBot, setUpdatingBot] = useState<boolean>(false);
   const [settingsLoadState, setSettingsLoadState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -188,7 +193,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setActiveTab("intakes");
     }
     const tabParam = params.get("tab") as AdminTab | null;
-    const validTabs: AdminTab[] = ["settings", "users", "coupons", "intakes", "skills", "discovery", "reports", "offers"];
+    const validTabs: AdminTab[] = ["settings", "promo", "users", "coupons", "intakes", "skills", "discovery", "reports", "offers"];
     if (tabParam && validTabs.includes(tabParam)) {
       setActiveTab(tabParam);
     }
@@ -344,6 +349,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
         try {
           const settingsData = await settingsResponse.json();
           setAdvertiseEnabled(Boolean(settingsData.advertise_enabled));
+          setAdSlotsEnabled(settingsData.ad_slots_enabled ?? true);
+          setRelayHubEnabled(settingsData.relay_hub_enabled ?? true);
           setBotEnabled(settingsData.bot_enabled ?? true);
           setSiteNotice({
             enabled: settingsData.site_notice_enabled ?? true,
@@ -413,6 +420,35 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       }
     } finally {
       setLoadingReports(false);
+    }
+  }
+
+  async function togglePromoSetting(settingKey: "ad_slots_enabled" | "relay_hub_enabled", targetState: boolean) {
+    if (!settingsReady || updatingPromoSetting) return;
+    setUpdatingPromoSetting(true);
+    setActionToast("");
+    try {
+      const response = await fetch(`${API}/api/v1/admin/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...verifiedHeaders },
+        body: JSON.stringify({ [settingKey]: targetState }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAdSlotsEnabled(data.ad_slots_enabled ?? true);
+        setRelayHubEnabled(data.relay_hub_enabled ?? true);
+        if (settingKey === "ad_slots_enabled") {
+          setActionToast(data.ad_slots_enabled ? "已开启广告栏位（前台栏位立即展示）" : "已关闭广告栏位（前台栏位已全部隐藏）");
+        } else {
+          setActionToast(data.relay_hub_enabled ? "已开启中转站专区（导航与 /relays 已可访问）" : "已关闭中转站专区（前台入口已隐藏）");
+        }
+      } else {
+        setError("更新广告 / 中转站设置失败，请重试。");
+      }
+    } catch {
+      setError("网络请求失败，未能更新广告 / 中转站设置。");
+    } finally {
+      setUpdatingPromoSetting(false);
     }
   }
 
@@ -860,6 +896,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
           <nav className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="后台功能模块导航">
             {[
               { id: "settings" as const, label: "运营与配置", icon: Gear, count: 0 },
+              { id: "promo" as const, label: "广告与中转站", icon: Megaphone, count: 0 },
               { id: "users" as const, label: "用户管理", icon: UsersThree, count: stats.total_users || 0 },
               { id: "coupons" as const, label: "优惠券与营销", icon: Gift, count: 0 },
               { id: "intakes" as const, label: "店铺审核", icon: Storefront, count: stats.pending_source_intakes || 0 },
@@ -1393,6 +1430,21 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
               <p className="mt-1 text-xs text-[color:var(--muted)]">商户在 /shops/submit 提交的新店铺申请将展示在此处供管理员审核。</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: 广告栏位与中转站 */}
+      {verifiedKey && (
+        <div style={{ display: activeTab === "promo" ? "block" : "none" }}>
+          <PromoAdminPanel
+            key={verifiedKey}
+            apiBase={API}
+            headers={verifiedHeaders}
+            adSlotsEnabled={adSlotsEnabled}
+            relayHubEnabled={relayHubEnabled}
+            onToggleSetting={togglePromoSetting}
+            togglingSetting={updatingPromoSetting || !settingsReady}
+          />
         </div>
       )}
 

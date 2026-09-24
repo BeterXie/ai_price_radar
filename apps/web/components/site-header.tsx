@@ -25,7 +25,7 @@ function current(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: boolean }) {
+export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }: { advertiseEnabled?: boolean; relayHubEnabled?: boolean }) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDetailsElement>(null);
   const [session, setSession] = useState<AuthSessionState | null>(null);
@@ -108,6 +108,11 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
               <PlatformIcon platform={brand} size={14} />{brand}
             </Link>
           ))}
+          {relayHubEnabled ? (
+            <Link href="/relays" aria-current={current(pathname, "/relays") ? "page" : undefined} className="nav-link brand-nav-link">
+              <PlatformIcon platform="中转站" size={14} />中转站
+            </Link>
+          ) : null}
         </nav>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -174,6 +179,11 @@ export function SiteHeader({ advertiseEnabled = false }: { advertiseEnabled?: bo
                       <PlatformIcon platform={brand} size={15} />{brand}
                     </Link>
                   ))}
+                  {relayHubEnabled ? (
+                    <Link href="/relays" onClick={closeMenu} aria-current={current(pathname, "/relays") ? "page" : undefined} className="nav-link flex min-h-11">
+                      <PlatformIcon platform="中转站" size={15} />中转站
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             </div>

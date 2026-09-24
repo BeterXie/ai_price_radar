@@ -1,4 +1,5 @@
 import type {
+  AdSlotListOut,
   CatalogOfferGroupPage,
   CatalogResponse,
   CommunitySkillDetail,
@@ -6,6 +7,7 @@ import type {
   Meta,
   ProductDetail,
   PublicCorrectionPage,
+  RelayStationListOut,
   ShopCard,
   ShopDetail,
   ShopListResponse,
@@ -115,6 +117,23 @@ export const getMeta = cache(async function getMeta(): Promise<Meta> {
     signal: AbortSignal.timeout(1200),
   });
 });
+
+/** Live ad slots for a placement. Never throws: a failed ad read must not break a page. */
+export async function getAdSlots(placement: string, limit = 3): Promise<AdSlotListOut> {
+  try {
+    return await apiFetch<AdSlotListOut>(
+      `/api/v1/ads?placement=${encodeURIComponent(placement)}&limit=${limit}`,
+      0,
+      { next: { revalidate: 60 }, signal: AbortSignal.timeout(1500) },
+    );
+  } catch {
+    return { items: [], enabled: false };
+  }
+}
+
+export async function getRelayStations(): Promise<RelayStationListOut> {
+  return apiFetch<RelayStationListOut>("/api/v1/relays", 2, { next: { revalidate: 60 } });
+}
 
 export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {
   return apiFetch(`/api/v1/corrections${query ? `?${query}` : ""}`);

@@ -1346,7 +1346,7 @@ export function UsersAdminPanel({
                     <input
                       type="text"
                       required
-                      placeholder="例如：【系统通知】Cursor 与 智谱 AI 比价专区正式上线！"
+                      placeholder="例如：【系统通知】Cursor 比价与中转站专区正式上线！"
                       value={broadcastTitle}
                       onChange={(e) => setBroadcastTitle(e.target.value)}
                       className="w-full rounded-lg border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-3 py-2 text-xs text-[color:var(--ink)] placeholder-[color:var(--muted)] outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
