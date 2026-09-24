@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -15,7 +17,7 @@ import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import get_settings
