@@ -26,6 +26,7 @@ class ShopScanResult:
     status: str
     shop_name: str = ""
     shop_url: str = ""
+    shop_notice: Optional[str] = None
     api_host: str = ""
     scanned_item_count: int = 0
     matches: list[ProductMatch] = field(default_factory=list)

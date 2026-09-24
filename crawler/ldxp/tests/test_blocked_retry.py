@@ -36,6 +36,27 @@ def test_successful_scan_keeps_only_current_match_state(tmp_path):
     db.close()
 
 
+def test_shop_notice_survives_failed_scan_and_clears_on_success(tmp_path):
+    db = StateDB(tmp_path / "notices.db")
+    db.upsert_candidate("SHOP1", "https://wzyp.cn/shop/SHOP1", "test", 100)
+    db.save_scan_result(
+        ShopScanResult(token="SHOP1", status="success", shop_notice="分销码：SOURCE1"),
+        run_id=None,
+    )
+    row = db.conn.execute(
+        "SELECT shop_notice, notice_observed_at FROM candidates WHERE token='SHOP1'"
+    ).fetchone()
+    assert row["shop_notice"] == "分销码：SOURCE1"
+    assert row["notice_observed_at"]
+
+    db.save_scan_result(ShopScanResult(token="SHOP1", status="blocked"), run_id=None)
+    assert db.conn.execute("SELECT shop_notice FROM candidates WHERE token='SHOP1'").fetchone()[0] == "分销码：SOURCE1"
+
+    db.save_scan_result(ShopScanResult(token="SHOP1", status="success", shop_notice=""), run_id=None)
+    assert db.conn.execute("SELECT shop_notice FROM candidates WHERE token='SHOP1'").fetchone()[0] == ""
+    db.close()
+
+
 def test_blocked_candidate_retries_after_backoff_and_manual_override(tmp_path):
     db = StateDB(tmp_path / "crawler.db")
     db.upsert_candidate("BLOCKED1", "https://pay.ldxp.cn/shop/BLOCKED1", "test", 100)

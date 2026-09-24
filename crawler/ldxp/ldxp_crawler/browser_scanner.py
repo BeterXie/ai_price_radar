@@ -298,6 +298,12 @@ class BrowserShopScanner:
                 )
 
             info = self._extract_data_dict(info_payload)
+            notice_parts = []
+            for key in ("description", "notice", "announcement", "rules"):
+                value = info.get(key)
+                if value:
+                    notice_parts.append(value if isinstance(value, str) else json.dumps(value, ensure_ascii=False))
+            shop_notice = "\n".join(part for part in notice_parts if part.strip()) if info else None
             page_text = self._body_text(page)
             shop_name = clean_text(
                 info.get("nickname")
@@ -360,6 +366,7 @@ class BrowserShopScanner:
                 status=status,
                 shop_name=shop_name,
                 shop_url=canonical_url,
+                shop_notice=shop_notice,
                 api_host=api_host,
                 scanned_item_count=len(products),
                 matches=matches,

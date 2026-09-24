@@ -132,6 +132,8 @@ class StateDB:
             "intake_id": "INTEGER",
             "intake_attempt_count": "INTEGER",
             "intake_reported_attempt_count": "INTEGER",
+            "shop_notice": "TEXT",
+            "notice_observed_at": "TEXT",
         }
         for name, ddl in migrations.items():
             self._ensure_column("candidates", name, ddl)
@@ -573,6 +575,11 @@ class StateDB:
         now = utc_now()
         with self.conn:
             if result.is_successful_scan:
+                if result.shop_notice is not None:
+                    self.conn.execute(
+                        "UPDATE candidates SET shop_notice=?, notice_observed_at=? WHERE token=?",
+                        (result.shop_notice, now, result.token),
+                    )
                 # Replace current state only after a successful scan.
                 self.conn.execute("DELETE FROM matches WHERE token=?", (result.token,))
                 for product in result.matches:
