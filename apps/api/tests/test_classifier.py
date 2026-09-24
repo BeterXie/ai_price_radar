@@ -287,17 +287,25 @@ def test_stock_normalization():
         ("Cursor 账号 独享首登成品号", "cursor-account"),
         ("Cursor 日卡 体验版", "cursor-pro"),
         ("Cursor 直充月卡 官方代充", "cursor-pro"),
-        ("智谱清言 会员连续包月", "zhipu-qingyan-vip"),
-        ("智谱 GLM-4 API 额度 Key Token", "zhipu-api-credit"),
-        ("智谱账号 开发者账号", "zhipu-account"),
-        ("智普清言 会员直充", "zhipu-qingyan-vip"),
-        ("智普 GLM API 资源包", "zhipu-api-credit"),
-        ("智谱 BigModel API 资源包", "zhipu-api-credit"),
-        ("智谱清言 VIP 月卡", "zhipu-qingyan-vip"),
     ],
 )
-def test_cursor_and_zhipu_match_the_pipeline_classifier(title: str, slug: str):
+def test_cursor_matches_the_pipeline_classifier(title: str, slug: str):
     assert classify_product(title).slug == slug
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "智谱清言 会员连续包月",
+        "智谱 GLM-4 API 额度 Key Token",
+        "智谱账号 开发者账号",
+        "智普清言 会员直充",
+        "智谱 BigModel API 资源包",
+    ],
+)
+def test_retired_zhipu_titles_never_enter_the_public_catalog(title: str):
+    result = classify_product(title)
+    assert not (result.slug or "").startswith("zhipu-")
 
 
 @pytest.mark.parametrize(

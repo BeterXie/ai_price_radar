@@ -120,3 +120,24 @@ def test_sqlite_migration_adds_report_product_context(tmp_path: Path):
         indexes = {row[1] for row in conn.execute(text("PRAGMA index_list(reports)"))}
         assert "product_slug" in columns
         assert "ix_reports_product_slug" in indexes
+
+
+def test_migration_hides_retired_zhipu_products(tmp_path: Path):
+    from app.database import Base
+    from app.models import Product
+    from sqlalchemy.orm import Session
+
+    engine = _sqlite_engine(tmp_path / "retired.db")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add_all([
+            Product(slug="zhipu-qingyan-vip", platform="智谱", display_name="智谱清言会员", is_visible=True),
+            Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus", is_visible=True),
+        ])
+        db.commit()
+
+    ensure_db_schema(engine)
+
+    with Session(engine) as db:
+        visibility = {product.slug: product.is_visible for product in db.query(Product)}
+    assert visibility == {"zhipu-qingyan-vip": False, "chatgpt-plus": True}

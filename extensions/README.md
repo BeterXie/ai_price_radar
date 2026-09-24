@@ -8,7 +8,7 @@
    - 提供基于 Python 原生 WebSocket (`websockets`) 的持久长连接 Gateway 网关服务 (`qq_gateway.py`)，无需本地额外部署重型 Node.js 进程。
    - 兼容可选的本地 Node.js SDK Bridge (`extensions/qqbot_bridge/`)。
 3. **自然语言比价指令解析引擎 (`chat_commands.py`)**：
-   - 响应群聊/私聊自然语言比价查询（如 `chatgpt plus`, `claude 20x`, `cursor`, `智谱清言` 等）。
+   - 响应群聊/私聊自然语言比价查询（如 `chatgpt plus`, `claude 20x`, `cursor` 等）。
    - 自动聚合最低价、各店铺现货分布、质保周期与交付形态，输出排版优雅的回复。
 4. **个性化变动调度中心 (`dispatcher.py`)**：
    - 当快照比价流水发现降价/涨价时，智能匹配 `user_product_subscriptions`。
@@ -85,7 +85,6 @@ QQ_BOT_BRIDGE_TOKEN="your-32-chars-secret-token"
 - `plus` / `chatgpt plus`：查询当前各店铺 ChatGPT Plus 的最低价、现货与店铺排名。
 - `claude` / `20x`：查询 Claude 系列型号及 Pro 20x 现货与价格区间。
 - `cursor` / `cursor pro`：查询 Cursor Pro 及商业版当前报价。
-- `智谱` / `清言` / `glm`：查询智谱清言会员及 GLM API 资源包报价。
 - `/status`：查看比价雷达系统的实时监控统计（爬取快照、店铺数、在售商品数）。
 - `/help`：获取当前机器人支持的指令菜单。
 

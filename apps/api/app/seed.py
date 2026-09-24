@@ -38,9 +38,6 @@ PRODUCTS = [
     ("cursor-pro", "Cursor", "Cursor Pro", "Pro 个人会员订阅", "subscription", "聚合 Cursor Pro 个人订阅与代充公开报价。"),
     ("cursor-business", "Cursor", "Cursor Business", "Business 团队席位", "subscription", "聚合 Cursor Business 商业版与团队席位公开报价。"),
     ("cursor-account", "Cursor", "Cursor 账号", "基础账号与访问类商品", "account", "聚合 Cursor 基础账号与新号公开报价。"),
-    ("zhipu-qingyan-vip", "智谱", "智谱清言会员", "清言会员与订阅充值", "subscription", "聚合智谱清言个人会员与权益公开报价。"),
-    ("zhipu-api-credit", "智谱", "智谱 GLM API", "BigModel API 额度与 Key", "api", "聚合智谱开放平台 GLM API 额度与资源包公开报价。"),
-    ("zhipu-account", "智谱", "智谱账号", "基础账号与开发者账号", "account", "聚合智谱清言与开放平台基础账号公开报价。"),
 ]
 
 DEMO_OFFERS = [
@@ -55,9 +52,6 @@ DEMO_OFFERS = [
     ("GROKX", "Grok 补给站", "SuperGrok 代充值 一个月", "grok-super", "159.00", 4, "in_stock", False, 16),
     ("XPREMIUM", "X 会员补给", "X Premium+ 12个月官方直充", "x-premium-plus", "1598.00", 3, "in_stock", False, 12),
     ("CURSOR01", "Cursor 极客仓", "Cursor Pro 订阅会员 官方代充 1个月", "cursor-pro", "138.00", 8, "in_stock", False, 10),
-    ("ZHIPU01", "智谱官方特约", "智谱清言 会员月卡 官方直充", "zhipu-qingyan-vip", "30.00", 50, "in_stock", True, 8),
-    ("ZHIPU02", "大模型资源仓", "智谱开放平台 GLM-4 50元资源包", "zhipu-api-credit", "48.00", 20, "in_stock", True, 15),
-    ("ZHIPU03", "AI 开发者工坊", "智谱清言 / 开放平台 开发者基础账号", "zhipu-account", "5.00", 100, "in_stock", True, 5),
 ]
 
 

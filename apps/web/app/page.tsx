@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CheckCircle, Clock, Database, Fire, Package, ShieldCheck, Sparkle } from "@phosphor-icons/react/ssr";
+import { AdSlot } from "@/components/ad-slot";
 import { SearchBox } from "@/components/search-box";
 import { ProductCard } from "@/components/product-card";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -56,6 +57,7 @@ export default async function HomePage() {
               <Link href="/skills" className="quick-link font-semibold text-[color:var(--brand-strong)]">🔥 技能与实验室</Link>
               <Link href="/products?platform=OpenAI" className="quick-link">OpenAI</Link>
               <Link href="/products?platform=Claude" className="quick-link">Claude</Link>
+              <Link href="/relays" className="quick-link">中转站</Link>
               <Link href="/products?in_stock=true" className="quick-link">仅看有货</Link>
               <Link href="/guides/buying-checklist" className="quick-link">购买前检查</Link>
             </div>
@@ -87,6 +89,8 @@ export default async function HomePage() {
             <Link href="/products" className="live-board-link" data-vds-role="action">查看全部报价 <ArrowRight size={17} /></Link>
           </aside>
         </div>
+
+        <div className="shell"><AdSlot placement="home_hero" limit={2} className="pb-8" /></div>
 
         <dl className="shell home-stats" aria-label="报价概况">
           <div><dt>商品分类</dt><dd>{data.total} 种</dd></div>

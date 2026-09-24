@@ -381,15 +381,13 @@ def test_admin_broadcast_counts_only_delivered_bot_messages():
         assert broadcast.status == "queued"
 
 
-def test_cursor_and_zhipu_classifier():
+def test_cursor_classifier_and_retired_zhipu_titles():
     # Cursor products
     assert classify_product("Cursor Pro 官方代充 1个月").slug == "cursor-pro"
     assert classify_product("Cursor Business 商业版 团队席位").slug == "cursor-business"
     assert classify_product("Cursor 账号 独享首登成品号").slug == "cursor-account"
 
-    # 智谱 products (including 智普 variant)
-    assert classify_product("智谱清言 会员连续包月").slug == "zhipu-qingyan-vip"
-    assert classify_product("智谱 GLM-4 API 额度 Key Token").slug == "zhipu-api-credit"
-    assert classify_product("智谱账号 开发者账号").slug == "zhipu-account"
-    assert classify_product("智普清言 会员直充").slug == "zhipu-qingyan-vip"
-    assert classify_product("智普 GLM API 资源包").slug == "zhipu-api-credit"
+    # 智谱 was retired from the catalog: titles must no longer map to zhipu-* slugs.
+    for title in ("智谱清言 会员连续包月", "智谱 GLM-4 API 额度 Key Token", "智普清言 会员直充"):
+        result = classify_product(title)
+        assert not (result.slug or "").startswith("zhipu-")

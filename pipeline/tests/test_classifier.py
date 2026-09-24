@@ -442,15 +442,12 @@ def test_upsert_preserves_full_product_key_and_object_raw_json():
         assert raw.raw_json == {"description": "monthly account"}
 
 
-def test_cursor_and_zhipu_classification():
+def test_cursor_classification_and_retired_zhipu_titles():
     assert classify("Cursor Pro 官方代充 1个月").slug == "cursor-pro"
     assert classify("Cursor Business 商业版 团队席位").slug == "cursor-business"
     assert classify("Cursor 账号 独享首登成品号").slug == "cursor-account"
-    assert classify("智谱清言 会员连续包月").slug == "zhipu-qingyan-vip"
-    assert classify("智谱 GLM-4 API 额度 Key Token").slug == "zhipu-api-credit"
-    assert classify("智谱账号 开发者账号").slug == "zhipu-account"
-    assert classify("智普清言 会员直充").slug == "zhipu-qingyan-vip"
-    assert classify("智普 GLM API 资源包").slug == "zhipu-api-credit"
+    for title in ("智谱清言 会员连续包月", "智谱 GLM-4 API 额度 Key Token", "智普清言 会员直充"):
+        assert not (classify(title).slug or "").startswith("zhipu-")
 
 
 @pytest.mark.parametrize(
@@ -462,11 +459,9 @@ def test_cursor_and_zhipu_classification():
         ("Cursor 日卡 体验版", "cursor-pro"),
         ("Cursor 直充月卡 官方代充", "cursor-pro"),
         ("Cursor 年卡 个人会员", "cursor-pro"),
-        ("智谱 BigModel API 资源包", "zhipu-api-credit"),
-        ("智谱清言 VIP 月卡", "zhipu-qingyan-vip"),
     ],
 )
-def test_cursor_zhipu_rules_match_the_api_classifier(title: str, expected: str):
+def test_cursor_rules_match_the_api_classifier(title: str, expected: str):
     assert classify(title).slug == expected
 
 
