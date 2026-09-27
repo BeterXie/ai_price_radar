@@ -136,6 +136,7 @@ export const GENERAL_GUIDE_SLUGS = [
   "troubleshooting",
   "after-sales-evidence",
   "security",
+  "muse-registration",
 ] as const;
 
 export type GeneralGuideSlug = (typeof GENERAL_GUIDE_SLUGS)[number];
