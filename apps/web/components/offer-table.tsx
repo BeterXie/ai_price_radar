@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowSquareOut, CaretDown, Clock, Fire, Package, Storefront, Tag, Warning } from "@phosphor-icons/react";
-import type { GroupOffers, Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
+import type { Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
 import { DELIVERY_TYPE_LABELS, PERIOD_LABELS, SCENARIO_LABELS, WARRANTY_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime, stockLabel } from "@/lib/format";
+import { fetchGroupShopOffers } from "@/lib/group-offers";
 import { getGuideLinkLabel, resolveGuideHref } from "@/lib/guides/matcher";
 
 const OFFER_BATCH_SIZE = 30;
@@ -163,6 +164,8 @@ function ContextualGuideLink({ productSlug, deliveryType }: { productSlug?: stri
 function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQuery = "" }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null; filterQuery?: string }) {
   const [description, setDescription] = useState<string | null>(null);
   const [shopOffers, setShopOffers] = useState<Offer[] | null>(group && group.offer_count === 1 ? [offer] : null);
+  const [shopOffersUpdated, setShopOffersUpdated] = useState(false);
+  const [shopOffersFailed, setShopOffersFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const requestedRef = useRef(false);
 
@@ -175,32 +178,21 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
       if (offer.description_available) {
         requests.push(fetch(`${publicApiBase}/api/v1/offers/${offer.id}/description`)
           .then((response) => response.ok ? response.json() : Promise.reject(new Error(`API ${response.status}`)))
-          .then((data: { original_description: string }) => setDescription(data.original_description)));
+          .then((data: { original_description: string }) => setDescription(data.original_description))
+          .catch(() => setDescription("加载失败，请稍后刷新页面重试。")));
       } else {
         setDescription("");
       }
       if (group && productSlug && group.offer_count > 1) {
-        // Re-apply the list's active filters and snapshot to the detail request:
-        // without them the expanded group shows offers the user filtered out,
-        // and a newly published snapshot could mix summary and detail data.
-        const detailParams = new URLSearchParams(filterQuery);
-        if (snapshotId) {
-          detailParams.set("snapshot", String(snapshotId));
-        }
-        const detailQuery = detailParams.toString();
         requests.push(
-          fetch(`${publicApiBase}/api/v1/products/${encodeURIComponent(productSlug)}/groups/${encodeURIComponent(group.fingerprint)}${detailQuery ? `?${detailQuery}` : ""}`)
-            .then((response) => response.ok ? response.json() : Promise.reject(new Error(`API ${response.status}`)))
-            .then((data: GroupOffers) => {
-              if (data.items && data.items.length > 0) {
-                setShopOffers(data.items);
-              } else {
-                // Group exists but nothing matches the active filters.
-                setShopOffers([]);
-              }
+          fetchGroupShopOffers(productSlug, group.fingerprint, filterQuery, snapshotId)
+            .then(({ items, refreshed }) => {
+              setShopOffers(items);
+              setShopOffersUpdated(refreshed);
             })
             .catch(() => {
               setShopOffers([offer]);
+              setShopOffersFailed(true);
             })
         );
       }
@@ -211,6 +203,14 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryDetails = () => {
+    requestedRef.current = false;
+    setShopOffers(null);
+    setShopOffersUpdated(false);
+    setShopOffersFailed(false);
+    void loadDetails();
   };
 
   const shownPrice = group?.lowest_price ?? offer.price;
@@ -316,11 +316,23 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         {group && (
           <section className="mt-6 border-t hairline pt-5">
             <h4 className="text-sm font-semibold">全部店铺报价</h4>
+            {shopOffersUpdated && shopOffers && shopOffers.length > 0 && (
+              <p className="mt-3 text-xs text-black/55" role="status">报价已更新，下方显示最新店铺价格；刷新页面可同步上方汇总。</p>
+            )}
+            {shopOffersFailed && (
+              <p className="mt-3 text-xs text-black/55" role="alert">
+                店铺列表暂时无法加载，下方仅显示页面打开时的代表报价。
+                <button type="button" onClick={retryDetails} className="ml-1 underline underline-offset-2 hover:opacity-60">重试</button>
+              </p>
+            )}
             {shopOffers ? (
               shopOffers.length > 0 ? (
                 <ShopOfferList offers={shopOffers} />
               ) : (
-                <p className="mt-3 text-sm text-black/45">当前筛选条件下该同款分组没有可展示的报价，请调整筛选条件后再试。</p>
+                <p className="mt-3 text-sm text-black/45">
+                  {shopOffersUpdated ? "该同款报价已更新，当前没有匹配的店铺报价。" : "该同款当前没有匹配的店铺报价。"}
+                  <button type="button" onClick={() => window.location.reload()} className="ml-1 underline underline-offset-2 hover:opacity-60">刷新页面</button>
+                </p>
               )
             ) : (
               <p className="mt-3 text-sm text-black/45">{loading ? "正在加载店铺报价…" : "展开后加载店铺报价。"}</p>
