@@ -221,3 +221,18 @@ def test_community_skill_demo_url_is_local_html(url: str):
     assert AdminCommunitySkillCreate(
         slug="safe-demo", title="safe", demo_url="/demos/benchmarks/example.html"
     ).demo_url == "/demos/benchmarks/example.html"
+
+
+def test_community_skills_sorted_by_created_at_desc(db_session: Session):
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+    s1 = CommunitySkill(slug="old-skill", title="旧技能", created_at=now - datetime.timedelta(days=2))
+    s2 = CommunitySkill(slug="new-skill", title="新技能", created_at=now)
+    s3 = CommunitySkill(slug="mid-skill", title="中技能", created_at=now - datetime.timedelta(days=1))
+    db_session.add_all([s1, s2, s3])
+    db_session.commit()
+
+    res = public_community_skills(db=db_session)
+    slugs = [item.slug for item in res.items if item.slug in {"old-skill", "new-skill", "mid-skill"}]
+    assert slugs == ["new-skill", "mid-skill", "old-skill"]
+

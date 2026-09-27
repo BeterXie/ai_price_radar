@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Fire, MagnifyingGlass, Sparkle, Sword, TerminalWindow } from "@phosphor-icons/react/ssr";
+import { Clock, Fire, MagnifyingGlass, Sparkle, Sword, TerminalWindow } from "@phosphor-icons/react/ssr";
 import { getSkills } from "@/lib/api";
 import { getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { SkillCard } from "@/components/skills/skill-card";
@@ -209,9 +209,18 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
         ) : null}
       </div>
 
+      {/* Subheader status */}
+      <div className="mt-6 flex items-center justify-between text-xs text-[color:var(--muted)]">
+        <span>收录精选项目 ({total})</span>
+        <div className="flex items-center gap-1.5 font-medium">
+          <Clock size={13} className="text-[color:var(--brand-strong)]" />
+          <span>按发布时间倒序排列</span>
+        </div>
+      </div>
+
       {/* Skills Grid */}
       {items.length > 0 ? (
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((skill) => (
             <SkillCard key={skill.id} skill={skill} />
           ))}

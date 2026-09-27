@@ -991,6 +991,7 @@ def public_community_skills(
     tag: str = Query(default="", max_length=50),
     model: str = Query(default="", max_length=50),
     q: str = Query(default="", max_length=100),
+    sort: str = Query(default="newest", max_length=20),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -999,6 +1000,7 @@ def public_community_skills(
     t = tag if isinstance(tag, str) else ""
     m = model if isinstance(model, str) else ""
     query_str = q if isinstance(q, str) else ""
+    s = sort if isinstance(sort, str) else "newest"
     p = page if isinstance(page, int) else 1
     ps = page_size if isinstance(page_size, int) else 20
     return list_community_skills(
@@ -1007,6 +1009,7 @@ def public_community_skills(
         tag=t or None,
         model=m or None,
         search=query_str or None,
+        sort=s,
         page=p,
         page_size=ps,
         visible_only=True,

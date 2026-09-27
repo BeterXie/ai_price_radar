@@ -73,12 +73,19 @@ export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
             {meta.label}
           </span>
 
-          {skill.stars_count > 0 ? (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--muted)]">
-              <Star size={13} weight="fill" className="text-amber-500" />
-              {skill.stars_count >= 1000 ? `${(skill.stars_count / 1000).toFixed(1)}k` : skill.stars_count}
-            </span>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {skill.created_at ? (
+              <span className="text-[11px] text-[color:var(--muted)] font-mono">
+                {skill.created_at.slice(0, 10)}
+              </span>
+            ) : null}
+            {skill.stars_count > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--muted)]">
+                <Star size={13} weight="fill" className="text-amber-500" />
+                {skill.stars_count >= 1000 ? `${(skill.stars_count / 1000).toFixed(1)}k` : skill.stars_count}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {/* Title & Subtitle */}

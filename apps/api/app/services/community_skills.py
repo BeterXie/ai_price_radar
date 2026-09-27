@@ -58,6 +58,7 @@ def list_community_skills(
     tag: str | None = None,
     model: str | None = None,
     search: str | None = None,
+    sort: str = "newest",
     page: int = 1,
     page_size: int = 20,
     visible_only: bool = True,
@@ -86,11 +87,33 @@ def list_community_skills(
         select(func.count(CommunitySkill.id)).where(*conditions)
     ) or 0)
     offset = max(0, (page - 1) * page_size)
-    page_stmt = select(*_SUMMARY_COLUMNS).where(*conditions).order_by(
-        CommunitySkill.is_pinned.desc(),
-        CommunitySkill.sort_order.desc(),
-        CommunitySkill.id.desc(),
-    ).offset(offset).limit(page_size)
+
+    if sort == "stars":
+        order_clauses = (
+            CommunitySkill.stars_count.desc(),
+            CommunitySkill.created_at.desc(),
+            CommunitySkill.id.desc(),
+        )
+    elif sort == "views":
+        order_clauses = (
+            CommunitySkill.view_count.desc(),
+            CommunitySkill.created_at.desc(),
+            CommunitySkill.id.desc(),
+        )
+    elif sort == "pinned":
+        order_clauses = (
+            CommunitySkill.is_pinned.desc(),
+            CommunitySkill.created_at.desc(),
+            CommunitySkill.id.desc(),
+        )
+    else:  # "newest" / default: 按照发布时间倒序排
+        order_clauses = (
+            CommunitySkill.created_at.desc(),
+            CommunitySkill.sort_order.desc(),
+            CommunitySkill.id.desc(),
+        )
+
+    page_stmt = select(*_SUMMARY_COLUMNS).where(*conditions).order_by(*order_clauses).offset(offset).limit(page_size)
     paged = list(db.execute(page_stmt).mappings())
 
     # Collect kinds and all tags for facet navigation

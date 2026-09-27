@@ -1090,6 +1090,7 @@ def admin_get_skills(
     kind: str = Query(default="", max_length=40),
     tag: str = Query(default="", max_length=50),
     q: str = Query(default="", max_length=100),
+    sort: str = Query(default="newest", max_length=20),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -1097,6 +1098,7 @@ def admin_get_skills(
     k = kind if isinstance(kind, str) else ""
     t = tag if isinstance(tag, str) else ""
     query_str = q if isinstance(q, str) else ""
+    s = sort if isinstance(sort, str) else "newest"
     p = page if isinstance(page, int) else 1
     ps = page_size if isinstance(page_size, int) else 50
     return list_community_skills(
@@ -1104,6 +1106,7 @@ def admin_get_skills(
         kind=k or None,
         tag=t or None,
         search=query_str or None,
+        sort=s,
         page=p,
         page_size=ps,
         visible_only=False,
