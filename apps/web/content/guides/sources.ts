@@ -49,7 +49,6 @@ export const OFFICIAL_SOURCES = {
     "https://developers.openai.com/codex/config-basic/",
     "OpenAI",
   ),
-  museOfficial: officialSource("Muse 官方网站与注册通道", "https://muse.ai/join", "Meta"),
 } as const;
 
 export const PROJECT_SOURCES = {
