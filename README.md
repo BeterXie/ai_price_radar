@@ -230,7 +230,6 @@ docs/              架构、部署与数据政策
 - [生产快速部署](docs/QUICK_DEPLOY.md)
 - [数据政策](docs/DATA_POLICY.md)
 - [项目交接文档](docs/HANDOVER.md)
-- [验证记录](VALIDATION.md)
 
 ## 数据与安全边界
 
