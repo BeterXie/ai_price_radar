@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowSquareOut, ArrowsLeftRight, Info, ShieldCheck } from "@phosphor-icons/react/ssr";
+import { ArrowSquareOut, ArrowsLeftRight, CaretDown, Info, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { AdLink } from "@/components/ad-link";
 import { AdSlot } from "@/components/ad-slot";
 import { PageHero, SectionIntro } from "@/components/page-shell";
@@ -38,51 +38,68 @@ function RelayCard({ station }: { station: RelayStationPublic }) {
   })();
   return (
     <article className="relay-card" data-sponsored={station.is_sponsored ? "true" : "false"}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="relay-card-title">
-            {station.url ? (
-              <AdLink kind="relays" id={station.id} href={station.url} className="hover:underline underline-offset-4">
-                {station.name}
-              </AdLink>
-            ) : station.name}
-          </h3>
-          {station.tagline ? <p className="relay-card-tagline mt-1">{station.tagline}</p> : null}
+      <div className="relay-card-main">
+        <div className="relay-card-header">
+          <span className="relay-card-mark" aria-hidden="true"><ArrowsLeftRight size={24} /></span>
+          <div className="min-w-0">
+            <h3 className="relay-card-title">
+              {station.url ? (
+                <AdLink kind="relays" id={station.id} href={station.url} className="hover:underline underline-offset-4">
+                  {station.name}
+                </AdLink>
+              ) : station.name}
+            </h3>
+            {host ? <p className="relay-card-host mono">{host}</p> : null}
+          </div>
+          {station.is_sponsored ? <span className="ad-badge shrink-0">赞助</span> : null}
         </div>
-        {station.is_sponsored ? <span className="ad-badge shrink-0">赞助</span> : null}
+        {station.tagline ? <p className="relay-card-tagline">{station.tagline}</p> : null}
+        {station.supported_models.length > 0 ? (
+          <section className="relay-models" aria-label="模型覆盖">
+            <h4 className="relay-section-label">支持模型 <span>{station.supported_models.length}</span></h4>
+            <div className="relay-chip-row" aria-label="支持的模型">
+              {station.supported_models.slice(0, 10).map((model) => (
+                <span key={model} className="relay-chip mono">{model}</span>
+              ))}
+            </div>
+            {station.supported_models.length > 10 ? (
+              <details className="relay-models-more">
+                <summary>查看其余 {station.supported_models.length - 10} 个模型</summary>
+                <div className="relay-chip-row">
+                  {station.supported_models.slice(10).map((model) => <span key={model} className="relay-chip mono">{model}</span>)}
+                </div>
+              </details>
+            ) : null}
+          </section>
+        ) : null}
+        {station.tags.length > 0 ? (
+          <div className="relay-tags" aria-label="特性标签">
+            {station.tags.map((tag) => <span key={tag}>{tag}</span>)}
+          </div>
+        ) : null}
       </div>
-      {station.supported_models.length > 0 ? (
-        <div className="relay-chip-row" aria-label="支持的模型">
-          {station.supported_models.slice(0, 10).map((model) => (
-            <span key={model} className="relay-chip mono">{model}</span>
-          ))}
-          {station.supported_models.length > 10 ? (
-            <span className="relay-chip">+{station.supported_models.length - 10}</span>
-          ) : null}
-        </div>
-      ) : null}
-      {station.description ? <p className="relay-card-desc">{station.description}</p> : null}
-      {(station.price_note || station.billing_note || host) && (
+      <div className="relay-card-aside">
         <dl className="relay-facts">
-          {station.price_note ? <div><dt>价格说明</dt><dd>{station.price_note}</dd></div> : null}
+          <div><dt>价格说明</dt><dd className="relay-price">{station.price_note || "暂未提供价格说明"}</dd></div>
           {station.billing_note ? <div><dt>计费方式</dt><dd>{station.billing_note}</dd></div> : null}
-          {host ? <div><dt>站点</dt><dd className="mono font-normal">{host}</dd></div> : null}
         </dl>
-      )}
-      {station.tags.length > 0 ? (
-        <div className="relay-chip-row" aria-label="特性标签">
-          {station.tags.map((tag) => <span key={tag} className="relay-chip">{tag}</span>)}
-        </div>
-      ) : null}
-      <div className="relay-card-actions">
-        <span className="text-xs text-[color:var(--muted)]">
-          {station.updated_at ? `资料更新于 ${relativeTime(station.updated_at)}` : "资料由站点运营者维护"}
-        </span>
+        <p className="relay-price-source">站点提供的报价，以来源页面为准</p>
         {station.url ? (
-          <AdLink kind="relays" id={station.id} href={station.url} className="button-primary tactile !min-h-9 !px-3.5 !text-xs">
+          <AdLink kind="relays" id={station.id} href={station.url} className="button-primary tactile relay-visit" ariaLabel={`前往 ${station.name}（新窗口打开）`}>
             前往中转站 <ArrowSquareOut size={15} />
           </AdLink>
         ) : null}
+      </div>
+      <div className="relay-card-footer">
+        {station.description ? (
+          <details className="relay-description">
+            <summary>站点详细介绍 <CaretDown size={14} aria-hidden="true" /></summary>
+            <p className="relay-card-desc">{station.description}</p>
+          </details>
+        ) : null}
+        <span className="relay-updated">
+          {station.updated_at ? `资料更新于 ${relativeTime(station.updated_at)}` : "资料由站点运营者维护"}
+        </span>
       </div>
     </article>
   );
