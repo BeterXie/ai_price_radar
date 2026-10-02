@@ -360,6 +360,39 @@ def _group_offers(
     return groups
 
 
+def get_product_recommendations(
+    db: Session,
+    slug: str,
+    *,
+    snapshot: CatalogSnapshot | None = None,
+    limit: int = 5,
+) -> list[OfferPublic]:
+    """Return trusted in-stock CNY quotes, with one representative per item."""
+    product_id = db.scalar(select(Product.id).where(Product.slug == slug, Product.is_visible.is_(True)))
+    if product_id is None:
+        return []
+    snapshot = snapshot or get_current_snapshot(db)
+    offers = list(db.scalars(
+        _base_public_offer_query(db, snapshot=snapshot).where(
+            Offer.product_id == product_id,
+            Offer.is_comparable.is_(True),
+            Offer.stock_status == "in_stock",
+            Offer.currency == PRICE_CURRENCY,
+            Offer.price.is_not(None),
+            Offer.price > 0,
+        )
+    ).unique())
+    # Calculate trust before grouping so duplicate quotes retain the same
+    # statistical weight as the product page's lowest-price calculation.
+    medians = _median_prices(offers, comparable_only=True)
+    trusted = [offer for offer in offers if _is_trusted_offer(offer, medians)]
+    groups = _group_offers(trusted, medians)
+    return [
+        _offer_public(group[0], median_price=medians.get(_median_key(group[0])))
+        for _, group in groups[:limit]
+    ]
+
+
 def _data_quality(offers: list[Offer], trusted: list[Offer], comparable: list[Offer]) -> tuple[int, str]:
     if not offers:
         return 0, "数据不足"

@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 import base64
 import hashlib
 import os
+import re
 
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -35,6 +36,7 @@ from app.models import (
     SystemSetting,
     User,
     UserBotBinding,
+    UserProductSubscription,
     UserSession,
 )
 from app.services.bot_binding import check_qq_binding_session, complete_qq_binding, start_qq_binding_session
@@ -366,6 +368,307 @@ def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db, mock_a
     assert status_resp2.json()["status"] == "BOUND"
 
 
+@pytest.fixture
+def bot_product_catalog(test_db):
+    from datetime import datetime, timezone
+
+    from app.seed import PRODUCTS
+
+    test_db.add(CatalogSnapshot(source="test", published_at=datetime.now(timezone.utc)))
+    products = {
+        slug: Product(slug=slug, platform=platform, display_name=name, is_visible=True)
+        for slug, platform, name, *_ in PRODUCTS
+    }
+    test_db.add_all(products.values())
+    test_db.commit()
+    return test_db, products
+
+
+@pytest.mark.parametrize(
+    ("command", "product_slug"),
+    [
+        ("gemini账号", "gemini-account"),
+        ("Gemini 账号", "gemini-account"),
+        ("GEMINI   账号", "gemini-account"),
+        ("gemini\t账号", "gemini-account"),
+        ("gemini\u3000账号", "gemini-account"),
+        ("查询gemini账号", "gemini-account"),
+        ("搜索 Gemini  账号", "gemini-account"),
+        ("claude账号", "claude-account"),
+        ("chatgpt账号", "chatgpt-account"),
+        ("grok账号", "grok-account"),
+        ("cursor账号", "cursor-account"),
+        ("geminiadvanced", "gemini-advanced"),
+        ("grokapi", "grok-api-access"),
+        ("cursor pro", "cursor-pro"),
+        ("cursorpro", "cursor-pro"),
+        ("premium", "x-premium"),
+        ("premium+", "x-premium-plus"),
+        ("x premium basic", "x-premium-basic"),
+        ("x premium", "x-premium"),
+        ("xpremiumplus", "x-premium-plus"),
+        ("claudeteam", "claude-team"),
+        ("chatgpt20x", "chatgpt-pro-20x"),
+        ("chatgpt pro", "chatgpt-pro-20x"),
+        ("gptpro", "chatgpt-pro-20x"),
+        ("chatgpt-pro", "chatgpt-pro-20x"),
+        ("chatgpt 5x", "chatgpt-pro-5x"),
+        ("chatgptgo", "chatgpt-go"),
+        ("codexgo", "chatgpt-go"),
+        ("chatgpt接码", "chatgpt-access-service"),
+        ("chatgpt手机接码", "chatgpt-access-service"),
+        ("free", "chatgpt-account"),
+        ("codex", "chatgpt-plus"),
+    ],
+)
+def test_bot_product_queries_accept_common_spacing(bot_product_catalog, command, product_slug):
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, products = bot_product_catalog
+    reply = handle_chat_command(command, db=db)
+    assert reply.startswith(f"📦【{products[product_slug].display_name}】"), reply
+    assert "未找到" not in reply
+
+
+@pytest.mark.parametrize("brand", ["Claude", "OpenAI", "Gemini", "Grok", "X", "Cursor"])
+def test_bot_brand_recommended_queries_resolve_within_brand(bot_product_catalog, brand):
+    from extensions.bots.chat_commands import BRAND_GROUPS, handle_chat_command, query_brand_lowest_prices
+
+    db, products = bot_product_catalog
+    config = BRAND_GROUPS[brand]
+    brand_reply = query_brand_lowest_prices(db, brand)
+    assert config["hint"] in brand_reply
+    recommended_commands = re.findall(r"「([^」]+)」", config["hint"])
+    assert recommended_commands
+    expected_prefixes = tuple(f"📦【{product.display_name}】" for product in products.values() if product.platform == brand)
+    for command in recommended_commands:
+        for text in (command, "".join(command.split())):
+            reply = handle_chat_command(text, db=db)
+            assert reply.startswith(expected_prefixes), f"{brand}: {text}: {reply}"
+
+
+def test_bot_product_name_search_preserves_word_boundaries(bot_product_catalog):
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, _ = bot_product_catalog
+    name = "Gemini 基础注册服务"
+    db.add(Product(slug="gemini-registration-service", platform="Gemini", display_name=name, is_visible=True))
+    db.commit()
+    reply = handle_chat_command(f"查询 {name}", db=db)
+    assert reply.startswith(f"📦【{name}】"), reply
+
+
+@pytest.fixture
+def bot_quote(bot_product_catalog):
+    from itertools import count
+
+    db, products = bot_product_catalog
+    snapshot = db.query(CatalogSnapshot).first()
+    serial = count()
+
+    def add_quote(slug, price, *, shop=None, **attributes):
+        index = next(serial)
+        if shop is None:
+            shop = Shop(token=f"quote-{index}", name=f"Shop {index}", source_url="https://example.com")
+            db.add(shop)
+            db.flush()
+        raw = RawProduct(shop_id=shop.id, source_product_key=f"quote-{index}", original_name=f"Item {index}")
+        db.add(raw)
+        db.flush()
+        values = dict(stock_status="in_stock", stock_count=5, is_comparable=True, delivery_type="finished_account", service_period="one_month")
+        values.update(attributes)
+        offer = Offer(
+            product_id=products[slug].id, raw_product_id=raw.id, shop_id=shop.id,
+            snapshot_id=snapshot.id, price=Decimal(price), source_url=f"https://example.com/{index}", **values,
+        )
+        db.add(offer)
+        db.commit()
+        return offer
+
+    return add_quote
+
+
+@pytest.mark.parametrize("stock_count", [1, None, 0])
+def test_bot_prices_match_product_page_and_watchlist(bot_product_catalog, bot_quote, stock_count):
+    from app.services.catalog import get_product_detail, list_product_cards
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, _ = bot_product_catalog
+    bot_quote("chatgpt-plus", "295", stock_count=stock_count)
+    bot_quote("chatgpt-plus", "300")
+    user = User(email="price-consistency@example.com")
+    db.add(user)
+    db.flush()
+    db.add_all([
+        UserBotBinding(user_id=user.id, target_id="price-user"),
+        UserProductSubscription(user_id=user.id, product_slug="chatgpt-plus", target_price=Decimal("295")),
+    ])
+    db.commit()
+
+    detail = get_product_detail(db, "chatgpt-plus")
+    card = list_product_cards(db, product_slug="chatgpt-plus")[0]
+    assert detail.lowest_price == card.lowest_price == Decimal("295")
+    for command, expected in [
+        ("plus", "最低在售: ¥295.00"),
+        ("openai", "最低: ¥295.00"),
+        ("行情", "ChatGPT Plus: 最低 ¥295.00"),
+        ("关注", "最新低价: ¥295.00"),
+    ]:
+        reply = handle_chat_command(command, sender_id="price-user", db=db)
+        assert expected in reply
+        assert "库存充足" not in reply
+        assert "库存>1" not in reply
+        if stock_count is None:
+            assert "库存数未注明" in reply
+    assert "已达标" in handle_chat_command("关注", sender_id="price-user", db=db)
+
+
+def test_bot_brand_reads_visible_categories_from_catalog(bot_product_catalog, bot_quote):
+    from app.services.catalog import list_product_cards
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, products = bot_product_catalog
+    products["chatgpt-plus"].is_visible = False
+    new_product = Product(slug="new-openai-plan", platform="OpenAI", display_name="New OpenAI Plan")
+    products[new_product.slug] = new_product
+    db.add(new_product)
+    db.commit()
+    bot_quote("chatgpt-go", "34.65")
+    bot_quote("chatgpt-access-service", "1.00", delivery_type="verification_service")
+    bot_quote(new_product.slug, "40.00")
+    reply = handle_chat_command("openai", db=db)
+    cards = list_product_cards(db, platform="OpenAI")
+    for card in cards:
+        assert card.display_name in reply
+        assert f"¥{card.lowest_price:.2f}" in reply
+    assert "ChatGPT Plus" not in reply
+    assert "34.65" in reply and "1.00" in reply and "New OpenAI Plan" in reply
+
+
+def test_bot_ranking_merges_same_items_and_uses_site_order(bot_product_catalog, bot_quote):
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.catalog import get_product_detail, get_product_recommendations
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, _ = bot_product_catalog
+    older = bot_quote("chatgpt-plus", "10", stock_count=100, item_fingerprint="same", observed_at=datetime.now(timezone.utc) - timedelta(hours=1))
+    newer = bot_quote("chatgpt-plus", "10", shop=older.shop, stock_count=1, item_fingerprint="same")
+    for index in range(1, 7):
+        bot_quote("chatgpt-plus", str(10 + index), item_fingerprint=f"different-{index}")
+    detail = get_product_detail(db, "chatgpt-plus")
+    recommendations = get_product_recommendations(db, "chatgpt-plus")
+    assert len(recommendations) == 5
+    assert len({offer.item_fingerprint for offer in recommendations}) == 5
+    assert recommendations[0].id == newer.id
+    assert [offer.id for offer in recommendations] == [group.representative.id for group in detail.offer_groups[:5]]
+    reply = handle_chat_command("plus", db=db)
+    assert "同款合并" in reply
+    assert "5. ¥14.00" in reply and "¥15.00" not in reply
+    assert "服务期限: 1 个月" in reply
+
+
+def test_bot_hidden_categories_stay_hidden_in_all_commands(bot_product_catalog, bot_quote):
+    from app.services.catalog import get_product_detail, get_product_recommendations
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, products = bot_product_catalog
+    offer = bot_quote("chatgpt-plus", "100")
+    products["chatgpt-plus"].is_visible = False
+    db.add_all([
+        Product(slug="other-plus", platform="X", display_name="Other Plus Service"),
+        OfferHistory(offer_id=offer.id, price=Decimal("120")),
+        OfferHistory(offer_id=offer.id, price=Decimal("100")),
+    ])
+    user = User(email="hidden-category@example.com")
+    db.add(user)
+    db.flush()
+    db.add_all([
+        UserBotBinding(user_id=user.id, target_id="hidden-user"),
+        UserProductSubscription(user_id=user.id, product_slug="chatgpt-plus"),
+    ])
+    db.commit()
+    assert get_product_detail(db, "chatgpt-plus") is None
+    assert get_product_recommendations(db, "chatgpt-plus") == []
+    for command in ("plus", "chatgpt-plus", "openai", "行情", "关注", "降价"):
+        reply = handle_chat_command(command, sender_id="hidden-user", db=db)
+        assert "¥100.00" not in reply
+        assert "/products/chatgpt-plus" not in reply
+        if command in ("plus", "chatgpt-plus"):
+            assert "未找到" in reply
+            assert "Other Plus Service" not in reply
+        else:
+            assert "ChatGPT Plus" not in reply
+    assert "未找到" in handle_chat_command("plus", db=db)
+
+
+def test_bot_related_only_category_matches_site_expanded_scope(bot_product_catalog, bot_quote):
+    from app.services.catalog import OfferFilters, get_product_detail
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, _ = bot_product_catalog
+    bot_quote("gemini-advanced", "20", is_comparable=False, delivery_type="shared_pool")
+    bot_quote("gemini-advanced", "10", is_comparable=False, delivery_type="trial_account", stock_status="out_of_stock", stock_count=0)
+    assert get_product_detail(db, "gemini-advanced").offer_group_count == 0
+    assert get_product_detail(db, "gemini-advanced", filters=OfferFilters()).offer_group_count == 2
+    reply = handle_chat_command("gemini advanced", db=db)
+    assert "相关商品报价" in reply
+    assert "¥20.00" in reply and "共享号池" in reply
+    assert "已售罄" in reply
+    assert "最低在售" not in reply
+    assert "/products/gemini-advanced?comparable=false" in reply
+
+
+def test_bot_relay_command_matches_site_cross_brand_scope(bot_product_catalog, bot_quote):
+    from app.services.catalog import OfferFilters, get_catalog_group_page
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, products = bot_product_catalog
+    bot_quote("openai-api-credit", "2", is_comparable=False, delivery_type="relay_api")
+    bot_quote("claude-api-access", "3", currency="USD", is_comparable=False, delivery_type="relay_api")
+    bot_quote("chatgpt-plus", "25", delivery_type="finished_account")
+    bot_quote("gemini-api-access", "1", is_comparable=False, delivery_type="relay_api")
+    products["gemini-api-access"].is_visible = False
+    db.commit()
+    groups, total, *_ = get_catalog_group_page(db, offset=0, limit=5, filters=OfferFilters(delivery_type="relay_api"))
+    assert total == 2
+    for command in ("中转", "查询中转站", "relay"):
+        reply = handle_chat_command(command, db=db)
+        assert "跨品牌，共 2 组" in reply
+        for group in groups:
+            assert group.product_name in reply
+        assert "USD 3.00" in reply
+        assert "Gemini API" not in reply and "ChatGPT Plus" not in reply
+        assert "最低在售" not in reply
+
+
+def test_bot_rejects_suspicious_price_without_claiming_insufficient_stock(bot_product_catalog, bot_quote):
+    from app.services.catalog import get_product_detail
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, _ = bot_product_catalog
+    bot_quote("chatgpt-plus", "0.20", stock_count=5)
+    assert get_product_detail(db, "chatgpt-plus").lowest_price is None
+    reply = handle_chat_command("plus", db=db)
+    assert "暂无通过价格校验的可比现货报价" in reply
+    assert "最低在售" not in reply and "仅剩1件" not in reply
+
+
+def test_bot_price_trust_matches_site_delivery_type_median(bot_product_catalog, bot_quote):
+    from app.services.catalog import get_product_detail, get_product_recommendations
+    from extensions.bots.chat_commands import handle_chat_command
+
+    db, _ = bot_product_catalog
+    for price in ("3", "10", "11", "12", "13"):
+        bot_quote("chatgpt-plus", price)
+    detail = get_product_detail(db, "chatgpt-plus")
+    recommendations = get_product_recommendations(db, "chatgpt-plus")
+    assert detail.lowest_price == recommendations[0].price == Decimal("10")
+    assert all(offer.is_trusted_price for offer in recommendations)
+    reply = handle_chat_command("plus", db=db)
+    assert "最低在售: ¥10.00" in reply and "¥3.00" not in reply
+
+
 def test_bot_chat_commands(client: TestClient, test_db):
     try:
         import extensions.bots.chat_commands  # noqa: F401  (availability probe)
@@ -394,7 +697,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
 
     # 3. Products
     p_plus = Product(id=1, slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus", is_visible=True)
-    p_pro = Product(id=2, slug="claude-pro", platform="Anthropic", display_name="Claude Pro (5x)", is_visible=True)
+    p_pro = Product(id=2, slug="claude-pro", platform="Claude", display_name="Claude Pro (5x)", is_visible=True)
     p_pro20x = Product(id=3, slug="claude-pro-20x", platform="Claude", display_name="Claude Pro 20x", is_visible=True)
     p_team = Product(id=4, slug="claude-team", platform="Claude", display_name="Claude Team", is_visible=True)
     test_db.add_all([p_plus, p_pro, p_pro20x, p_team])
@@ -408,7 +711,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     test_db.flush()
 
     # 5. Offers
-    # Offer 1: Valid lowest price offer (price=120, stock=10, is_comparable=True)
+    # Offer 1: Valid higher price offer.
     off1 = Offer(
         id=1,
         raw_product_id=raw1.id,
@@ -423,7 +726,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
         warranty="subscription_term",
         source_url="https://shop1.com/p1",
     )
-    # Offer 2: Lower price (80.00) but stock_count=1 -> MUST NOT be chosen as lowest!
+    # Offer 2: Single-stock quotes participate in the website's lowest price.
     off2 = Offer(
         id=2,
         raw_product_id=raw2.id,
@@ -498,26 +801,26 @@ def test_bot_chat_commands(client: TestClient, test_db):
     test_db.add_all([shop_hidden, raw4, raw5, raw6, off1, off2, off3, off4, off5, off6])
     test_db.commit()
 
-    # A. Test `plus` command (must pick 120.00, NOT 80.00, 6.80, 19.79, or 9.99)
+    # A. The bot must agree with the website, including single-stock quotes.
     resp = client.post("/api/v1/user/notifications/bot/command", json={"text": "plus"})
     assert resp.status_code == 200
     reply = resp.json()["reply"]
     assert "ChatGPT Plus" in reply
     assert "120.00" in reply
-    assert "¥80.00" not in reply  # 80.00 offer has stock=1, filtered out
+    assert "最低在售: ¥80.00" in reply
     assert "6.80" not in reply  # unapproved offer filtered out
     assert "19.79" not in reply  # hidden offer filtered out
     assert "9.99" not in reply  # invisible shop filtered out
-    assert "次优报价: ¥135.00" in reply
+    assert "3. ¥135.00" in reply
     assert "极客小铺" in reply
-    assert "10 件" in reply
+    assert "库存 1 件" in reply
 
-    # B. Test `pro` command (no offers with stock > 1)
+    # B. Test a category without public comparable in-stock quotes.
     resp_pro = client.post("/api/v1/user/notifications/bot/command", json={"text": "pro"})
     assert resp_pro.status_code == 200
     reply_pro = resp_pro.json()["reply"]
     assert "Claude Pro" in reply_pro
-    assert "暂无可比且库存 > 1 的现货报价" in reply_pro
+    assert "暂无通过价格校验的可比现货报价" in reply_pro
 
     # B2. Test `claude` brand aggregation command
     resp_claude = client.post("/api/v1/user/notifications/bot/command", json={"text": "claude"})
@@ -534,7 +837,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     reply_openai = resp_openai.json()["reply"]
     assert "OpenAI / ChatGPT 全系列最低报价一览" in reply_openai
     assert "ChatGPT Plus" in reply_openai
-    assert "120.00" in reply_openai
+    assert "最低: ¥80.00" in reply_openai
     assert "6.80" not in reply_openai
     assert "19.79" not in reply_openai
     assert "9.99" not in reply_openai
@@ -560,7 +863,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     assert resp_mkt.status_code == 200
     reply_mkt = resp_mkt.json()["reply"]
     assert "大盘行情" in reply_mkt
-    assert "ChatGPT Plus: 最低 ¥120.00" in reply_mkt
+    assert "ChatGPT Plus: 最低 ¥80.00" in reply_mkt
 
     # D. Test `help` command
     resp_help = client.post("/api/v1/user/notifications/bot/command", json={"text": "help"})

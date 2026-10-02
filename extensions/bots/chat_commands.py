@@ -3,21 +3,27 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, contains_eager
 
 from app.database import SessionLocal
-from app.models import CatalogSnapshot, Offer, OfferHistory, Product, Shop, UserBotBinding
+from app.models import CatalogSnapshot, Offer, OfferHistory, Product, UserBotBinding
+from app.schemas import OfferGroupPublic, OfferPublic
 from app.services.bot_binding import complete_qq_binding
 from app.services.catalog import (
+    OfferFilters,
     _base_public_offer_query,
     _is_trusted_offer,
     _median_prices,
     get_current_snapshot,
+    get_catalog_group_page,
+    get_product_detail,
+    get_product_recommendations,
+    list_product_cards,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,8 +40,18 @@ DELIVERY_LABELS: dict[str, str] = {
     "shared_pool": "共享号池",
     "relay_api": "中转 / 反代",
     "api_credit": "API 额度",
-    "verification_service": "接码服务",
-    "unknown": "普通形态",
+    "verification_service": "验证 / 接码服务",
+    "unknown": "形态待确认",
+}
+
+PERIOD_LABELS: dict[str, str] = {
+    "one_day": "1 天 / 日抛",
+    "one_week": "1 周",
+    "one_month": "1 个月",
+    "three_months": "3 个月",
+    "six_months": "6 个月",
+    "one_year": "1 年",
+    "unknown": "期限未注明",
 }
 
 WARRANTY_LABELS: dict[str, str] = {
@@ -49,49 +65,47 @@ WARRANTY_LABELS: dict[str, str] = {
     "unknown": "质保未注明",
 }
 
+def _normalize_query_alias(value: str) -> str:
+    return "".join(value.split()).casefold()
+
+
 BRAND_GROUPS: dict[str, dict[str, Any]] = {
     "Claude": {
         "title": "Claude 全系列最低报价一览",
         "aliases": ["claude", "anthropic", "克劳德"],
-        "slugs": ["claude-pro", "claude-pro-20x", "claude-team", "claude-account", "claude-api-access"],
-        "hint": "发送具体型号（如「pro」、「20x」、「team」）可查看前 5 家店铺深度比价。",
+        "hint": "发送具体型号（如「claude pro」、「claude 20x」、「claude team」）可查看最低价与店铺详情。",
     },
     "OpenAI": {
         "title": "OpenAI / ChatGPT 全系列最低报价一览",
         "aliases": ["openai", "chatgpt", "gpt"],
-        "slugs": ["chatgpt-plus", "chatgpt-pro-5x", "chatgpt-pro-20x", "chatgpt-k12", "chatgpt-account", "openai-api-credit"],
-        "hint": "发送具体型号（如「plus」、「20x」、「team」）可查看前 5 家店铺深度比价。",
+        "hint": "发送具体型号（如「chatgpt plus」、「chatgpt 5x」、「chatgpt 20x」、「chatgpt go」、「chatgpt接码」）可查看最低价与店铺详情。",
     },
     "Gemini": {
         "title": "Gemini 全系列最低报价一览",
         "aliases": ["gemini", "google", "双子座", "谷歌ai"],
-        "slugs": ["gemini-advanced", "gemini-account", "gemini-api-access"],
-        "hint": "发送具体型号（如「advanced」、「gemini 账号」）可查看前 5 家店铺深度比价。",
+        "hint": "发送具体型号（如「gemini advanced」、「gemini账号」）可查看最低价与店铺详情。",
     },
     "Grok": {
         "title": "Grok 全系列最低报价一览",
         "aliases": ["grok", "xai", "x.ai"],
-        "slugs": ["grok-super", "grok-account", "grok-api-access"],
-        "hint": "发送具体型号（如「supergrok」、「grok api」）可查看前 5 家店铺深度比价。",
+        "hint": "发送具体型号（如「supergrok」、「grok api」）可查看最低价与店铺详情。",
     },
     "X": {
         "title": "X (Twitter) Premium 全系列最低报价一览",
         "aliases": ["x", "twitter", "推特", "x会员"],
-        "slugs": ["x-premium-basic", "x-premium", "x-premium-plus"],
-        "hint": "发送具体型号（如「premium」、「premium+」）可查看前 5 家店铺深度比价。",
+        "hint": "发送具体型号（如「premium」、「premium+」）可查看最低价与店铺详情。",
     },
     "Cursor": {
         "title": "Cursor 全系列最低报价一览",
-        "aliases": ["cursor", "cursor pro", "cursor会员"],
-        "slugs": ["cursor-pro", "cursor-business", "cursor-account"],
-        "hint": "发送具体型号（如「cursor pro」、「cursor 账号」）可查看前 5 家店铺深度比价。",
+        "aliases": ["cursor", "cursor会员"],
+        "hint": "发送具体型号（如「cursor pro」、「cursor账号」）可查看最低价与店铺详情。",
     },
 }
 
 BRAND_ALIASES: dict[str, str] = {}
 for brand_key, cfg in BRAND_GROUPS.items():
     for alias in cfg["aliases"]:
-        BRAND_ALIASES[alias.casefold()] = brand_key
+        BRAND_ALIASES[_normalize_query_alias(alias)] = brand_key
 
 # Aliases mapped to canonical product slugs for single-product deep dive
 PRODUCT_ALIASES: dict[str, str] = {
@@ -112,8 +126,14 @@ PRODUCT_ALIASES: dict[str, str] = {
     "chatgpt 20x": "chatgpt-pro-20x",
     "chatgpt pro 20x": "chatgpt-pro-20x",
     "chatgpt-pro-20x": "chatgpt-pro-20x",
-    "chatgpt pro": "chatgpt-pro-5x",
-    "gpt pro": "chatgpt-pro-5x",
+    "chatgpt pro": "chatgpt-pro-20x",
+    "gpt pro": "chatgpt-pro-20x",
+    "chatgpt-pro": "chatgpt-pro-20x",
+    "go": "chatgpt-go",
+    "chatgpt go": "chatgpt-go",
+    "gpt go": "chatgpt-go",
+    "codex go": "chatgpt-go",
+    "chatgpt-go": "chatgpt-go",
     "team": "chatgpt-k12",
     "gpt team": "chatgpt-k12",
     "chatgpt team": "chatgpt-k12",
@@ -123,7 +143,14 @@ PRODUCT_ALIASES: dict[str, str] = {
     "chatgpt-k12": "chatgpt-k12",
     "gpt 账号": "chatgpt-account",
     "chatgpt 账号": "chatgpt-account",
+    "chatgpt free": "chatgpt-account",
+    "free": "chatgpt-account",
     "chatgpt-account": "chatgpt-account",
+    "chatgpt 接码": "chatgpt-access-service",
+    "chatgpt 手机接码": "chatgpt-access-service",
+    "openai 接码": "chatgpt-access-service",
+    "手机接码": "chatgpt-access-service",
+    "chatgpt-access-service": "chatgpt-access-service",
     "openai api": "openai-api-credit",
     "openai-api-credit": "openai-api-credit",
     # Claude models
@@ -162,11 +189,23 @@ PRODUCT_ALIASES: dict[str, str] = {
     "grok-account": "grok-account",
     "grok api": "grok-api-access",
     "grok-api-access": "grok-api-access",
+    # X Premium models
+    "premium basic": "x-premium-basic",
+    "x premium basic": "x-premium-basic",
+    "x-premium-basic": "x-premium-basic",
+    "premium": "x-premium",
+    "x premium": "x-premium",
+    "x-premium": "x-premium",
+    "premium+": "x-premium-plus",
+    "premium plus": "x-premium-plus",
+    "x premium+": "x-premium-plus",
+    "x premium plus": "x-premium-plus",
+    "x-premium-plus": "x-premium-plus",
     # Others
     "deepseek": "deepseek-r1",
-    "codex": "openai-codex",
+    "codex": "chatgpt-plus",
+    "codex plus": "chatgpt-plus",
     "api": "openai-api-credit",
-    "中转": "openai-api-credit",
     # Cursor models
     "cursor": "cursor-pro",
     "cursor pro": "cursor-pro",
@@ -176,60 +215,39 @@ PRODUCT_ALIASES: dict[str, str] = {
     "cursor 账号": "cursor-account",
     "cursor-account": "cursor-account",
 }
+PRODUCT_ALIASES = {_normalize_query_alias(alias): slug for alias, slug in PRODUCT_ALIASES.items()}
 
 
 def _get_current_snapshot(db: Session) -> CatalogSnapshot | None:
     return get_current_snapshot(db)
 
 
-def get_public_comparable_offers(
-    db: Session,
-    product: Product,
-    snapshot: CatalogSnapshot | None = None,
-    limit: int = 5,
-    min_stock: int = 2,
-) -> list[tuple[Offer, Shop]]:
-    """Retrieve public, approved, active, trusted comparable offers matching frontend rules.
+def _stock_label(offer: OfferPublic) -> str:
+    if offer.stock_status == "out_of_stock":
+        return "已售罄"
+    if offer.stock_status != "in_stock":
+        return "库存状态未注明"
+    return f"库存 {offer.stock_count} 件" if offer.stock_count is not None else "有货，库存数未注明"
 
-    Adheres strictly to the frontend catalog rules:
-    - Active & approved offers with empty/null hidden_reason
-    - Shop is visible and platform is not disabled
-    - Observed within stale_offer_hours
-    - In stock, CNY currency, comparable == True, price > 0
-    - Filtered by _is_trusted_offer (rejects extreme low-price warnings/anomalies)
-    - Prefers stock_count >= min_stock (fallback to all trusted in-stock offers if none have stock >= min_stock)
-    - Sorted by price ASC, then stock_count DESC
-    """
-    snapshot = snapshot or _get_current_snapshot(db)
-    if not snapshot:
-        return []
 
-    stmt = (
-        _base_public_offer_query(db, include_details=True, snapshot=snapshot)
-        .where(
-            Offer.product_id == product.id,
-            Offer.is_comparable.is_(True),
-            Offer.stock_status == "in_stock",
-            Offer.currency == "CNY",
-            Offer.price.is_not(None),
-            Offer.price > 0,
-        )
-    )
-    offers = list(db.scalars(stmt).unique())
-    if not offers:
-        return []
+def _offer_terms(offer: OfferPublic) -> str:
+    delivery = DELIVERY_LABELS.get(offer.delivery_type, offer.delivery_type)
+    period = PERIOD_LABELS.get(offer.service_period, offer.service_period)
+    warranty = WARRANTY_LABELS.get(offer.warranty, offer.warranty)
+    return f"{delivery} / {period} / {warranty}"
 
-    medians = _median_prices(offers, comparable_only=True)
-    all_trusted = [o for o in offers if _is_trusted_offer(o, medians)]
-    if not all_trusted:
-        return []
 
-    filtered = [o for o in all_trusted if (o.stock_count or 0) >= min_stock]
-    if not filtered:
-        filtered = all_trusted
-
-    filtered.sort(key=lambda o: (o.price is None, o.price or Decimal("999999"), -(o.stock_count or 0)))
-    return [(o, o.shop) for o in filtered[:limit]]
+def _group_quote_lines(groups: list[OfferGroupPublic]) -> list[str]:
+    lines = []
+    for idx, group in enumerate(groups, 1):
+        offer = group.representative
+        price = group.lowest_price if group.lowest_price is not None else offer.price
+        currency = group.price_currency if group.lowest_price is not None else offer.currency
+        price_label = "价格未注明" if price is None else f"{'¥' if currency == 'CNY' else currency + ' '}{price:.2f}"
+        lines.append(f"{idx}. {group.product_name}: {price_label} | {_stock_label(offer)}")
+        lines.append(f"   {offer.original_name}")
+        lines.append(f"   {_offer_terms(offer)} | {group.shop_count} 家店铺")
+    return lines
 
 
 def query_brand_lowest_prices(db: Session, brand_name: str) -> str:
@@ -243,7 +261,11 @@ def query_brand_lowest_prices(db: Session, brand_name: str) -> str:
         return "⚠️ 暂无已发布的比价大盘数据，请稍后再试。"
 
     title = brand_cfg["title"]
-    slugs = brand_cfg["slugs"]
+    slugs = tuple(db.scalars(select(Product.slug).where(
+        Product.platform == brand_name,
+        Product.is_visible.is_(True),
+    )))
+    cards = list_product_cards(db, platform=brand_name, product_slugs=slugs, snapshot_id=snapshot.id)
     hint = brand_cfg.get("hint", "")
 
     lines = [
@@ -253,39 +275,26 @@ def query_brand_lowest_prices(db: Session, brand_name: str) -> str:
 
     digit_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
-    for idx, slug in enumerate(slugs):
+    for idx, card in enumerate(cards):
         emoji = digit_emojis[idx] if idx < len(digit_emojis) else f"{idx+1}."
-        product = db.scalar(select(Product).where(Product.slug == slug))
-        if not product:
-            continue
-
-        best_rows = get_public_comparable_offers(db, product, snapshot, limit=1, min_stock=2)
-
-        p_name = product.display_name
-        lines.append(f"{emoji} {p_name}")
+        best_rows = get_product_recommendations(db, card.slug, snapshot=snapshot, limit=1)
+        lines.append(f"{emoji} {card.display_name}")
         if best_rows:
-            best_offer, best_shop = best_rows[0]
-            deliv = DELIVERY_LABELS.get(best_offer.delivery_type, best_offer.delivery_type or "现货")
-            warr = WARRANTY_LABELS.get(best_offer.warranty, best_offer.warranty or "未注明")
-            lines.append(f"   💰 最低: ¥{best_offer.price:.2f} | 现货: {best_offer.stock_count or 0} 件")
-            lines.append(f"   🏪 店铺: {best_shop.name} ({deliv} / {warr})")
-            lines.append(f"   🔗 {SITE_BASE_URL}/products/{product.slug}")
+            best_offer = best_rows[0]
+            lines.append(f"   💰 最低: ¥{best_offer.price:.2f} | {_stock_label(best_offer)}")
+            lines.append(f"   🏪 店铺: {best_offer.shop_name} ({_offer_terms(best_offer)})")
         else:
-            any_public_offer = db.scalar(
-                _base_public_offer_query(db, include_details=False, snapshot=snapshot)
-                .where(
-                    Offer.product_id == product.id,
-                    Offer.is_comparable.is_(True),
-                )
-                .limit(1)
-            )
-            if any_public_offer:
-                lines.append("   💰 暂无多库存现货 (少量或暂时缺货)")
+            if card.offer_count and not card.comparable_offer_count:
+                lines.append("   💰 仅有相关商品报价，不纳入可比最低价")
+            elif card.offer_count:
+                lines.append("   💰 暂无通过价格校验的可比现货报价")
             else:
-                lines.append("   💰 暂无在售报价 (监控中)")
-            lines.append(f"   🔗 {SITE_BASE_URL}/products/{product.slug}")
+                lines.append("   💰 暂无公开报价 (监控中)")
+        lines.append(f"   🔗 {SITE_BASE_URL}/products/{card.slug}")
         lines.append("")
 
+    if not cards:
+        lines.append("当前没有可展示的公开商品分类。")
     if lines and lines[-1] == "":
         lines.pop()
 
@@ -298,15 +307,18 @@ def query_brand_lowest_prices(db: Session, brand_name: str) -> str:
 
 
 def query_lowest_price(db: Session, raw_query: str) -> str:
-    """Find lowest price for comparable offers with stock > 1."""
+    """Find trusted comparable prices using the public catalog rules."""
     clean = raw_query.strip().casefold()
 
     # Route brand-level queries to brand aggregator
-    matched_brand = BRAND_ALIASES.get(clean)
+    alias_key = _normalize_query_alias(clean)
+    matched_brand = BRAND_ALIASES.get(alias_key)
     if matched_brand:
         return query_brand_lowest_prices(db, matched_brand)
+    if alias_key in ("中转", "中转站", "反代", "relay"):
+        return query_relay_offers(db)
 
-    target_slug = PRODUCT_ALIASES.get(clean)
+    target_slug = PRODUCT_ALIASES.get(alias_key)
 
     snapshot = _get_current_snapshot(db)
     if not snapshot:
@@ -314,9 +326,8 @@ def query_lowest_price(db: Session, raw_query: str) -> str:
 
     matched_product: Product | None = None
     if target_slug:
-        matched_product = db.scalar(select(Product).where(Product.slug == target_slug))
-
-    if not matched_product:
+        matched_product = db.scalar(select(Product).where(Product.slug == target_slug, Product.is_visible.is_(True)))
+    else:
         # Search by display_name or slug
         matched_product = db.scalar(
             select(Product)
@@ -337,28 +348,28 @@ def query_lowest_price(db: Session, raw_query: str) -> str:
             f"💡 常用指令示例:\n"
             f"  • claude — Claude 全系列最低价一览\n"
             f"  • openai — OpenAI 全系列最低价一览\n"
-            f"  • 20x — 查询 Claude/ChatGPT 20x 最低价\n"
+            f"  • claude 20x / chatgpt 20x — 查询对应品牌 20x 最低价\n"
             f"  • plus — 查询 ChatGPT Plus 最低价\n"
             f"  • pro — 查询 Claude Pro (5x) 最低价\n"
             f"  • 行情 — 查看全网大盘报价表\n"
             f"🌐 官网搜索: {SITE_BASE_URL}/products"
         )
 
-    # Query comparable offers with stock_count > 1 matching public catalog rules
-    offers_with_shop = get_public_comparable_offers(db, matched_product, snapshot, limit=5, min_stock=2)
+    offers = get_product_recommendations(db, matched_product.slug, snapshot=snapshot)
 
-    if not offers_with_shop:
-        any_public_offer = db.scalar(
-            _base_public_offer_query(db, include_details=False, snapshot=snapshot)
-            .where(
-                Offer.product_id == matched_product.id,
-                Offer.is_comparable.is_(True),
-            )
-            .limit(1)
-        )
-        msg = f"📦【{matched_product.display_name}】当前暂无可比且库存 > 1 的现货报价。\n"
-        if any_public_offer:
-            msg += "（部分低价店铺目前仅剩1件或暂时售罄）\n"
+    if not offers:
+        detail = get_product_detail(db, matched_product.slug, snapshot_id=snapshot.id)
+        if detail and detail.offer_group_count == 0:
+            related = get_product_detail(db, matched_product.slug, filters=OfferFilters(), snapshot_id=snapshot.id)
+            if related and related.offer_group_count:
+                lines = [
+                    f"📦【{matched_product.display_name}】仅有相关商品报价，暂无可直接比价的报价。",
+                    "相关商品报价（不纳入可比最低价）：",
+                    *_group_quote_lines(related.offer_groups[:5]),
+                    f"🔗 商品详情: {SITE_BASE_URL}/products/{matched_product.slug}?comparable=false",
+                ]
+                return "\n".join(lines)
+        msg = f"📦【{matched_product.display_name}】当前暂无通过价格校验的可比现货报价。\n"
         # Do not claim a subscription was created here: this path has no user
         # identity, so point the user at the place that can actually subscribe.
         msg += (
@@ -368,7 +379,7 @@ def query_lowest_price(db: Session, raw_query: str) -> str:
         )
         return msg
 
-    best_offer, best_shop = offers_with_shop[0]
+    best_offer = offers[0]
     delivery_label = DELIVERY_LABELS.get(best_offer.delivery_type, best_offer.delivery_type or "普通现货")
     warranty_label = WARRANTY_LABELS.get(best_offer.warranty, best_offer.warranty or "未注明")
 
@@ -377,18 +388,19 @@ def query_lowest_price(db: Session, raw_query: str) -> str:
         f"平台所属: {matched_product.platform}",
         "------------------------------------",
         f"🥇 最低在售: ¥{best_offer.price:.2f}",
-        f"🏪 店铺商家: {best_shop.name}",
-        f"📦 现货库存: {best_offer.stock_count or 0} 件 (库存充足)",
+        f"🏪 店铺商家: {best_offer.shop_name}",
+        f"📦 {_stock_label(best_offer)}",
+        f"商品原文: {best_offer.original_name}",
         f"🏷️ 交付形式: {delivery_label}",
+        f"服务期限: {PERIOD_LABELS.get(best_offer.service_period, best_offer.service_period)}",
         f"🛡️ 质保服务: {warranty_label}",
     ]
 
-    # Runner-up if available
-    if len(offers_with_shop) > 1:
-        runner_offer, runner_shop = offers_with_shop[1]
-        lines.append(
-            f"🥈 次优报价: ¥{runner_offer.price:.2f} @ {runner_shop.name} (库存 {runner_offer.stock_count or 0} 件)"
-        )
+    if len(offers) > 1:
+        lines.append("可比现货排行（同款合并）：")
+        for idx, offer in enumerate(offers, 1):
+            lines.append(f"{idx}. ¥{offer.price:.2f} @ {offer.shop_name} ({_stock_label(offer)})")
+            lines.append(f"   {_offer_terms(offer)}")
 
     lines.append("------------------------------------")
     lines.append(f"🔗 商品比价详情: {SITE_BASE_URL}/products/{matched_product.slug}")
@@ -399,11 +411,30 @@ def query_lowest_price(db: Session, raw_query: str) -> str:
     return "\n".join(lines)
 
 
+def query_relay_offers(db: Session) -> str:
+    snapshot = _get_current_snapshot(db)
+    if not snapshot:
+        return "⚠️ 暂无已发布的比价大盘数据，请稍后再试。"
+    groups, total, *_ = get_catalog_group_page(
+        db, offset=0, limit=5, filters=OfferFilters(delivery_type="relay_api"), snapshot=snapshot,
+    )
+    return "\n".join([
+        f"中转 / 反代商品报价（跨品牌，共 {total} 组）",
+        "相关商品报价，不纳入会员最低价比较。",
+        *(_group_quote_lines(groups) if groups else ["当前没有公开的中转 / 反代商品报价。"]),
+        f"商品报价: {SITE_BASE_URL}/products?brand=%E4%B8%AD%E8%BD%AC%E7%AB%99",
+        f"中转站目录: {SITE_BASE_URL}/relays",
+    ])
+
+
 def query_market_overview(db: Session) -> str:
     """Render a market summary board for major AI subscriptions."""
     snapshot = _get_current_snapshot(db)
     if not snapshot:
         return "⚠️ 暂无已发布的行情快照数据。"
+    published_at = snapshot.published_at
+    if published_at.tzinfo is None:
+        published_at = published_at.replace(tzinfo=timezone.utc)
 
     major_targets = [
         ("ChatGPT Plus", "chatgpt-plus"),
@@ -415,29 +446,29 @@ def query_market_overview(db: Session) -> str:
 
     lines = [
         "📊【PriceMemo AI 服务大盘行情】",
-        f"数据快照: #{snapshot.id} ({datetime.now(timezone.utc).strftime('%H:%M UTC')})",
+        f"数据快照: #{snapshot.id} ({published_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')})",
         "------------------------------------",
     ]
 
     for label, slug in major_targets:
-        product = db.scalar(select(Product).where(Product.slug == slug))
+        product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
         if not product:
             continue
 
-        best_rows = get_public_comparable_offers(db, product, snapshot, limit=1, min_stock=2)
+        best_rows = get_product_recommendations(db, product.slug, snapshot=snapshot, limit=1)
 
         if best_rows:
-            best_offer, _ = best_rows[0]
-            lines.append(f"▪️ {label}: 最低 ¥{best_offer.price:.2f} (库存 {best_offer.stock_count or 0} 件)")
+            best_offer = best_rows[0]
+            lines.append(f"▪️ {label}: 最低 ¥{best_offer.price:.2f} ({_stock_label(best_offer)})")
         else:
-            lines.append(f"▪️ {label}: 暂无库存>1在售报价")
+            lines.append(f"▪️ {label}: 暂无通过价格校验的可比现货报价")
 
-    total_shops = db.scalar(select(func.count(Shop.id)).where(Shop.is_visible == True)) or 0
-    subq = _base_public_offer_query(db, include_details=False, snapshot=snapshot).subquery()
-    total_offers = db.scalar(select(func.count()).select_from(subq)) or 0
+    cards = list_product_cards(db, snapshot_id=snapshot.id)
+    total_offers = sum(card.offer_count for card in cards)
+    in_stock_offers = sum(card.in_stock_count for card in cards)
 
     lines.append("------------------------------------")
-    lines.append(f"📡 监控全网店铺: {total_shops} 家 | 当前在售: {total_offers} 条")
+    lines.append(f"📡 当前公开报价: {total_offers} 条 | 有货报价: {in_stock_offers} 条")
     lines.append(f"🌐 完整比价看板: {SITE_BASE_URL}")
     lines.append("💡 发送 claude 或 openai 可查看品牌全系列价格一览")
 
@@ -459,6 +490,7 @@ def query_recent_drops(db: Session) -> str:
         .join(Product, Offer.product_id == Product.id)
         .options(contains_eager(Offer.product))
         .where(
+            Product.is_visible.is_(True),
             Offer.is_comparable.is_(True),
             Offer.stock_status == "in_stock",
             Offer.currency == "CNY",
@@ -629,7 +661,7 @@ def query_user_subscriptions(db: Session, sender_id: str, channel: str = "qq") -
     if not sender_id:
         return f"⚠️ 未能识别您的账号，请先在官网个人中心扫码绑定：{SITE_BASE_URL}/account"
 
-    from app.models import UserBotBinding, UserProductSubscription
+    from app.models import UserProductSubscription
 
     binding = db.scalar(
         select(UserBotBinding).where(
@@ -648,7 +680,8 @@ def query_user_subscriptions(db: Session, sender_id: str, channel: str = "qq") -
     subs = list(
         db.scalars(
             select(UserProductSubscription)
-            .where(UserProductSubscription.user_id == binding.user_id)
+            .join(Product, UserProductSubscription.product_slug == Product.slug)
+            .where(UserProductSubscription.user_id == binding.user_id, Product.is_visible.is_(True))
             .order_by(UserProductSubscription.id.asc())
         )
     )
@@ -666,20 +699,20 @@ def query_user_subscriptions(db: Session, sender_id: str, channel: str = "qq") -
     ]
 
     for idx, sub in enumerate(subs, 1):
-        product = db.scalar(select(Product).where(Product.slug == sub.product_slug))
+        product = db.scalar(select(Product).where(Product.slug == sub.product_slug, Product.is_visible.is_(True)))
         p_name = product.display_name if product else sub.product_slug
         min_offer = None
         if snapshot and product:
-            best_rows = get_public_comparable_offers(db, product, snapshot, limit=1, min_stock=1)
+            best_rows = get_product_recommendations(db, product.slug, snapshot=snapshot, limit=1)
             if best_rows:
-                min_offer = best_rows[0][0]
+                min_offer = best_rows[0]
 
         if min_offer:
             target_str = f"¥{sub.target_price:.2f}" if sub.target_price is not None else "未设阈值"
             status_flag = "✅ 已达标" if (sub.target_price is not None and min_offer.price <= sub.target_price) else "⏳ 监控中"
             lines.append(
                 f"{idx}. 🎯 {p_name}\n"
-                f"   最新低价: ¥{min_offer.price:.2f} (库存 {min_offer.stock_count} 件) | {status_flag}\n"
+                f"   最新低价: ¥{min_offer.price:.2f} ({_stock_label(min_offer)}) | {status_flag}\n"
                 f"   目标价格: {target_str}\n"
                 f"   🔗 {SITE_BASE_URL}/products/{sub.product_slug}"
             )
@@ -704,16 +737,23 @@ def help_menu() -> str:
         "  • openai / gpt — OpenAI 全系列最低价一览",
         "  • gemini — Gemini 全系列最低价一览",
         "  • grok — Grok 全系列最低价一览",
+        "  • cursor — Cursor 全系列最低价一览",
+        "  • x / twitter — X Premium 全系列最低价一览",
         "",
-        "🔍 单品深度比价 (Top 5 现货店铺):",
-        "  • 20x / claude 20x — 查询 20x 高配版最低价",
+        "🔍 单品比价与店铺详情:",
+        "  • 20x / claude 20x — 查询 Claude 20x 最低价",
+        "  • chatgpt 20x — 查询 ChatGPT 20x 最低价",
+        "  • chatgpt 5x / chatgpt go — 查询对应订阅型号最低价",
+        "  • chatgpt接码 — 查询手机接码服务报价",
         "  • pro / 5x — 查询 Claude Pro (5x) 最低价",
-        "  • team — 查询 Claude/ChatGPT Team 最低价",
+        "  • claude team / chatgpt team — 查询对应品牌团队版报价",
         "  • plus — 查询 ChatGPT Plus 最低价",
         "  • gemini advanced — 查询 Gemini Advanced 最低价",
         "  • supergrok — 查询 SuperGrok 最低价",
-        "  • cursor — 查询 Cursor Pro 最低价",
-        "  • api — 查询 API 额度与中转渠道",
+        "  • cursor pro — 查询 Cursor Pro 最低价",
+        "  • gemini账号 / claude账号 / cursor账号 — 查询对应品牌账号",
+        "  • api / openai api — 查询 OpenAI API 额度商品",
+        "  • 中转 / 中转站 — 查看跨品牌中转、反代商品报价",
         "  • 查 <关键词> — 搜索任意商品或服务最低价",
         "",
         "📊 大盘行情与发现:",
@@ -821,7 +861,7 @@ def handle_chat_command(
     query_term = search_match.group(1).strip() if search_match else text
 
     # 8. Check brand queries first (e.g. claude, openai, chatgpt, gemini, grok)
-    matched_brand = BRAND_ALIASES.get(query_term.casefold())
+    matched_brand = BRAND_ALIASES.get(_normalize_query_alias(query_term))
     if matched_brand:
         if db is not None:
             return query_brand_lowest_prices(db, matched_brand)
