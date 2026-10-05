@@ -263,8 +263,8 @@ export function MarkdownView({ content = "" }: { content: string }) {
   };
 
   const formatInline = (text: string): React.ReactNode => {
-    // Basic inline formatting: **bold**, `code`, [link](url)
-    const parts = text.split(/(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))/g);
+    // Basic inline formatting: **bold**, `code`, ![image](url), [link](url)
+    const parts = text.split(/(\*\*.*?\*\*|`.*?`|!\[.*?\]\(.*?\)|\[.*?\]\(.*?\))/g);
     return parts.map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return <strong key={i} className="font-bold text-[color:var(--foreground)]">{part.slice(2, -2)}</strong>;
@@ -274,6 +274,23 @@ export function MarkdownView({ content = "" }: { content: string }) {
           <code key={i} className="rounded bg-[color:var(--hover)] px-1.5 py-0.5 font-mono text-xs text-[color:var(--brand-strong)]">
             {part.slice(1, -1)}
           </code>
+        );
+      }
+      const imgMatch = part.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imgMatch) {
+        const src = safeLinkHref(imgMatch[2]);
+        if (!src) {
+          return <span key={i}>{imgMatch[1]}</span>;
+        }
+        return (
+          <img
+            key={i}
+            src={src}
+            alt={imgMatch[1]}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="my-4 h-auto w-full rounded-xl border border-[color:var(--line)] object-cover"
+          />
         );
       }
       const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
