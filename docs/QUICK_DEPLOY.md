@@ -334,7 +334,7 @@ $COMPOSE up -d --no-deps source-detector
 $COMPOSE up -d --no-deps web
 # 若本次发布包含邮件通知配置或 Worker 代码，同时取消下一行注释并切换 notification-worker
 # $COMPOSE up -d --no-deps notification-worker
-# 确认公网首页出现目标版本文案
+# 确认公网首页的 `<meta name="application-version" content="目标版本">` 与 Tag 一致
 ```
 
 API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像。不要回滚或重建 PostgreSQL。
@@ -356,6 +356,7 @@ API 失败时立即恢复旧 API 镜像；Web 失败时只恢复旧 Web 镜像�
 [ ] Schema.org 候选默认停留在 pending_review，未被自动批准（除非显式开启 DISCOVERY_SCHEMA_AUTO_APPROVE）
 [ ] 已 published 且仍启用的 Dujiao/Merchant/WooCommerce/Schema.org/16688 来源在连续两次完整刷新中都存在；disabled 来源在下一快照移除
 [ ] 首页、报价目录和一个商品详情页可正常访问
+[ ] 首页的 `application-version` 元信息与 Tag 版本一致（例如 Tag `v3.9.13` 对应 `content="3.9.13"`），与 API `/health` 版本相同
 [ ] `https://ai.pricememo.cn/baidu_verify_codeva-27l7NEdkV0.html` 返回 200，响应体与百度提供的验证文件完全一致
 [ ] 真实商品的可信最低价与 related_lowest_price 口径正确
 [ ] API/Web 部署后日志无 traceback、exception、critical

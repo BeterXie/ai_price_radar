@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.13] - 2026-10-05
+
+### Deployment version verification
+- Publish the Web build version in `application-version` metadata, sourced from the Web package version, so deployment checks can verify the frontend alongside API `/health`.
+- Include the Markdown article image fixes from v3.9.12.
+
 ## [3.9.12] - 2026-10-05
 
 ### Markdown article images

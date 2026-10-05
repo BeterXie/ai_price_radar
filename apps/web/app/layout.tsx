@@ -14,11 +14,13 @@ import { GoogleAnalytics } from "@/components/google-analytics";
 import { getMeta } from "@/lib/api";
 import { getSearchEngineVerificationMetadata } from "@/lib/search-engine-verification";
 import { SITE_URL } from "@/lib/site";
+import { version } from "@/package.json";
 
 export async function generateMetadata(): Promise<Metadata> {
   const verification = getSearchEngineVerificationMetadata();
   return {
     metadataBase: new URL(SITE_URL),
+    other: { "application-version": version },
     title: { default: "AI Price Memory (AI Price Radar) · PriceMemo", template: "%s · AI Price Memory · AI Price Radar · PriceMemo" },
     description: "聚合公开 AI 订阅商品报价，比较价格、库存、来源和更新时间。",
     openGraph: { siteName: "AI Price Memory / AI Price Radar", locale: "zh_CN", type: "website" },
