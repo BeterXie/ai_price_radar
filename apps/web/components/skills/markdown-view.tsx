@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Lexer, type Token } from "marked";
 import { Check, Copy, Sparkle, TerminalWindow, Code as CodeIcon, WarningCircle, Lightbulb, Info } from "@phosphor-icons/react";
 
 function safeLinkHref(value: string): string | null {
@@ -264,40 +265,38 @@ export function MarkdownView({ content = "" }: { content: string }) {
 
   const formatInline = (text: string): React.ReactNode => {
     // Basic inline formatting: **bold**, `code`, ![image](url), [link](url)
-    const parts = text.split(/(\*\*.*?\*\*|`.*?`|!\[.*?\]\(.*?\)|\[.*?\]\(.*?\))/g);
-    return parts.map((part, i) => {
-      if (part.startsWith("**") && part.endsWith("**")) {
-        return <strong key={i} className="font-bold text-[color:var(--foreground)]">{part.slice(2, -2)}</strong>;
+    const renderTokens = (parts: Token[] = []): React.ReactNode => parts.map((part, i) => {
+      if (part.type === "strong") {
+        return <strong key={i} className="font-bold text-[color:var(--foreground)]">{renderTokens(part.tokens)}</strong>;
       }
-      if (part.startsWith("`") && part.endsWith("`")) {
+      if (part.type === "codespan") {
         return (
           <code key={i} className="rounded bg-[color:var(--hover)] px-1.5 py-0.5 font-mono text-xs text-[color:var(--brand-strong)]">
-            {part.slice(1, -1)}
+            {part.text}
           </code>
         );
       }
-      const imgMatch = part.match(/^!\[(.*?)\]\((.*?)\)$/);
-      if (imgMatch) {
-        const src = safeLinkHref(imgMatch[2]);
+      if (part.type === "image") {
+        const src = safeLinkHref(part.href);
         if (!src) {
-          return <span key={i}>{imgMatch[1]}</span>;
+          return <span key={i}>{part.text}</span>;
         }
         return (
           <img
             key={i}
             src={src}
-            alt={imgMatch[1]}
+            alt={part.text}
+            title={part.title || undefined}
             loading="lazy"
             referrerPolicy="no-referrer"
             className="my-4 h-auto w-full rounded-xl border border-[color:var(--line)] object-cover"
           />
         );
       }
-      const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
-      if (linkMatch) {
-        const href = safeLinkHref(linkMatch[2]);
+      if (part.type === "link") {
+        const href = safeLinkHref(part.href);
         if (!href) {
-          return <span key={i}>{linkMatch[1]}</span>;
+          return <span key={i}>{renderTokens(part.tokens)}</span>;
         }
         const external = /^https?:\/\//i.test(href);
         return (
@@ -308,12 +307,13 @@ export function MarkdownView({ content = "" }: { content: string }) {
             rel={external ? "noopener noreferrer" : undefined}
             className="text-[color:var(--brand-strong)] underline underline-offset-2 hover:opacity-80"
           >
-            {linkMatch[1]}
+            {renderTokens(part.tokens)}
           </a>
         );
       }
-      return part;
+      return part.type === "escape" ? part.text : part.raw;
     });
+    return renderTokens(Lexer.lexInline(text, { gfm: false }));
   };
 
   for (let i = 0; i < lines.length; i++) {

@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.12] - 2026-10-05
+
+### Markdown article images
+- Render Markdown article images with lazy loading and no-referrer policy.
+- Parse inline Markdown with `marked` so balanced or escaped URL parentheses remain intact and optional image titles are separate from `src`.
+- Add component rendering regressions for image destinations, titles, nested formatting, code examples, and unsafe URLs.
+
 ## [3.9.2] - 2026-09-24
 
 ### Catalog Relay Consistency & Mobile Tab Indentation
