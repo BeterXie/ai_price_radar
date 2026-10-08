@@ -236,3 +236,65 @@ def test_community_skills_sorted_by_created_at_desc(db_session: Session):
     slugs = [item.slug for item in res.items if item.slug in {"old-skill", "new-skill", "mid-skill"}]
     assert slugs == ["new-skill", "mid-skill", "old-skill"]
 
+
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [
+        ("newest", ["recent-pin", "old-pin", "new-article", "mid-article"]),
+        ("stars", ["recent-pin", "old-pin", "mid-article", "new-article"]),
+        ("views", ["old-pin", "recent-pin", "mid-article", "new-article"]),
+        ("pinned", ["recent-pin", "old-pin", "new-article", "mid-article"]),
+    ],
+)
+def test_public_pins_precede_other_articles_before_pagination(db_session: Session, sort: str, expected: list[str]):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    db_session.add_all([
+        CommunitySkill(
+            slug="old-pin", kind="article", title="较早的置顶文章", is_pinned=True,
+            created_at=now - timedelta(days=3), stars_count=10, view_count=200,
+        ),
+        CommunitySkill(
+            slug="recent-pin", kind="article", title="较新的置顶文章", is_pinned=True,
+            created_at=now - timedelta(days=2), stars_count=20, view_count=100,
+        ),
+        CommunitySkill(
+            slug="mid-article", kind="article", title="较早的普通文章",
+            created_at=now - timedelta(days=1), stars_count=2000, view_count=2000,
+        ),
+        CommunitySkill(
+            slug="new-article", kind="article", title="最新的普通文章",
+            created_at=now, stars_count=1000, view_count=1000,
+        ),
+        CommunitySkill(
+            slug="hidden-pin", kind="article", title="隐藏的置顶文章", is_pinned=True,
+            is_visible=False, created_at=now + timedelta(days=1), stars_count=3000, view_count=3000,
+        ),
+    ])
+    db_session.commit()
+
+    first_page = public_community_skills(kind="article", sort=sort, page=1, page_size=2, db=db_session)
+    second_page = public_community_skills(kind="article", sort=sort, page=2, page_size=2, db=db_session)
+
+    assert first_page.total == second_page.total == 4
+    assert all(item.is_pinned for item in first_page.items)
+    assert not any(item.is_pinned for item in second_page.items)
+    assert [item.slug for item in [*first_page.items, *second_page.items]] == expected
+
+
+def test_admin_pin_toggle_changes_default_public_order(db_session: Session):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    older = CommunitySkill(slug="older-article", title="旧文章", created_at=now - timedelta(days=1))
+    newer = CommunitySkill(slug="newer-article", title="新文章", created_at=now)
+    db_session.add_all([older, newer])
+    db_session.commit()
+
+    admin_put_skill(skill_id=older.id, payload=AdminCommunitySkillUpdate(is_pinned=True), db=db_session)
+    assert [item.slug for item in public_community_skills(db=db_session).items] == [older.slug, newer.slug]
+    assert [item.slug for item in admin_get_skills(db=db_session).items] == [newer.slug, older.slug]
+
+    admin_put_skill(skill_id=older.id, payload=AdminCommunitySkillUpdate(is_pinned=False), db=db_session)
+    assert [item.slug for item in public_community_skills(db=db_session).items] == [newer.slug, older.slug]

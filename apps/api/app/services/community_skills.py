@@ -113,6 +113,10 @@ def list_community_skills(
             CommunitySkill.id.desc(),
         )
 
+    # Public pins must stay ahead of the selected sort, before pagination.
+    if visible_only and sort != "pinned":
+        order_clauses = (CommunitySkill.is_pinned.desc(), *order_clauses)
+
     page_stmt = select(*_SUMMARY_COLUMNS).where(*conditions).order_by(*order_clauses).offset(offset).limit(page_size)
     paged = list(db.execute(page_stmt).mappings())
 

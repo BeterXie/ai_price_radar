@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock, Fire, MagnifyingGlass, Sparkle, Sword, TerminalWindow } from "@phosphor-icons/react/ssr";
+import { Clock, Fire, ListBullets, MagnifyingGlass, Sparkle, SquaresFour, Sword, TerminalWindow } from "@phosphor-icons/react/ssr";
 import { getSkills } from "@/lib/api";
 import { getTotalPages, PaginationNav, parsePage } from "@/components/pagination-nav";
 import { SkillCard } from "@/components/skills/skill-card";
@@ -35,6 +35,7 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
   const model = single(params, "model");
   const query = single(params, "q");
   const page = parsePage(single(params, "page"), SKILLS_PAGE_SIZE);
+  const view = single(params, "view") === "list" ? "list" : "card";
 
   const queryParams = new URLSearchParams();
   if (kind) queryParams.set("kind", kind);
@@ -49,9 +50,12 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
   const total = skillsData?.total || 0;
   const allTags = skillsData?.all_tags || [];
   const totalPages = getTotalPages(total, SKILLS_PAGE_SIZE);
+  const navigationParams = new URLSearchParams(queryParams);
+  navigationParams.delete("page_size");
+  if (view === "list") navigationParams.set("view", "list");
 
   const pageHref = (nextPage: number) => {
-    const next = new URLSearchParams(queryParams);
+    const next = new URLSearchParams(navigationParams);
     if (nextPage > 1) next.set("page", String(nextPage));
     else next.delete("page");
     next.delete("page_size");
@@ -62,7 +66,7 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
   if (total > 0 && page > totalPages) redirect(pageHref(totalPages));
 
   const tabHref = (k: string) => {
-    const next = new URLSearchParams(queryParams);
+    const next = new URLSearchParams(navigationParams);
     next.delete("page");
     next.delete("page_size");
     if (k) next.set("kind", k);
@@ -72,13 +76,22 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
   };
 
   const tagHref = (t: string) => {
-    const next = new URLSearchParams(queryParams);
+    const next = new URLSearchParams(navigationParams);
     next.delete("page");
     next.delete("page_size");
     if (t === tag) next.delete("tag");
     else next.set("tag", t);
     const s = next.toString();
     return s ? `/skills?${s}` : "/skills";
+  };
+
+  const viewHref = (nextView: "card" | "list") => {
+    const next = new URLSearchParams(navigationParams);
+    if (nextView === "list") next.set("view", "list");
+    else next.delete("view");
+    if (page === 1) next.delete("page");
+    const value = next.toString();
+    return value ? `/skills?${value}` : "/skills";
   };
 
   return (
@@ -103,6 +116,7 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
           {kind ? <input type="hidden" name="kind" value={kind} /> : null}
           {tag ? <input type="hidden" name="tag" value={tag} /> : null}
           {model ? <input type="hidden" name="model" value={model} /> : null}
+          {view === "list" ? <input type="hidden" name="view" value="list" /> : null}
           <div className="relative flex-1">
             <MagnifyingGlass size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[color:var(--muted)]" />
             <input
@@ -210,25 +224,49 @@ export default async function SkillsPage({ searchParams }: { searchParams: Searc
       </div>
 
       {/* Subheader status */}
-      <div className="mt-6 flex items-center justify-between text-xs text-[color:var(--muted)]">
-        <span>收录精选项目 ({total})</span>
-        <div className="flex items-center gap-1.5 font-medium">
-          <Clock size={13} className="text-[color:var(--brand-strong)]" />
-          <span>按发布时间倒序排列</span>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-[color:var(--muted)]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span>收录精选项目 ({total})</span>
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            <Clock size={13} aria-hidden className="text-[color:var(--brand-strong)]" />
+            置顶优先，其余按发布时间倒序
+          </span>
+        </div>
+        <div role="group" aria-label="文章展示方式" className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-1">
+          {(["card", "list"] as const).map((mode) => {
+            const ModeIcon = mode === "card" ? SquaresFour : ListBullets;
+            return (
+              <Link
+                key={mode}
+                href={viewHref(mode)}
+                scroll={false}
+                aria-label={mode === "card" ? "卡片展示" : "列表展示"}
+                aria-current={view === mode ? "true" : undefined}
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand)] ${
+                  view === mode
+                    ? "bg-[color:var(--brand-soft)] text-[color:var(--brand-strong)]"
+                    : "hover:bg-[color:var(--hover)] hover:text-[color:var(--foreground)]"
+                }`}
+              >
+                <ModeIcon size={16} aria-hidden />
+                {mode === "card" ? "卡片" : "列表"}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
-      {/* Skills Grid */}
+      {/* Skills Collection */}
       {items.length > 0 ? (
-        <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`mt-4 grid [overflow-anchor:none] ${view === "list" ? "gap-3" : "gap-6 sm:grid-cols-2 lg:grid-cols-3"}`}>
           {items.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} />
+            <SkillCard key={skill.id} skill={skill} view={view} />
           ))}
         </div>
       ) : (
         <div className="mt-16 text-center py-12 rounded-2xl border border-dashed border-[color:var(--line)] bg-[color:var(--panel)]">
           <p className="text-sm text-[color:var(--muted)]">未找到匹配的技能或体检测试项</p>
-          <Link href="/skills" className="mt-3 inline-block text-xs font-semibold text-[color:var(--brand-strong)] underline underline-offset-2">
+          <Link href={view === "list" ? "/skills?view=list" : "/skills"} className="mt-3 inline-block text-xs font-semibold text-[color:var(--brand-strong)] underline underline-offset-2">
             查看全部技能
           </Link>
         </div>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, Copy, Fire, Sparkle, Star, Sword, TerminalWindow } from "@phosphor-icons/react";
+import { Check, Copy, Fire, PushPin, Sparkle, Star, Sword, TerminalWindow } from "@phosphor-icons/react";
 import type { CommunitySkillSummary } from "@/lib/types";
 import { recordSkillCopy } from "@/lib/api";
 
@@ -30,9 +30,10 @@ const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: 
   },
 };
 
-export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
+export function SkillCard({ skill, view = "card" }: { skill: CommunitySkillSummary; view?: "card" | "list" }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const isList = view === "list";
   const meta = KIND_META[skill.kind] || KIND_META.skill;
   const IconComponent = meta.icon;
 
@@ -63,17 +64,27 @@ export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
   return (
     <div
       onClick={handleCardClick}
-      className="group relative flex flex-col justify-between rounded-2xl border border-[color:var(--line)] bg-[color:var(--panel)] p-5 shadow-sm transition hover:border-[color:var(--line-strong)] hover:shadow-md cursor-pointer active:scale-[0.99] touch-manipulation"
+      className={`group relative flex rounded-2xl border border-[color:var(--line)] bg-[color:var(--panel)] shadow-sm transition hover:border-[color:var(--line-strong)] hover:shadow-md cursor-pointer active:scale-[0.99] touch-manipulation ${
+        isList ? "flex-col p-4 sm:flex-row sm:items-center sm:gap-6 sm:px-5" : "flex-col justify-between p-5"
+      }`}
     >
-      <div>
+      <div className="min-w-0 flex-1">
         {/* Top Header Row */}
         <div className="flex items-center justify-between gap-2">
-          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
-            <IconComponent size={13} weight="fill" />
-            {meta.label}
-          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {skill.is_pinned ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-[color:var(--brand-line)] bg-[color:var(--brand-soft)] px-2 py-0.5 text-xs font-semibold text-[color:var(--brand-strong)]">
+                <PushPin size={13} weight="fill" aria-hidden />
+                置顶
+              </span>
+            ) : null}
+            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${meta.badgeClass}`}>
+              <IconComponent size={13} weight="fill" aria-hidden />
+              {meta.label}
+            </span>
+          </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {skill.created_at ? (
               <span className="text-[11px] text-[color:var(--muted)] font-mono">
                 {skill.created_at.slice(0, 10)}
@@ -89,26 +100,26 @@ export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
         </div>
 
         {/* Title & Subtitle */}
-        <div className="mt-3">
-          <Link href={`/skills/${encodeURIComponent(skill.slug)}`} className="focus:outline-none">
+        <div className={isList ? "mt-2" : "mt-3"}>
+          <Link href={`/skills/${encodeURIComponent(skill.slug)}`} className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand)]">
             <h3 className="text-base font-bold text-[color:var(--foreground)] transition group-hover:text-[color:var(--brand-strong)] sm:text-lg">
               {skill.title}
             </h3>
           </Link>
           {skill.subtitle ? (
-            <p className="mt-1 text-xs font-medium text-[color:var(--muted)] sm:text-sm">
+            <p className={`mt-1 text-xs font-medium text-[color:var(--muted)] sm:text-sm ${isList ? "line-clamp-1" : ""}`}>
               {skill.subtitle}
             </p>
           ) : null}
         </div>
 
         {/* Summary */}
-        <p className="mt-2.5 line-clamp-3 text-xs text-[color:var(--muted)] leading-relaxed sm:text-sm">
+        <p className={`text-xs text-[color:var(--muted)] leading-relaxed sm:text-sm ${isList ? "mt-1.5 line-clamp-2 sm:line-clamp-1" : "mt-2.5 line-clamp-3"}`}>
           {skill.summary}
         </p>
 
         {/* Target Models & Tags */}
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        <div className={`flex flex-wrap items-center gap-1.5 ${isList ? "mt-2.5" : "mt-4"}`}>
           {skill.target_models?.map((model) => (
             <span
               key={model}
@@ -129,7 +140,9 @@ export function SkillCard({ skill }: { skill: CommunitySkillSummary }) {
       </div>
 
       {/* Bottom Footer Actions */}
-      <div className="mt-5 border-t border-[color:var(--line)] pt-3 flex items-center justify-between gap-3 text-xs">
+      <div className={`flex items-center justify-between gap-3 border-t border-[color:var(--line)] pt-3 text-xs ${
+        isList ? "mt-4 sm:mt-0 sm:w-52 sm:shrink-0 sm:flex-col sm:items-end sm:border-t-0 sm:pt-0" : "mt-5"
+      }`}>
         <div className="flex items-center gap-2 min-w-0">
           {skill.author_name ? (
             <span className="truncate text-[color:var(--muted)]">
