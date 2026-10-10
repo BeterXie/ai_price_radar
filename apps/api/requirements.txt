@@ -1,5 +1,5 @@
 fastapi>=0.115,<1
-uvicorn[standard]>=0.34,<1
+uvicorn[standard]>=0.53.0,<1
 sqlalchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 pydantic-settings>=2.8,<3
