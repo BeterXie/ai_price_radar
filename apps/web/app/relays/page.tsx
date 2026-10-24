@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowsLeftRight, Info, ShieldCheck } from "@phosphor-icons/react/ssr";
+import { ArrowsLeftRight, Info, ListBullets, ShieldCheck, SquaresFour } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
 import { PageHero, SectionIntro } from "@/components/page-shell";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -26,7 +26,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RelaysPage() {
+export default async function RelaysPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams;
+  const requestedView = Array.isArray(params.view) ? params.view.at(-1) : params.view;
+  const view = requestedView === "card" ? "card" : "list";
   const [relays, meta] = await Promise.all([
     getRelayStations().catch(() => null),
     getMeta().catch(() => null),
@@ -97,9 +100,29 @@ export default async function RelaysPage() {
             <SectionIntro
               title="已收录中转站"
               description={<>赞助站点会带有明确的“赞助”标识并排在前面；其余按运营者设置的顺序展示。模型列表以站点公开说明为准，实际可用性可能随时变化。</>}
+              action={
+                <div role="group" aria-label="中转站展示方式" className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs">
+                  {(["list", "card"] as const).map((mode) => {
+                    const ModeIcon = mode === "card" ? SquaresFour : ListBullets;
+                    return (
+                      <Link
+                        key={mode}
+                        href={mode === "card" ? "/relays?view=card" : "/relays"}
+                        scroll={false}
+                        aria-label={mode === "card" ? "卡片展示" : "列表展示"}
+                        aria-current={view === mode ? "true" : undefined}
+                        className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand)] ${view === mode ? "bg-[color:var(--brand-soft)] text-[color:var(--brand-strong)]" : "hover:bg-[color:var(--hover)] hover:text-[color:var(--foreground)]"}`}
+                      >
+                        <ModeIcon size={16} aria-hidden />
+                        {mode === "card" ? "卡片" : "列表"}
+                      </Link>
+                    );
+                  })}
+                </div>
+              }
             />
-            <div className="relay-grid mt-6">
-              {stations.map((station) => <RelayStationCard key={station.id} station={station} />)}
+            <div className="relay-grid mt-4" data-view={view}>
+              {stations.map((station) => <RelayStationCard key={`${station.id}-${view}`} station={station} view={view} />)}
             </div>
           </>
         )}

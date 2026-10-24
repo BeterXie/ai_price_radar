@@ -29,6 +29,17 @@ function sampleTone(status?: string) {
   return "failure";
 }
 
+export function RelayHealthSummary({ health }: { health?: Health }) {
+  const status = health?.status || "not_checked";
+  const rate = health && health.sample_count_24h > 0 ? health.success_rate_24h ?? null : null;
+  return (
+    <div className="relay-health-summary" aria-label="接口检测摘要">
+      <span className="relay-health-status" data-status={status}>{labels[status] || "状态待确认"}</span>
+      <p>{rate !== null ? `24h 成功 ${rate}% · ${health?.sample_count_24h} 次` : "暂无有效采样"}</p>
+    </div>
+  );
+}
+
 export function RelayHealthPanel({ health }: { health?: Health }) {
   const status = health?.status || "not_checked";
   const samples = (health?.recent_samples || []).slice(-24);

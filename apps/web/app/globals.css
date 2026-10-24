@@ -658,6 +658,7 @@ table { font-variant-numeric: tabular-nums; }
 
 /* Relay hub (中转站) -------------------------------------------------------- */
 .relay-grid { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.relay-grid[data-view="list"] { grid-template-columns: minmax(0, 1fr); gap: 12px; overflow-anchor: none; }
 .relay-card {
   min-width: 0;
   display: flex;
@@ -724,8 +725,27 @@ table { font-variant-numeric: tabular-nums; }
 .relay-description[open] summary svg { transform: rotate(180deg); }
 .relay-description summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 2px; }
 .relay-updated { color: var(--muted); font-size: 0.6875rem; }
+.relay-list-item { padding: 16px 20px; border-radius: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); transition: border-color 0.15s; }
+.relay-list-item:hover { border-color: var(--line-strong); }
+.relay-list-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr) auto; align-items: center; gap: 24px; }
+.relay-list-item .relay-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.relay-list-item .relay-card-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relay-list-identity-meta { display: flex; align-items: baseline; gap: 6px; }
+.relay-list-identity-meta .relay-card-host { min-width: 0; }
+.relay-list-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 24px; }
+.relay-list-label { color: var(--muted); font-size: 0.6875rem; }
+.relay-list-price { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; color: var(--ink); font-size: 0.875rem; font-weight: 600; }
+.relay-list-billing { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.6875rem; }
+.relay-health-summary { min-width: 0; }
+.relay-health-summary p { margin-top: 5px; color: var(--muted); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
+.relay-list-item .relay-description { margin-top: 4px; }
+.relay-list-item .relay-description summary { width: 100%; justify-content: space-between; gap: 12px; }
+.relay-list-item .relay-updated { flex: none; text-align: right; font-weight: 400; }
 @media (max-width: 1023px) {
   .relay-grid { grid-template-columns: minmax(0, 1fr); }
+  .relay-list-summary { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .relay-list-actions { grid-column: 2; grid-row: 1; }
+  .relay-list-overview { grid-column: 1 / -1; grid-row: 2; gap: 12px; }
 }
 @media (max-width: 479px) {
   .relay-card { padding: 16px; }
