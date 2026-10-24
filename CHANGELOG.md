@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.16] - 2026-10-25
+
+- Make the v22 release migration independent of application initialization and host dotenv permissions; preserve the unprivileged deployment image and root-only environment file.
+- Includes the v3.9.15 account plan, search and relay monitoring changes.
+
 ## [3.9.15] - 2026-10-24
 
 - Provider-specific account plans and shared ingestion/admin classification.

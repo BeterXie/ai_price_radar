@@ -1,4 +1,7 @@
 import pytest
+import subprocess
+import sys
+from pathlib import Path
 from sqlalchemy import create_engine, inspect, text
 
 from scripts.migrate_relay_monitoring_v22 import migrate
@@ -26,3 +29,18 @@ def test_v22_refuses_an_uninitialized_database():
         migrate(engine)
     assert inspect(engine).get_table_names() == []
     engine.dispose()
+
+
+def test_v22_cli_uses_explicit_database_without_reading_application_dotenv(tmp_path):
+    database_url = f"sqlite:///{tmp_path / 'legacy.db'}"
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE relay_stations (id INTEGER PRIMARY KEY, name TEXT)"))
+    engine.dispose()
+    # An application settings import would attempt UTF-8 decoding of this file.
+    # Migrations must rely solely on the database URL provided by the operator.
+    (tmp_path / ".env").write_bytes(b"\xff")
+    script = Path(__file__).resolve().parents[1] / "migrate_relay_monitoring_v22.py"
+    result = subprocess.run([sys.executable, str(script), "--database-url", database_url], cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

@@ -95,8 +95,7 @@ def ensure_db_schema(engine: Engine) -> None:
 
 
 def ensure_relay_monitoring(conn) -> None:
-    from sqlalchemy import inspect
-    from ..models import RelayProbeResult
+    from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, MetaData, String, Table, inspect
 
     inspector = inspect(conn)
     if "relay_stations" not in inspector.get_table_names():
@@ -120,7 +119,22 @@ def ensure_relay_monitoring(conn) -> None:
         if name not in columns:
             conn.execute(text(f"ALTER TABLE relay_stations ADD COLUMN {name} {sql_type}"))
     conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_relay_submission_key ON relay_stations(submission_key)"))
-    RelayProbeResult.__table__.create(conn, checkfirst=True)
+    # Release migrations must not initialize app.database or load a mounted
+    # .env. The deployment image runs unprivileged and gets its configuration
+    # through --env-file; the host's .env intentionally remains root-only.
+    metadata = MetaData()
+    Table("relay_stations", metadata, Column("id", Integer, primary_key=True))
+    Table(
+        "relay_probe_results", metadata,
+        Column("id", Integer, primary_key=True),
+        Column("station_id", Integer, ForeignKey("relay_stations.id", ondelete="CASCADE"), nullable=False, index=True),
+        Column("revision", Integer, nullable=False),
+        Column("checked_at", DateTime(timezone=True), nullable=False),
+        Column("status", String(30), nullable=False),
+        Column("latency_ms", Integer, nullable=False),
+        Column("http_status", Integer),
+        Index("ix_relay_probe_station_time", "station_id", "checked_at"),
+    ).create(conn, checkfirst=True)
 
 
 def _migrate_sqlite(conn) -> None:
