@@ -14,7 +14,7 @@ from sqlalchemy import delete, inspect, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..models import RelayProbeResult, RelayStation
-from ..schemas import RelayHealthOut, RelayStationOut
+from ..schemas import RelayHealthOut, RelayProbeSampleOut, RelayStationOut
 from .credential_crypto import decrypt_secret, encrypt_secret
 
 logger = logging.getLogger(__name__)
@@ -98,6 +98,11 @@ def relay_health(db: Session, station: RelayStation) -> RelayHealthOut:
         sample_count_24h=len(valid),
         diagnostic_count_24h=len(rows) - len(valid),
         p95_latency_ms=latencies[math.ceil(len(latencies) * .95) - 1] if latencies else None,
+        recent_samples=[RelayProbeSampleOut(
+            checked_at=row.checked_at if row.checked_at.tzinfo else row.checked_at.replace(tzinfo=timezone.utc),
+            status=row.status,
+            latency_ms=row.latency_ms,
+        ) for row in reversed(rows[:24])],
     )
 
 

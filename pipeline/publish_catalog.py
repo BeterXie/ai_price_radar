@@ -21,6 +21,7 @@ from common import (
     CatalogSnapshot,
     ImportLockUnavailable,
     Offer,
+    RawProduct,
     Shop,
     begin_snapshot,
     ensure_products,
@@ -166,13 +167,13 @@ def load_merchant_sources(path: str | Path) -> list[str]:
 def approved_intake_sources(db: Session) -> list[SourceSpec]:
     if not inspect(db.get_bind()).has_table("source_intakes"):
         return []
-    rows = db.execute(text(
+    rows = list(db.execute(text(
         "SELECT id, source_type, source_url FROM source_intakes "
         "WHERE status IN ('approved', 'published') "
         "AND source_type IN ('merchant_json', 'woocommerce', '16688', 'schema_org', 'acg_faka') "
         "AND detected_platform=source_type "
         "ORDER BY id"
-    )).mappings()
+    )).mappings())
     connector_by_type = {
         "dujiao_next": "dujiao-next",
         "merchant_json": "merchant-json",
@@ -181,10 +182,39 @@ def approved_intake_sources(db: Session) -> list[SourceSpec]:
         "schema_org": "schema-org",
         "acg_faka": "acg-faka",
     }
-    return [
-        SourceSpec(connector_by_type[row["source_type"]], row["source_url"], (int(row["id"]),))
-        for row in rows
-    ]
+    # Goods URLs import their whole shop. If that shop is independently approved,
+    # reuse its verified identity rather than depending on one goods item staying
+    # on sale. merge_sources then keeps both intake IDs in the single shop import.
+    approved_shops = {
+        row["source_url"] for row in rows
+        if row["source_type"] == "16688"
+        and re.fullmatch(r"https://(?:www\.)?16688\.com\.cn/shop/[A-Za-z0-9._~-]+", row["source_url"])
+    }
+    goods_urls = {
+        row["source_url"] for row in rows
+        if row["source_type"] == "16688"
+        and re.fullmatch(r"https://(?:www\.)?16688\.com\.cn/goods/[A-Za-z0-9._~-]+", row["source_url"])
+    }
+    known_shops: dict[str, set[tuple[int, str, bool]]] = {}
+    if approved_shops and goods_urls:
+        for goods_url, shop_id, shop_url, is_visible in db.execute(
+            select(RawProduct.source_url, Shop.id, Shop.source_url, Shop.is_visible)
+            .join(Shop, Shop.id == RawProduct.shop_id)
+            .where(
+                Shop.platform == "16688", RawProduct.source_url.in_(goods_urls),
+            )
+        ):
+            known_shops.setdefault(goods_url, set()).add((shop_id, shop_url, is_visible))
+    sources = []
+    for row in rows:
+        matches = known_shops.get(row["source_url"], set()) if row["source_type"] == "16688" else set()
+        source = row["source_url"]
+        if len(matches) == 1:
+            _, shop_url, is_visible = next(iter(matches))
+            if is_visible and shop_url in approved_shops:
+                source = shop_url
+        sources.append(SourceSpec(connector_by_type[row["source_type"]], source, (int(row["id"]),)))
+    return sources
 
 
 def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:

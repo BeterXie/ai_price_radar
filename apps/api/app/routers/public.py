@@ -77,6 +77,7 @@ from ..services.promo import (
     setting_enabled,
 )
 from ..services.source_intake import enqueue_submission_notifications
+from ..services.relay_icons import RelayIconBusy, get_relay_icon
 from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.catalog import (
     OfferFilters,
@@ -1335,6 +1336,31 @@ def public_relay_stations(db: Session = Depends(get_db)) -> RelayStationListOut:
         return RelayStationListOut(items=[], total=0, enabled=False)
     items = list_enabled_relay_stations(db)
     return RelayStationListOut(items=items, total=len(items), enabled=True)
+
+
+@router.get("/relays/{station_id}/icon", response_class=Response)
+def public_relay_icon(station_id: int, db: Session = Depends(get_db)) -> Response:
+    station = db.get(RelayStation, station_id)
+    if (
+        station is None or not station.is_enabled or station.review_status != "approved"
+        or not setting_enabled(db, RELAY_HUB_ENABLED_KEY, default=True)
+    ):
+        raise HTTPException(status_code=404, detail="relay station not found")
+    website_url = station.url
+    # Release the DB connection before any bounded external wait/fetch.
+    db.close()
+    try:
+        icon = get_relay_icon(website_url)
+    except RelayIconBusy:
+        return Response(status_code=503, headers={"Cache-Control": "no-store", "Retry-After": "2"})
+    if icon is None:
+        return Response(status_code=404, headers={"Cache-Control": "no-store"})
+    return Response(content=icon.body, media_type=icon.media_type, headers={
+        "Cache-Control": "public, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    })
 
 
 @router.post("/relays/{station_id}/click", response_model=PromoClickResponse)

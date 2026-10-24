@@ -1684,6 +1684,12 @@ class RelayStationUpdate(RelayMonitoringConfig):
         return _clean_string_list(value, max_items=12, max_length=30)
 
 
+class RelayProbeSampleOut(BaseModel):
+    checked_at: datetime
+    status: str
+    latency_ms: int
+
+
 class RelayHealthOut(BaseModel):
     status: str = "not_checked"
     checked_at: datetime | None = None
@@ -1693,6 +1699,7 @@ class RelayHealthOut(BaseModel):
     sample_count_24h: int = 0
     diagnostic_count_24h: int = 0
     p95_latency_ms: int | None = None
+    recent_samples: list[RelayProbeSampleOut] = Field(default_factory=list)
 
 
 class RelaySubmissionCreate(RelayStationBase):

@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowSquareOut, ArrowsLeftRight, CaretDown, Info, ShieldCheck } from "@phosphor-icons/react/ssr";
-import { AdLink } from "@/components/ad-link";
+import { ArrowsLeftRight, Info, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
 import { PageHero, SectionIntro } from "@/components/page-shell";
 import { PlatformIcon } from "@/components/platform-icon";
 import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 import { getMeta, getRelayStations } from "@/lib/api";
 import { BRAND_TABS } from "@/lib/catalog";
-import { relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
-import type { RelayStationPublic } from "@/lib/types";
-import { RelayHealth } from "@/components/relay-health";
+import { RelayStationCard } from "@/components/relay-station-card";
 
 export const dynamic = "force-dynamic";
 
@@ -28,84 +25,6 @@ export const metadata: Metadata = {
     type: "website",
   },
 };
-
-function RelayCard({ station }: { station: RelayStationPublic }) {
-  const host = (() => {
-    try {
-      return station.url ? new URL(station.url).hostname : "";
-    } catch {
-      return "";
-    }
-  })();
-  return (
-    <article className="relay-card" data-sponsored={station.is_sponsored ? "true" : "false"}>
-      <div className="relay-card-main">
-        <div className="relay-card-header">
-          <span className="relay-card-mark" aria-hidden="true"><ArrowsLeftRight size={24} /></span>
-          <div className="min-w-0">
-            <h3 className="relay-card-title">
-              {station.url ? (
-                <AdLink kind="relays" id={station.id} href={station.url} className="hover:underline underline-offset-4">
-                  {station.name}
-                </AdLink>
-              ) : station.name}
-            </h3>
-            {host ? <p className="relay-card-host mono">{host}</p> : null}
-          </div>
-          {station.is_sponsored ? <span className="ad-badge shrink-0">赞助</span> : null}
-        </div>
-        {station.tagline ? <p className="relay-card-tagline">{station.tagline}</p> : null}
-        {station.supported_models.length > 0 ? (
-          <section className="relay-models" aria-label="模型覆盖">
-            <h4 className="relay-section-label">支持模型 <span>{station.supported_models.length}</span></h4>
-            <div className="relay-chip-row" aria-label="支持的模型">
-              {station.supported_models.slice(0, 10).map((model) => (
-                <span key={model} className="relay-chip mono">{model}</span>
-              ))}
-            </div>
-            {station.supported_models.length > 10 ? (
-              <details className="relay-models-more">
-                <summary>查看其余 {station.supported_models.length - 10} 个模型</summary>
-                <div className="relay-chip-row">
-                  {station.supported_models.slice(10).map((model) => <span key={model} className="relay-chip mono">{model}</span>)}
-                </div>
-              </details>
-            ) : null}
-          </section>
-        ) : null}
-        {station.tags.length > 0 ? (
-          <div className="relay-tags" aria-label="特性标签">
-            {station.tags.map((tag) => <span key={tag}>{tag}</span>)}
-          </div>
-        ) : null}
-      </div>
-      <div className="relay-card-aside">
-        <dl className="relay-facts">
-          <div><dt>价格说明</dt><dd className="relay-price">{station.price_note || "暂未提供价格说明"}</dd></div>
-          {station.billing_note ? <div><dt>计费方式</dt><dd>{station.billing_note}</dd></div> : null}
-        </dl>
-        <p className="relay-price-source">站点提供的报价，以来源页面为准</p>
-        <RelayHealth health={station.health}/>
-        {station.url ? (
-          <AdLink kind="relays" id={station.id} href={station.url} className="button-primary tactile relay-visit" ariaLabel={`前往 ${station.name}（新窗口打开）`}>
-            前往中转站 <ArrowSquareOut size={15} />
-          </AdLink>
-        ) : null}
-      </div>
-      <div className="relay-card-footer">
-        {station.description ? (
-          <details className="relay-description">
-            <summary>站点详细介绍 <CaretDown size={14} aria-hidden="true" /></summary>
-            <p className="relay-card-desc">{station.description}</p>
-          </details>
-        ) : null}
-        <span className="relay-updated">
-          {station.updated_at ? `资料更新于 ${relativeTime(station.updated_at)}` : "资料由站点运营者维护"}
-        </span>
-      </div>
-    </article>
-  );
-}
 
 export default async function RelaysPage() {
   const [relays, meta] = await Promise.all([
@@ -126,7 +45,7 @@ export default async function RelaysPage() {
         compact
         eyebrow="平台 · 中转站"
         title="API 中转站"
-        description={<>中转站把 OpenAI、Claude、Gemini 等模型接口统一转发并按量计费，适合开发者与高频 API 用户。这里列出的站点由运营者在后台维护，用来补充报价目录里“中转 / 反代”形态的商品；<strong>收录不等于推荐或担保</strong>，充值前请自行核对余额有效期、倍率与退款规则。</>}
+        description={<>中转站把 OpenAI、Claude、Gemini 等模型接口统一转发并按量计费，适合开发者与高频 API 用户。站长可在前台申请，审核后收录，用来补充报价目录里“中转 / 反代”形态的商品；<strong>收录不等于推荐或担保</strong>，充值前请自行核对余额有效期、倍率与退款规则。</>}
         meta={<>
           <span className="inline-flex items-center gap-1.5"><ArrowsLeftRight size={15} />{stations.length} 个中转站</span>
           <span className="inline-flex items-center gap-1.5"><ShieldCheck size={15} />链接仅接受公开 HTTPS 地址</span>
@@ -180,7 +99,7 @@ export default async function RelaysPage() {
               description={<>赞助站点会带有明确的“赞助”标识并排在前面；其余按运营者设置的顺序展示。模型列表以站点公开说明为准，实际可用性可能随时变化。</>}
             />
             <div className="relay-grid mt-6">
-              {stations.map((station) => <RelayCard key={station.id} station={station} />)}
+              {stations.map((station) => <RelayStationCard key={station.id} station={station} />)}
             </div>
           </>
         )}

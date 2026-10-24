@@ -284,6 +284,7 @@ export type RelayHealth = {
   sample_count_24h: number;
   diagnostic_count_24h: number;
   p95_latency_ms: number | null;
+  recent_samples?: { checked_at: string; status: string; latency_ms: number }[];
 };
 
 export type RelayStationPublic = {
@@ -691,5 +692,4 @@ export type AdminBroadcastItem = {
   created_by: string;
   created_at: string;
 };
-
 

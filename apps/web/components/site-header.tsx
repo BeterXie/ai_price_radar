@@ -80,7 +80,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
   return (
     <header className="app-header sticky top-0 z-50">
       <div className="shell flex h-[68px] items-center justify-between gap-3">
-        <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="group flex min-w-0 shrink-0 items-center gap-2.5">
+        <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="group flex min-w-0 items-center gap-2.5">
           <Image
             src="/brand/logo-icon.png"
             alt="AI Price Memory"
@@ -88,7 +88,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
             height={36}
             priority
             unoptimized
-            className="h-9 w-9 object-contain transition-transform group-hover:scale-105"
+            className="h-9 w-9 shrink-0 object-contain transition-transform group-hover:scale-105"
           />
           <span className="min-w-0">
             <span className="block truncate font-semibold tracking-[-0.035em]">AI Price Memory</span>

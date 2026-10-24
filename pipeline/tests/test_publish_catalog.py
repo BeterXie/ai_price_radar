@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from common import CatalogSnapshot, Offer, RawProduct, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
+from common import CatalogSnapshot, Offer, RawProduct, Shop, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
 from connectors import CONNECTORS
 from publish_catalog import (
     SnapshotExportError,
@@ -16,6 +16,7 @@ from publish_catalog import (
     approved_dujiao_sources,
     approved_intake_sources,
     import_source_into_snapshot,
+    merge_sources,
     onboard_validated_ldxp_intakes,
     publish_sources,
     validate_dujiao_source_access,
@@ -412,6 +413,71 @@ def test_all_structured_intake_platforms_use_the_atomic_publish_path():
             SourceSpec("schema-org", "https://structured.example", (2,)),
             SourceSpec("16688", "https://www.16688.com.cn/shop/S343514", (5,)),
         ]
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("shop_status", ["published", "disabled"])
+def test_removed_16688_goods_reuses_only_an_independently_approved_shop(monkeypatch, shop_status):
+    shop_url = "https://www.16688.com.cn/shop/S358780"
+    goods_url = "https://www.16688.com.cn/goods/G22076118"
+    calls = []
+
+    def loader(source):
+        calls.append(str(source))
+        if str(source) == goods_url:
+            raise ValueError("16688 API error: 商品不存在")
+        item = record("canonical-shop")
+        item.update(token="16688-S358780", source_platform="16688", shop_url=shop_url, product_url=goods_url)
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "16688", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        original = publish_sources(db, [SourceSpec("16688", shop_url)])
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) VALUES "
+            "(1, '16688', '16688', :shop_url, :shop_status), "
+            "(2, '16688', '16688', :goods_url, 'published')"
+        ), {"shop_url": shop_url, "goods_url": goods_url, "shop_status": shop_status})
+        db.commit()
+        calls.clear()
+        sources = merge_sources(approved_intake_sources(db))
+        if shop_status == "published":
+            assert sources == [SourceSpec("16688", shop_url, (1, 2))]
+            result = publish_sources(db, sources)
+            assert calls == [shop_url]
+            assert result.offer_count == 1
+            assert db.execute(text("SELECT status,product_count FROM source_intakes ORDER BY id")).all() == [("published", 1), ("published", 1)]
+        else:
+            assert sources == [SourceSpec("16688", goods_url, (2,))]
+            with pytest.raises(SourceImportError, match="商品不存在"):
+                publish_sources(db, sources)
+            assert db.query(Offer).filter(Offer.snapshot_id == original.snapshot_id).count() == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("second_shop_visible", [True, False])
+def test_ambiguous_16688_goods_does_not_ignore_unapproved_or_hidden_history(second_shop_visible):
+    goods_url = "https://www.16688.com.cn/goods/G22076118"
+    approved_shop_url = "https://www.16688.com.cn/shop/S358780"
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        for index, url in enumerate([approved_shop_url, "https://www.16688.com.cn/shop/OTHER"]):
+            shop = Shop(token=f"16688-history-{index}", source_url=url, platform="16688", is_visible=True if index == 0 else second_shop_visible)
+            db.add(shop)
+            db.flush()
+            db.add(RawProduct(shop_id=shop.id, source_product_key="G22076118", original_name="historical item", source_url=goods_url))
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) VALUES "
+            "(1, '16688', '16688', :shop_url, 'published'), "
+            "(2, '16688', '16688', :goods_url, 'published')"
+        ), {"shop_url": approved_shop_url, "goods_url": goods_url})
+        db.commit()
+        assert approved_intake_sources(db) == [SourceSpec("16688", approved_shop_url, (1,)), SourceSpec("16688", goods_url, (2,))]
     finally:
         db.close()
 
@@ -907,5 +973,3 @@ def test_import_result_to_dict_json_serializable():
     payload = json.dumps({"imports": [d]})
     parsed = json.loads(payload)
     assert parsed["imports"][0]["connector"] == "16688"
-
-

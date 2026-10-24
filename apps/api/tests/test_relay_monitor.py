@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.config import get_settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import RelayProbeResult, RelayStation, User
+from app.models import RelayProbeResult, RelayStation, SystemSetting, User
 from app.security import require_current_user
 from app.services.credential_crypto import decrypt_secret, encrypt_secret
 from app.services.relay_monitor import claim_probe, configure_relay, probe_relay, relay_health, run_due_probes
@@ -56,6 +56,77 @@ def payload(**values):
         "contact": "owner@example.com", "authorization_confirmed": True,
         **values,
     }
+
+
+def test_public_icon_only_fetches_enabled_approved_sites_without_probe_secrets(relay_api, monkeypatch):
+    from app.routers import public
+    from app.services.relay_icons import RelayIcon
+
+    client, factory = relay_api
+    calls = []
+    monkeypatch.setattr(public, "get_relay_icon", lambda url: calls.append(url) or RelayIcon(b"test-image", "image/png"))
+    with factory() as db:
+        station = RelayStation(name="Icon", url="https://relay.example.com", base_url="https://private-probe.example.com/v1", encrypted_api_key="private", is_enabled=True, review_status="pending")
+        db.add(station)
+        db.commit()
+        station_id = station.id
+    path = f"/api/v1/relays/{station_id}/icon"
+    assert client.get(path).status_code == 404
+    assert calls == []
+    with factory() as db:
+        db.get(RelayStation, station_id).review_status = "approved"
+        db.commit()
+    response = client.get(path)
+    assert response.status_code == 200 and response.content == b"test-image"
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in response.headers["content-security-policy"]
+    assert calls == ["https://relay.example.com"]
+    with factory() as db:
+        db.get(RelayStation, station_id).is_enabled = False
+        db.commit()
+    assert client.get(path).status_code == 404
+    with factory() as db:
+        db.get(RelayStation, station_id).is_enabled = True
+        db.add(SystemSetting(key="relay_hub_enabled", value="false"))
+        db.commit()
+    assert client.get(path).status_code == 404
+    assert calls == ["https://relay.example.com"]
+
+
+def test_missing_public_icon_is_a_non_cached_404(relay_api, monkeypatch):
+    from app.routers import public
+
+    client, factory = relay_api
+    monkeypatch.setattr(public, "get_relay_icon", lambda url: None)
+    with factory() as db:
+        station = RelayStation(name="No icon", url="https://relay.example.com", review_status="approved", is_enabled=True)
+        db.add(station)
+        db.commit()
+        station_id = station.id
+    response = client.get(f"/api/v1/relays/{station_id}/icon")
+    assert response.status_code == 404
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_busy_public_icon_can_be_retried_instead_of_negative_cached(relay_api, monkeypatch):
+    from app.routers import public
+
+    client, factory = relay_api
+
+    def busy(_url):
+        raise public.RelayIconBusy()
+
+    monkeypatch.setattr(public, "get_relay_icon", busy)
+    with factory() as db:
+        station = RelayStation(name="Busy", url="https://relay.example.com", review_status="approved", is_enabled=True)
+        db.add(station)
+        db.commit()
+        station_id = station.id
+    response = client.get(f"/api/v1/relays/{station_id}/icon")
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["cache-control"] == "no-store"
 
 
 class FakeClient:
@@ -237,8 +308,30 @@ def test_rollup_excludes_old_samples_and_configuration_diagnostics(relay_api):
         health = relay_health(db, station)
         assert health.success_rate_24h == 50
         assert health.sample_count_24h == 2 and health.diagnostic_count_24h == 1
+        assert [sample.status for sample in health.recent_samples] == ["credential_error", "timeout", "healthy"]
+        assert all(sample.checked_at.tzinfo is not None for sample in health.recent_samples)
         configure_relay(db, station, {"probe_model": "new-model"})
         assert relay_health(db, station).sample_count_24h == 0
+        assert relay_health(db, station).recent_samples == []
+
+
+def test_public_recent_samples_are_bounded_chronological_and_contain_no_credentials(relay_api):
+    client, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Sample station", is_enabled=True, review_status="approved", monitor_enabled=True, monitor_revision=1, probe_model="test-model")
+        db.add(station)
+        db.flush()
+        now = datetime.now(timezone.utc)
+        for age in range(35):
+            db.add(RelayProbeResult(station_id=station.id, revision=1, status="healthy" if age % 2 else "timeout", latency_ms=age, checked_at=now - timedelta(minutes=age)))
+        db.commit()
+    public = client.get("/api/v1/relays").json()["items"][0]["health"]
+    samples = public["recent_samples"]
+    assert public["sample_count_24h"] == 35
+    assert len(samples) == 24
+    assert [sample["latency_ms"] for sample in samples] == list(range(23, -1, -1))
+    assert all(set(sample) == {"checked_at", "status", "latency_ms"} for sample in samples)
+    assert all(sample["checked_at"].endswith("Z") for sample in samples)
 
 
 def test_health_keeps_last_check_when_24h_window_is_empty(relay_api):
