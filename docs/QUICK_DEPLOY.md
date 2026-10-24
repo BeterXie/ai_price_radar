@@ -325,6 +325,16 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_user_password_v20.py
 
+# 中转站申请、凭据与探活样本迁移 (v22)；v3.9.15 切换前执行，
+# 必须先在临时 PostgreSQL 16 演练两次，保留旧中转站且重复执行安全
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_relay_monitoring_v22.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 

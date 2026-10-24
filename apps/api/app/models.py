@@ -629,6 +629,18 @@ class RelayStation(Base):
     __tablename__ = "relay_stations"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    base_url: Mapped[str] = mapped_column(Text, default="")
+    encrypted_api_key: Mapped[str] = mapped_column(Text, default="")
+    probe_protocol: Mapped[str] = mapped_column(String(20), default="openai")
+    probe_model: Mapped[str] = mapped_column(String(120), default="")
+    monitor_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    monitor_revision: Mapped[int] = mapped_column(Integer, default=1)
+    next_probe_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_status: Mapped[str] = mapped_column(String(20), default="approved", index=True)
+    submitted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    contact_email: Mapped[str] = mapped_column(String(200), default="")
+    submission_note: Mapped[str] = mapped_column(Text, default="")
+    submission_key: Mapped[str | None] = mapped_column(String(1000), unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(100))
     url: Mapped[str] = mapped_column(Text, default="")
     tagline: Mapped[str] = mapped_column(String(160), default="")
@@ -643,3 +655,20 @@ class RelayStation(Base):
     click_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self.encrypted_api_key)
+
+
+class RelayProbeResult(Base):
+    __tablename__ = "relay_probe_results"
+    __table_args__ = (Index("ix_relay_probe_station_time", "station_id", "checked_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int] = mapped_column(ForeignKey("relay_stations.id", ondelete="CASCADE"), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    status: Mapped[str] = mapped_column(String(30))
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)

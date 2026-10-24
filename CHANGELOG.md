@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.15] - 2026-10-24
+
+- Provider-specific account plans and shared ingestion/admin classification.
+- Multiword intersecting search with consistent source and offer filters.
+- Public relay applications, admin approval, encrypted credentials and bounded completion monitoring.
+- Reviewed classification, credential recovery, probe concurrency and detector packaging fixes; v22 relay schema migration required.
+
 ## [3.9.13] - 2026-10-05
 
 ### Deployment version verification

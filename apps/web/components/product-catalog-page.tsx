@@ -126,7 +126,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const hiddenFields = {
     ...(!product && activeBrand ? { brand: activeBrand } : {}),
     ...(activeSourcePlatform ? { source_platform: activeSourcePlatform } : {}),
-    ...(!product && searchQuery ? { q: searchQuery } : {}),
+    ...(searchQuery ? { q: searchQuery } : {}),
   };
   const updatedWithinLabel: Record<string, string> = { "6": "6 小时内", "24": "24 小时内", "72": "3 天内", "168": "7 天内" };
   let headingTitle = "AI 商品报价";
@@ -137,7 +137,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   }
   if (searchQuery) {
     headingTitle = `“${searchQuery}”的报价`;
-    headingDescription = "匹配商品名称与来源商品标题。继续按品牌、库存、交付方式和更新时间缩小范围。";
+    headingDescription = "多个关键词共同匹配商品、品牌或店铺名称。继续按套餐、库存、交付方式和更新时间缩小范围。";
   }
   if (product) {
     headingTitle = `${product.display_name} 报价`;
@@ -152,7 +152,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           <h1 data-vds-role="title">{headingTitle}</h1>
           <p id={product ? "product-description" : undefined} data-vds-role="explanation">{headingDescription}</p>
         </div>
-        {!product ? <div className="catalog-heading-search"><SearchBox defaultValue={searchQuery} /></div> : null}
+        {!product ? <div className="catalog-heading-search"><SearchBox key={searchQuery} defaultValue={searchQuery} filters={{ ...filters, ...hiddenFields }} /></div> : null}
       </header>
 
       <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="报价快捷筛选">
@@ -184,7 +184,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           </div>
         </nav>
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
-          <span className="filter-label">商品类型</span>
+          <span className="filter-label">账号套餐</span>
           <div className="filter-group">
             <Link href={catalogHref(activeBrand)} prefetch={true} aria-current={!product ? "page" : undefined} className="filter-chip filter-all">
               全部商品

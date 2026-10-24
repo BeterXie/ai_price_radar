@@ -21,7 +21,7 @@ export function single(params: RawSearchParams, key: string) {
   return Array.isArray(value) ? value[value.length - 1] || "" : value || "";
 }
 
-const FILTER_KEYS = ["delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price", "source_platform"] as const;
+const FILTER_KEYS = ["q", "delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price", "source_platform"] as const;
 
 /**
  * Build the API query for an offer scope.

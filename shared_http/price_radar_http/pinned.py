@@ -170,7 +170,13 @@ class PinnedHTTPSClient:
         accept: str,
         body: bytes = b"",
         content_type: str = "",
+        extra_headers: dict[str, str] | None = None,
     ) -> PinnedResponse:
+        for key, header_value in (extra_headers or {}).items():
+            if key.casefold() not in {"authorization", "x-api-key", "anthropic-version", "x-goog-api-key"}:
+                raise ValueError("unsupported credential header")
+            if not header_value.isascii() or any(ord(ch) < 32 or ord(ch) == 127 for ch in header_value):
+                raise ValueError("invalid credential header")
         url = self.normalize_url(value)
         parsed = urllib.parse.urlsplit(url)
         host = parsed.hostname or ""
@@ -192,6 +198,7 @@ class PinnedHTTPSClient:
             ]
             if content_type:
                 headers.extend((f"Content-Type: {content_type}\r\n", f"Content-Length: {len(body)}\r\n"))
+            headers.extend(f"{key}: {value}\r\n" for key, value in (extra_headers or {}).items())
             tls_socket.sendall("".join(headers).encode("ascii") + b"\r\n" + body)
             response = http.client.HTTPResponse(tls_socket)
             response.begin()
@@ -240,6 +247,7 @@ class PinnedHTTPSClient:
         payload: dict[str, Any],
         *,
         accept: str = "application/json",
+        headers: dict[str, str] | None = None,
     ) -> PinnedResponse:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._request(
@@ -248,4 +256,5 @@ class PinnedHTTPSClient:
             accept=accept,
             body=body,
             content_type="application/json",
+            extra_headers=headers,
         )

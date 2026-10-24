@@ -11,6 +11,7 @@ import { BRAND_TABS } from "@/lib/catalog";
 import { relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 import type { RelayStationPublic } from "@/lib/types";
+import { RelayHealth } from "@/components/relay-health";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,7 @@ function RelayCard({ station }: { station: RelayStationPublic }) {
           {station.billing_note ? <div><dt>计费方式</dt><dd>{station.billing_note}</dd></div> : null}
         </dl>
         <p className="relay-price-source">站点提供的报价，以来源页面为准</p>
+        <RelayHealth health={station.health}/>
         {station.url ? (
           <AdLink kind="relays" id={station.id} href={station.url} className="button-primary tactile relay-visit" ariaLabel={`前往 ${station.name}（新窗口打开）`}>
             前往中转站 <ArrowSquareOut size={15} />
@@ -150,6 +152,7 @@ export default async function RelaysPage() {
 
       <div className="content-stage py-10 sm:py-12">
         <AdSlot placement="relay_hub" limit={2} className="mb-8" />
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm text-[color:var(--muted)]"><p>检测采用真实模型请求；近 24 小时成功率基于有效采样，不能代表全站或所有模型。</p><Link href="/shops/submit?type=relay" className="button-secondary">申请录入中转站</Link></div>
 
         {!enabled ? (
           <section className="empty-state" role="status">
@@ -162,7 +165,7 @@ export default async function RelaysPage() {
             <h2 className="text-2xl font-semibold text-[color:var(--ink)]">{relays ? "还没有收录中转站" : "中转站目录暂时无法加载"}</h2>
             <p className="mt-3 text-sm leading-6">
               {relays
-                ? "运营者尚未在后台添加中转站。如果你运营一个公开的 API 中转站，欢迎通过商务合作渠道联系收录。"
+                ? "如果你运营一个公开的 API 中转站，可以提交官网、Base URL 和检测密钥申请收录。"
                 : "可以稍后刷新，或先浏览报价目录中的“中转 / 反代”形态商品。"}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">

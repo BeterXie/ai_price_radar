@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, contains_eager
 from app.database import SessionLocal
 from app.models import CatalogSnapshot, Offer, OfferHistory, Product, UserBotBinding
 from app.schemas import OfferGroupPublic, OfferPublic
+from app.services.account_plans import PLAN_PRODUCTS
 from app.services.bot_binding import complete_qq_binding
 from app.services.catalog import (
     OfferFilters,
@@ -73,7 +74,7 @@ BRAND_GROUPS: dict[str, dict[str, Any]] = {
     "Claude": {
         "title": "Claude 全系列最低报价一览",
         "aliases": ["claude", "anthropic", "克劳德"],
-        "hint": "发送具体型号（如「claude pro」、「claude 20x」、「claude team」）可查看最低价与店铺详情。",
+        "hint": "发送具体套餐（如「claude pro」、「claude max 5x」、「claude max 20x」、「claude team」）可查看最低价与店铺详情。",
     },
     "OpenAI": {
         "title": "OpenAI / ChatGPT 全系列最低报价一览",
@@ -83,7 +84,7 @@ BRAND_GROUPS: dict[str, dict[str, Any]] = {
     "Gemini": {
         "title": "Gemini 全系列最低报价一览",
         "aliases": ["gemini", "google", "双子座", "谷歌ai"],
-        "hint": "发送具体型号（如「gemini advanced」、「gemini账号」）可查看最低价与店铺详情。",
+        "hint": "发送具体套餐（如「gemini pro」、「gemini ultra」、「gemini账号」）可查看最低价与店铺详情。",
     },
     "Grok": {
         "title": "Grok 全系列最低报价一览",
@@ -113,10 +114,6 @@ PRODUCT_ALIASES: dict[str, str] = {
     "plus": "chatgpt-plus",
     "chatgpt plus": "chatgpt-plus",
     "gpt plus": "chatgpt-plus",
-    "gpt4": "chatgpt-plus",
-    "gpt-4": "chatgpt-plus",
-    "gpt-4o": "chatgpt-plus",
-    "4o": "chatgpt-plus",
     "chatgpt-plus": "chatgpt-plus",
     "gpt 5x": "chatgpt-pro-5x",
     "chatgpt 5x": "chatgpt-pro-5x",
@@ -126,20 +123,20 @@ PRODUCT_ALIASES: dict[str, str] = {
     "chatgpt 20x": "chatgpt-pro-20x",
     "chatgpt pro 20x": "chatgpt-pro-20x",
     "chatgpt-pro-20x": "chatgpt-pro-20x",
-    "chatgpt pro": "chatgpt-pro-20x",
-    "gpt pro": "chatgpt-pro-20x",
-    "chatgpt-pro": "chatgpt-pro-20x",
+    "chatgpt pro": "chatgpt-pro",
+    "gpt pro": "chatgpt-pro",
+    "chatgpt-pro": "chatgpt-pro",
     "go": "chatgpt-go",
     "chatgpt go": "chatgpt-go",
     "gpt go": "chatgpt-go",
     "codex go": "chatgpt-go",
     "chatgpt-go": "chatgpt-go",
-    "team": "chatgpt-k12",
-    "gpt team": "chatgpt-k12",
-    "chatgpt team": "chatgpt-k12",
+    "team": "chatgpt-business",
+    "gpt team": "chatgpt-business",
+    "chatgpt team": "chatgpt-business",
     "k12": "chatgpt-k12",
-    "团队": "chatgpt-k12",
-    "车位": "chatgpt-k12",
+    "团队": "chatgpt-business",
+    "车位": "chatgpt-business",
     "chatgpt-k12": "chatgpt-k12",
     "gpt 账号": "chatgpt-account",
     "chatgpt 账号": "chatgpt-account",
@@ -157,12 +154,13 @@ PRODUCT_ALIASES: dict[str, str] = {
     "pro": "claude-pro",
     "claude pro": "claude-pro",
     "claude-pro": "claude-pro",
-    "sonnet": "claude-pro",
-    "5x": "claude-pro",
-    "claude 5x": "claude-pro",
+    "5x": "claude-max-5x",
+    "claude 5x": "claude-max-5x",
+    "claude max": "claude-max",
     "20x": "claude-pro-20x",
     "claude 20x": "claude-pro-20x",
     "claude pro 20x": "claude-pro-20x",
+    "claude max 20x": "claude-pro-20x",
     "claude-pro-20x": "claude-pro-20x",
     "claude team": "claude-team",
     "claude-team": "claude-team",
@@ -174,7 +172,11 @@ PRODUCT_ALIASES: dict[str, str] = {
     "claude-api-access": "claude-api-access",
     # Gemini models
     "gemini advanced": "gemini-advanced",
-    "gemini pro": "gemini-advanced",
+    "gemini pro": "gemini-pro",
+    "gemini plus": "gemini-plus",
+    "gemini ultra": "gemini-ultra",
+    "gemini ultra 5x": "gemini-ultra-5x",
+    "gemini ultra 20x": "gemini-ultra-20x",
     "gemini-advanced": "gemini-advanced",
     "advanced": "gemini-advanced",
     "gemini 账号": "gemini-account",
@@ -182,7 +184,7 @@ PRODUCT_ALIASES: dict[str, str] = {
     "gemini api": "gemini-api-access",
     "gemini-api-access": "gemini-api-access",
     # Grok models
-    "grok super": "grok-super",
+    "grok super": "grok-plan-super",
     "grok-super": "grok-super",
     "supergrok": "grok-super",
     "grok 账号": "grok-account",
@@ -210,11 +212,16 @@ PRODUCT_ALIASES: dict[str, str] = {
     "cursor": "cursor-pro",
     "cursor pro": "cursor-pro",
     "cursor-pro": "cursor-pro",
+    "cursor pro plus": "cursor-pro-plus",
+    "cursor teams": "cursor-business",
     "cursor business": "cursor-business",
     "cursor-business": "cursor-business",
     "cursor 账号": "cursor-account",
     "cursor-account": "cursor-account",
 }
+for slug, _brand, name, _subtitle in PLAN_PRODUCTS:
+    PRODUCT_ALIASES[slug] = slug
+    PRODUCT_ALIASES[name] = slug
 PRODUCT_ALIASES = {_normalize_query_alias(alias): slug for alias, slug in PRODUCT_ALIASES.items()}
 
 
@@ -438,9 +445,10 @@ def query_market_overview(db: Session) -> str:
 
     major_targets = [
         ("ChatGPT Plus", "chatgpt-plus"),
-        ("Claude Pro (5x)", "claude-pro"),
-        ("Claude Pro 20x", "claude-pro-20x"),
-        ("Gemini Advanced", "gemini-advanced"),
+        ("Claude Pro", "claude-pro"),
+        ("Claude Max 5x", "claude-max-5x"),
+        ("Claude Max 20x", "claude-pro-20x"),
+        ("Google AI Pro", "gemini-pro"),
         ("SuperGrok", "grok-super"),
     ]
 
@@ -733,7 +741,7 @@ def help_menu() -> str:
         "🤖【PriceMemo 比价机器人常用指令指南】",
         "------------------------------------",
         "🏷️ 品牌全系列比价:",
-        "  • claude — Claude 全系列最低价一览 (5x / 20x / Team)",
+        "  • claude — Claude 全系列最低价一览 (Pro / Max 5x / Max 20x / Team)",
         "  • openai / gpt — OpenAI 全系列最低价一览",
         "  • gemini — Gemini 全系列最低价一览",
         "  • grok — Grok 全系列最低价一览",
@@ -745,10 +753,10 @@ def help_menu() -> str:
         "  • chatgpt 20x — 查询 ChatGPT 20x 最低价",
         "  • chatgpt 5x / chatgpt go — 查询对应订阅型号最低价",
         "  • chatgpt接码 — 查询手机接码服务报价",
-        "  • pro / 5x — 查询 Claude Pro (5x) 最低价",
+        "  • pro — 查询 Claude Pro 最低价；5x — 查询 Claude Max 5x 最低价",
         "  • claude team / chatgpt team — 查询对应品牌团队版报价",
         "  • plus — 查询 ChatGPT Plus 最低价",
-        "  • gemini advanced — 查询 Gemini Advanced 最低价",
+        "  • gemini pro / gemini ultra — 查询 Google AI 对应套餐最低价",
         "  • supergrok — 查询 SuperGrok 最低价",
         "  • cursor pro — 查询 Cursor Pro 最低价",
         "  • gemini账号 / claude账号 / cursor账号 — 查询对应品牌账号",

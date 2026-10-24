@@ -5,6 +5,7 @@ import time
 from collections import OrderedDict, defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+import unicodedata
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING, Any
@@ -55,6 +56,7 @@ class SnapshotNotFoundError(LookupError):
 
 @dataclass(frozen=True, slots=True)
 class OfferFilters:
+    search: str = ""
     source_platform: str = ""
     delivery_type: str = ""
     service_period: str = ""
@@ -194,7 +196,36 @@ def _base_public_offer_query(
     return stmt
 
 
+def _literal_pattern(value: str) -> str:
+    return "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _apply_search(stmt, query: str):
+    # AND between words, OR between fields/brand aliases. Wildcards are literal.
+    aliases = {
+        "openai": ("openai", "chatgpt", "codex"),
+        "gpt": ("chatgpt", "gpt"),
+        "克劳德": ("claude",),
+        "谷歌": ("gemini", "google ai", "google one ai"),
+        "gemini": ("gemini", "google ai", "google one ai"),
+    }
+    terms = unicodedata.normalize("NFKC", query).casefold().split()
+    for term in dict.fromkeys(terms):
+        variants = aliases.get(term, (term,))
+        matching_products = select(Product.id).where(or_(*(
+            field.ilike(_literal_pattern(variant), escape="\\")
+            for variant in variants for field in (Product.display_name, Product.slug, Product.platform)
+        ))).correlate(None)
+        stmt = stmt.where(or_(Offer.product_id.in_(matching_products), *(
+            field.ilike(_literal_pattern(variant), escape="\\")
+            for variant in variants for field in (RawProduct.original_name, Shop.name)
+        )))
+    return stmt
+
+
 def _apply_offer_filters(stmt, filters: OfferFilters):
+    if filters.search:
+        stmt = _apply_search(stmt, filters.search)
     if filters.source_platform:
         stmt = stmt.where(Shop.platform == filters.source_platform)
     if filters.delivery_type:
@@ -221,7 +252,7 @@ def _apply_offer_filters(stmt, filters: OfferFilters):
     if filters.max_price is not None:
         stmt = stmt.where(Offer.price <= filters.max_price)
     for term in [value.strip() for value in filters.exclude.split(",") if value.strip()]:
-        stmt = stmt.where(not_(RawProduct.original_name.ilike(f"%{term}%")))
+        stmt = stmt.where(not_(RawProduct.original_name.ilike(_literal_pattern(term), escape="\\")))
     return stmt
 
 
@@ -707,12 +738,7 @@ def get_catalog_group_page(
     if platform:
         stmt = stmt.where(Product.platform == platform)
     if q:
-        pattern = f"%{q}%"
-        stmt = stmt.where(or_(
-            Product.display_name.ilike(pattern),
-            Product.slug.ilike(pattern),
-            RawProduct.original_name.ilike(pattern),
-        ))
+        stmt = _apply_search(stmt, q)
     if product_slug:
         stmt = stmt.where(Product.slug == product_slug)
     filtered_stmt = _apply_offer_filters(stmt, filters)
@@ -930,12 +956,7 @@ def _product_card_scope(
     if product_type:
         stmt = stmt.where(Product.product_type == product_type)
     if q:
-        pattern = f"%{q}%"
-        stmt = stmt.where(or_(
-            Product.display_name.ilike(pattern),
-            Product.slug.ilike(pattern),
-            RawProduct.original_name.ilike(pattern),
-        ))
+        stmt = _apply_search(stmt, q)
     if tag:
         escaped = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.where(cast(Offer.tags, Text).like(f'%"{escaped}"%', escape="\\"))
@@ -944,6 +965,7 @@ def _product_card_scope(
 
 def _has_offer_filters(filters: OfferFilters) -> bool:
     return any([
+        filters.search,
         filters.source_platform,
         filters.delivery_type,
         filters.service_period,

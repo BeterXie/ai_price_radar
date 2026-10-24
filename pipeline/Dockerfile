@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" /tmp/shared_http \
     && groupadd --system --gid 10001 importer \
     && useradd --system --uid 10001 --gid importer importer
 COPY --chown=importer:importer pipeline/ .
+COPY --chown=importer:importer apps/api/app /workspace/apps/api/app
 # 与 crawler 数据目录保持同一 uid（10001），宿主机目录 chown 10001 后即可写入。
 USER importer
 CMD ["python", "sync_ldxp.py", "--help"]

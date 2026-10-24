@@ -91,7 +91,9 @@ def list_live_ad_slots(db: Session, *, placement: str = "", limit: int = 6) -> l
     return items
 
 
-def relay_station_public(station: RelayStation) -> RelayStationPublic:
+def relay_station_public(station: RelayStation, db: Session | None = None) -> RelayStationPublic:
+    from .relay_monitor import relay_health
+    from ..schemas import RelayHealthOut
     return RelayStationPublic(
         id=station.id,
         name=station.name,
@@ -105,19 +107,20 @@ def relay_station_public(station: RelayStation) -> RelayStationPublic:
         is_sponsored=bool(station.is_sponsored),
         click_count=int(station.click_count or 0),
         updated_at=station.updated_at,
+        health=relay_health(db, station) if db is not None else RelayHealthOut(),
     )
 
 
 def list_enabled_relay_stations(db: Session) -> list[RelayStationPublic]:
     stmt = (
         select(RelayStation)
-        .where(RelayStation.is_enabled.is_(True))
+        .where(RelayStation.is_enabled.is_(True), RelayStation.review_status == "approved")
         .order_by(RelayStation.is_sponsored.desc(), RelayStation.sort_order.asc(), RelayStation.id.asc())
     )
-    return [relay_station_public(station) for station in db.scalars(stmt)]
+    return [relay_station_public(station, db) for station in db.scalars(stmt)]
 
 
 def count_enabled_relay_stations(db: Session) -> int:
     from sqlalchemy import func
 
-    return int(db.scalar(select(func.count(RelayStation.id)).where(RelayStation.is_enabled.is_(True))) or 0)
+    return int(db.scalar(select(func.count(RelayStation.id)).where(RelayStation.is_enabled.is_(True), RelayStation.review_status == "approved")) or 0)

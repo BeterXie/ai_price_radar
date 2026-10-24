@@ -21,15 +21,15 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("ChatGPT Plus 直充一个月", "", "chatgpt-plus"),
         ("ChatGPT Free 成品号", "", "chatgpt-account"),
         ("GPT Business Team K12 自动拉", "", "chatgpt-k12"),
-        ("GPT Team 团队邀请 月付", "", "chatgpt-k12"),
+        ("GPT Team 团队邀请 月付", "", "chatgpt-business"),
         ("GPT PRO 成品号（5x）无质保版", "", "chatgpt-pro-5x"),
         ("ChatGPT 5✖️Pro 一个月", "", "chatgpt-pro-5x"),
         ("ChatGPT Pro x 20 会员", "", "chatgpt-pro-20x"),
         ("GPT Pro20× 一个月", "", "chatgpt-pro-20x"),
         ("ChatGPT Pro 200刀会员", "", "chatgpt-pro-20x"),
-        ("ChatGPT Pro 5天账号", "", "chatgpt-pro-20x"),
-        ("ChatGPT Pro 20刀账号", "", "chatgpt-pro-20x"),
-        ("ChatGPT Pro 500x账号", "", "chatgpt-pro-20x"),
+        ("ChatGPT Pro 5天账号", "", "chatgpt-pro"),
+        ("ChatGPT Pro 20刀账号", "", "chatgpt-pro"),
+        ("ChatGPT Pro 500x账号", "", "chatgpt-pro"),
         ("ChatGPT Pro 5倍成品号", "", "chatgpt-pro-5x"),
         ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "", "chatgpt-pro-20x"),
         ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "", "chatgpt-pro-20x"),
@@ -72,7 +72,7 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("GP Plus质保30天gmail越南渠道-苹果原生支付Codex（超稳）", "", "chatgpt-plus"),
         ("直卡PLUS,未接马，半小时内保首登", "", "chatgpt-plus"),
         ("《越南》G plus/未接马/质保首登/可登录网页版/登录codex需自行接马", "", "chatgpt-plus"),
-        ("长效周限额team 已接马 质保首登! 可刷新凭证", "", "chatgpt-k12"),
+        ("长效周限额team 已接马 质保首登! 可刷新凭证", "", "chatgpt-business"),
         ("印度uip-PLUS-icloud邮箱-保首登", "", "chatgpt-plus"),
         ("菲律宾直卡PLUS-质保首登-icloud邮箱-Codex未接马-不保证可以使用24小时", "", "chatgpt-plus"),
         ("G Plus 未接马 质保首登 7.22新号", "", "chatgpt-plus"),
@@ -89,7 +89,7 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("Claude-Kiro API KEY 100M Token", "GPT | Gemini | Claude | Grok", "claude-api-access"),
         ("Gemini 成品号", "AI账号", "gemini-account"),
         ("SuperGrok 代充值", "AI会员", "grok-super"),
-        ("Grok Super 正规充值", "AI会员", "grok-super"),
+        ("Grok Super 正规充值", "AI会员", "grok-plan-super"),
         ("X（Twitter） Premium会员直充卡密", "Grok", "x-premium"),
         ("X Premium Basic 一个月官方直充", "AI会员", "x-premium-basic"),
         ("X Premium+ 12个月官方直充", "Grok 充值", "x-premium-plus"),
@@ -101,16 +101,16 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("Super Grok 稳定正规渠道季卡 成品号", "Grok", "grok-super"),
         ("Super Grok 稳定特殊渠道月卡 直充月卡 质保激活", "Grok", "grok-super"),
         ("Super gro 稳定正规渠道 季卡 直充季卡 质保订阅", "Grok", "grok-super"),
-        ("Super Grok Heavy 特殊渠道 直充月卡 质保激活", "Grok", "grok-super"),
-        ("Super Grok Heavy 特殊渠道 季卡 成品号", "Grok", "grok-super"),
-        ("OpenAI Team 独立车位 / ChatGPT Team 团队版席位 自动拉", "Team", "chatgpt-k12"),
+        ("Super Grok Heavy 特殊渠道 直充月卡 质保激活", "Grok", "grok-heavy"),
+        ("Super Grok Heavy 特殊渠道 季卡 成品号", "Grok", "grok-heavy"),
+        ("OpenAI Team 独立车位 / ChatGPT Team 团队版席位 自动拉", "Team", "chatgpt-business"),
         ("Twitter 普通账号", "社交账号", None),
         ("X Premium Business 企业认证", "企业服务", None),
         ("多平台 AI 账号自动注册与管理·协议化付款一键开通 Chat机皮替 Plus使用教程", "全部", None),
         ("买了成品号，最好用2FA修改教程，链接在这", "全部", None),
         ("free账号免手机验证使用codex 指南", "全部", None),
         ("GPT Plus成品号｜已接码 支持二验｜可邮箱登录 附登录教程 不以不会使用为由进行退款！", "全部", "chatgpt-plus"),
-        ("高级会员直充一个月", "Claude", "claude-account"),
+        ("高级会员直充一个月", "Claude", "claude-subscription"),
     ],
 )
 def test_classifier_requires_a_target_brand(title: str, category: str, expected: str | None):
@@ -139,7 +139,7 @@ def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
     assert classify("G Pro 5倍官方充值月卡", source_platform="16688").slug == "chatgpt-pro-5x"
     assert classify("G Pro X200 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
     assert classify("GP.T Plus 菲区 CDK").slug is None
-    assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-super"
+    assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-heavy"
 
 
 @pytest.mark.parametrize(
@@ -170,7 +170,7 @@ def test_16688_source_category_can_supply_product_identity():
 
 def test_description_can_refine_an_already_identified_openai_product():
     result = classify("ChatGPT 独享账号", "OpenAI", {"description": "Business Team 自动拉入"})
-    assert result.slug == "chatgpt-k12"
+    assert result.slug == "chatgpt-business"
 
 
 def test_product_catalog_groups_openai_and_retires_legacy_team_product():
@@ -191,7 +191,7 @@ def test_product_catalog_groups_openai_and_retires_legacy_team_product():
         assert products["x-premium-basic"].platform == "X"
         assert products["x-premium-plus"].display_name == "X Premium+"
         assert legacy.is_visible is False
-        assert products["chatgpt-pro"].is_visible is False
+        assert products["chatgpt-pro"].is_visible is True
     finally:
         db.close()
 
@@ -337,13 +337,13 @@ def test_relay_groups_and_non_20_dollar_quotas_rejected_from_plus(title: str, ca
         ("自营2- Plus 成品号 已接码 只能反代 json发货 没有账号密码那些", "全部", "只可反代，没有账号密码", "chatgpt-plus", "session_token", True),
         ("ChatGPT / Codex｜美国实体卡接码【30天可续租】", "接码", "", "chatgpt-access-service", "verification_service", True),
         ("OpenAI Pro 20X 额度｜50美金｜OpenAI 5.6-sol｜ OpenAI image2", "20X(无质保)", "", None, "api_credit", False),
-        ("G Team bug 子号 最低200刀（无质保，拿着卡密去兑换地址下载JSON文件）", "OpenAI Team/Go", "", "chatgpt-k12", "team_seat", True),
-        ("长效 周额team", "ChatGPT福利号", "", "chatgpt-k12", "team_seat", True),
+        ("G Team bug 子号 最低200刀（无质保，拿着卡密去兑换地址下载JSON文件）", "OpenAI Team/Go", "", "chatgpt-business", "team_seat", True),
+        ("长效 周额team", "ChatGPT福利号", "", "chatgpt-business", "team_seat", True),
         ("plus成品号30天10人拼车】plus订阅拼车30天 全程质保🔥", "GPT Plus", "", "chatgpt-plus", "shared_pool", False),
         ("G plus会员拼车号【随机1-4人用】", "GPT Plus", "", "chatgpt-plus", "shared_pool", False),
         ("【质保稳定30天，3人共享账号】", "GPT Plus", "", "chatgpt-plus", "shared_pool", False),
         ("Super Grok官方正规充值1个月（质保30天订阅）", "Grok分组", "", "grok-super", "subscription_recharge", True),
-        ("GrokSuper代充值（1个月）", "Grok分组", "", "grok-super", "subscription_recharge", True),
+    ("GrokSuper代充值（1个月）", "Grok分组", "", "grok-plan-super", "subscription_recharge", True),
         ("【特惠秒发】独享个人月度会员 官方正规实卡开通", "通用AI", "本商品为 ChatGPT Plus 官方正规独享号，带完整邮箱密码和2FA", "chatgpt-plus", "finished_account", True),
         ("【直充秒发】独立个人订阅 月付质保", "海外会员", "本商品为 Claude Pro 个人会员代充，正规信用卡开通", "claude-pro", "subscription_recharge", True),
         ("【年付特惠】高级版会员 质保一年", "热门AI", "Google Gemini Advanced 1年会员直充，享受2TB空间及最新AI模型", "gemini-advanced", "subscription_recharge", True),
@@ -456,12 +456,10 @@ def test_cursor_classification_and_retired_zhipu_titles():
         # Keep these in sync with apps/api/tests/test_classifier.py: the pipeline
         # and the API must route the same title to the same product slug.
         ("Cursor Team 团队版席位 独享组织", "cursor-business"),
-        ("Cursor 日卡 体验版", "cursor-pro"),
-        ("Cursor 直充月卡 官方代充", "cursor-pro"),
-        ("Cursor 年卡 个人会员", "cursor-pro"),
+        ("Cursor 日卡 体验版", "cursor-subscription"),
+        ("Cursor 直充月卡 官方代充", "cursor-subscription"),
+        ("Cursor 年卡 个人会员", "cursor-subscription"),
     ],
 )
 def test_cursor_rules_match_the_api_classifier(title: str, expected: str):
     assert classify(title).slug == expected
-
-

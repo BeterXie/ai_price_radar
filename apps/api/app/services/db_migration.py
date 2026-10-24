@@ -90,7 +90,37 @@ def ensure_db_schema(engine: Engine) -> None:
         else:
             logger.info("Skipping schema auto-migration for dialect %s", dialect_name)
             return
+        ensure_relay_monitoring(conn)
         _hide_retired_products(conn)
+
+
+def ensure_relay_monitoring(conn) -> None:
+    from sqlalchemy import inspect
+    from ..models import RelayProbeResult
+
+    inspector = inspect(conn)
+    if "relay_stations" not in inspector.get_table_names():
+        return
+    columns = {row["name"] for row in inspector.get_columns("relay_stations")}
+    additions = {
+        "base_url": "TEXT NOT NULL DEFAULT ''",
+        "encrypted_api_key": "TEXT NOT NULL DEFAULT ''",
+        "probe_protocol": "VARCHAR(20) NOT NULL DEFAULT 'openai'",
+        "probe_model": "VARCHAR(120) NOT NULL DEFAULT ''",
+        "monitor_enabled": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "monitor_revision": "INTEGER NOT NULL DEFAULT 1",
+        "next_probe_at": "TIMESTAMP",
+        "review_status": "VARCHAR(20) NOT NULL DEFAULT 'approved'",
+        "submitted_by": "INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        "contact_email": "VARCHAR(200) NOT NULL DEFAULT ''",
+        "submission_note": "TEXT NOT NULL DEFAULT ''",
+        "submission_key": "VARCHAR(1000)",
+    }
+    for name, sql_type in additions.items():
+        if name not in columns:
+            conn.execute(text(f"ALTER TABLE relay_stations ADD COLUMN {name} {sql_type}"))
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_relay_submission_key ON relay_stations(submission_key)"))
+    RelayProbeResult.__table__.create(conn, checkfirst=True)
 
 
 def _migrate_sqlite(conn) -> None:

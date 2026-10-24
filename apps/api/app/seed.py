@@ -8,25 +8,22 @@ from sqlalchemy import select
 from .database import Base, SessionLocal, engine
 from .models import Offer, OfferHistory, Product, RawProduct, Shop
 from .services.classifier import classify_product
+from .services.account_plans import product_definitions
 
 
 PRODUCTS = [
     ("chatgpt-account", "OpenAI", "ChatGPT Free", "Free 普号与基础账号", "account", "聚合公开售卖的 ChatGPT Free 普号和基础账号。"),
     ("chatgpt-plus", "OpenAI", "ChatGPT Plus", "Plus 订阅、代充与成品号", "subscription", "聚合 ChatGPT Plus 的代充、直充、月付与成品号报价。"),
     ("chatgpt-go", "OpenAI", "ChatGPT Go", "Go 订阅、充值与成品号", "subscription", "聚合标题明确标注为 ChatGPT Go 的订阅、充值与成品号公开报价。"),
-    ("chatgpt-k12", "OpenAI", "ChatGPT K12", "Team / Business、团队邀请与 K12", "subscription", "聚合 ChatGPT Team、Business、K12、团队邀请、车位和自动拉等公开报价。"),
     ("chatgpt-pro-5x", "OpenAI", "ChatGPT Pro 5x", "Pro 5x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 5x 的公开报价。"),
     ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x", "Pro 20x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 20x 的公开报价。"),
     ("chatgpt-pro", "OpenAI", "ChatGPT Pro", "未注明 5x 或 20x 的 Pro", "subscription", "聚合未明确标注 5x 或 20x 倍率的 ChatGPT Pro 公开报价。"),
     ("openai-api-credit", "OpenAI", "OpenAI API 额度", "API Key 与额度商品", "api", "聚合 OpenAI API 额度、余额和 Key 类商品。"),
     ("chatgpt-access-service", "OpenAI", "ChatGPT 手机接码", "接码、验证与开通服务", "service", "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。"),
     ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "已合并至 ChatGPT Plus。"),
-    ("claude-pro", "Claude", "Claude Pro (5x)", "Pro 5x 个人会员订阅", "subscription", "聚合 Claude Pro (5x) 个人会员订阅公开报价。"),
-    ("claude-pro-20x", "Claude", "Claude Pro 20x", "Pro 20x 满血高配号", "subscription", "聚合明确标注为 Claude Pro 20x / Max 20x 的高倍用量公开报价。"),
     ("claude-team", "Claude", "Claude Team", "Team 团队版席位与组织号", "subscription", "聚合 Claude Team 团队版席位、拼车与独享组织公开报价。"),
     ("claude-account", "Claude", "Claude 账号", "基础账号与访问类商品", "account", "聚合 Claude 基础账号与访问类公开报价。"),
     ("claude-api-access", "Claude", "Claude API", "API Key、Token 与额度商品", "api", "聚合 Claude API Key、Token 与额度类公开报价。"),
-    ("gemini-advanced", "Gemini", "Gemini Advanced", "Google One AI 会员", "subscription", "聚合 Gemini Advanced 与 Google One AI 报价。"),
     ("gemini-account", "Gemini", "Gemini 账号", "基础账号与访问类商品", "account", "聚合 Gemini 基础账号与访问类公开报价。"),
     ("gemini-api-access", "Gemini", "Gemini API", "API Key、Token 与额度商品", "api", "聚合 Gemini API Key、Token 与额度类公开报价。"),
     ("grok-super", "Grok", "SuperGrok", "SuperGrok 订阅与代充", "subscription", "聚合 SuperGrok 订阅与代充公开报价。"),
@@ -40,9 +37,11 @@ PRODUCTS = [
     ("cursor-account", "Cursor", "Cursor 账号", "基础账号与访问类商品", "account", "聚合 Cursor 基础账号与新号公开报价。"),
 ]
 
+PRODUCTS = product_definitions(PRODUCTS)
+
 DEMO_OFFERS = [
-    ("NORTH01", "北岸数字", "ChatGPT Business Team K12 自动拉 无质保", "chatgpt-k12", "43.26", 9, "in_stock", True, 7),
-    ("ORBIT88", "轨道补给站", "GPT Team 团队邀请 月付 首登售后", "chatgpt-k12", "49.00", 3, "in_stock", True, 18),
+    ("NORTH01", "北岸数字", "ChatGPT Business Team 自动拉 无质保", "chatgpt-business", "43.26", 9, "in_stock", True, 7),
+    ("ORBIT88", "轨道补给站", "GPT Team 团队邀请 月付 首登售后", "chatgpt-business", "49.00", 3, "in_stock", True, 18),
     ("MINTLAB", "薄荷实验室", "ChatGPT Plus 自己账号直充 1个月", "chatgpt-plus", "88.00", 12, "in_stock", False, 11),
     ("MESH77", "网格仓库", "GPT Plus 成品号 秒发 售出不退", "chatgpt-plus", "39.90", 0, "out_of_stock", True, 31),
     ("STACKAI", "栈上 AI", "ChatGPT Pro 20x 会员 月付", "chatgpt-pro-20x", "799.00", 2, "in_stock", False, 25),
@@ -71,12 +70,11 @@ def seed() -> None:
             product.product_type = product_type
             product.description = description
             product.search_keywords = [name, platform, product_type]
+            if slug == "chatgpt-pro":
+                product.is_visible = True
         legacy_team = products.get("chatgpt-team-business")
         if legacy_team is not None:
             legacy_team.is_visible = False
-        legacy_pro = products.get("chatgpt-pro")
-        if legacy_pro is not None:
-            legacy_pro.is_visible = False
         db.flush()
 
         from .services.community_skills import seed_default_community_skills

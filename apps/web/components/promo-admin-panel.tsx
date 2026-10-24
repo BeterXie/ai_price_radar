@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RelayProbeFields } from "@/components/relay-probe-fields";
+import { RelayHealth } from "@/components/relay-health";
 import {
   ArrowClockwise,
   ArrowSquareOut,
@@ -46,6 +48,11 @@ const EMPTY_AD: AdSlotInput = {
 };
 
 const EMPTY_RELAY: RelayStationInput = {
+  base_url: "",
+  api_key: "",
+  probe_protocol: "openai",
+  probe_model: "",
+  monitor_enabled: false,
   name: "",
   url: "",
   tagline: "",
@@ -257,6 +264,7 @@ export function PromoAdminPanel({
   const [editingRelayId, setEditingRelayId] = useState<number | null>(null);
   const [relayFormOpen, setRelayFormOpen] = useState(false);
   const [savingRelay, setSavingRelay] = useState(false);
+  const [relayBusyId, setRelayBusyId] = useState<number | null>(null);
   const [relayError, setRelayError] = useState("");
 
   const loadRelays = useCallback(async () => {
@@ -278,6 +286,11 @@ export function PromoAdminPanel({
     if (station) {
       setEditingRelayId(station.id);
       setRelayDraft({
+        base_url: station.base_url,
+        api_key: "",
+        probe_protocol: station.probe_protocol,
+        probe_model: station.probe_model,
+        monitor_enabled: station.monitor_enabled,
         name: station.name,
         url: station.url,
         tagline: station.tagline,
@@ -317,6 +330,7 @@ export function PromoAdminPanel({
         tags: splitList(tags_text),
       };
       const isEdit = editingRelayId !== null;
+      if (isEdit && !body.api_key?.trim()) delete body.api_key;
       const res = await fetch(`${apiBase}/api/v1/admin/relays${isEdit ? `/${editingRelayId}` : ""}`, {
         method: isEdit ? "PATCH" : "POST",
         credentials: "include",
@@ -328,6 +342,7 @@ export function PromoAdminPanel({
         throw new Error(errorDetail(payload, `保存失败 (${res.status})`));
       }
       showToast(isEdit ? "中转站已更新" : "中转站已添加");
+      setRelayDraft((value) => ({ ...value, api_key: "" }));
       setRelayFormOpen(false);
       await loadRelays();
     } catch (e) {
@@ -337,18 +352,20 @@ export function PromoAdminPanel({
     }
   };
 
-  const toggleRelay = async (station: RelayStationAdmin) => {
-    const res = await fetch(`${apiBase}/api/v1/admin/relays/${station.id}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: jsonHeaders,
-      body: JSON.stringify({ is_enabled: !station.is_enabled }),
-    });
-    if (res.ok) {
-      showToast(station.is_enabled ? "已下线该中转站" : "已上线该中转站");
+  const updateRelay = async (station: RelayStationAdmin, patch: Partial<RelayStationInput> & { review_status?: "approved" | "rejected" }, message: string) => {
+    setRelayBusyId(station.id);
+    setError("");
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/relays/${station.id}`, {
+        method: "PATCH", credentials: "include", headers: jsonHeaders, body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(errorDetail(await res.json().catch(() => null), `更新失败 (${res.status})`));
+      showToast(message);
       await loadRelays();
-    } else {
-      setError(`更新失败 (${res.status})`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "更新失败");
+    } finally {
+      setRelayBusyId(null);
     }
   };
 
@@ -360,6 +377,21 @@ export function PromoAdminPanel({
       await loadRelays();
     } else {
       setError(`删除失败 (${res.status})`);
+    }
+  };
+
+  const probeRelay = async (station: RelayStationAdmin) => {
+    setRelayBusyId(station.id);
+    setError("");
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/relays/${station.id}/probe`, { method: "POST", credentials: "include", headers: stableHeaders });
+      if (!res.ok) throw new Error(errorDetail(await res.json().catch(() => null), "检测失败"));
+      showToast("接口检测已完成");
+      await loadRelays();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "检测失败");
+    } finally {
+      setRelayBusyId(null);
     }
   };
 
@@ -630,10 +662,11 @@ export function PromoAdminPanel({
                     <input type="checkbox" checked={relayDraft.is_sponsored} onChange={(e) => setRelayDraft((d) => ({ ...d, is_sponsored: e.target.checked }))} className="h-5 w-5 accent-[color:var(--brand-strong)]" />赞助（置顶并标识）
                   </label>
                   <label className="flex items-center gap-2 pb-2 text-sm">
-                    <input type="checkbox" checked={relayDraft.is_enabled} onChange={(e) => setRelayDraft((d) => ({ ...d, is_enabled: e.target.checked }))} className="h-5 w-5 accent-[color:var(--brand-strong)]" />上线
+                    <input type="checkbox" disabled={editingRelayId !== null && relays.find((station) => station.id === editingRelayId)?.review_status !== "approved"} checked={relayDraft.is_enabled} onChange={(e) => setRelayDraft((d) => ({ ...d, is_enabled: e.target.checked }))} className="h-5 w-5 accent-[color:var(--brand-strong)]" />上线（申请需先批准）
                   </label>
                 </div>
               </div>
+              <RelayProbeFields value={relayDraft} onChange={(patch) => setRelayDraft((value) => ({ ...value, ...patch }))} hasApiKey={relays.find((station) => station.id === editingRelayId)?.has_api_key}/>
               {relayError ? <p role="alert" className="text-sm text-[color:var(--danger)]">{relayError}</p> : null}
               <div className="flex flex-wrap gap-2">
                 <button type="submit" disabled={savingRelay} className="button-primary tactile !min-h-9 !px-4 text-xs disabled:opacity-50">{savingRelay ? "正在保存…" : "保存"}</button>
@@ -675,12 +708,14 @@ export function PromoAdminPanel({
                     </td>
                     <td className="mono px-4 py-3 text-right align-top text-xs">{station.sort_order}</td>
                     <td className="mono px-4 py-3 text-right align-top text-xs">{station.click_count}</td>
-                    <td className="px-4 py-3 align-top"><span className={`status-pill ${station.is_enabled ? "status-success" : ""}`}>{station.is_enabled ? "已上线" : "已下线"}</span></td>
+                    <td className="px-4 py-3 align-top"><span className={`status-pill ${station.is_enabled ? "status-success" : ""}`}>{station.review_status === "pending" ? "待审核" : station.review_status === "rejected" ? "已驳回" : station.is_enabled ? "已上线" : "已下线"}</span><RelayHealth health={station.health}/>{station.contact_email && <p className="mt-2 text-xs">申请邮箱：{station.contact_email}</p>}{station.submission_note && <p className="mt-1 text-xs">{station.submission_note}</p>}</td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex justify-end gap-1.5">
-                        <button type="button" onClick={() => openRelayForm(station)} title="编辑" className="button-secondary tactile !min-h-8 !px-2.5 text-xs"><PencilSimple size={14} /></button>
-                        <button type="button" onClick={() => toggleRelay(station)} title={station.is_enabled ? "下线" : "上线"} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">{station.is_enabled ? <EyeSlash size={14} /> : <Eye size={14} />}</button>
-                        <button type="button" onClick={() => deleteRelay(station)} title="删除" className="button-danger tactile !min-h-8 !px-2.5 text-xs"><Trash size={14} /></button>
+                        <button type="button" disabled={relayBusyId !== null} onClick={() => openRelayForm(station)} title="编辑" className="button-secondary tactile !min-h-8 !px-2.5 text-xs"><PencilSimple size={14} /></button>
+                        {station.review_status !== "approved" ? <button type="button" disabled={relayBusyId !== null} onClick={() => updateRelay(station, { review_status: "approved", is_enabled: true, monitor_enabled: Boolean(station.has_api_key && station.base_url && station.probe_model) }, "已批准并上线该中转站")} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">批准并上线</button> : <button type="button" disabled={relayBusyId !== null} onClick={() => updateRelay(station, { is_enabled: !station.is_enabled }, station.is_enabled ? "已下线该中转站" : "已上线该中转站")} title={station.is_enabled ? "下线" : "上线"} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">{station.is_enabled ? <EyeSlash size={14} /> : <Eye size={14} />}</button>}
+                        {station.review_status === "pending" && <button type="button" disabled={relayBusyId !== null} onClick={() => updateRelay(station, { review_status: "rejected" }, "已驳回该中转站申请")} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">驳回</button>}
+                        {station.monitor_enabled && station.is_enabled && <button type="button" disabled={relayBusyId !== null} onClick={() => probeRelay(station)} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">{relayBusyId === station.id ? "处理中…" : "检测"}</button>}
+                        <button type="button" disabled={relayBusyId !== null} onClick={() => deleteRelay(station)} title="删除" className="button-danger tactile !min-h-8 !px-2.5 text-xs"><Trash size={14} /></button>
                       </div>
                     </td>
                   </tr>

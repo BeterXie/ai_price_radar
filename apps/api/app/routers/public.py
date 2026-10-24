@@ -32,7 +32,10 @@ from ..models import (
     UserActionLog,
 )
 from ..security import get_current_user, get_token_from_request, require_current_user
+from sqlalchemy.exc import IntegrityError
+
 from ..schemas import (
+    RelaySubmissionCreate,
     AdSlotListOut,
     CatalogOfferGroupPageResponse,
     PromoClickResponse,
@@ -117,6 +120,7 @@ def _snapshot_or_404(db: Session, snapshot_id: int | None):
 
 def _offer_filters(
     *,
+    search: str = "",
     source_platform: str = "",
     delivery_type: str = "",
     period: str = "",
@@ -130,6 +134,7 @@ def _offer_filters(
     max_price: Decimal | None = None,
 ) -> OfferFilters:
     return OfferFilters(
+        search=search,
         source_platform=canonical_source_platform(source_platform),
         delivery_type=delivery_type,
         service_period=period,
@@ -365,6 +370,7 @@ def catalog_groups(
 @router.get("/products/{slug}", response_model=ProductDetail)
 def product_detail(
     slug: str,
+    q: str = Query(default="", max_length=100),
     source_platform: str = Query(default="", max_length=50),
     delivery_type: str = Query(default="", max_length=40),
     period: str = Query(default="", max_length=40),
@@ -384,6 +390,7 @@ def product_detail(
         db,
         slug,
         filters=_offer_filters(
+            search=q,
             source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
@@ -422,9 +429,20 @@ def product_history(
 @router.get("/products/{slug}/offers", response_model=OfferPageResponse)
 def product_offers(
     slug: str,
+    q: str = Query(default="", max_length=100),
     source_platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
+    delivery_type: str = Query(default="", max_length=40),
+    period: str = Query(default="", max_length=40),
+    warranty: str = Query(default="", max_length=40),
+    auto_delivery: bool | None = None,
+    updated_within_hours: int | None = Query(default=None, ge=1, le=24 * 7),
+    comparable: bool | None = None,
+    exclude: str = Query(default="", max_length=200),
+    in_stock: bool = False,
+    min_price: Decimal | None = Query(default=None, ge=0),
+    max_price: Decimal | None = Query(default=None, ge=0),
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> OfferPageResponse:
@@ -434,7 +452,12 @@ def product_offers(
         slug,
         offset=offset,
         limit=limit,
-        filters=_offer_filters(source_platform=source_platform),
+        filters=_offer_filters(
+            search=q, source_platform=source_platform, delivery_type=delivery_type,
+            period=period, warranty=warranty, auto_delivery=auto_delivery,
+            updated_within_hours=updated_within_hours, comparable=comparable,
+            exclude=exclude, in_stock=in_stock, min_price=min_price, max_price=max_price,
+        ),
         snapshot_id=current.id if current else None,
     )
     if items is None:
@@ -445,6 +468,7 @@ def product_offers(
 @router.get("/products/{slug}/groups", response_model=OfferGroupPageResponse)
 def product_groups(
     slug: str,
+    q: str = Query(default="", max_length=100),
     source_platform: str = Query(default="", max_length=50),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=30, ge=1, le=100),
@@ -471,6 +495,7 @@ def product_groups(
         offset=offset,
         limit=limit,
         filters=_offer_filters(
+            search=q,
             source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
@@ -497,6 +522,7 @@ def product_groups(
 def product_group_offers(
     slug: str,
     fingerprint: str,
+    q: str = Query(default="", max_length=100),
     currency: str = Query(default="", min_length=0, max_length=10),
     source_platform: str = Query(default="", max_length=50),
     delivery_type: str = Query(default="", max_length=40),
@@ -519,6 +545,7 @@ def product_group_offers(
         fingerprint,
         currency=currency,
         filters=_offer_filters(
+            search=q,
             source_platform=source_platform,
             delivery_type=delivery_type,
             period=period,
@@ -844,6 +871,58 @@ def create_report(payload: ReportCreate, request: Request, db: Session = Depends
     db.commit()
     db.refresh(report)
     return report
+
+
+@router.post("/relay-requests", response_model=ShopRequestOut, status_code=201)
+def create_relay_request(
+    payload: "RelaySubmissionCreate",
+    request: Request,
+    response: Response,
+    current_user: User = Depends(require_current_user),
+    db: Session = Depends(get_db),
+) -> ShopRequestOut:
+    from ..services.relay_monitor import configure_relay
+
+    _enforce_report_rate_limit(request, db)
+    if not current_user.email or current_user.email.casefold() != payload.contact.casefold():
+        raise HTTPException(status_code=403, detail="contact email must match the verified account email")
+    existing = db.scalar(select(RelayStation).where(
+        (RelayStation.submission_key == payload.url) | (RelayStation.url == payload.url)
+    ).order_by(RelayStation.id))
+    created = existing is None
+    if existing is None:
+        station = RelayStation()
+        values = payload.model_dump(exclude={"api_key", "contact", "note", "authorization_confirmed"})
+        values.update(
+            is_enabled=False, is_sponsored=False, sort_order=100,
+            review_status="pending", monitor_enabled=True,
+            submitted_by=current_user.id, contact_email=payload.contact,
+            submission_note=payload.note, submission_key=payload.url,
+        )
+        try:
+            configure_relay(db, station, values, payload.api_key)
+        except RuntimeError:
+            raise HTTPException(status_code=503, detail="凭据加密服务未配置，暂时无法接收检测密钥") from None
+        db.add(station)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing = db.scalar(select(RelayStation).where(RelayStation.submission_key == payload.url))
+            if existing is None:
+                raise
+            created = False
+    station = station if created else existing
+    published = station.review_status == "approved" and station.is_enabled
+    if not created:
+        response.status_code = 200
+    return ShopRequestOut(
+        source_type="relay", declared_platform="relay", detected_platform="relay",
+        status="submitted" if created else "already_known" if published else "already_pending",
+        workflow_status="published" if published else "pending_review",
+        detection_message="中转站申请会在后台「广告与中转站」审核；上线后按小时进行真实模型请求检测。",
+        request_id=station.id, shop_token="",
+    )
 
 
 @router.post("/shop-requests", response_model=ShopRequestOut)

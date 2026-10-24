@@ -22,6 +22,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, St
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from currencies import normalize_currency
+from app.services.account_plans import product_definitions
 
 
 class Base(DeclarativeBase):
@@ -599,169 +600,9 @@ def classify_identity(
     description_text: str = "",
     source_platform: str = "",
 ) -> tuple[str | None, bool]:
-    clean_title = strip_exclusions(title_text)
-    clean_category = strip_exclusions(category_text)
-    clean_identity = f"{clean_title} {clean_category}"
-    identity_text = norm(" ".join([title_text, category_text]))
-    tier_text = norm(" ".join([identity_text, description_text]))
+    from app.services.classifier import _classify_identity
 
-    if is_non_product(title_text, category_text, description_text):
-        return None, False
-
-    if contains(identity_text, ["(cx", "中转站"]):
-        return None, False
-    if contains(title_text, ["分组"]) or contains(category_text, ["plus分组", "api分组", "中转分组", "token分组"]):
-        return None, False
-    if contains(identity_text, RELAY_MARKERS) and contains(identity_text, ["api", "key", "token", "额度"]):
-        return None, False
-
-    brand = first_title_brand(clean_title)
-    if brand is None and contains(clean_title, NON_TARGET_PLUS_MARKERS):
-        return None, False
-    if brand is None:
-        if "plus" in clean_title and contains(clean_title, IMPLICIT_CHATGPT_MARKERS):
-            brand = "chatgpt"
-    if brand is None:
-        if contains(clean_title, ["plus", "puls", "plsu", "team", "k12"]) and contains(clean_title, [
-            "成品", "半成品", "账号", "已接码", "已接马", "已接🐎", "未接码", "未接马", "会员", "直充", "代充",
-            "月卡", "反代", "json", "rt", "首登", "周限额", "团队邀请",
-            "提链", "提炼", "支付链接", "开通plus", "底号", "可升级"
-        ]):
-            if not any(other in clean_title for other in ["google", "gemini", "claude", "twitter", "baidu", "百度", "microsoft"]):
-                brand = "chatgpt"
-    if brand is None:
-        category_brands = explicit_brands(clean_category)
-        if len(category_brands) > 1:
-            return None, False
-        if len(category_brands) == 1 and not contains(clean_title, GENERIC_EMAIL_MARKERS) and contains(clean_title, CATEGORY_COMMERCE_MARKERS):
-            brand = category_brands[0]
-    if brand is None and description_text:
-        desc_norm = norm(description_text)
-        if any(m in desc_norm for m in ["chatgpt plus", "chatgpt pro", "gpt-plus", "gpt plus", "gpt-pro", "gpt pro", "openai plus"]):
-            brand = "chatgpt"
-        elif any(m in desc_norm for m in ["claude pro", "claude-pro", "claude 会员", "claude 个人账号"]):
-            brand = "claude"
-        elif any(m in desc_norm for m in ["gemini advanced", "google one ai", "gemini pro会员"]):
-            brand = "gemini"
-        elif any(m in desc_norm for m in ["super grok", "supergrok", "grok super"]):
-            brand = "grok"
-        elif any(m in desc_norm for m in ["x premium", "twitter blue", "推特会员"]):
-            brand = "x"
-        elif any(m in desc_norm for m in ["codex", "cc switch", "codex++"]):
-            brand = "codex"
-    if brand is None:
-        if str(source_platform or "").strip().casefold() == PLATFORM_16688:
-            alias_slug = classify_16688_alias(title_text, category_text, description_text)
-            if alias_slug:
-                return alias_slug, True
-        return None, False
-
-    is_sub2api_only = any(w in tier_text for w in [
-        "只能反代", "仅支持反代", "无账号和密码", "无账号密码", "没有账号密码",
-        "没有邮箱账密", "只可反代", "反代专用", "没有账密"
-    ])
-
-    if brand == "claude":
-        if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
-            return "claude-api-access", True
-        if contains(identity_text, ["team", "团队", "车位", "席位", "企业"]):
-            return "claude-team", True
-        if contains(identity_text, ["20x", "20X", "20倍", "max20x", "max 20x", "max-20x"]):
-            return "claude-pro-20x", True
-        if contains(identity_text, ["claude pro", "claude会员", "claude 会员", "5x", "5X", "5倍", "max5x", "max 5x"]) or contains(tier_text, ["claude pro"]):
-            return "claude-pro", True
-        return "claude-account", False
-    if brand == "gemini":
-        if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
-            return "gemini-api-access", True
-        if contains(identity_text, ["gemini advanced", "gemini pro会员", "google one ai"]) or contains(tier_text, ["gemini advanced"]):
-            return "gemini-advanced", True
-        return "gemini-account", False
-    if brand == "grok":
-        if contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
-            return "grok-api-access", True
-        if contains(tier_text, ["中转站", "周限", "速刷"]):
-            return None, False
-        if (
-            contains(identity_text, ["supergrok", "super grok", "grok super", "groksuper", "supergro", "super gro", "heavy"])
-            or contains(tier_text, ["supergrok", "super grok", "grok super", "groksuper", "supergro", "super gro", "heavy"])
-        ):
-            return "grok-super", True
-        return "grok-account", False
-    if brand == "x":
-        if contains(identity_text, ["premium business", "premium organization", "premium organisation", "企业认证", "金标", "灰标"]):
-            return None, False
-        if contains(identity_text, ["premium+", "premium +", "premium plus", "premiumplus"]):
-            return "x-premium-plus", True
-        if contains(identity_text, ["basic", "基础版"]):
-            return "x-premium-basic", True
-        if contains(identity_text, ["premium", "twitter blue", "推特会员", "蓝v", "蓝标"]):
-            return "x-premium", True
-        return None, False
-    if brand == "cursor":
-        if contains(identity_text, ["business", "商业", "企业", "team", "团队", "席位", "车位"]):
-            return "cursor-business", True
-        if contains(
-            identity_text,
-            ["pro", "会员", "订阅", "充值", "代充", "直充", "月卡", "年卡", "激活", "额度", "ultra", "日卡"],
-        ) or contains(title_text, ["cursor pro"]):
-            return "cursor-pro", True
-        return "cursor-account", False
-    if contains(identity_text, CHATGPT_API_MARKERS):
-        if contains(identity_text, ["中转", "倍率"]):
-            return None, False
-        return "openai-api-credit", True
-    if (
-        contains(title_text, CHATGPT_NON_PRODUCT_MARKERS)
-        and not contains(title_text, CHATGPT_EXPLICIT_PRODUCT_MARKERS)
-    ):
-        return None, False
-
-    is_service = (
-        is_chatgpt_service(title_text)
-        or is_chatgpt_service(category_text)
-        or contains(title_text, ["提链", "提炼", "支付链接", "实卡号码", "无限接马", "卡头开通plus必备"])
-        or contains(category_text, ["提链", "提炼", "接码", "接马"])
-    )
-    if is_service and not contains(title_text, ["成品号", "独享成品", "独享账号"]):
-        return "chatgpt-access-service", True
-
-    if contains(title_text, CHATGPT_GO_MARKERS):
-        return "chatgpt-go", True
-
-    title_tier = chatgpt_tier(title_text)
-    if title_tier:
-        return title_tier, True
-
-    is_free = (
-        contains(title_text, CHATGPT_FREE_MARKERS)
-        or contains(category_text, ["g free", "codex free", "free", "普号", "白号", "福利号"])
-        or contains(clean_title, ["可升级plus", "开plus专用", "好底号", "未绑卡"])
-    )
-    if is_free:
-        return "chatgpt-account", True
-
-    refined_tier = chatgpt_tier(f"{clean_identity} {description_text}")
-    if refined_tier:
-        return refined_tier, True
-
-    if is_sub2api_only or contains(clean_title, [
-        "codex plus", "codex plus账号", "codexplus", "codex账号", "codex 账号",
-        "codex成品", "codex 成品", "codex独享", "codex 独享"
-    ]):
-        if contains(clean_title, ["中转", "不限时", "额度", "刀"]) or contains(clean_category, ["中转", "额度"]):
-            return None, False
-        if is_free:
-            return "chatgpt-account", True
-        return "chatgpt-plus", True
-
-    if contains(title_text, CHATGPT_AMBIGUOUS_CREDIT_MARKERS):
-        return None, False
-
-    if is_free or contains(title_text, CHATGPT_PRODUCT_MARKERS):
-        return "chatgpt-account", False
-
-    return None, False
+    return _classify_identity(title_text, category_text, description_text, source_platform)
 
 
 def classify(
@@ -788,6 +629,7 @@ def classify(
     category_text = norm(" ".join(str(value or "") for value in category_values))
     description_text = norm(" ".join(str(value or "") for value in description_values))
     detail_text = norm(" ".join([title, category_text, description_text]))
+    # Use the same identity rules as the API's admin reclassification.
     slug, specific_match = classify_identity(norm(title), category_text, description_text, source_platform)
     tags = [label for label, words in TAG_RULES.items() if any(norm(x) in detail_text for x in words)]
     risks = [label for label, words in RISK_RULES.items() if any(norm(x) in detail_text for x in words)]
@@ -807,7 +649,7 @@ def classify(
                     risks.append("abnormal_low_price")
         except (ValueError, TypeError):
             pass
-    if slug != "chatgpt-k12":
+    if slug not in {"chatgpt-k12", "chatgpt-business", "chatgpt-edu", "claude-team", "cursor-business"}:
         tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
     delivery_type = delivery_form(norm(title))
     if delivery_type == "unknown":
@@ -891,19 +733,15 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("chatgpt-account", "OpenAI", "ChatGPT Free", "Free 普号与基础账号", "account", "聚合公开售卖的 ChatGPT Free 普号和基础账号。"),
         ("chatgpt-plus", "OpenAI", "ChatGPT Plus", "Plus 订阅、代充与成品号", "subscription", "聚合 ChatGPT Plus 的代充、直充、月付与成品号报价。"),
         ("chatgpt-go", "OpenAI", "ChatGPT Go", "Go 订阅、充值与成品号", "subscription", "聚合标题明确标注为 ChatGPT Go 的订阅、充值与成品号公开报价。"),
-        ("chatgpt-k12", "OpenAI", "ChatGPT K12", "Team / Business、团队邀请与 K12", "subscription", "聚合 ChatGPT Team、Business、K12、团队邀请、车位和自动拉等公开报价。"),
         ("chatgpt-pro-5x", "OpenAI", "ChatGPT Pro 5x", "Pro 5x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 5x 的公开报价。"),
         ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x", "Pro 20x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 20x 的公开报价。"),
         ("chatgpt-pro", "OpenAI", "ChatGPT Pro", "未注明 5x 或 20x 的 Pro", "subscription", "聚合未明确标注 5x 或 20x 倍率的 ChatGPT Pro 公开报价。"),
         ("openai-api-credit", "OpenAI", "OpenAI API 额度", "API Key 与额度商品", "api", "聚合 OpenAI API 额度、余额和 Key 类商品。"),
         ("chatgpt-access-service", "OpenAI", "ChatGPT 手机接码", "接码、验证与开通服务", "service", "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。"),
         ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "已合并至 ChatGPT Plus。"),
-        ("claude-pro", "Claude", "Claude Pro (5x)", "Pro 5x 个人会员订阅", "subscription", "聚合 Claude Pro (5x) 个人会员订阅公开报价。"),
-        ("claude-pro-20x", "Claude", "Claude Pro 20x", "Pro 20x 满血高配号", "subscription", "聚合明确标注为 Claude Pro 20x / Max 20x 的高倍用量公开报价。"),
         ("claude-team", "Claude", "Claude Team", "Team 团队版席位与组织号", "subscription", "聚合 Claude Team 团队版席位、拼车与独享组织公开报价。"),
         ("claude-account", "Claude", "Claude 账号", "基础账号与访问类商品", "account", "聚合 Claude 基础账号与访问类公开报价。"),
         ("claude-api-access", "Claude", "Claude API", "API Key、Token 与额度商品", "api", "聚合 Claude API Key、Token 与额度类公开报价。"),
-        ("gemini-advanced", "Gemini", "Gemini Advanced", "Google One AI 会员", "subscription", "聚合 Gemini Advanced 与 Google One AI 报价。"),
         ("gemini-account", "Gemini", "Gemini 账号", "基础账号与访问类商品", "account", "聚合 Gemini 基础账号与访问类公开报价。"),
         ("gemini-api-access", "Gemini", "Gemini API", "API Key、Token 与额度商品", "api", "聚合 Gemini API Key、Token 与额度类公开报价。"),
         ("grok-super", "Grok", "SuperGrok", "SuperGrok 订阅与代充", "subscription", "聚合 SuperGrok 订阅与代充公开报价。"),
@@ -917,7 +755,7 @@ def ensure_products(db: Session) -> dict[str, Product]:
         ("cursor-account", "Cursor", "Cursor 账号", "基础账号与访问类商品", "account", "聚合 Cursor 基础账号与新号公开报价。"),
     ]
     existing = {x.slug: x for x in db.scalars(select(Product))}
-    for slug, platform, name, subtitle, product_type, description in definitions:
+    for slug, platform, name, subtitle, product_type, description in product_definitions(definitions):
         item = existing.get(slug)
         if item is None:
             item = Product(slug=slug)
@@ -929,12 +767,11 @@ def ensure_products(db: Session) -> dict[str, Product]:
         item.description = description
         item.product_type = product_type
         item.search_keywords = [name, platform, product_type]
+        if slug == "chatgpt-pro":
+            item.is_visible = True
     legacy_team = existing.get("chatgpt-team-business")
     if legacy_team is not None:
         legacy_team.is_visible = False
-    legacy_pro = existing.get("chatgpt-pro")
-    if legacy_pro is not None:
-        legacy_pro.is_visible = False
     # 智谱 (Zhipu / GLM) was retired from the public catalog; keep historical
     # rows for audit but never surface them again.
     for retired_slug in RETIRED_PRODUCT_SLUGS:

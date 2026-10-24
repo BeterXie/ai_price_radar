@@ -141,3 +141,20 @@ def test_migration_hides_retired_zhipu_products(tmp_path: Path):
     with Session(engine) as db:
         visibility = {product.slug: product.is_visible for product in db.query(Product)}
     assert visibility == {"zhipu-qingyan-vip": False, "chatgpt-plus": True}
+
+
+def test_relay_monitoring_upgrade_preserves_legacy_station_and_is_repeatable(tmp_path: Path):
+    engine = _sqlite_engine(tmp_path / "legacy-relays.db")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY)"))
+        conn.execute(text("CREATE TABLE relay_stations (id INTEGER PRIMARY KEY, name VARCHAR(100), is_enabled BOOLEAN)"))
+        conn.execute(text("INSERT INTO relay_stations VALUES (1, 'Legacy Relay', TRUE)"))
+
+    ensure_db_schema(engine)
+    ensure_db_schema(engine)
+
+    with engine.begin() as conn:
+        row = conn.execute(text("SELECT name, is_enabled, review_status, monitor_enabled, encrypted_api_key, monitor_revision FROM relay_stations")).one()
+        assert tuple(row) == ("Legacy Relay", True, "approved", False, "", 1)
+        conn.execute(text("INSERT INTO relay_probe_results (station_id, revision, status, latency_ms, checked_at) VALUES (1, 1, 'healthy', 10, CURRENT_TIMESTAMP)"))
+        assert conn.scalar(text("SELECT COUNT(*) FROM relay_probe_results")) == 1

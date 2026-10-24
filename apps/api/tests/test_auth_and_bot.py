@@ -409,9 +409,16 @@ def bot_product_catalog(test_db):
         ("xpremiumplus", "x-premium-plus"),
         ("claudeteam", "claude-team"),
         ("chatgpt20x", "chatgpt-pro-20x"),
-        ("chatgpt pro", "chatgpt-pro-20x"),
-        ("gptpro", "chatgpt-pro-20x"),
-        ("chatgpt-pro", "chatgpt-pro-20x"),
+        ("chatgpt pro", "chatgpt-pro"),
+        ("gptpro", "chatgpt-pro"),
+        ("chatgpt-pro", "chatgpt-pro"),
+        ("chatgpt team", "chatgpt-business"),
+        ("claude 5x", "claude-max-5x"),
+        ("claude max 20x", "claude-pro-20x"),
+        ("gemini pro", "gemini-pro"),
+        ("gemini ultra", "gemini-ultra"),
+        ("cursor pro+", "cursor-pro-plus"),
+        ("grok super", "grok-plan-super"),
         ("chatgpt 5x", "chatgpt-pro-5x"),
         ("chatgptgo", "chatgpt-go"),
         ("codexgo", "chatgpt-go"),
@@ -697,8 +704,8 @@ def test_bot_chat_commands(client: TestClient, test_db):
 
     # 3. Products
     p_plus = Product(id=1, slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus", is_visible=True)
-    p_pro = Product(id=2, slug="claude-pro", platform="Claude", display_name="Claude Pro (5x)", is_visible=True)
-    p_pro20x = Product(id=3, slug="claude-pro-20x", platform="Claude", display_name="Claude Pro 20x", is_visible=True)
+    p_pro = Product(id=2, slug="claude-pro", platform="Claude", display_name="Claude Pro", is_visible=True)
+    p_pro20x = Product(id=3, slug="claude-pro-20x", platform="Claude", display_name="Claude Max 20x", is_visible=True)
     p_team = Product(id=4, slug="claude-team", platform="Claude", display_name="Claude Team", is_visible=True)
     test_db.add_all([p_plus, p_pro, p_pro20x, p_team])
     test_db.flush()
@@ -828,7 +835,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     reply_claude = resp_claude.json()["reply"]
     assert "Claude 全系列最低报价一览" in reply_claude
     assert "Claude Pro" in reply_claude
-    assert "Claude Pro 20x" in reply_claude
+    assert "Claude Max 20x" in reply_claude
     assert "Claude Team" in reply_claude
 
     # B3. Test `openai` brand aggregation command
@@ -845,7 +852,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     # B4. Test `20x` single product query
     resp_20x = client.post("/api/v1/user/notifications/bot/command", json={"text": "20x"})
     assert resp_20x.status_code == 200
-    assert "Claude Pro 20x" in resp_20x.json()["reply"]
+    assert "Claude Max 20x" in resp_20x.json()["reply"]
 
     # B5. Test `cursor` brand aggregation command
     resp_cursor = client.post("/api/v1/user/notifications/bot/command", json={"text": "cursor"})

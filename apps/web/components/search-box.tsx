@@ -4,13 +4,16 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, MagnifyingGlass } from "@phosphor-icons/react";
 
-export function SearchBox({ defaultValue = "" }: { defaultValue?: string }) {
+export function SearchBox({ defaultValue = "", filters = {} }: { defaultValue?: string; filters?: Record<string, string> }) {
   const [value, setValue] = useState(defaultValue);
   const router = useRouter();
   function submit(event: FormEvent) {
     event.preventDefault();
     const query = value.trim();
-    router.push(query ? `/products?q=${encodeURIComponent(query)}` : "/products");
+    const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    if (query) params.set("q", query);
+    else params.delete("q");
+    router.push(params.size ? `/products?${params.toString()}` : "/products");
   }
   return (
     <form onSubmit={submit} role="search" className="search-shell flex w-full items-center gap-2 p-2 focus-within:border-[color:var(--focus)]">

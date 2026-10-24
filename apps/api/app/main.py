@@ -5,8 +5,11 @@ import logging
 from contextlib import asynccontextmanager
 from contextlib import suppress
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .core.config import get_settings
 from .core.runtime_safety import validate_api_runtime_settings
@@ -15,7 +18,7 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.9.14"
+VERSION = "3.9.15"
 PRIVACY_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
@@ -55,11 +58,16 @@ async def lifespan(_: FastAPI):
             seed_default_community_skills(db)
 
     with SessionLocal() as db:
+        from .services.account_plans import ensure_account_plans
+        ensure_account_plans(db)
+        db.commit()
         migrate_legacy_session_tokens(db)
         migrate_bot_credentials(db)
         cleanup_privacy_data(db)
 
     privacy_cleanup_task = asyncio.create_task(_privacy_cleanup_loop(SessionLocal))
+    from .services.relay_monitor import relay_monitor_loop
+    relay_monitor_task = asyncio.create_task(relay_monitor_loop(SessionLocal))
 
     try:
         from extensions.bots.qq_gateway import qq_gateway_service
@@ -73,8 +81,11 @@ async def lifespan(_: FastAPI):
         yield
     finally:
         privacy_cleanup_task.cancel()
+        relay_monitor_task.cancel()
         with suppress(asyncio.CancelledError):
             await privacy_cleanup_task
+        with suppress(asyncio.CancelledError):
+            await relay_monitor_task
         try:
             from extensions.bots.qq_gateway import qq_gateway_service
 
@@ -110,6 +121,17 @@ app.include_router(internal.detector_router)
 app.include_router(discovery.router)
 app.include_router(discovery.runs_router)
 discovery.register_discovery_payload_guard(app)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    if request.url.path == "/api/v1/relay-requests" or request.url.path.startswith("/api/v1/admin/relays"):
+        # Pydantic includes raw input in errors, including secrets on model-level errors.
+        return JSONResponse(status_code=422, content={"detail": [
+            {key: error[key] for key in ("loc", "msg", "type") if key in error}
+            for error in exc.errors()
+        ]})
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/health")

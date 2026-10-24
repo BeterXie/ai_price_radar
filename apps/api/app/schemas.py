@@ -8,7 +8,7 @@ import json
 import re
 import urllib.parse
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, SecretStr, field_validator, model_validator
 
 from .core.email import normalize_email
 from .services.source_platform import normalize_public_https_url
@@ -1566,7 +1566,44 @@ class AdSlotListOut(BaseModel):
     enabled: bool = True
 
 
-class RelayStationBase(BaseModel):
+class RelayMonitoringConfig(BaseModel):
+    base_url: str = Field(default="", max_length=1000)
+    api_key: SecretStr | None = Field(default=None, max_length=1000)
+    probe_protocol: Literal["openai", "anthropic", "gemini"] = "openai"
+    probe_model: str = Field(default="", max_length=120)
+    monitor_enabled: bool = False
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        if not value.strip():
+            return ""
+        cleaned = normalize_public_https_url(value.strip())
+        parsed = urllib.parse.urlsplit(cleaned)
+        if parsed.query or parsed.fragment or parsed.port not in (None, 443):
+            raise ValueError("Base URL 必须是无查询参数的公开 HTTPS 地址，仅支持 443 端口")
+        return cleaned.rstrip("/")
+
+    @field_validator("probe_model")
+    @classmethod
+    def clean_probe_model(cls, value: str) -> str:
+        value = value.strip()
+        if value and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,119}", value):
+            raise ValueError("检测模型必须是接口使用的模型 ID")
+        return value
+
+    @field_validator("api_key")
+    @classmethod
+    def clean_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        raw = value.get_secret_value().strip()
+        if raw and (not raw.isascii() or any(ord(ch) < 33 or ord(ch) == 127 for ch in raw)):
+            raise ValueError("密钥格式无效")
+        return SecretStr(raw)
+
+
+class RelayStationBase(RelayMonitoringConfig):
     name: str = Field(min_length=1, max_length=100)
     url: str = Field(default="", max_length=1000)
     tagline: str = Field(default="", max_length=160)
@@ -1607,7 +1644,8 @@ class RelayStationCreate(RelayStationBase):
     pass
 
 
-class RelayStationUpdate(BaseModel):
+class RelayStationUpdate(RelayMonitoringConfig):
+    review_status: Literal["approved", "rejected"] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     url: str | None = Field(default=None, max_length=1000)
     tagline: str | None = Field(default=None, max_length=160)
@@ -1646,10 +1684,47 @@ class RelayStationUpdate(BaseModel):
         return _clean_string_list(value, max_items=12, max_length=30)
 
 
+class RelayHealthOut(BaseModel):
+    status: str = "not_checked"
+    checked_at: datetime | None = None
+    probe_model: str = ""
+    latency_ms: int | None = None
+    success_rate_24h: float | None = None
+    sample_count_24h: int = 0
+    diagnostic_count_24h: int = 0
+    p95_latency_ms: int | None = None
+
+
+class RelaySubmissionCreate(RelayStationBase):
+    contact: str = Field(min_length=3, max_length=200)
+    note: str = Field(default="", max_length=1000)
+    authorization_confirmed: Literal[True]
+
+    @field_validator("contact")
+    @classmethod
+    def validate_contact(cls, value: str) -> str:
+        return normalize_email(value)
+
+    @model_validator(mode="after")
+    def require_probe_credentials(self):
+        if not self.url or not self.base_url or not self.api_key or not self.api_key.get_secret_value() or not self.probe_model:
+            raise ValueError("中转站申请必须填写站点地址、Base URL、检测密钥和模型 ID")
+        return self
+
+
 class RelayStationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    base_url: str = ""
+    has_api_key: bool = False
+    probe_protocol: str = "openai"
+    probe_model: str = ""
+    monitor_enabled: bool = False
+    review_status: str = "approved"
+    contact_email: str = ""
+    submission_note: str = ""
+    health: RelayHealthOut | None = None
     name: str
     url: str = ""
     tagline: str = ""
@@ -1681,6 +1756,7 @@ class RelayStationPublic(BaseModel):
     is_sponsored: bool = False
     click_count: int = 0
     updated_at: datetime | None = None
+    health: RelayHealthOut = Field(default_factory=RelayHealthOut)
 
 
 class RelayStationListOut(BaseModel):

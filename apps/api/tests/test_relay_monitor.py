@@ -1,0 +1,341 @@
+import json
+from datetime import datetime, timedelta, timezone
+from http.client import BadStatusLine
+
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.core.config import get_settings
+from app.database import Base, get_db
+from app.main import app
+from app.models import RelayProbeResult, RelayStation, User
+from app.security import require_current_user
+from app.services.credential_crypto import decrypt_secret, encrypt_secret
+from app.services.relay_monitor import claim_probe, configure_relay, probe_relay, relay_health, run_due_probes
+
+ADMIN = {"X-Admin-Key": "relay-admin-test"}
+KEY = "sk-relay-test-only"
+
+
+@pytest.fixture
+def relay_api(monkeypatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA foreign_keys=ON"))
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as db:
+        user = User(email="owner@example.com")
+        db.add(user)
+        db.commit()
+        user_id = user.id
+    monkeypatch.setattr(get_settings(), "admin_api_key", "relay-admin-test")
+
+    def override_db():
+        with factory() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_current_user] = lambda: User(id=user_id, email="owner@example.com")
+    try:
+        yield TestClient(app), factory
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def payload(**values):
+    return {
+        "name": "测试中转站", "url": "https://relay.example.com",
+        "base_url": "https://api.example.com/proxy/v1/", "api_key": KEY,
+        "probe_model": "test-model", "probe_protocol": "openai",
+        "contact": "owner@example.com", "authorization_confirmed": True,
+        **values,
+    }
+
+
+class FakeClient:
+    def __init__(self, status=200, body=None, error=None):
+        self.status = status
+        self.body = {"choices": [{"message": {"content": "OK"}}]} if body is None else body
+        self.error = error
+        self.calls = []
+
+    def post_json(self, url, body, *, headers):
+        self.calls.append((url, body, headers))
+        if self.error:
+            raise self.error
+        from price_radar_http import PinnedResponse
+        return PinnedResponse(self.status, {}, json.dumps(self.body).encode())
+
+
+def test_submission_is_private_until_approved_and_duplicates_cannot_replace_key(relay_api):
+    client, factory = relay_api
+    private_note = "仅管理员可见的申请说明"
+    response = client.post("/api/v1/relay-requests", json=payload(is_enabled=True, is_sponsored=True, note=private_note))
+    assert response.status_code == 201, response.text
+    station_id = response.json()["request_id"]
+    assert client.get("/api/v1/relays").json()["items"] == []
+    with factory() as db:
+        station = db.get(RelayStation, station_id)
+        assert station.review_status == "pending"
+        assert not station.is_enabled and not station.is_sponsored
+        assert station.base_url == "https://api.example.com/proxy/v1"
+        assert station.submission_note == private_note
+        assert station.encrypted_api_key.startswith("enc:v1:")
+        assert decrypt_secret(station.encrypted_api_key) == KEY
+    duplicate = client.post("/api/v1/relay-requests", json=payload(api_key="another-key"))
+    assert duplicate.json()["status"] == "already_pending"
+    assert KEY not in duplicate.text and "another-key" not in duplicate.text
+    admin = client.get("/api/v1/admin/relays", headers=ADMIN)
+    assert admin.status_code == 200
+    assert admin.json()[0]["has_api_key"] is True
+    assert admin.json()[0]["submission_note"] == private_note
+    assert KEY not in admin.text and "encrypted_api_key" not in admin.text
+    approved = client.patch(f"/api/v1/admin/relays/{station_id}", headers=ADMIN, json={"review_status": "approved", "is_enabled": True})
+    assert approved.status_code == 200, approved.text
+    public_response = client.get("/api/v1/relays")
+    public = public_response.json()["items"][0]
+    assert public["health"]["status"] == "not_checked"
+    assert not {"base_url", "api_key", "contact_email", "submitted_by", "submission_note"}.intersection(public)
+    assert private_note not in public_response.text
+    with factory() as db:
+        assert decrypt_secret(db.get(RelayStation, station_id).encrypted_api_key) == KEY
+
+
+@pytest.mark.parametrize("base_url", ["https://127.0.0.1/v1", "http://api.example.com", "https://api.example.com:8443/v1", "https://api.example.com/v1?key=secret", "https://user:pass@api.example.com/v1"])
+def test_submission_rejects_unsafe_endpoints(relay_api, base_url):
+    client, _ = relay_api
+    assert client.post("/api/v1/relay-requests", json=payload(base_url=base_url)).status_code == 422
+
+
+def test_submission_requires_owner_email_and_credentials(relay_api):
+    client, _ = relay_api
+    assert client.post("/api/v1/relay-requests", json=payload(contact="someone@example.com")).status_code == 403
+    assert client.post("/api/v1/relay-requests", json=payload(api_key="")).status_code == 422
+    assert client.post("/api/v1/relay-requests", json=payload(authorization_confirmed=False)).status_code == 422
+
+
+def test_invalid_submission_never_echoes_key_in_validation_errors(relay_api):
+    client, _ = relay_api
+    for values in ({"probe_model": ""}, {"api_key": KEY + "\r\nInjected: value"}):
+        response = client.post("/api/v1/relay-requests", json=payload(**values))
+        assert response.status_code == 422
+        assert KEY not in response.text
+        assert all("input" not in error for error in response.json()["detail"])
+
+
+def test_rejection_stops_monitoring_and_approval_is_explicit(relay_api):
+    client, _ = relay_api
+    station_id = client.post("/api/v1/relay-requests", json=payload()).json()["request_id"]
+    path = f"/api/v1/admin/relays/{station_id}"
+    pending = client.patch(path, headers=ADMIN, json={"is_enabled": True}).json()
+    assert pending["review_status"] == "pending" and not pending["is_enabled"]
+    assert client.post(path + "/probe", headers=ADMIN).status_code == 409
+    rejected = client.patch(path, headers=ADMIN, json={"review_status": "rejected"}).json()
+    assert not rejected["monitor_enabled"] and not rejected["is_enabled"]
+    assert client.get("/api/v1/relays").json()["items"] == []
+    approved = client.patch(path, headers=ADMIN, json={"review_status": "approved", "is_enabled": True, "monitor_enabled": True})
+    assert approved.status_code == 200 and approved.json()["is_enabled"]
+    assert len(client.get("/api/v1/relays").json()["items"]) == 1
+
+
+@pytest.mark.parametrize(("protocol", "base", "suffix", "header", "response"), [
+    ("openai", "https://api.example.com/proxy/v1", "/proxy/v1/chat/completions", "Authorization", {"choices": [{"message": {"content": "OK"}}]}),
+    ("anthropic", "https://api.example.com/prefix", "/prefix/v1/messages", "x-api-key", {"content": [{"type": "text", "text": "OK"}]}),
+    ("gemini", "https://api.example.com/v1beta", "/v1beta/models/test-model:generateContent", "x-goog-api-key", {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]}),
+])
+def test_probe_sends_real_completion_to_configured_prefix(relay_api, protocol, base, suffix, header, response):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Test", monitor_revision=1)
+        configure_relay(db, station, {"base_url": base, "probe_protocol": protocol, "probe_model": "test-model", "monitor_enabled": True}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        fake = FakeClient(body=response)
+        result = probe_relay(db, station, client=fake)
+        assert result.status == "healthy"
+        url, request, headers = fake.calls[0]
+        assert url.endswith(suffix)
+        assert KEY in headers[header]
+        assert KEY not in url and KEY not in json.dumps(request)
+        health = relay_health(db, station)
+        assert health.success_rate_24h == 100 and health.sample_count_24h == 1
+
+
+@pytest.mark.parametrize(("status", "body", "expected"), [
+    (401, {}, "credential_error"), (403, {}, "credential_error"),
+    (404, {}, "config_error"), (429, {}, "rate_limited"),
+    (503, {}, "unhealthy"), (200, {"data": [{"id": "model"}]}, "invalid_response"),
+    (200, {"choices": [{"message": {"content": ""}}]}, "invalid_response"),
+])
+def test_probe_does_not_mistake_model_listing_or_error_for_health(relay_api, status, body, expected):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Test", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        result = probe_relay(db, station, client=FakeClient(status, body))
+        assert result.status == expected
+        health = relay_health(db, station)
+        if expected in ("credential_error", "config_error"):
+            assert health.success_rate_24h is None and health.sample_count_24h == 0
+        else:
+            assert health.success_rate_24h == 0
+
+
+@pytest.mark.parametrize(("protocol", "body"), [
+    ("openai", {"choices": [{"message": {"content": [{"type": "image_url", "image_url": "x"}]}}]}),
+    ("openai", {"choices": [{"message": {"content": {"text": "OK"}}}]}),
+    ("openai", {"choices": [{"message": {"content": "  "}}]}),
+    ("anthropic", {"content": "OK"}),
+    ("gemini", {"candidates": [{"content": {"parts": None}}]}),
+    ("gemini", {"candidates": [{"content": {"parts": [{"text": 42}]}}]}),
+])
+def test_malformed_completion_is_not_healthy_and_does_not_crash(relay_api, protocol, body):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Test", base_url="https://api.example.com/v1", probe_model="test-model", probe_protocol=protocol, monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        assert probe_relay(db, station, client=FakeClient(body=body)).status == "invalid_response"
+
+
+@pytest.mark.parametrize(("error", "expected"), [
+    (TimeoutError("upstream timeout"), "timeout"),
+    (OSError("connection closed"), "connection_error"),
+    (BadStatusLine("bad upstream " + KEY), "connection_error"),
+])
+def test_transport_failure_is_recorded_without_sensitive_error_text(relay_api, error, expected):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Test", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        result = probe_relay(db, station, client=FakeClient(error=error))
+        assert result.status == expected
+        assert KEY not in relay_health(db, station).model_dump_json()
+
+
+def test_rollup_excludes_old_samples_and_configuration_diagnostics(relay_api):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Test", monitor_enabled=True, monitor_revision=2, base_url="https://api.example.com/v1", probe_model="test-model", encrypted_api_key=encrypt_secret(KEY))
+        db.add(station)
+        db.flush()
+        now = datetime.now(timezone.utc)
+        for status, age, revision in [("healthy", 1, 2), ("timeout", 2, 2), ("credential_error", 3, 2), ("unhealthy", 25, 2), ("unhealthy", 1, 1)]:
+            db.add(RelayProbeResult(station_id=station.id, revision=revision, status=status, latency_ms=10, checked_at=now - timedelta(hours=age)))
+        db.commit()
+        health = relay_health(db, station)
+        assert health.success_rate_24h == 50
+        assert health.sample_count_24h == 2 and health.diagnostic_count_24h == 1
+        configure_relay(db, station, {"probe_model": "new-model"})
+        assert relay_health(db, station).sample_count_24h == 0
+
+
+def test_health_keeps_last_check_when_24h_window_is_empty(relay_api):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Test", monitor_enabled=True, monitor_revision=1)
+        db.add(station)
+        db.flush()
+        db.add(RelayProbeResult(station_id=station.id, revision=1, status="healthy", latency_ms=20, checked_at=datetime.now(timezone.utc) - timedelta(hours=25)))
+        db.commit()
+        health = relay_health(db, station)
+        assert health.status == "stale" and health.checked_at is not None
+        assert health.sample_count_24h == 0 and health.success_rate_24h is None
+
+
+def test_worker_claims_once_and_never_probes_unapproved_stations(relay_api, monkeypatch):
+    client, factory = relay_api
+    station_id = client.post("/api/v1/relay-requests", json=payload()).json()["request_id"]
+    fake = FakeClient()
+    monkeypatch.setattr("price_radar_http.PinnedHTTPSClient", lambda **kwargs: fake)
+    run_due_probes(factory)
+    assert fake.calls == []
+    client.patch(f"/api/v1/admin/relays/{station_id}", headers=ADMIN, json={"review_status": "approved", "is_enabled": True})
+    run_due_probes(factory)
+    run_due_probes(factory)
+    assert len(fake.calls) == 1
+    assert client.post(f"/api/v1/admin/relays/{station_id}/probe", headers=ADMIN).status_code == 409
+    with factory() as db:
+        assert len(list(db.scalars(select(RelayProbeResult)))) == 1
+
+
+def test_admin_can_replace_unreadable_key(relay_api):
+    client, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Unreadable", encrypted_api_key="enc:v1:invalid", monitor_revision=3)
+        db.add(station)
+        db.commit()
+        station_id = station.id
+    response = client.patch(f"/api/v1/admin/relays/{station_id}", headers=ADMIN, json={"api_key": KEY})
+    assert response.status_code == 200, response.text
+    with factory() as db:
+        station = db.get(RelayStation, station_id)
+        assert decrypt_secret(station.encrypted_api_key) == KEY
+        assert station.monitor_revision == 4
+
+
+def test_configuration_change_invalidates_old_claim_without_duplicate_new_probe(relay_api):
+    client, factory = relay_api
+    station_id = client.post("/api/v1/relay-requests", json=payload()).json()["request_id"]
+    client.patch(f"/api/v1/admin/relays/{station_id}", headers=ADMIN, json={"review_status": "approved", "is_enabled": True})
+    with factory() as worker:
+        old_target = claim_probe(worker, station_id)
+        assert old_target is not None
+        with factory() as editor:
+            configure_relay(editor, editor.get(RelayStation, station_id), {"probe_model": "replacement-model"})
+            editor.commit()
+        new_target = claim_probe(worker, station_id)
+        assert new_target is not None and new_target.monitor_revision != old_target.monitor_revision
+        assert old_target.probe_model == "test-model"
+        fake = FakeClient()
+        assert probe_relay(worker, old_target, client=fake) is None
+        assert probe_relay(worker, new_target, client=fake).status == "healthy"
+        assert len(fake.calls) == 1 and fake.calls[0][1]["model"] == "replacement-model"
+        assert claim_probe(worker, station_id) is None
+
+
+def test_stale_admin_objects_receive_distinct_configuration_revisions(relay_api):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Concurrent edits", monitor_revision=1)
+        db.add(station)
+        db.commit()
+        station_id = station.id
+    with factory() as first, factory() as second:
+        first_station = first.get(RelayStation, station_id)
+        second_station = second.get(RelayStation, station_id)
+        configure_relay(first, first_station, {"probe_model": "first-model"})
+        first.commit()
+        configure_relay(second, second_station, {"probe_model": "second-model"})
+        second.commit()
+        assert first_station.monitor_revision == 2
+        assert second_station.monitor_revision == 3
+
+
+def test_explicit_key_replacement_advances_revision_even_when_editor_has_stale_key(relay_api):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Concurrent key edits", monitor_revision=1, encrypted_api_key=encrypt_secret(KEY))
+        db.add(station)
+        db.commit()
+        station_id = station.id
+    with factory() as first, factory() as second:
+        a = first.get(RelayStation, station_id)
+        b = second.get(RelayStation, station_id)
+        configure_relay(first, a, {}, SecretStr("replacement-key"))
+        first.commit()
+        configure_relay(second, b, {}, SecretStr(KEY))
+        second.commit()
+        assert b.monitor_revision == 3
+        assert decrypt_secret(b.encrypted_api_key) == KEY

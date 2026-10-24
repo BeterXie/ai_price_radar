@@ -275,6 +275,17 @@ export type AdSlotInput = {
   ends_at: string | null;
 };
 
+export type RelayHealth = {
+  status: string;
+  checked_at: string | null;
+  probe_model: string;
+  latency_ms: number | null;
+  success_rate_24h: number | null;
+  sample_count_24h: number;
+  diagnostic_count_24h: number;
+  p95_latency_ms: number | null;
+};
+
 export type RelayStationPublic = {
   id: number;
   name: string;
@@ -288,6 +299,7 @@ export type RelayStationPublic = {
   is_sponsored: boolean;
   click_count: number;
   updated_at: string | null;
+  health?: RelayHealth;
 };
 
 export type RelayStationListOut = {
@@ -297,12 +309,25 @@ export type RelayStationListOut = {
 };
 
 export type RelayStationAdmin = RelayStationPublic & {
+  base_url: string;
+  has_api_key: boolean;
+  probe_protocol: "openai" | "anthropic" | "gemini";
+  probe_model: string;
+  monitor_enabled: boolean;
+  review_status: string;
+  contact_email: string;
+  submission_note: string;
   is_enabled: boolean;
   sort_order: number;
   created_at: string | null;
 };
 
 export type RelayStationInput = {
+  base_url: string;
+  api_key?: string;
+  probe_protocol: "openai" | "anthropic" | "gemini";
+  probe_model: string;
+  monitor_enabled: boolean;
   name: string;
   url: string;
   tagline: string;
@@ -666,6 +691,5 @@ export type AdminBroadcastItem = {
   created_by: string;
   created_at: string;
 };
-
 
 

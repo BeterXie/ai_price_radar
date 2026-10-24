@@ -174,3 +174,54 @@ def test_json_post_writes_utf8_body_and_matching_content_length():
     assert b"Content-Type: application/json\r\n" in sent[0]
     assert f"Content-Length: {len(body)}\r\n".encode() in sent[0]
     assert sent[0].endswith(b"\r\n\r\n" + body)
+
+
+def test_authenticated_post_uses_original_url_and_pinned_tls_host_without_redirecting():
+    sent: list[bytes] = []
+    connections = []
+    tls = FakeTLSContext()
+
+    class CapturingSocket(FakeSocket):
+        def sendall(self, request: bytes):
+            sent.append(request)
+
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda address, **_kwargs: connections.append(address) or CapturingSocket(
+            b"HTTP/1.1 302 Found\r\nLocation: https://other.example/steal\r\nContent-Length: 0\r\n\r\n"
+        ),
+        ssl_context=tls,
+    )
+    with pytest.raises(ValueError, match="redirects"):
+        client.post_json("https://relay.example/prefix/v1/chat/completions", {"model": "test"}, headers={"Authorization": "Bearer test-only"})
+    assert connections == [("93.184.216.34", 443)]
+    assert tls.server_names == ["relay.example"]
+    assert len(sent) == 1
+    assert sent[0].startswith(b"POST /prefix/v1/chat/completions HTTP/1.1\r\nHost: relay.example\r\n")
+    assert b"Authorization: Bearer test-only\r\n" in sent[0]
+
+
+@pytest.mark.parametrize("headers", [
+    {"Authorization": "Bearer secret\r\nHost: attacker.example"},
+    {"X-Api-Key": "secret\x00"},
+    {"Host": "attacker.example"},
+    {"X-Api-Key": "非ASCII密钥"},
+])
+def test_invalid_credential_headers_are_rejected_before_connection(headers):
+    def must_not_connect(*_args, **_kwargs):
+        pytest.fail("invalid credentials must never reach a connection")
+
+    client = PinnedHTTPSClient(connector=must_not_connect)
+    with pytest.raises(ValueError, match="header"):
+        client.post_json("https://relay.example/v1/messages", {}, headers=headers)
+
+
+def test_api_key_is_never_sent_to_private_dns_address():
+    connections = []
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))],
+        connector=lambda address, **_kwargs: connections.append(address),
+    )
+    with pytest.raises(ValueError, match="non-public"):
+        client.post_json("https://relay.example/v1/messages", {}, headers={"x-api-key": "secret"})
+    assert connections == []

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { filterValues, offerQuery } from "../components/product-workspace.tsx";
-import { hasNarrowingFilters } from "../components/product-catalog-page.tsx";
+import { hasNarrowingFilters, ProductCatalogPage } from "../components/product-catalog-page.tsx";
 import { BRAND_TABS, PRODUCT_TABS, ALL_PRODUCTS } from "../lib/catalog.ts";
 
 test("offer scope defaults to directly comparable offers", () => {
@@ -27,6 +27,31 @@ test("narrowing filters are detected independently of the comparable scope", () 
   assert.equal(hasNarrowingFilters({ delivery_type: "relay_api" }), true);
   assert.equal(hasNarrowingFilters({ in_stock: "true" }), true);
   assert.equal(hasNarrowingFilters({ source_platform: "ldxp" }), true);
+});
+
+test("catalog search retains source, brand and offer filters", async (context) => {
+  context.mock.method(globalThis, "fetch", async (url) => new Response(JSON.stringify(
+    String(url).includes("/meta")
+      ? { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] }
+      : { items: [], total: 0, page: 1, page_size: 30 }
+  ), { status: 200 }));
+  const tree = await ProductCatalogPage({ rawParams: { brand: "Claude", source_platform: "16688", in_stock: "true", period: "one_month", q: "Max" } });
+  function findSearch(node) {
+    if (!node || typeof node !== "object") return null;
+    if (node.type?.name === "SearchBox") return node;
+    const children = node.props?.children;
+    for (const child of Array.isArray(children) ? children.flat(Infinity) : [children]) {
+      const found = findSearch(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  const search = findSearch(tree);
+  assert.ok(search);
+  assert.equal(search.props.filters.source_platform, "16688");
+  assert.equal(search.props.filters.brand, "Claude");
+  assert.equal(search.props.filters.in_stock, "true");
+  assert.equal(search.props.filters.period, "one_month");
 });
 
 test("智谱 is no longer a public brand tab and 中转站 is not a crawled brand", () => {

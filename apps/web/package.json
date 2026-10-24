@@ -1,6 +1,6 @@
 {
   "name": "ai-price-radar-web",
-  "version": "3.9.14",
+  "version": "3.9.15",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -16,7 +16,7 @@
     "geist": "^1.4.2",
     "marked": "18.0.14",
     "motion": "^12.23.12",
-    "next": "16.3.8",
+    "next": "16.4.3",
     "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"

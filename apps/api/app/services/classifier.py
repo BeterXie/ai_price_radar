@@ -4,6 +4,11 @@ import hashlib
 import re
 from dataclasses import dataclass
 
+if __package__:
+    from .account_plans import account_plan
+else:  # The isolated source detector packages these two modules together.
+    from account_plans import account_plan
+
 
 @dataclass(slots=True)
 class Classification:
@@ -26,7 +31,7 @@ BRAND_MARKERS = {
         "g-p-t", "g-pt", "g-p·t", "g·p·t", "chat g", "chatg"
     ],
     "claude": ["claude"],
-    "gemini": ["gemini", "google one ai"],
+    "gemini": ["gemini", "google one ai", "google ai", "谷歌ai", "谷歌 ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai", "super gro"],
     "x": ["x premium", "xpremium", "twitter", "推特"],
     "cursor": ["cursor", "cursor ai", "cursor pro", "cursor business"],
@@ -372,10 +377,14 @@ def _chatgpt_tier(text: str) -> str | None:
         if any(w in text for w in ["额度", "余额", "api", "key", "token", "sol", "image"]):
             return None
 
-    if _contains(text, CHATGPT_K12_MARKERS) or any(w in text for w in ["team", "周额", "周限额", "子号", "母号", "团队邀请"]):
-        if any(w in text for w in ["k12", "edu", "教育", "学生", "高校"]):
-            return "chatgpt-k12"
+    if _contains(text, ["enterprise", "企业版"]):
+        return "chatgpt-enterprise"
+    if "k12" in text:
         return "chatgpt-k12"
+    if re.search(r"(?<![a-z])edu(?![a-z])", text):
+        return "chatgpt-edu"
+    if _contains(text, CHATGPT_K12_MARKERS) or any(w in text for w in ["team", "周额", "周限额", "子号", "母号", "团队邀请"]):
+        return "chatgpt-business"
 
     multiplier = _pro_multiplier(text)
     if multiplier in (5, 20):
@@ -386,7 +395,7 @@ def _chatgpt_tier(text: str) -> str | None:
     if _contains(text, ["chatgpt pro", "gpt pro", "chatgpt-pro", "gpt-pro"]):
         if any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "美金", "号池", "中转", "api"]):
             return None
-        return "chatgpt-pro-20x"
+        return "chatgpt-pro"
     if "200刀" in text and not any(w in text for w in ["team", "周额", "周限额", "子号", "额度", "美金", "号池", "中转", "api"]):
         return "chatgpt-pro-20x"
 
@@ -481,7 +490,7 @@ def _16688_chatgpt_alias_tier(value: str) -> str | None:
     if multiplier == 5:
         return "chatgpt-pro-5x"
     if any(marker in compact for marker in ("gptpro", "gtppro", "gpro")):
-        return "chatgpt-pro-20x"
+        return "chatgpt-pro"
     if any(marker in compact for marker in ("gptplus", "gtpplus", "gplus")):
         return "chatgpt-plus"
     if any(marker in compact for marker in ("gptgo", "gtpgo", "ggo")):
@@ -491,7 +500,9 @@ def _16688_chatgpt_alias_tier(value: str) -> str | None:
 
 def _16688_grok_alias(value: str) -> str | None:
     compact = _compact_latin(value)
-    if any(marker in compact for marker in ("groheavy", "grosuper", "supergro")):
+    if "groheavy" in compact:
+        return "grok-heavy"
+    if any(marker in compact for marker in ("grosuper", "supergro")):
         return "grok-super"
     if "grofree" in compact:
         return "grok-account"
@@ -536,7 +547,7 @@ def _classify_16688_alias(
         title_plain_tier = "chatgpt-go"
     elif _contains(title_text, CHATGPT_PRO_MARKERS):
         multiplier = _pro_multiplier(title_text)
-        title_plain_tier = "chatgpt-pro-5x" if multiplier == 5 else "chatgpt-pro-20x"
+        title_plain_tier = "chatgpt-pro-5x" if multiplier == 5 else "chatgpt-pro-20x" if multiplier == 20 else "chatgpt-pro"
 
     context = " ".join([category_text, description_text])
     context_grok = _16688_grok_alias(context)
@@ -583,34 +594,24 @@ def _classify_identity(
     ])
 
     if brand == "claude":
-        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+        if _contains(identity_text, ["api", "api key", "apikey", "额度"]):
             return "claude-api-access", True
-        if _contains(identity_text, ["team", "团队", "车位", "席位", "企业"]):
-            return "claude-team", True
-        if _contains(identity_text, ["20x", "20X", "20倍", "max20x", "max 20x", "max-20x"]):
-            return "claude-pro-20x", True
-        if _contains(identity_text, ["claude pro", "claude会员", "claude 会员", "5x", "5X", "5倍", "max5x", "max 5x"]) or _contains(tier_text, ["claude pro"]):
-            return "claude-pro", True
-        return "claude-account", False
+        plan = account_plan(brand, title_text, category_text, description_text)
+        return plan or "claude-account", bool(plan) and not plan.endswith(("-account", "-subscription"))
 
     if brand == "gemini":
-        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+        if _contains(identity_text, ["api", "api key", "apikey", "额度"]):
             return "gemini-api-access", True
-        if _contains(identity_text, ["gemini advanced", "gemini pro会员", "google one ai"]) or _contains(tier_text, ["gemini advanced"]):
-            return "gemini-advanced", True
-        return "gemini-account", False
+        plan = account_plan(brand, title_text, category_text, description_text)
+        return plan or "gemini-account", bool(plan) and not plan.endswith(("-account", "-subscription"))
 
     if brand == "grok":
-        if _contains(identity_text, ["api", "api key", "apikey", "token", "额度"]):
+        if _contains(identity_text, ["api", "api key", "apikey", "额度"]):
             return "grok-api-access", True
         if _contains(tier_text, ["中转站", "周限", "速刷"]):
             return None, False
-        if (
-            _contains(identity_text, ["supergrok", "super grok", "grok super", "groksuper", "supergro", "super gro", "heavy"])
-            or _contains(tier_text, ["supergrok", "super grok", "grok super", "groksuper", "supergro", "super gro", "heavy"])
-        ):
-            return "grok-super", True
-        return "grok-account", False
+        plan = account_plan(brand, title_text, category_text, description_text)
+        return plan or "grok-account", bool(plan) and not plan.endswith(("-account", "-subscription"))
 
     if brand == "x":
         if _contains(identity_text, ["premium business", "premium organization", "premium organisation", "企业认证", "金标", "灰标"]):
@@ -624,14 +625,8 @@ def _classify_identity(
         return None, False
 
     if brand == "cursor":
-        if _contains(identity_text, ["business", "商业", "企业", "team", "团队", "席位", "车位"]):
-            return "cursor-business", True
-        if _contains(
-            identity_text,
-            ["pro", "会员", "订阅", "充值", "代充", "直充", "月卡", "年卡", "激活", "额度", "ultra", "日卡"],
-        ) or _contains(tier_text, ["cursor pro"]):
-            return "cursor-pro", True
-        return "cursor-account", False
+        plan = account_plan(brand, title_text, category_text, description_text)
+        return plan or "cursor-account", bool(plan) and not plan.endswith(("-account", "-subscription"))
 
     if _contains(identity_text, CHATGPT_API_MARKERS):
         if _contains(identity_text, ["中转", "倍率"]):
@@ -728,7 +723,7 @@ def classify_product(
                     risks.append("abnormal_low_price")
         except (ValueError, TypeError):
             pass
-    if slug != "chatgpt-k12":
+    if slug not in {"chatgpt-k12", "chatgpt-business", "chatgpt-edu", "claude-team", "cursor-business"}:
         tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
     confidence = 88 if specific_match else 68 if slug else 0
     title_delivery_type = _delivery_type(normalize_title(title))

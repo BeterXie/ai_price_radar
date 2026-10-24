@@ -48,7 +48,7 @@ def test_low_confidence_new_offer_stays_pending_review():
         low_confidence["category_name"] = "Claude"
         upsert_offer(db, low_confidence, products)
         offer = db.query(Offer).one()
-        assert offer.product_id == products["claude-account"].id
+        assert offer.product_id == products["claude-subscription"].id
         assert offer.classification_confidence == 68
         assert offer.approved is False
     finally:

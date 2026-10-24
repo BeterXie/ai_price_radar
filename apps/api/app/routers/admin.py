@@ -455,6 +455,9 @@ def update_offer(offer_id: int, payload: AdminOfferUpdate, db: Session = Depends
 
 @router.post("/offers/{offer_id}/reclassify")
 def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
+    from ..services.account_plans import ensure_account_plans
+
+    ensure_account_plans(db)
     offer = db.scalar(
         select(Offer)
         .options(joinedload(Offer.raw_product), joinedload(Offer.shop))
@@ -510,6 +513,8 @@ def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/reclassify")
 def reclassify(db: Session = Depends(get_db)) -> dict:
+    from ..services.account_plans import ensure_account_plans
+    ensure_account_plans(db)
     products_by_slug = dict(db.execute(select(Product.slug, Product.id)).all())
     changed = 0
     unclassified = 0
@@ -2305,21 +2310,27 @@ def admin_delete_ad_slot(slot_id: int, db: Session = Depends(get_db)) -> Respons
 
 
 @router.get("/relays", response_model=list[RelayStationOut])
-def admin_list_relay_stations(db: Session = Depends(get_db)) -> list[RelayStation]:
-    return list(db.scalars(
+def admin_list_relay_stations(db: Session = Depends(get_db)) -> list[RelayStationOut]:
+    from ..services.relay_monitor import relay_admin_out
+    return [relay_admin_out(db, station) for station in db.scalars(
         select(RelayStation).order_by(
             RelayStation.is_sponsored.desc(), RelayStation.sort_order.asc(), RelayStation.id.asc()
         )
-    ))
+    )]
 
 
 @router.post("/relays", response_model=RelayStationOut, status_code=201)
 def admin_create_relay_station(payload: RelayStationCreate, db: Session = Depends(get_db)) -> RelayStation:
-    station = RelayStation(**payload.model_dump())
+    from ..services.relay_monitor import configure_relay, relay_admin_out
+    station = RelayStation()
+    try:
+        configure_relay(db, station, payload.model_dump(exclude={"api_key"}), payload.api_key)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=422 if isinstance(exc, ValueError) else 503, detail="检测配置无效或凭据加密服务未配置") from None
     db.add(station)
     db.commit()
     db.refresh(station)
-    return station
+    return relay_admin_out(db, station)
 
 
 @router.patch("/relays/{station_id}", response_model=RelayStationOut)
@@ -2331,11 +2342,32 @@ def admin_update_relay_station(
     station = db.get(RelayStation, station_id)
     if station is None:
         raise HTTPException(status_code=404, detail="relay station not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(station, field, value)
+    from ..services.relay_monitor import configure_relay, relay_admin_out
+    values = payload.model_dump(exclude_unset=True, exclude={"api_key"})
+    if any(value is None for value in values.values()):
+        raise HTTPException(status_code=422, detail="中转站字段不能为 null")
+    try:
+        configure_relay(db, station, values, payload.api_key)
+    except (ValueError, RuntimeError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=422 if isinstance(exc, ValueError) else 503, detail="检测配置无效或凭据加密服务未配置") from None
     db.commit()
     db.refresh(station)
-    return station
+    return relay_admin_out(db, station)
+
+
+@router.post("/relays/{station_id}/probe", response_model=RelayStationOut)
+def admin_probe_relay(station_id: int, db: Session = Depends(get_db)):
+    from ..services.relay_monitor import claim_probe, probe_relay, relay_admin_out
+    station = db.get(RelayStation, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="relay station not found")
+    target = claim_probe(db, station_id)
+    if target is None:
+        raise HTTPException(status_code=409, detail="请先审核上线并启用监测；每小时最多检测一次")
+    probe_relay(db, target)
+    db.refresh(station)
+    return relay_admin_out(db, station)
 
 
 @router.delete("/relays/{station_id}", status_code=204)

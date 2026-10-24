@@ -42,7 +42,7 @@ OFFICIAL_REFERENCES: dict[str, OfficialPriceReference] = {
         checked_at=CHECKED_AT,
         note="美国公开月价；部分地区使用本地货币，税费和年付折扣可能不同。",
     ),
-    "gemini-advanced": OfficialPriceReference(
+    "gemini-pro": OfficialPriceReference(
         provider="Google",
         plan="Google AI Pro",
         price=Decimal("19.99"),

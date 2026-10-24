@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir /tmp/shared_http -r requirements.txt \
 COPY detector/probe.py detector/qualify.py detector/sitemap.py detector/worker.py ./
 COPY pipeline/currencies.py ./currencies.py
 COPY apps/api/app/services/classifier.py ./classifier.py
+COPY apps/api/app/services/account_plans.py ./account_plans.py
 USER detector
 
 CMD ["python", "worker.py"]
