@@ -657,50 +657,58 @@ table { font-variant-numeric: tabular-nums; }
 .ad-slot-compact .ad-card-title { font-size: 0.875rem; }
 
 /* Relay hub (中转站) -------------------------------------------------------- */
-.relay-grid { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.relay-grid[data-view="list"] { grid-template-columns: minmax(0, 1fr); gap: 12px; overflow-anchor: none; }
+.relay-directory-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.relay-directory-toolbar h1 { display: flex; align-items: baseline; gap: 10px; color: var(--ink); font-size: 1.375rem; font-weight: 700; letter-spacing: -0.03em; }
+.relay-directory-toolbar h1 > span { color: var(--muted); font-size: 0.8125rem; font-weight: 500; }
+.relay-directory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.relay-apply { min-height: 40px !important; padding: 8px 12px !important; font-size: 0.75rem !important; }
+.relay-directory-notes { margin-top: 16px; color: var(--muted); font-size: 0.75rem; line-height: 1.7; }
+.relay-directory-notes summary { width: fit-content; padding: 6px 0; cursor: pointer; }
+.relay-directory-notes p { max-width: 90ch; margin-top: 6px; }
+.relay-grid { display: grid; align-items: start; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.relay-grid[data-view="list"] { grid-template-columns: minmax(0, 1fr); gap: 8px; overflow-anchor: none; }
 .relay-card {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
 }
-.relay-card:only-child { grid-column: 1 / -1; }
 .relay-card[data-sponsored="true"] { border-color: var(--warning); }
-.relay-card-header { display: flex; align-items: center; gap: 12px; }
-.relay-card-header .ad-badge { flex: none; align-self: flex-start; }
-.relay-card-mark { position: relative; display: grid; place-items: center; width: 42px; height: 42px; flex: none; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); color: var(--ink); overflow: hidden; font-size: 1.125rem; font-weight: 650; }
+.relay-card-summary { grid-column: 1 / -1; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.relay-card-header { display: flex; min-width: 0; align-items: center; gap: 9px; }
+.relay-card-mark { position: relative; display: grid; place-items: center; width: 34px; height: 34px; flex: none; border: 1px solid var(--line); border-radius: 9px; background: var(--subtle); color: var(--ink); overflow: hidden; font-size: 1rem; font-weight: 650; }
 .relay-site-icon { position: absolute; inset: 0; width: 100%; height: 100%; padding: 6px; background: var(--panel); object-fit: contain; opacity: 0; }
 .relay-site-icon.is-loaded { opacity: 1; }
-.relay-card-title { font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.4; overflow-wrap: anywhere; }
+.relay-card-title { font-size: 0.9375rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.4; overflow-wrap: anywhere; }
 .relay-card-host { margin-top: 3px; color: var(--muted); font-size: 0.75rem; overflow-wrap: anywhere; }
 .relay-pricing, .relay-health-panel { min-width: 0; }
-.relay-pricing { margin-top: 14px; }
-.relay-health-panel { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.relay-pricing { margin-top: 10px; }
+.relay-health-panel { grid-column: 1 / -1; margin-top: 16px; }
 .relay-section-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 5px; font-size: 0.6875rem; font-weight: 600; color: var(--muted); }
 .relay-price { margin-top: 8px; color: var(--ink); font-size: 1.0625rem; font-weight: 650; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
 .relay-billing { display: grid; gap: 4px; margin-top: 12px; font-size: 0.75rem; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-line; }
 .relay-billing > span { color: var(--muted); font-size: 0.6875rem; }
 .relay-price-source { margin-top: 10px; color: var(--muted); font-size: 0.625rem; line-height: 1.6; }
-.relay-health-status { border-radius: 4px; padding: 2px 5px; background: var(--subtle); color: var(--muted); font-size: 0.625rem; font-weight: 500; }
+.relay-station-status { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 6px; }
+.relay-card-summary .relay-station-status { flex-direction: column; align-items: flex-end; }
+.relay-health-status { max-width: 9em; border-radius: 5px; padding: 3px 6px; background: var(--subtle); color: var(--muted); font-size: 0.625rem; line-height: 1.4; font-weight: 600; }
 .relay-health-status[data-status="healthy"] { background: var(--success-soft); color: var(--success); }
 .relay-health-status:is([data-status="stale"], [data-status="credential_error"], [data-status="config_error"]) { background: var(--warning-soft); color: var(--warning); }
 .relay-health-status:is([data-status="unhealthy"], [data-status="timeout"], [data-status="connection_error"], [data-status="rate_limited"], [data-status="invalid_response"]) { background: var(--danger-soft); color: var(--danger); }
-.relay-probe-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.relay-probe-identity { display: flex; min-width: 0; align-items: center; gap: 6px; }
-.relay-probe-identity h4 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; font-weight: 550; color: var(--ink); }
+.relay-probe-identity { display: flex; min-width: 0; align-items: center; gap: 5px; margin-top: 3px; }
+.relay-probe-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.6875rem; color: var(--muted); }
 .relay-protocol { flex: none; border-radius: 4px; padding: 2px 5px; background: var(--subtle); color: var(--muted); font-size: 0.625rem; }
-.relay-probe-heading .relay-health-status { flex: none; }
-.relay-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.relay-metrics > div { min-width: 0; grid-column: span 2; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--subtle); }
+.relay-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.relay-metrics > div { min-width: 0; grid-column: span 2; padding: 10px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--subtle); }
 .relay-metrics > [data-primary="true"] { grid-column: span 3; }
-.relay-metrics dt { color: var(--muted); font-size: 0.625rem; line-height: 1.5; }
-.relay-metrics dt span { white-space: nowrap; }
+.relay-metrics dt { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; color: var(--muted); font-size: 0.5625rem; line-height: 1.5; }
+.relay-metrics dt svg { flex: none; }
+.relay-metrics dt span { white-space: nowrap; font-size: 0.5rem; }
 .relay-metrics dd { margin-top: 5px; color: var(--ink); font-size: 1rem; line-height: 1.3; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.relay-history-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin-top: 12px; color: var(--muted); font-size: 0.625rem; line-height: 1.5; }
+.relay-history-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.625rem; line-height: 1.5; }
 .relay-history-heading > span > span { opacity: 0.8; }
 .relay-sample-caption { display: flex; justify-content: space-between; margin-top: 3px; color: var(--muted); font-size: 0.5625rem; line-height: 1.5; }
 .relay-samples { display: grid; grid-template-columns: repeat(60, minmax(0, 1fr)); gap: 2px; height: 16px; margin-top: 6px; }
@@ -722,55 +730,52 @@ table { font-variant-numeric: tabular-nums; }
   color: var(--ink);
 }
 .relay-chip.mono { font-family: var(--font-geist-mono), ui-monospace, monospace; }
-.relay-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; color: var(--muted); font-size: 0.625rem; }
-.relay-tags span { padding: 3px 7px; border-radius: 4px; background: var(--subtle); overflow-wrap: anywhere; }
 .relay-visit { justify-content: center; gap: 8px; min-height: 36px !important; padding: 7px 11px !important; font-size: 0.75rem !important; }
-.relay-card-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 16px; }
-.relay-description { min-width: 0; margin-top: 12px; }
-.relay-description summary { display: flex; align-items: center; gap: 8px; width: fit-content; min-height: 36px; cursor: pointer; color: var(--muted); font-size: 0.75rem; font-weight: 500; list-style: none; }
+.relay-card-footer { grid-column: 2; align-self: start; margin-top: 10px; }
+.relay-description { min-width: 0; margin-top: 10px; }
+.relay-description summary { display: flex; align-items: center; gap: 5px; min-height: 36px; cursor: pointer; color: var(--muted); font-size: 0.6875rem; font-weight: 500; list-style: none; }
+.relay-description summary > svg { flex: none; }
+.relay-details-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relay-card:not(.relay-list-item) .relay-description:not([open]) { margin-right: 8px; }
+.relay-description[open] { grid-column: 1 / -1; }
 .relay-description summary::-webkit-details-marker { display: none; }
 .relay-description[open] summary svg { transform: rotate(180deg); }
 .relay-description summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: 2px; }
 .relay-updated { color: var(--muted); font-size: 0.6875rem; }
-.relay-list-item { padding: 12px 16px; border-radius: 16px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); transition: border-color 0.15s; }
+.relay-list-item { display: flex; flex-direction: column; padding: 10px 14px; border-radius: 10px; transition: border-color 0.15s; }
 .relay-list-item:hover { border-color: var(--line-strong); }
-.relay-list-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr) auto; align-items: center; gap: 24px; }
+.relay-list-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; align-items: center; gap: 20px; }
 .relay-list-item .relay-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .relay-list-item .relay-card-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.relay-list-identity-meta { display: flex; align-items: baseline; gap: 6px; }
-.relay-list-identity-meta .relay-card-host { min-width: 0; }
 .relay-list-overview { min-width: 0; }
-.relay-list-label { color: var(--muted); font-size: 0.6875rem; }
-.relay-list-label, .relay-list-price, .relay-list-billing { line-height: 1.45; }
-.relay-list-price { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin-top: 3px; color: var(--ink); font-size: 0.875rem; font-weight: 600; }
-.relay-list-billing { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.6875rem; }
-.relay-list-item .relay-health-panel { margin-top: 10px; padding-top: 10px; }
-.relay-list-item .relay-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 7px; }
-.relay-list-item .relay-metrics > div { grid-column: auto; padding: 7px 10px; }
-.relay-list-item .relay-metrics dd { margin-top: 3px; }
-.relay-list-item .relay-history-heading { margin-top: 8px; }
-.relay-list-item .relay-samples { height: 12px; }
-.relay-list-item .relay-description { margin-top: 4px; }
-.relay-list-item .relay-description summary { width: 100%; justify-content: space-between; gap: 12px; }
-.relay-list-item .relay-description summary { min-height: 28px; }
-.relay-list-item .relay-updated { flex: none; text-align: right; font-weight: 400; }
-@media (max-width: 1023px) {
-  .relay-grid { grid-template-columns: minmax(0, 1fr); }
-  .relay-list-summary { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
-  .relay-list-actions { grid-column: 2; grid-row: 1; }
-  .relay-list-overview { grid-column: 1 / -1; grid-row: 2; gap: 12px; }
-}
-@media (max-width: 479px) {
-  .relay-card { padding: 16px; }
-  .relay-price { font-size: 0.9375rem; }
+.relay-list-price { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 0.8125rem; font-weight: 600; line-height: 1.4; }
+.relay-list-billing { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.625rem; line-height: 1.4; }
+.relay-list-item .relay-health-panel { margin-top: 8px; }
+.relay-list-item .relay-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; }
+.relay-list-item .relay-metrics > div { grid-column: auto; padding: 0 12px; border-width: 0 0 0 1px; border-radius: 0; background: transparent; }
+.relay-list-item .relay-metrics > div:first-child { padding-left: 0; border-left: 0; }
+.relay-list-item .relay-metrics dd { margin-top: 2px; font-size: 0.9375rem; }
+.relay-list-item .relay-history-heading { margin-top: 6px; padding-top: 0; border: 0; }
+.relay-list-item .relay-samples { height: 8px; margin-top: 3px; }
+.relay-list-item .relay-sample-caption { display: none; }
+.relay-list-item .relay-description { margin-top: 2px; }
+.relay-list-item .relay-description summary { width: fit-content; min-height: 24px; }
+@media (max-width: 767px) {
+  .relay-list-summary { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+  .relay-list-summary .relay-station-status { flex-wrap: wrap; max-width: 130px; }
+  .relay-list-overview { grid-column: 1 / -1; grid-row: 2; }
+  .relay-list-overview > div { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+  .relay-list-price, .relay-list-billing { display: block; min-width: 0; flex: 1; }
+  .relay-list-billing { margin-top: 0; }
 }
 @media (max-width: 639px) {
-  .relay-list-item .relay-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .relay-list-item .relay-metrics > div { grid-column: span 2; padding: 9px 8px; }
+  .relay-directory-actions { gap: 8px; }
+  .relay-directory-actions > span { flex-basis: 100%; order: 1; }
+  .relay-list-item .relay-metrics { gap: 8px 0; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .relay-list-item .relay-metrics > div { grid-column: span 2; padding: 0 6px; }
   .relay-list-item .relay-metrics > [data-primary="true"] { grid-column: span 3; }
-  .relay-metrics > div { padding: 9px 8px; }
-  .relay-metrics dt span { display: block; }
-  .relay-list-summary { gap: 12px 8px; }
+  .relay-list-item .relay-metrics > div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .relay-price { font-size: 0.9375rem; }
 }
 
 @media (max-width: 639px) {

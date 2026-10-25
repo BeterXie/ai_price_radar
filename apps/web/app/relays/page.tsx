@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowsLeftRight, Info, ListBullets, ShieldCheck, SquaresFour } from "@phosphor-icons/react/ssr";
+import { Info, ListBullets, SquaresFour } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
-import { PageHero, SectionIntro } from "@/components/page-shell";
 import { PlatformIcon } from "@/components/platform-icon";
 import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 import { getMeta, getRelayStations } from "@/lib/api";
@@ -45,17 +44,6 @@ export default async function RelaysPage({ searchParams }: { searchParams: Promi
         { name: "AI 商品报价", path: "/products" },
         { name: "中转站", path: "/relays" },
       ])} />
-      <PageHero
-        compact
-        eyebrow="平台 · 中转站"
-        title="API 中转站"
-        description={<>中转站把 OpenAI、Claude、Gemini 等模型接口统一转发并按量计费，适合开发者与高频 API 用户。站长可在前台申请，审核后收录，用来补充报价目录里“中转 / 反代”形态的商品；<strong>收录不等于推荐或担保</strong>，充值前请自行核对余额有效期、倍率与退款规则。</>}
-        meta={<>
-          <span className="inline-flex items-center gap-1.5"><ArrowsLeftRight size={15} />{stations.length} 个中转站</span>
-          <span className="inline-flex items-center gap-1.5"><ShieldCheck size={15} />链接仅接受公开 HTTPS 地址</span>
-        </>}
-      />
-
       <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="平台切换">
         <nav className="filter-rail" aria-label="品牌筛选">
           <span className="filter-label">品牌</span>
@@ -73,36 +61,37 @@ export default async function RelaysPage({ searchParams }: { searchParams: Promi
         </nav>
       </section>
 
-      <div className="content-stage py-10 sm:py-12">
+      <div className="content-stage py-5 sm:py-6">
         <AdSlot placement="relay_hub" limit={2} className="mb-8" />
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm text-[color:var(--muted)]"><p>真实模型探测 · 可用率统计近 7 天，缓存与首 Token 统计近 24 小时；仅代表当前检测模型。</p><Link href="/shops/submit?type=relay" className="button-secondary">申请录入中转站</Link></div>
 
         {!enabled ? (
           <section className="empty-state" role="status">
-            <h2 className="text-2xl font-semibold text-[color:var(--ink)]">中转站专区暂未开放</h2>
+            <h1 className="text-2xl font-semibold text-[color:var(--ink)]">中转站专区暂未开放</h1>
             <p className="mt-3 text-sm leading-6">运营者已暂时关闭该专区。可以先浏览报价目录中的“中转 / 反代”形态商品。</p>
             <Link href="/products?comparable=false&delivery_type=relay_api" className="button-primary mt-6">查看中转类报价</Link>
           </section>
         ) : stations.length === 0 ? (
           <section className="empty-state" role="status">
-            <h2 className="text-2xl font-semibold text-[color:var(--ink)]">{relays ? "还没有收录中转站" : "中转站目录暂时无法加载"}</h2>
+            <h1 className="text-2xl font-semibold text-[color:var(--ink)]">{relays ? "还没有收录中转站" : "中转站目录暂时无法加载"}</h1>
             <p className="mt-3 text-sm leading-6">
               {relays
                 ? "如果你运营一个公开的 API 中转站，可以提交官网、Base URL 和检测密钥申请收录。"
                 : "可以稍后刷新，或先浏览报价目录中的“中转 / 反代”形态商品。"}
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/products?comparable=false&delivery_type=relay_api" className="button-primary">查看中转类报价</Link>
+              <Link href="/shops/submit?type=relay" className="button-primary">申请录入中转站</Link>
+              <Link href="/products?comparable=false&delivery_type=relay_api" className="button-secondary">查看中转类报价</Link>
               {meta?.advertise_enabled ? <Link href="/advertise" className="button-secondary">申请收录 / 商务合作</Link> : null}
             </div>
           </section>
         ) : (
           <>
-            <SectionIntro
-              title="已收录中转站"
-              description={<>赞助站点会带有明确的“赞助”标识并排在前面；其余按运营者设置的顺序展示。模型列表以站点公开说明为准，实际可用性可能随时变化。</>}
-              action={
-                <div className="flex flex-wrap items-center gap-3"><RelayRefresh /><div role="group" aria-label="中转站展示方式" className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs">
+            <div className="relay-directory-toolbar">
+              <h1>已收录中转站 <span>{stations.length}</span></h1>
+              <div className="relay-directory-actions">
+                <RelayRefresh />
+                <Link href="/shops/submit?type=relay" className="button-secondary relay-apply">申请录入中转站</Link>
+                <div role="group" aria-label="中转站展示方式" className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs">
                   {(["list", "card"] as const).map((mode) => {
                     const ModeIcon = mode === "card" ? SquaresFour : ListBullets;
                     return (
@@ -119,17 +108,21 @@ export default async function RelaysPage({ searchParams }: { searchParams: Promi
                       </Link>
                     );
                   })}
-                </div></div>
-              }
-            />
+                </div>
+              </div>
+            </div>
             <div className="relay-grid mt-4" data-view={view}>
               {stations.map((station) => <RelayStationCard key={station.id} station={station} view={view} />)}
             </div>
-            <p className="mt-4 text-xs leading-6 text-[color:var(--muted)]">站点 PING 为检测服务器到 API 的 TCP/TLS 建连耗时。缓存命中率按接口返回的缓存读取 Token 占比计算，短提示可能不触发缓存；未返回用量时显示暂无数据。历史条从旧到新，绿为成功、红为异常、黄为配置诊断、灰为无样本。</p>
+            <details className="relay-directory-notes">
+              <summary>检测指标与展示说明</summary>
+              <p>每小时探测当前配置的模型。站点 PING 为检测服务器到 API 的 TCP/TLS 建连耗时；可用率统计近 7 天，缓存命中率与首 Token P50 统计近 24 小时。缓存按接口返回的缓存读取 Token 占比计算，短提示可能不触发缓存；缺失数据不计为零。</p>
+              <p>历史条从旧到新，绿为成功、红为异常、黄为配置诊断、灰为无样本。赞助站点带有“赞助”标识并优先展示，其余按运营者设置的顺序排列。收录不构成推荐或担保。</p>
+            </details>
           </>
         )}
 
-        <section className="evidence-callout mt-12" data-vds-layer="evidence">
+        <section className="evidence-callout mt-6" data-vds-layer="evidence">
           <div className="flex items-start gap-3">
             <Info size={20} className="mt-0.5 shrink-0 text-[color:var(--info)]" />
             <div className="text-sm leading-6 text-[color:var(--muted)]">
