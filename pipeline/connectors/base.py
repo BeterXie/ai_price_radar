@@ -5,6 +5,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 
+class SourceUnavailableError(ValueError):
+    """The source explicitly reports that its shop is closed or banned."""
+
+
+class SourceFetchError(ValueError):
+    """An external shop could not be fetched; existing observations remain valid."""
+
+
 class SourceConnector(Protocol):
     name: str
 

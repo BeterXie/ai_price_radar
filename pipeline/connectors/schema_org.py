@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import re
+import ssl
 import time
 import urllib.parse
 from collections.abc import Iterable, Iterator
@@ -18,7 +20,7 @@ from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from currencies import normalize_currency
 
-from .base import validate_record
+from .base import SourceFetchError, validate_record
 
 
 name = "schema-org"
@@ -82,10 +84,15 @@ class _FetchBudget:
         self.requests += 1
         if self.requests > MAX_SITEMAPS + MAX_PRODUCT_URLS:
             raise ValueError("Schema.org source exceeds request limit")
-        response = self.client.get(url, accept=accept)
+        try:
+            response = self.client.get(url, accept=accept)
+        except ssl.SSLCertVerificationError:
+            raise
+        except (OSError, http.client.HTTPException) as exc:
+            raise SourceFetchError(f"Schema.org source request failed: {exc}") from exc
         self._check_time()
         if response.status != 200:
-            raise ValueError(f"Schema.org source returned HTTP {response.status}")
+            raise SourceFetchError(f"Schema.org source returned HTTP {response.status}")
         headers = {str(key).casefold(): str(value) for key, value in response.headers.items()}
         encoding = headers.get("content-encoding", "").strip().casefold()
         if encoding and encoding != "identity":
@@ -108,7 +115,7 @@ class _FetchBudget:
 
     def _check_time(self) -> None:
         if time.monotonic() - self.started > MAX_TOTAL_SECONDS:
-            raise TimeoutError("Schema.org source exceeded total time limit")
+            raise SourceFetchError("Schema.org source exceeded total time limit")
 
 
 def _normalized_url(value: object, *, base_url: str | None = None) -> str:

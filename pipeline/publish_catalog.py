@@ -14,7 +14,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 from typing import Any, Mapping, Sequence
 
-from sqlalchemy import func, inspect, select, text, update
+from sqlalchemy import func, inspect, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from common import (
@@ -30,7 +30,8 @@ from common import (
     upsert_offer,
     utcnow,
 )
-from connectors import get_connector
+from connectors import acg_faka, get_connector, platform_16688, schema_org
+from connectors.base import SourceFetchError, SourceUnavailableError
 from connectors.ldxp import load_records as load_ldxp_records
 from intake_bridge import IntakeBridge
 from ldxp_intake import collect_intake_metadata, onboard_published_intakes, published_offer_counts
@@ -64,9 +65,12 @@ class ImportResult:
     offer_ids: set[int] = field(default_factory=set)
     shop_tokens: set[str] = field(default_factory=set)
     new_shop_tokens: set[str] = field(default_factory=set)
+    status: str = "imported"
+    reason: str | None = None
+    retained: int = 0
 
     def to_dict(self) -> dict[str, int | str]:
-        return {
+        result: dict[str, int | str] = {
             "connector": self.connector,
             "source": self.source,
             "total": self.total,
@@ -76,7 +80,12 @@ class ImportResult:
             "created": self.created,
             "changed": self.changed,
             "pruned": self.pruned,
+            "status": self.status,
+            "retained": self.retained,
         }
+        if self.reason is not None:
+            result["reason"] = self.reason
+        return result
 
 
 @dataclass(slots=True)
@@ -366,15 +375,38 @@ def import_source_into_snapshot(
     return result
 
 
-def _carry_forward_current_snapshot(db: Session, target_snapshot_id: int) -> None:
-    current_id = db.scalar(
-        select(CatalogSnapshot.id)
-        .where(CatalogSnapshot.published_at.is_not(None))
-        .order_by(CatalogSnapshot.id.desc())
-        .limit(1)
+def _move_source_offers(
+    db: Session, spec: SourceSpec, from_snapshot_id: int | None, to_snapshot_id: int | None,
+) -> int:
+    """Move only this source's snapshot membership, preserving every observation field."""
+    if from_snapshot_id is None or to_snapshot_id is None:
+        return 0
+    if spec.connector == "16688":
+        parsed, _shop, _goods = platform_16688._validate_store_url(spec.source)
+        source_url, platform = urllib.parse.urlunsplit(parsed), "16688"
+    elif spec.connector == "acg-faka":
+        source_url, platform = acg_faka._origin(acg_faka._validate_store_url(spec.source)), "acg_faka"
+    elif spec.connector == "schema-org":
+        _entry, source_url = schema_org._entry(spec.source)
+        platform = "schema_org"
+    else:
+        raise ValueError(f"unsupported source failure isolation: {spec.connector}")
+    source_url = source_url.rstrip("/")
+    source_shop_ids = select(RawProduct.shop_id).where(func.rtrim(RawProduct.source_url, "/") == source_url)
+    matching_offers = (
+        select(Offer.id)
+        .join(Shop, Shop.id == Offer.shop_id)
+        .where(
+            Offer.snapshot_id == from_snapshot_id,
+            Shop.platform == platform,
+            or_(
+                func.rtrim(Shop.source_url, "/") == source_url,
+                Shop.id.in_(source_shop_ids),
+            ),
+        )
     )
-    if current_id is not None:
-        db.execute(update(Offer).where(Offer.snapshot_id == current_id).values(snapshot_id=target_snapshot_id))
+    result = db.execute(update(Offer).where(Offer.id.in_(matching_offers)).values(snapshot_id=to_snapshot_id))
+    return result.rowcount
 
 
 def _prune_stale_offers(
@@ -672,27 +704,55 @@ def publish_sources(
     carry_forward_current: bool = False,
     dry_run: bool = False,
 ) -> PublishResult:
-    """Publish all sources in one transaction; any failure restores the current catalog."""
+    """Publish atomically, isolating known external failures from healthy sources."""
     if not sources:
         raise ValueError("at least one catalog source is required")
     try:
         with import_lock(db):
             products = ensure_products(db)
+            previous_snapshot_id = db.scalar(
+                select(CatalogSnapshot.id)
+                .where(CatalogSnapshot.published_at.is_not(None))
+                .order_by(CatalogSnapshot.id.desc())
+                .limit(1)
+            )
             snapshot = begin_snapshot(db, source_label)
-            if carry_forward_current:
-                _carry_forward_current_snapshot(db, snapshot.id)
+            if carry_forward_current and previous_snapshot_id is not None:
+                db.execute(update(Offer).where(Offer.snapshot_id == previous_snapshot_id).values(snapshot_id=snapshot.id))
             imports: list[ImportResult] = []
             published_at = utcnow()
             all_price_changes: list[Any] = []
             for spec in sources:
-                imported = import_source_into_snapshot(
-                    db,
-                    connector=spec.connector,
-                    source=spec.source,
-                    snapshot_id=snapshot.id,
-                    products=products,
-                    collected_price_changes=all_price_changes,
-                )
+                source_price_changes: list[Any] = []
+                try:
+                    with db.begin_nested():
+                        imported = import_source_into_snapshot(
+                            db,
+                            connector=spec.connector,
+                            source=spec.source,
+                            snapshot_id=snapshot.id,
+                            products=products,
+                            collected_price_changes=source_price_changes,
+                        )
+                except SourceImportError as exc:
+                    if not isinstance(exc.__cause__, (SourceUnavailableError, SourceFetchError)):
+                        raise
+                    reason = str(exc.__cause__)
+                    fetch_failed = isinstance(exc.__cause__, SourceFetchError)
+                    retained = (
+                        _move_source_offers(db, spec, previous_snapshot_id, snapshot.id)
+                        if fetch_failed and not carry_forward_current else 0
+                    )
+                    if not fetch_failed and carry_forward_current:
+                        _move_source_offers(db, spec, snapshot.id, previous_snapshot_id)
+                    status = "fetch_failed" if fetch_failed else "skipped_unavailable"
+                    logger.warning("%s %s source %s: %s", status, spec.connector, spec.source, reason)
+                    imports.append(ImportResult(
+                        connector=spec.connector, source=spec.source, status=status, reason=reason,
+                        retained=retained,
+                    ))
+                    continue
+                all_price_changes.extend(source_price_changes)
                 if carry_forward_current and imported.offer_ids:
                     imported.pruned = _prune_stale_offers(
                         db,
@@ -726,6 +786,8 @@ def publish_sources(
                         ),
                         new_shop_tokens=imported.new_shop_tokens,
                     )
+            if all(item.status != "imported" for item in imports):
+                raise SourceImportError("all catalog sources are unavailable; keeping the previous snapshot")
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0
             )

@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from common import CatalogSnapshot, Offer, RawProduct, Shop, begin_snapshot, ensure_products, session_for, upsert_offer, utcnow
 from connectors import CONNECTORS
+from connectors.base import SourceFetchError, SourceUnavailableError
 from publish_catalog import (
     SnapshotExportError,
     SourceImportError,
@@ -170,6 +171,206 @@ def test_single_source_import_targets_draft_without_publishing(monkeypatch: pyte
         assert db.query(CatalogSnapshot).filter(CatalogSnapshot.published_at.isnot(None)).count() == 0
     finally:
         db.rollback()
+        db.close()
+
+
+@pytest.mark.parametrize("carry_forward", [False, True])
+def test_unavailable_source_rolls_back_partial_writes_and_continues_healthy_sources(monkeypatch, carry_forward):
+    install_loader(monkeypatch)
+    db = session_for("sqlite://")
+    try:
+        previous = publish_sources(db, [SourceSpec("merchant-json", "b")])
+        original_offer = db.query(Offer).one()
+        original_price = original_offer.price
+        original_observed_at = original_offer.observed_at
+        history_count = db.execute(text("SELECT count(*) FROM offer_history")).scalar_one()
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status, product_count) "
+            "VALUES (7, 'merchant_json', 'merchant_json', 'https://b.example', 'published', 1)"
+        ))
+        db.commit()
+
+        import app.services.notification_hub as hub
+        dispatched = []
+        monkeypatch.setattr(hub, "create_price_change_event", lambda **_kwargs: object())
+        monkeypatch.setattr(hub, "dispatch_price_changes", lambda events, **_kwargs: dispatched.extend(events))
+
+        def loader(source):
+            item = record("b" if source == "https://b.example" else str(source))
+            if source == "https://b.example":
+                item["source_platform"] = "acg_faka"
+                item["listed_price"] = "90.00"
+                yield item
+                yield record("discarded")
+                raise SourceUnavailableError("shop is banned")
+            yield item
+
+        monkeypatch.setitem(CONNECTORS, "merchant-json", loader)
+        monkeypatch.setitem(CONNECTORS, "acg-faka", loader)
+        db.query(Shop).filter(Shop.token == "shop-b").update({"platform": "acg_faka"})
+        db.commit()
+        result = publish_sources(db, [
+            SourceSpec("acg-faka", "https://b.example", (7,)),
+            SourceSpec("merchant-json", "a"),
+        ], carry_forward_current=carry_forward)
+
+        db.expire_all()
+        kept = db.get(Offer, original_offer.id)
+        assert kept.price == original_price
+        assert kept.observed_at == original_observed_at
+        assert kept.snapshot_id == previous.snapshot_id
+        assert db.query(Shop).filter(Shop.token == "shop-discarded").count() == 0
+        assert db.query(RawProduct).count() == 2
+        assert db.execute(text("SELECT count(*) FROM offer_history")).scalar_one() == history_count + 1
+        assert db.query(Offer).filter(Offer.snapshot_id == result.snapshot_id).count() == 1
+        assert result.imports[0].to_dict()["status"] == "skipped_unavailable"
+        assert result.imports[0].to_dict()["reason"] == "shop is banned"
+        assert result.imports[1].public_offer_count == 1
+        intake = db.execute(text("SELECT status, product_count, finished_at FROM source_intakes WHERE id=7")).one()
+        assert tuple(intake) == ("published", 1, None)
+        assert dispatched == []
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("error_type", [SourceUnavailableError, SourceFetchError])
+def test_all_unavailable_sources_keep_previous_snapshot(monkeypatch, error_type):
+    install_loader(monkeypatch)
+    db = session_for("sqlite://")
+    try:
+        previous = publish_sources(db, [SourceSpec("merchant-json", "a")])
+
+        def unavailable(_source):
+            yield record("discarded")
+            raise error_type("shop cannot be fetched")
+
+        monkeypatch.setitem(CONNECTORS, "16688", unavailable)
+        with pytest.raises(SourceImportError, match="all catalog sources are unavailable"):
+            publish_sources(db, [SourceSpec("16688", "https://www.16688.com.cn/shop/S1")])
+        assert db.query(CatalogSnapshot).count() == 1
+        assert db.query(Offer).one().snapshot_id == previous.snapshot_id
+        assert db.query(Shop).count() == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("carry_forward", [False, True])
+@pytest.mark.parametrize(("connector", "platform", "source"), [
+    ("16688", "16688", "https://WWW.16688.COM.CN:443/shop/S1/"),
+    ("16688", "16688", "https://www.16688.com.cn/goods/G1"),
+    ("acg-faka", "acg_faka", "https://b.example/"),
+    ("acg-faka", "acg_faka", "https://B.EXAMPLE:443/"),
+    ("schema-org", "schema_org", "https://B.EXAMPLE:443/sitemap.xml"),
+])
+def test_fetch_failure_retains_only_its_shop_without_refreshing_observations(
+    monkeypatch, carry_forward, connector, platform, source,
+):
+    from datetime import timedelta
+
+    old_time = utcnow() - timedelta(days=10)
+
+    def shop_records():
+        first = record("b")
+        first.update(source_platform=platform, observed_at=old_time)
+        if connector == "16688":
+            first.update(shop_url="https://www.16688.com.cn/shop/S1", product_url="https://www.16688.com.cn/goods/G1")
+        yield first
+        second = dict(first, product_key="second", product_url="https://b.example/second")
+        yield second
+
+    def initial_loader(_source):
+        yield from shop_records()
+        yield dict(record("unrelated"), source_platform=platform)
+
+    monkeypatch.setitem(CONNECTORS, connector, initial_loader)
+    db = session_for("sqlite://")
+    try:
+        publish_sources(db, [SourceSpec(connector, "baseline")])
+        original_offers = db.query(Offer).join(Shop).filter(Shop.token == "shop-b").all()
+        originals = {o.id: (o.price, o.observed_at) for o in original_offers}
+
+        def loader(value):
+            if value == source:
+                yield dict(next(shop_records()), listed_price="90.00")
+                yield record("discarded")
+                raise SourceFetchError("HTTP 403")
+            yield dict(record("a"), source_platform=platform)
+
+        monkeypatch.setitem(CONNECTORS, connector, loader)
+        for _ in range(2):
+            result = publish_sources(db, [SourceSpec(connector, source), SourceSpec(connector, "a")],
+                                     carry_forward_current=carry_forward)
+            db.expire_all()
+            assert result.offer_count == (4 if carry_forward else 3)
+            assert result.imports[0].status == "fetch_failed"
+            assert result.imports[0].retained == (0 if carry_forward else 2)
+            for offer_id, (price, observed_at) in originals.items():
+                kept = db.get(Offer, offer_id)
+                assert (kept.price, kept.observed_at, kept.snapshot_id) == (price, observed_at, result.snapshot_id)
+            assert db.query(Shop).filter(Shop.token == "shop-discarded").count() == 0
+    finally:
+        db.close()
+
+
+def test_unexpected_failure_after_skipped_source_still_rolls_back_everything(monkeypatch):
+    install_loader(monkeypatch)
+    db = session_for("sqlite://")
+    try:
+        previous = publish_sources(db, [SourceSpec("merchant-json", "a")])
+
+        def loader(source):
+            if source == "closed":
+                raise SourceUnavailableError("shop is banned")
+            if source == "bad":
+                raise ValueError("invalid API payload")
+            yield record(str(source))
+
+        monkeypatch.setitem(CONNECTORS, "merchant-json", loader)
+        with pytest.raises(SourceImportError, match="invalid API payload"):
+            publish_sources(db, [SourceSpec("merchant-json", name) for name in ("closed", "new", "bad")])
+        assert db.query(CatalogSnapshot).count() == 1
+        assert db.query(Offer).one().snapshot_id == previous.snapshot_id
+        assert db.query(Shop).count() == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("connector", ["16688", "acg-faka", "schema-org"])
+def test_certificate_verification_failure_keeps_previous_catalog(monkeypatch, connector):
+    import ssl
+    from connectors import acg_faka, platform_16688, schema_org
+    from price_radar_http import PinnedHTTPSClient
+
+    install_loader(monkeypatch)
+    db = session_for("sqlite://")
+    try:
+        previous = publish_sources(db, [SourceSpec("merchant-json", "a")])
+
+        class UntrustedClient:
+            normalize_url = staticmethod(PinnedHTTPSClient.normalize_url)
+
+            def __init__(self, **_kwargs):
+                pass
+
+            def get(self, *_args, **_kwargs):
+                raise ssl.SSLCertVerificationError("certificate verify failed")
+
+            post_json = get
+
+        module, source = {
+            "16688": (platform_16688, "https://www.16688.com.cn/shop/S1"),
+            "acg-faka": (acg_faka, "https://b.example/"),
+            "schema-org": (schema_org, "https://b.example/"),
+        }[connector]
+        monkeypatch.setattr(module, "PinnedHTTPSClient", UntrustedClient)
+        monkeypatch.setitem(CONNECTORS, connector, module.load_records)
+        with pytest.raises(SourceImportError, match="certificate verify failed"):
+            publish_sources(db, [SourceSpec("merchant-json", "new"), SourceSpec(connector, source)])
+        assert db.query(CatalogSnapshot).count() == 1
+        assert db.query(Offer).one().snapshot_id == previous.snapshot_id
+        assert db.query(Shop).count() == 1
+    finally:
         db.close()
 
 

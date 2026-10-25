@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import re
+import ssl
 import urllib.parse
 from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
@@ -13,7 +15,7 @@ from price_radar_http import PinnedHTTPSClient
 
 from currencies import normalize_currency
 
-from .base import validate_record
+from .base import SourceFetchError, validate_record
 
 name = "acg-faka"
 MAX_BYTES = 5 * 1024 * 1024
@@ -39,9 +41,14 @@ def _origin(parsed: urllib.parse.SplitResult) -> str:
 
 
 def _get_json(url: str, *, client: PinnedHTTPSClient) -> Any:
-    response = client.get(url, accept="application/json")
+    try:
+        response = client.get(url, accept="application/json")
+    except ssl.SSLCertVerificationError:
+        raise
+    except (OSError, http.client.HTTPException) as exc:
+        raise SourceFetchError(f"ACG-Faka API request failed: {exc}") from exc
     if response.status != 200:
-        raise ValueError(f"ACG-Faka API returned HTTP {response.status}")
+        raise SourceFetchError(f"ACG-Faka API returned HTTP {response.status}")
     content_type = response.headers.get("content-type", "").casefold()
     if content_type and "json" not in content_type:
         raise ValueError("ACG-Faka API must return JSON content")

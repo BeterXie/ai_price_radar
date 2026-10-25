@@ -8,6 +8,7 @@ from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from connectors import get_connector
 from connectors import dujiao_next, merchant_json, platform_16688
+from connectors.base import SourceFetchError, SourceUnavailableError
 from connectors.merchant_json import _validate_remote_url
 from common import Offer, Shop, ensure_products, session_for, upsert_offer
 
@@ -20,6 +21,33 @@ def test_connector_registry_includes_all_structured_platform_loaders():
     assert callable(get_connector("woocommerce-store"))
     assert callable(get_connector("schema-org"))
     assert callable(get_connector("acg-faka"))
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "error_type"),
+    [
+        (200, {"code": 0, "msg": "该商户已封禁"}, SourceUnavailableError),
+        (200, {"code": 0, "msg": "店铺已打烊"}, SourceUnavailableError),
+        (200, {"code": 0, "msg": "系统繁忙，请稍后重试"}, ValueError),
+        (200, {"code": 0, "msg": "请求被禁止"}, ValueError),
+        (403, {"code": 0, "msg": "该商户已封禁"}, SourceFetchError),
+        (200, [], ValueError),
+    ],
+)
+def test_16688_only_skips_explicit_shop_unavailability(monkeypatch, status, body, error_type):
+    class FakeClient:
+        normalize_url = staticmethod(PinnedHTTPSClient.normalize_url)
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def post_json(self, _url, _payload):
+            return PinnedResponse(status, {"content-type": "application/json"}, json.dumps(body).encode())
+
+    monkeypatch.setattr(platform_16688, "PinnedHTTPSClient", FakeClient)
+    with pytest.raises(error_type) as failure:
+        list(get_connector("16688")("https://www.16688.com.cn/shop/S149240"))
+    assert type(failure.value) is error_type
 
 
 def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):

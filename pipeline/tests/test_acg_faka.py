@@ -7,6 +7,7 @@ import pytest
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from connectors import acg_faka
+from connectors.base import SourceFetchError
 
 
 class FakeClient:
@@ -77,6 +78,21 @@ class FakeClient:
                 }).encode("utf-8"),
             )
         return PinnedResponse(status=404, headers={}, body=b"not found")
+
+
+@pytest.mark.parametrize("failure", [403, TimeoutError("TLS handshake timed out"), b"invalid JSON"])
+def test_acg_faka_distinguishes_network_failures_from_invalid_data(failure):
+    class FailingClient:
+        def get(self, _url, **_kwargs):
+            if isinstance(failure, Exception):
+                raise failure
+            if isinstance(failure, int):
+                return PinnedResponse(failure, {}, b"Forbidden")
+            return PinnedResponse(200, {"content-type": "application/json"}, failure)
+
+    with pytest.raises(ValueError) as caught:
+        acg_faka._get_json("https://shop.example.com", client=FailingClient())
+    assert isinstance(caught.value, SourceFetchError) == (not isinstance(failure, bytes))
 
 
 def test_acg_faka_url_validation():

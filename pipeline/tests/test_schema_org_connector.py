@@ -6,6 +6,7 @@ from price_radar_http import PinnedHTTPSClient as RealPinnedHTTPSClient
 from price_radar_http import PinnedResponse
 
 from connectors import schema_org
+from connectors.base import SourceFetchError
 
 
 def _response(body: str | bytes, **headers: str) -> PinnedResponse:
@@ -403,7 +404,7 @@ def test_schema_org_connector_enforces_total_time_budget(monkeypatch):
         sitemap: _response(_urlset(page)),
     })
 
-    with pytest.raises(TimeoutError, match="total time"):
+    with pytest.raises(SourceFetchError, match="total time"):
         list(schema_org.load_records(sitemap))
     assert [url for url, _accept in calls] == [sitemap]
 

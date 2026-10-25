@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import http.client
 import re
+import ssl
 import urllib.parse
 from collections.abc import Iterable
 from pathlib import Path
@@ -9,7 +11,7 @@ from typing import Any
 
 from price_radar_http import PinnedHTTPSClient
 
-from .base import validate_record
+from .base import SourceFetchError, SourceUnavailableError, validate_record
 
 
 name = "16688"
@@ -62,9 +64,14 @@ def _post_json(
     url: str,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    response = client.post_json(url, payload)
+    try:
+        response = client.post_json(url, payload)
+    except ssl.SSLCertVerificationError:
+        raise
+    except (OSError, http.client.HTTPException) as exc:
+        raise SourceFetchError(f"16688 API request failed: {exc}") from exc
     if response.status != 200:
-        raise ValueError(f"16688 API returned HTTP {response.status}")
+        raise SourceFetchError(f"16688 API returned HTTP {response.status}")
     content_type = response.headers.get("content-type", "").casefold()
     if content_type and "json" not in content_type:
         raise ValueError("16688 API must return JSON content")
@@ -75,7 +82,10 @@ def _post_json(
     if not isinstance(document, dict):
         raise ValueError("16688 API response must be an object")
     if document.get("code") != 1:
-        raise ValueError(f"16688 API error: {document.get('msg') or document.get('code')}")
+        message = str(document.get("msg") or document.get("code")).strip()
+        if message in {"该商户已封禁", "店铺已打烊"}:
+            raise SourceUnavailableError(f"16688 API error: {message}")
+        raise ValueError(f"16688 API error: {message}")
     return document
 
 
