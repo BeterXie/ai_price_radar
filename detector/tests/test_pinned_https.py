@@ -229,6 +229,26 @@ def test_api_key_is_never_sent_to_private_dns_address():
     assert connections == []
 
 
+def test_authenticated_model_get_uses_pinned_host_and_refuses_redirects():
+    sent = []
+
+    class RecordingSocket(FakeSocket):
+        def sendall(self, request):
+            sent.append(request)
+
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda *_args, **_kwargs: RecordingSocket(response(b"", status=302)),
+        ssl_context=FakeTLSContext(),
+    )
+    with pytest.raises(ValueError, match="redirects"):
+        client.get("https://relay.example/prefix/v1/models", accept="application/json", headers={"Authorization": "Bearer test-key"})
+    assert len(sent) == 1
+    assert sent[0].startswith(b"GET /prefix/v1/models HTTP/1.1\r\n")
+    assert b"Authorization: Bearer test-key\r\n" in sent[0]
+    assert b"Host: relay.example\r\n" in sent[0]
+
+
 def test_stream_callback_receives_network_fragment_before_response_finishes():
     client_socket, server_socket = socket.socketpair()
     delivered = threading.Event()

@@ -18,7 +18,7 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.9.23"
+VERSION = "3.9.24"
 PRIVACY_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ async def lifespan(_: FastAPI):
     privacy_cleanup_task = asyncio.create_task(_privacy_cleanup_loop(SessionLocal))
     from .services.relay_monitor import relay_monitor_loop
     relay_monitor_task = asyncio.create_task(relay_monitor_loop(SessionLocal))
+    from .services.relay_models import relay_model_sync_loop
+    relay_model_task = asyncio.create_task(relay_model_sync_loop(SessionLocal))
 
     try:
         from extensions.bots.qq_gateway import qq_gateway_service
@@ -82,10 +84,13 @@ async def lifespan(_: FastAPI):
     finally:
         privacy_cleanup_task.cancel()
         relay_monitor_task.cancel()
+        relay_model_task.cancel()
         with suppress(asyncio.CancelledError):
             await privacy_cleanup_task
         with suppress(asyncio.CancelledError):
             await relay_monitor_task
+        with suppress(asyncio.CancelledError):
+            await relay_model_task
         try:
             from extensions.bots.qq_gateway import qq_gateway_service
 

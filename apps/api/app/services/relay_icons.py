@@ -1,20 +1,26 @@
 """Discover small raster favicons from approved relay homepages, with bounded caching."""
 from __future__ import annotations
 
+import base64
+import binascii
 import http.client
 import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from price_radar_http import PinnedHTTPSClient
 
 _MAX_BYTES = 256 * 1024
+_MAX_DATA_URI_LENGTH = ((_MAX_BYTES + 2) // 3) * 4 + 80
 _MAX_CACHE_ENTRIES = 128
 _POSITIVE_TTL = 24 * 60 * 60
-_NEGATIVE_TTL = 15 * 60
+_NEGATIVE_TTL = 30
+_FETCH_SECONDS = 16
+_SLOT_WAIT_SECONDS = 8
 _FETCH_ERRORS = (OSError, ValueError, http.client.HTTPException)
 
 
@@ -45,7 +51,8 @@ class _IconLinks(HTMLParser):
         values = dict(attrs)
         rel = (values.get("rel") or "").casefold().split()
         href = values.get("href") or ""
-        if not href or len(href) > 2048 or "svg" in (values.get("type") or "").casefold():
+        max_length = _MAX_DATA_URI_LENGTH if href.startswith("data:image/") else 2048
+        if not href or len(href) > max_length or "svg" in (values.get("type") or "").casefold():
             return
         if "icon" in rel:
             self.links.append((0, href))
@@ -72,10 +79,11 @@ def _raster_icon(body: bytes) -> RelayIcon | None:
 
 def _fetch_icon(home: str) -> RelayIcon | None:
     client = PinnedHTTPSClient(
-        max_response_bytes=_MAX_BYTES,
-        max_task_bytes=4 * _MAX_BYTES,
-        max_task_seconds=8,
-        request_timeout=2,
+        # Inline favicons can make the HTML larger than the image itself.
+        max_response_bytes=1024 * 1024,
+        max_task_bytes=2 * 1024 * 1024,
+        max_task_seconds=_FETCH_SECONDS,
+        request_timeout=5,
         user_agent="AI-Price-Memory-SiteIcon/1",
     )
     links: list[str] = []
@@ -97,6 +105,11 @@ def _fetch_icon(home: str) -> RelayIcon | None:
         pass
     candidates: list[str] = []
     for href in links:
+        if href.startswith("data:"):
+            icon = _inline_icon(href)
+            if icon:
+                return icon
+            continue
         try:
             candidate = PinnedHTTPSClient.normalize_url(urljoin(resource_base, href))
         except (ValueError, UnicodeError):
@@ -120,6 +133,48 @@ def _fetch_icon(home: str) -> RelayIcon | None:
     return None
 
 
+def _inline_icon(value: str) -> RelayIcon | None:
+    header, separator, data = value.partition(",")
+    if not separator or len(value) > _MAX_DATA_URI_LENGTH or header.lower() not in {
+        "data:image/png;base64", "data:image/jpeg;base64", "data:image/webp;base64",
+        "data:image/gif;base64", "data:image/x-icon;base64", "data:image/vnd.microsoft.icon;base64",
+    }:
+        return None
+    try:
+        body = base64.b64decode(data, validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    return _raster_icon(body) if len(body) <= _MAX_BYTES else None
+
+
+def _homepage(website_url: str) -> str:
+    normalized = urlsplit(PinnedHTTPSClient.normalize_url(website_url))
+    return urlunsplit((normalized.scheme, normalized.netloc, "/", "", ""))
+
+
+def read_icon_cache(website_url: str, cache: dict) -> tuple[RelayIcon | None, bool]:
+    """A previous success remains usable during upstream outages and restarts."""
+    if not isinstance(cache, dict):
+        return None, False
+    try:
+        if cache.get("home") != _homepage(website_url):
+            return None, False
+        data = cache.get("body")
+        if not isinstance(data, str) or len(data) > _MAX_DATA_URI_LENGTH:
+            return None, False
+        body = base64.b64decode(data, validate=True)
+        icon = _raster_icon(body) if len(body) <= _MAX_BYTES else None
+        synced_at = datetime.fromisoformat(cache["synced_at"])
+        age = (datetime.now(timezone.utc) - synced_at).total_seconds()
+        return icon, icon is not None and 0 <= age < _POSITIVE_TTL
+    except (ValueError, TypeError, KeyError, binascii.Error):
+        return None, False
+
+
+def make_icon_cache(website_url: str, icon: RelayIcon) -> dict:
+    return {"home": _homepage(website_url), "body": base64.b64encode(icon.body).decode("ascii"), "synced_at": datetime.now(timezone.utc).isoformat()}
+
+
 _cache: OrderedDict[str, tuple[float, RelayIcon | None]] = OrderedDict()
 _lock = threading.Lock()
 _in_flight: dict[str, threading.Event] = {}
@@ -128,10 +183,9 @@ _slots = threading.BoundedSemaphore(4)
 
 def get_relay_icon(website_url: str) -> RelayIcon | None:
     try:
-        normalized = urlsplit(PinnedHTTPSClient.normalize_url(website_url))
         # Strip invitation paths and query parameters; only the public homepage
         # declares site identity. The probe endpoint and credentials are unused.
-        home = urlunsplit((normalized.scheme, normalized.netloc, "/", "", ""))
+        home = _homepage(website_url)
     except (ValueError, UnicodeError):
         return None
     with _lock:
@@ -147,7 +201,8 @@ def get_relay_icon(website_url: str) -> RelayIcon | None:
         else:
             owns_fetch = False
     if not owns_fetch:
-        if pending.wait(timeout=8):
+        # The owner may first queue for a slot, then use the full fetch budget.
+        if pending.wait(timeout=_SLOT_WAIT_SECONDS + _FETCH_SECONDS + 1):
             with _lock:
                 cached = _cache.get(home)
                 if cached and cached[0] > time.monotonic():
@@ -155,7 +210,7 @@ def get_relay_icon(website_url: str) -> RelayIcon | None:
         raise RelayIconBusy()
     acquired = False
     try:
-        acquired = _slots.acquire(timeout=8)
+        acquired = _slots.acquire(timeout=_SLOT_WAIT_SECONDS)
         if not acquired:
             raise RelayIconBusy()
         try:

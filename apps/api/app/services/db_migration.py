@@ -92,6 +92,7 @@ def ensure_db_schema(engine: Engine) -> None:
             return
         ensure_relay_monitoring(conn)
         ensure_relay_probe_metrics(conn)
+        ensure_relay_model_catalog(conn)
         _hide_retired_products(conn)
 
 
@@ -148,6 +149,20 @@ def ensure_relay_probe_metrics(conn) -> None:
         if name not in columns:
             # No defaults: historical samples did not measure these values.
             conn.execute(text(f"ALTER TABLE relay_probe_results ADD COLUMN {name} INTEGER"))
+
+
+def ensure_relay_model_catalog(conn) -> None:
+    from sqlalchemy import inspect
+
+    if "relay_stations" not in inspect(conn).get_table_names():
+        return
+    columns = {row["name"] for row in inspect(conn).get_columns("relay_stations")}
+    if "model_catalog" not in columns:
+        conn.execute(text("ALTER TABLE relay_stations ADD COLUMN model_catalog JSON NOT NULL DEFAULT '{}'"))
+    if "groups" not in columns:
+        conn.execute(text("ALTER TABLE relay_stations ADD COLUMN groups JSON NOT NULL DEFAULT '[]'"))
+    if "icon_cache" not in columns:
+        conn.execute(text("ALTER TABLE relay_stations ADD COLUMN icon_cache JSON NOT NULL DEFAULT '{}'"))
 
 
 def _migrate_sqlite(conn) -> None:

@@ -5,6 +5,7 @@ import { FormEvent, useRef, useState } from "react";
 import { CheckCircle, Storefront } from "@phosphor-icons/react";
 import { isValidPublicSourceUrl, SOURCE_INTAKE_COPY, SOURCE_INTAKE_OPTIONS, type IntakeSourceType } from "@/lib/source-intake.mjs";
 import { RelayProbeFields, type RelayProbeDraft } from "@/components/relay-probe-fields";
+import { RelayGroupFields, groupInputs, type RelayGroupDraft } from "@/components/relay-group-fields";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 type SubmitState = "idle" | "sending" | "submitted" | "pending" | "known" | "limited" | "invalid" | "email_invalid" | "unauthenticated" | "forbidden" | "error";
@@ -13,6 +14,7 @@ type ShopRequestResponse = { source_type: string; declared_platform: string; det
 export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceType?: IntakeSourceType }) {
   const [sourceType, setSourceType] = useState<IntakeSourceType>(initialSourceType);
   const [relay, setRelay] = useState<RelayProbeDraft>({ base_url: "", api_key: "", probe_protocol: "openai", probe_model: "", monitor_enabled: true });
+  const [groups, setGroups] = useState<RelayGroupDraft[]>([]);
   const [shopUrl, setShopUrl] = useState("");
   const [shopName, setShopName] = useState("");
   const [contact, setContact] = useState("");
@@ -27,6 +29,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
     requestSequence.current += 1;
     setSourceType(type);
     setShopUrl("");
+    setGroups([]);
     setState("idle");
     setDetectionMessage("");
     setRelay({ base_url: "", api_key: "", probe_protocol: "openai", probe_model: "", monitor_enabled: true });
@@ -44,7 +47,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(sourceType === "relay" ? {
-          ...relay, name: shopName.trim(), url: shopUrl.trim(),
+          ...relay, groups: groupInputs(groups), name: shopName.trim(), url: shopUrl.trim(),
           contact: contact.trim(), note: note.trim(), authorization_confirmed: true,
         } : {
           source_type: sourceType,
@@ -100,6 +103,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
     setShopName("");
     setContact("");
     setNote("");
+    setGroups([]);
     setDetectionMessage("");
     setAuthorizationConfirmed(false);
     setRelay({ base_url: "", api_key: "", probe_protocol: "openai", probe_model: "", monitor_enabled: true });
@@ -130,6 +134,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
       <label className="grid gap-2 text-sm font-medium" htmlFor="shop-url">{copy.fieldLabel}<input id="shop-url" name="shop_url" type="url" required disabled={state === "sending"} value={shopUrl} onChange={(event) => { setShopUrl(event.target.value); if (state !== "sending") setState("idle"); }} placeholder={copy.placeholder} className="field text-sm"/><span className="text-xs font-normal leading-5 text-[color:var(--muted)]">{copy.hint}</span></label>
       <label className="grid gap-2 text-sm font-medium" htmlFor="shop-name">{sourceType === "relay" ? "中转站名称（必填）" : "来源名称（选填）"}<input id="shop-name" required={sourceType === "relay"} maxLength={sourceType === "relay" ? 100 : 120} disabled={state === "sending"} value={shopName} onChange={(e)=>setShopName(e.target.value)} className="field text-sm"/></label>
       {sourceType === "relay" && <fieldset disabled={state === "sending"}><RelayProbeFields value={relay} onChange={(patch) => setRelay((value) => ({ ...value, ...patch }))} required/></fieldset>}
+      {sourceType === "relay" && <details><summary className="cursor-pointer text-sm">补充分组与倍率（选填）</summary><fieldset disabled={state === "sending"} className="mt-3"><RelayGroupFields groups={groups} onChange={setGroups} /></fieldset></details>}
       <label className="grid gap-2 text-sm font-medium" htmlFor="shop-contact">联系邮箱 <span className="font-normal text-[color:var(--muted)]">必填</span><input id="shop-contact" name="contact" type="email" required maxLength={200} disabled={state === "sending"} value={contact} onChange={(e)=>setContact(e.target.value)} placeholder="you@example.com" className="field text-sm"/><span className="text-xs font-normal leading-5 text-[color:var(--muted)]">必须与已验证的登录邮箱一致，仅用于申请状态通知。</span></label>
       <label className="grid gap-2 text-sm font-medium" htmlFor="shop-note">申请说明 <span className="font-normal text-[color:var(--muted)]">选填</span><textarea id="shop-note" maxLength={1000} rows={4} disabled={state === "sending"} value={note} onChange={(e)=>setNote(e.target.value)} placeholder="可填写主营的 AI 产品或需要补充核对的信息。" className="field resize-y text-sm"/></label>
       <label className="flex min-h-11 items-start gap-3 text-sm leading-6 text-[color:var(--muted)]"><input type="checkbox" required disabled={state === "sending"} checked={authorizationConfirmed} onChange={(event) => setAuthorizationConfirmed(event.target.checked)} className="mt-1 h-5 w-5 accent-[color:var(--brand-strong)]"/><span>我确认该来源可公开访问，并有权提交此收录申请。</span></label>

@@ -54,9 +54,9 @@ def test_declared_icon_uses_public_homepage_and_is_cached(monkeypatch):
     assert icon == relay_icons.RelayIcon(PNG, "image/png")
     assert relay_icons.get_relay_icon(HOME + "login") == icon
     assert calls == [HOME, HOME + "assets/brand.png"]
-    assert limits["max_response_bytes"] == 256 * 1024
-    assert limits["max_task_seconds"] == 8
-    assert limits["request_timeout"] == 2
+    assert limits["max_response_bytes"] == 1024 * 1024
+    assert limits["max_task_seconds"] == 16
+    assert limits["request_timeout"] == 5
 
 
 @pytest.mark.parametrize("website", ["http://relay.example.com", "https://127.0.0.1", "https://relay.local", "https://user:pass@relay.example.com", "https://relay.example.com:8443"])
@@ -187,3 +187,53 @@ def test_capacity_exhaustion_is_transient_and_not_negative_cached(monkeypatch):
         relay_icons.get_relay_icon(HOME)
     assert HOME not in relay_icons._cache
     assert HOME not in relay_icons._in_flight
+
+
+def test_duplicate_waits_through_owner_queue_and_slow_fetch(monkeypatch):
+    icon = relay_icons.RelayIcon(PNG, "image/png")
+
+    class SlowPending:
+        def wait(self, *, timeout):
+            # Virtual completion after 8s queueing + 16s fetching. No real wait.
+            if timeout < 24:
+                return False
+            relay_icons._cache[HOME] = (relay_icons.time.monotonic() + 86400, icon)
+            return True
+
+    monkeypatch.setattr(relay_icons, "_in_flight", {HOME: SlowPending()})
+    monkeypatch.setattr(relay_icons, "_fetch_icon", lambda _: pytest.fail("Duplicate must share owner's fetch"))
+    assert relay_icons.get_relay_icon(HOME) == icon
+
+
+def test_embedded_png_in_large_homepage_is_recognized_without_external_icon_requests(monkeypatch):
+    # Real Sub2API sites embed PNG data URIs, sometimes in >256KiB HTML.
+    image = PNG + b"\x00" * 10000
+    uri = "data:image/png;base64," + base64.b64encode(image).decode()
+    page = '<!--' + ' ' * 300000 + '--><link rel="icon" href="' + uri + '">'
+    calls, _ = install_client(monkeypatch, {HOME: html(page)})
+    assert relay_icons.get_relay_icon(HOME).body == image
+    assert calls == [HOME]
+
+
+@pytest.mark.parametrize("uri", [
+    "data:image/svg+xml;base64," + base64.b64encode(b"<svg><script>alert(1)</script></svg>").decode(),
+    "data:text/html;base64," + base64.b64encode(b"<html>bad</html>").decode(),
+    "data:image/png;base64,not base64!",
+    "data:image/png;base64," + base64.b64encode(PNG + b"x" * (256 * 1024)).decode(),
+], ids=["svg", "html", "invalid-base64", "oversized"])
+def test_invalid_embedded_icons_keep_raster_fallback(uri, monkeypatch):
+    calls, _ = install_client(monkeypatch, {HOME: html(f'<link rel="icon" href="{uri}">'), HOME + "favicon.ico": PinnedResponse(200, {}, PNG)})
+    assert relay_icons.get_relay_icon(HOME).body == PNG
+    assert calls == [HOME, HOME + "favicon.ico"]
+
+
+def test_durable_cache_checks_home_and_retains_stale_success():
+    from datetime import datetime, timedelta, timezone
+
+    icon = relay_icons.RelayIcon(PNG, "image/png")
+    cache = relay_icons.make_icon_cache(HOME + "register?invite=private", icon)
+    assert "invite" not in cache["home"]
+    assert relay_icons.read_icon_cache(HOME, cache) == (icon, True)
+    cache["synced_at"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    assert relay_icons.read_icon_cache(HOME, cache) == (icon, False)
+    assert relay_icons.read_icon_cache("https://other.example.com", cache) == (None, False)

@@ -296,6 +296,43 @@ export type RelayHealth = {
   recent_samples?: { checked_at: string; status: string; latency_ms: number }[];
 };
 
+export type RelayModelInfo = {
+  id: string;
+  name: string;
+  description: string;
+  provider: string;
+  context_token_limit: number | null;
+  input_token_limit: number | null;
+  output_token_limit: number | null;
+  capabilities: string[];
+};
+
+export type RelayGroup = {
+  id: string;
+  name: string;
+  ratio: number | null;
+  effective_ratio?: number | null;
+  description?: string;
+  models: string[] | null;
+};
+
+export type RelayGroupCatalog = {
+  status: string;
+  source: "" | "key_billing" | "public_pricing";
+  checked_at: string | null;
+  synced_at: string | null;
+  groups: RelayGroup[];
+};
+
+export type RelayModelCatalog = {
+  status: string;
+  checked_at: string | null;
+  synced_at: string | null;
+  models: RelayModelInfo[];
+  truncated: boolean;
+  group_catalog: RelayGroupCatalog;
+};
+
 export type RelayStationPublic = {
   id: number;
   name: string;
@@ -303,6 +340,8 @@ export type RelayStationPublic = {
   tagline: string;
   description: string;
   supported_models: string[];
+  model_catalog: RelayModelCatalog;
+  groups: RelayGroup[];
   price_note: string;
   billing_note: string;
   tags: string[];
@@ -343,6 +382,7 @@ export type RelayStationInput = {
   tagline: string;
   description: string;
   supported_models: string[];
+  groups: RelayGroup[];
   price_note: string;
   billing_note: string;
   tags: string[];

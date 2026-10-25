@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RelayProbeFields } from "@/components/relay-probe-fields";
+import { RelayGroupFields, groupInputs, type RelayGroupDraft } from "@/components/relay-group-fields";
 import { RelayHealth } from "@/components/relay-health";
 import {
   ArrowClockwise,
@@ -58,6 +59,7 @@ const EMPTY_RELAY: RelayStationInput = {
   tagline: "",
   description: "",
   supported_models: [],
+  groups: [],
   price_note: "",
   billing_note: "",
   tags: [],
@@ -66,7 +68,7 @@ const EMPTY_RELAY: RelayStationInput = {
   sort_order: 100,
 };
 
-type RelayDraft = Omit<RelayStationInput, "supported_models" | "tags"> & { supported_models_text: string; tags_text: string };
+type RelayDraft = Omit<RelayStationInput, "supported_models" | "tags" | "groups"> & { supported_models_text: string; tags_text: string; groups: RelayGroupDraft[] };
 
 function splitList(value: string): string[] {
   return Array.from(new Set(value.split(/[\n,，;；]+/).map((item) => item.trim()).filter(Boolean)));
@@ -301,6 +303,7 @@ export function PromoAdminPanel({
         is_enabled: station.is_enabled,
         sort_order: station.sort_order,
         supported_models_text: station.supported_models.join(", "),
+        groups: station.groups || [],
         tags_text: station.tags.join(", "),
       });
     } else {
@@ -327,6 +330,7 @@ export function PromoAdminPanel({
       const body: RelayStationInput = {
         ...rest,
         supported_models: splitList(supported_models_text),
+        groups: groupInputs(relayDraft.groups),
         tags: splitList(tags_text),
       };
       const isEdit = editingRelayId !== null;
@@ -390,6 +394,25 @@ export function PromoAdminPanel({
       await loadRelays();
     } catch (e) {
       setError(e instanceof Error ? e.message : "检测失败");
+    } finally {
+      setRelayBusyId(null);
+    }
+  };
+
+  const syncRelayModels = async (station: RelayStationAdmin) => {
+    setRelayBusyId(station.id);
+    setError("");
+    try {
+      const res = await fetch(`${apiBase}/api/v1/admin/relays/${station.id}/models/sync`, { method: "POST", credentials: "include", headers: stableHeaders });
+      if (!res.ok) throw new Error(errorDetail(await res.json().catch(() => null), "同步模型失败"));
+      const updated = await res.json() as RelayStationAdmin;
+      if (updated.model_catalog.status !== "ok") throw new Error(updated.model_catalog.status === "timeout" ? "模型列表接口超时，已保留上次清单" : "模型列表接口同步失败，已保留上次清单");
+      showToast(`已同步 ${updated.model_catalog.models.length} 个模型`);
+      await loadRelays();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "同步模型失败";
+      await loadRelays();
+      setError(message);
     } finally {
       setRelayBusyId(null);
     }
@@ -667,6 +690,7 @@ export function PromoAdminPanel({
                 </div>
               </div>
               <RelayProbeFields value={relayDraft} onChange={(patch) => setRelayDraft((value) => ({ ...value, ...patch }))} hasApiKey={relays.find((station) => station.id === editingRelayId)?.has_api_key}/>
+              <RelayGroupFields groups={relayDraft.groups} onChange={(groups) => setRelayDraft((draft) => ({ ...draft, groups }))} />
               {relayError ? <p role="alert" className="text-sm text-[color:var(--danger)]">{relayError}</p> : null}
               <div className="flex flex-wrap gap-2">
                 <button type="submit" disabled={savingRelay} className="button-primary tactile !min-h-9 !px-4 text-xs disabled:opacity-50">{savingRelay ? "正在保存…" : "保存"}</button>
@@ -699,7 +723,8 @@ export function PromoAdminPanel({
                       ) : <p className="mt-1 text-xs text-[color:var(--muted)]">未设置地址</p>}
                     </td>
                     <td className="px-4 py-3 align-top text-xs">
-                      <p className="mono text-[color:var(--muted)]">{station.supported_models.slice(0, 4).join(", ") || "—"}{station.supported_models.length > 4 ? ` +${station.supported_models.length - 4}` : ""}</p>
+                      {station.model_catalog?.synced_at ? <p>接口同步 {station.model_catalog.models.length}{station.model_catalog.truncated ? "+" : ""} 个模型 · {station.model_catalog.status === "ok" ? "已同步" : "最近同步失败，保留上次清单"}</p> : <p className="mono text-[color:var(--muted)]">{station.supported_models.slice(0, 4).join(", ") || "尚未同步模型"}</p>}
+                      <p>分组：接口 {station.model_catalog?.group_catalog?.groups.length || 0} / 人工 {station.groups?.length || 0}{station.model_catalog?.group_catalog?.checked_at && station.model_catalog.group_catalog.status !== "ok" ? " · 最近分组同步失败" : ""}</p>
                       {station.tags.length > 0 ? <p className="mt-1 flex flex-wrap gap-1">{station.tags.map((tag) => <span key={tag} className="relay-chip">{tag}</span>)}</p> : null}
                     </td>
                     <td className="px-4 py-3 align-top text-xs">
@@ -715,6 +740,7 @@ export function PromoAdminPanel({
                         {station.review_status !== "approved" ? <button type="button" disabled={relayBusyId !== null} onClick={() => updateRelay(station, { review_status: "approved", is_enabled: true, monitor_enabled: Boolean(station.has_api_key && station.base_url && station.probe_model) }, "已批准并上线该中转站")} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">批准并上线</button> : <button type="button" disabled={relayBusyId !== null} onClick={() => updateRelay(station, { is_enabled: !station.is_enabled }, station.is_enabled ? "已下线该中转站" : "已上线该中转站")} title={station.is_enabled ? "下线" : "上线"} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">{station.is_enabled ? <EyeSlash size={14} /> : <Eye size={14} />}</button>}
                         {station.review_status === "pending" && <button type="button" disabled={relayBusyId !== null} onClick={() => updateRelay(station, { review_status: "rejected" }, "已驳回该中转站申请")} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">驳回</button>}
                         {station.monitor_enabled && station.is_enabled && <button type="button" disabled={relayBusyId !== null} onClick={() => probeRelay(station)} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">{relayBusyId === station.id ? "处理中…" : "检测"}</button>}
+                        {station.review_status === "approved" && station.is_enabled && station.has_api_key && <button type="button" disabled={relayBusyId !== null} onClick={() => syncRelayModels(station)} className="button-secondary tactile !min-h-8 !px-2.5 text-xs">同步模型</button>}
                         <button type="button" disabled={relayBusyId !== null} onClick={() => deleteRelay(station)} title="删除" className="button-danger tactile !min-h-8 !px-2.5 text-xs"><Trash size={14} /></button>
                       </div>
                     </td>

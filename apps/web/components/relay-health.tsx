@@ -46,7 +46,7 @@ export function RelayHealthStatus({ health }: { health?: Health }) {
   return <span className="relay-health-status" data-status={status}>{labels[status] || "状态待确认"}</span>;
 }
 
-export function RelayHealthPanel({ health }: { health?: Health }) {
+export function RelayHealthPanel({ health, now }: { health?: Health; now: number }) {
   const status = health?.status || "not_checked";
   const samples = (health?.recent_samples || []).slice(-60);
   const successes = samples.filter((sample) => sample.status === "healthy").length;
@@ -61,7 +61,7 @@ export function RelayHealthPanel({ health }: { health?: Health }) {
         <div title={`近 24 小时 ${health?.cache_sample_count_24h || 0} 次返回完整缓存用量的成功探测：缓存读取输入 Token / 总输入 Token。短提示可能不触发缓存；缺失字段不算零。`}><dt>缓存命中率 <span>· 24h</span></dt><dd>{percentage(health?.cache_hit_rate_24h)}</dd></div>
         <div title={`近 24 小时 ${health?.first_token_sample_count_24h || 0} 次成功流式探测，从请求发起到首个非空文本的耗时中位数；心跳和思考内容不计入。`}><dt>首 Token P50 <span>· 24h</span></dt><dd>{latency(health?.first_token_p50_ms)}</dd></div>
       </dl>
-      <div className="relay-history-heading"><span>近 60 次检测 <span>· {samples.length} 次记录</span></span><span>{health?.checked_at ? <time dateTime={health.checked_at} title={exactTime(health.checked_at)}>{relativeTime(health.checked_at)}检测</time> : "等待首次检测"}</span></div>
+      <div className="relay-history-heading"><span>近 60 次检测 <span>· {samples.length} 次记录</span></span><span>{health?.checked_at ? <time dateTime={health.checked_at} title={exactTime(health.checked_at)}>{relativeTime(health.checked_at, now)}检测</time> : "等待首次检测"}</span></div>
       <div className="relay-samples" role="img" aria-label={sampleLabel}>
         {Array.from({ length: 60 }, (_, index) => {
           const sample = samples[index - (60 - samples.length)];

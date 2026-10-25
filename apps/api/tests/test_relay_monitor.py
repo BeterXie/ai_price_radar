@@ -1,4 +1,6 @@
+import io
 import json
+import socket
 from datetime import datetime, timedelta, timezone
 from http.client import BadStatusLine
 
@@ -135,6 +137,12 @@ class FakeClient:
         self.body = {"choices": [{"message": {"content": "OK"}}]} if body is None else body
         self.error = error
         self.calls = []
+        self.model_calls = []
+
+    def get(self, url, *, headers, accept):
+        from price_radar_http import PinnedResponse
+        self.model_calls.append(url)
+        return PinnedResponse(200, {}, b'{"data":[{"id":"test-model"}]}')
 
     def post_json(self, url, body, *, headers, accept="application/json", on_chunk=None):
         self.calls.append((url, body, headers))
@@ -296,6 +304,79 @@ def test_transport_failure_is_recorded_without_sensitive_error_text(relay_api, e
         assert KEY not in relay_health(db, station).model_dump_json()
 
 
+@pytest.mark.parametrize(("header_delay", "body_delays", "expected", "elapsed_ms"), [
+    (16, (0, 0), "healthy", 16000),
+    (31, (0, 0), "timeout", 30000),
+    (20, (20, 6), "timeout", 45000),
+])
+def test_probe_allows_slow_model_headers_but_bounds_idle_and_total_time(
+    relay_api, monkeypatch, header_delay, body_delays, expected, elapsed_ms,
+):
+    from price_radar_http import PinnedHTTPSClient
+
+    _, factory = relay_api
+    clock = [100.0]
+    monkeypatch.setattr("app.services.relay_monitor.time.monotonic", lambda: clock[0])
+    parts = [b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\n', b'data: [DONE]\n\n']
+    body = b"".join(parts)
+    wire = (f"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+            f"Content-Length: {len(body)}\r\n\r\n").encode() + body
+
+    class ResponseBody(io.BytesIO):
+        part_index = 0
+
+        def readline(self, *args):
+            if self.tell() == 0:
+                transport.wait(header_delay)
+            return super().readline(*args)
+
+        def read1(self, size):
+            if self.part_index < len(parts):
+                transport.wait(body_delays[self.part_index])
+                size = min(size, len(parts[self.part_index]))
+                self.part_index += 1
+            return super().read1(size)
+
+    class Transport:
+        closed = False
+
+        def settimeout(self, seconds):
+            self.timeout = seconds
+
+        def wait(self, seconds):
+            clock[0] += min(seconds, self.timeout)
+            if seconds > self.timeout:
+                raise TimeoutError("simulated upstream wait")
+
+        def sendall(self, _request):
+            pass
+
+        def makefile(self, *_args):
+            return ResponseBody(wire)
+
+        def wrap_socket(self, raw, **_kwargs):
+            return raw
+
+        def close(self):
+            self.closed = True
+
+    transport = Transport()
+    monkeypatch.setattr("price_radar_http.PinnedHTTPSClient", lambda **limits: PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda *_args, **_kwargs: transport, ssl_context=transport, **limits,
+    ))
+    with factory() as db:
+        station = RelayStation(name="Slow model", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        result = probe_relay(db, station)
+        assert result.status == expected
+        assert result.latency_ms == elapsed_ms
+        assert result.first_token_ms == (16000 if expected == "healthy" else None)
+        assert transport.closed
+
+
 def test_rollup_excludes_old_samples_and_configuration_diagnostics(relay_api):
     _, factory = relay_api
     with factory() as db:
@@ -431,9 +512,11 @@ def test_worker_claims_once_and_never_probes_unapproved_stations(relay_api, monk
     run_due_probes(factory)
     run_due_probes(factory)
     assert len(fake.calls) == 1
+    assert fake.model_calls == []  # Metadata sync has an independent loop.
     assert client.post(f"/api/v1/admin/relays/{station_id}/probe", headers=ADMIN).status_code == 409
     with factory() as db:
         assert len(list(db.scalars(select(RelayProbeResult)))) == 1
+        assert db.get(RelayStation, station_id).model_catalog == {}
 
 
 def test_admin_can_replace_unreadable_key(relay_api):

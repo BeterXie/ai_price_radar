@@ -31,9 +31,9 @@ export function exactTime(value: string | null) {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")} 北京时间`;
 }
 
-export function relativeTime(value: string | null) {
+export function relativeTime(value: string | null, now = Date.now()) {
   if (!value) return "暂无更新";
-  const diff = Date.now() - new Date(value).getTime();
+  const diff = now - new Date(value).getTime();
   if (!Number.isFinite(diff)) return "暂无更新";
   const minutes = Math.max(0, Math.floor(diff / 60000));
   if (minutes < 1) return "刚刚";

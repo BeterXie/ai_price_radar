@@ -77,7 +77,7 @@ from ..services.promo import (
     setting_enabled,
 )
 from ..services.source_intake import enqueue_submission_notifications
-from ..services.relay_icons import RelayIconBusy, get_relay_icon
+from ..services.relay_icons import RelayIconBusy, get_relay_icon, make_icon_cache, read_icon_cache
 from ..services.auth import get_session_by_token, settle_session_activity
 from ..services.catalog import (
     OfferFilters,
@@ -1348,16 +1348,28 @@ def public_relay_icon(station_id: int, db: Session = Depends(get_db)) -> Respons
     ):
         raise HTTPException(status_code=404, detail="relay station not found")
     website_url = station.url
+    previous_icon, fresh = read_icon_cache(website_url, station.icon_cache or {})
     # Release the DB connection before any bounded external wait/fetch.
     db.close()
-    try:
-        icon = get_relay_icon(website_url)
-    except RelayIconBusy:
-        return Response(status_code=503, headers={"Cache-Control": "no-store", "Retry-After": "2"})
+    icon = previous_icon
+    if not fresh:
+        try:
+            fetched = get_relay_icon(website_url)
+        except RelayIconBusy:
+            if previous_icon is None:
+                return Response(status_code=503, headers={"Cache-Control": "no-store", "Retry-After": "2"})
+            fetched = None
+        if fetched is not None:
+            icon = fetched
+            db.execute(update(RelayStation).where(
+                RelayStation.id == station_id, RelayStation.url == website_url,
+                RelayStation.is_enabled.is_(True), RelayStation.review_status == "approved",
+            ).values(icon_cache=make_icon_cache(website_url, icon), updated_at=RelayStation.updated_at))
+            db.commit()
     if icon is None:
         return Response(status_code=404, headers={"Cache-Control": "no-store"})
     return Response(content=icon.body, media_type=icon.media_type, headers={
-        "Cache-Control": "public, max-age=3600",
+        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Cross-Origin-Resource-Policy": "same-origin",

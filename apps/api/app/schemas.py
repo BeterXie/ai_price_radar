@@ -1603,7 +1603,49 @@ class RelayMonitoringConfig(BaseModel):
         return SecretStr(raw)
 
 
-class RelayStationBase(RelayMonitoringConfig):
+class RelayGroup(BaseModel):
+    id: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=120)
+    ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    effective_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    description: str = Field(default="", max_length=500)
+    # None means the upstream has not disclosed the group/model relation.
+    models: list[str] | None = Field(default=None, max_length=2000)
+
+    @field_validator("id", "name", "description")
+    @classmethod
+    def clean_group_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("id", "name")
+    @classmethod
+    def require_group_name(cls, value: str) -> str:
+        if not value:
+            raise ValueError("分组标识和名称不能为空")
+        return value
+
+    @field_validator("models")
+    @classmethod
+    def clean_group_models(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        if any(not item.strip() or len(item) > 200 for item in value):
+            raise ValueError("分组模型 ID 无效")
+        return list(dict.fromkeys(item.strip() for item in value))
+
+
+class RelayGroupConfig(BaseModel):
+    groups: list[RelayGroup] = Field(default_factory=list, max_length=100)
+
+    @field_validator("groups")
+    @classmethod
+    def unique_group_ids(cls, value: list[RelayGroup]) -> list[RelayGroup]:
+        if len({group.id for group in value}) != len(value):
+            raise ValueError("分组标识不能重复")
+        return value
+
+
+class RelayStationBase(RelayMonitoringConfig, RelayGroupConfig):
     name: str = Field(min_length=1, max_length=100)
     url: str = Field(default="", max_length=1000)
     tagline: str = Field(default="", max_length=160)
@@ -1644,7 +1686,7 @@ class RelayStationCreate(RelayStationBase):
     pass
 
 
-class RelayStationUpdate(RelayMonitoringConfig):
+class RelayStationUpdate(RelayMonitoringConfig, RelayGroupConfig):
     review_status: Literal["approved", "rejected"] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     url: str | None = Field(default=None, max_length=1000)
@@ -1728,6 +1770,34 @@ class RelaySubmissionCreate(RelayStationBase):
         return self
 
 
+class RelayModelInfo(BaseModel):
+    id: str
+    name: str = ""
+    description: str = ""
+    provider: str = ""
+    context_token_limit: int | None = None
+    input_token_limit: int | None = None
+    output_token_limit: int | None = None
+    capabilities: list[str] = Field(default_factory=list)
+
+
+class RelayGroupCatalog(BaseModel):
+    status: str = "not_checked"
+    source: Literal["", "key_billing", "public_pricing"] = ""
+    checked_at: datetime | None = None
+    synced_at: datetime | None = None
+    groups: list[RelayGroup] = Field(default_factory=list)
+
+
+class RelayModelCatalog(BaseModel):
+    status: str = "not_checked"
+    checked_at: datetime | None = None
+    synced_at: datetime | None = None
+    models: list[RelayModelInfo] = Field(default_factory=list)
+    truncated: bool = False
+    group_catalog: RelayGroupCatalog = Field(default_factory=RelayGroupCatalog)
+
+
 class RelayStationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1746,6 +1816,8 @@ class RelayStationOut(BaseModel):
     tagline: str = ""
     description: str = ""
     supported_models: list[str] = Field(default_factory=list)
+    model_catalog: RelayModelCatalog = Field(default_factory=RelayModelCatalog)
+    groups: list[RelayGroup] = Field(default_factory=list)
     price_note: str = ""
     billing_note: str = ""
     tags: list[str] = Field(default_factory=list)
@@ -1766,6 +1838,8 @@ class RelayStationPublic(BaseModel):
     tagline: str = ""
     description: str = ""
     supported_models: list[str] = Field(default_factory=list)
+    model_catalog: RelayModelCatalog = Field(default_factory=RelayModelCatalog)
+    groups: list[RelayGroup] = Field(default_factory=list)
     price_note: str = ""
     billing_note: str = ""
     tags: list[str] = Field(default_factory=list)

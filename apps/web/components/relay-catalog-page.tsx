@@ -23,6 +23,7 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
   ]);
   const enabled = relays ? relays.enabled : meta?.relay_hub_enabled !== false;
   const stations = relays?.items ?? [];
+  const initialNow = Date.now();
 
   return (
     <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="scope-rails directory-cards evidence-disclaimer">
@@ -99,7 +100,7 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
               </div>
             </div>
             <div className="relay-grid mt-4" data-view={view}>
-              {stations.map((station) => <RelayStationCard key={station.id} station={station} view={view} />)}
+              {stations.map((station) => <RelayStationCard key={station.id} station={station} view={view} initialNow={initialNow} />)}
             </div>
             <details className="relay-directory-notes">
               <summary>检测指标与展示说明</summary>

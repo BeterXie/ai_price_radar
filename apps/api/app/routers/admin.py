@@ -2370,6 +2370,22 @@ def admin_probe_relay(station_id: int, db: Session = Depends(get_db)):
     return relay_admin_out(db, station)
 
 
+@router.post("/relays/{station_id}/models/sync", response_model=RelayStationOut)
+def admin_sync_relay_models(station_id: int, db: Session = Depends(get_db)):
+    from ..services.relay_models import sync_relay_models
+    from ..services.relay_monitor import ProbeTarget, relay_admin_out
+
+    station = db.get(RelayStation, station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail="relay station not found")
+    if station.review_status != "approved" or not station.is_enabled or not station.base_url or not station.has_api_key:
+        raise HTTPException(status_code=409, detail="请先审核上线并配置 Base URL 和密钥")
+    target = ProbeTarget(station.id, station.monitor_revision, station.base_url, station.probe_protocol, station.probe_model, station.encrypted_api_key)
+    sync_relay_models(db, target)
+    db.refresh(station)
+    return relay_admin_out(db, station)
+
+
 @router.delete("/relays/{station_id}", status_code=204)
 def admin_delete_relay_station(station_id: int, db: Session = Depends(get_db)) -> Response:
     station = db.get(RelayStation, station_id)

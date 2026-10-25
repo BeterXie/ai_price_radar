@@ -764,7 +764,8 @@ table { font-variant-numeric: tabular-nums; }
   .relay-list-summary { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
   .relay-list-summary .relay-station-status { flex-wrap: wrap; max-width: 130px; }
   .relay-list-overview { grid-column: 1 / -1; grid-row: 2; }
-  .relay-list-overview > div { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+  .relay-list-overview > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+  .relay-list-overview .relay-group-picker { flex-basis: 100%; }
   .relay-list-price, .relay-list-billing { display: block; min-width: 0; flex: 1; }
   .relay-list-billing { margin-top: 0; }
 }

@@ -254,8 +254,8 @@ class PinnedHTTPSClient:
             else:
                 raw_socket.close()
 
-    def get(self, value: object, *, accept: str) -> PinnedResponse:
-        return self._request(value, method="GET", accept=accept)
+    def get(self, value: object, *, accept: str, headers: dict[str, str] | None = None) -> PinnedResponse:
+        return self._request(value, method="GET", accept=accept, extra_headers=headers)
 
     def post_json(
         self,

@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from sqlalchemy import delete, inspect, or_, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from ..models import RelayProbeResult, RelayStation
 from ..schemas import RelayHealthOut, RelayProbeSampleOut, RelayStationOut
@@ -57,7 +58,11 @@ def configure_relay(db: Session, station: RelayStation, values: dict, api_key=No
     if station.review_status == "rejected":
         station.monitor_enabled = False
     if changed:
+        station.model_catalog = {}
         if inspect(station).persistent:
+            # A concurrent sync may have filled a cache that this editor read
+            # as empty. Force the reset into the configuration UPDATE anyway.
+            flag_modified(station, "model_catalog")
             # Increment in the UPDATE itself: concurrent editors can have
             # stale objects, but every committed configuration gets a new ID.
             station.monitor_revision = RelayStation.monitor_revision + 1
@@ -205,7 +210,9 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
             url, payload, headers = _probe_request(station, key)
             client = client or PinnedHTTPSClient(
                 max_response_bytes=64 * 1024, max_task_bytes=64 * 1024,
-                max_task_seconds=20, request_timeout=15,
+                # Model queues can take over 15s before returning headers or
+                # text. Allow that wait while keeping the whole probe bounded.
+                max_task_seconds=45, request_timeout=30,
             )
             stream = ProbeStream(station.probe_protocol, time.monotonic())
             response = client.post_json(url, payload, headers=headers, accept="text/event-stream", on_chunk=stream.feed)

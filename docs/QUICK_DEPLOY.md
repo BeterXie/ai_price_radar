@@ -346,6 +346,17 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_relay_probe_metrics_v23.py
 
+# v24 中转站模型/分组目录、人工分组与持久图标缓存；先在临时 PostgreSQL 16 连续演练两次。
+# 仅增加空缓存和空分组，不补造历史资料。shared_http 变更同步重建
+# source-detector、crawler 和 importer。
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_relay_model_catalog_v24.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 
