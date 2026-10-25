@@ -1109,10 +1109,10 @@ def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
         assert f"店铺地址：{intake.source_url}" in applicant_notice.text_body
         assert f"店铺名称：{intake.shop_name}" in applicant_notice.text_body
 
-    # 2. Disabled dujiao_next remains pending review.
+    # 2. Restored Dujiao follows the configured approval policy.
     intake_id_dj = client.post(
         "/api/v1/shop-requests",
-        json={**_payload(), "shop_url": "https://dj.example.com", "source_type": "dujiao_next"},
+        json={**_payload(), "shop_url": "https://dj.example.com", "source_type": "independent"},
     ).json()["request_id"]
     detected_dj = _detect(
         client,
@@ -1121,8 +1121,34 @@ def test_shop_intake_auto_approve_when_enabled(api_client, monkeypatch):
         source_url="https://dj.example.com",
         source_key="https://dj.example.com",
     )
-    assert detected_dj.json()["status"] == "pending_review"
-    assert detected_dj.json()["workflow_status"] == "pending_review"
+    assert detected_dj.json()["status"] == "approved"
+    assert detected_dj.json()["workflow_status"] == "approved"
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id_dj)
+        assert intake.declared_platform == "independent"
+        assert intake.source_type == intake.detected_platform == "dujiao_next"
+
+
+def test_independent_submission_requires_detection_and_manual_review_when_auto_approval_is_off(api_client, monkeypatch):
+    client, engine = api_client
+    monkeypatch.setattr(get_settings(), "shop_intake_auto_approve", False)
+    submitted = client.post("/api/v1/shop-requests", json={
+        **_payload(), "source_type": "independent", "shop_url": "https://dj.example.com",
+    })
+    assert submitted.status_code == 201
+    intake_id = submitted.json()["request_id"]
+    assert submitted.json()["declared_platform"] == "independent"
+    assert submitted.json()["detected_platform"] == "unknown"
+    with Session(engine) as db:
+        assert db.get(SourceIntake, intake_id).source_type == "unknown"
+    detected = _detect(client, intake_id, platform="dujiao_next",
+                       source_url="https://dj.example.com", source_key="https://dj.example.com")
+    assert detected.json()["status"] == "pending_review"
+    approved = client.post(f"/api/v1/admin/source-intakes/{intake_id}/approve", headers={"X-Admin-Key": "admin-test"})
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+    with Session(engine) as db:
+        assert db.get(SourceIntake, intake_id).source_type == "dujiao_next"
 
 
 def test_shop_intake_auto_approve_ignores_other(api_client, monkeypatch):

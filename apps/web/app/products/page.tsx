@@ -28,6 +28,14 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
       openGraph: { title: `${product.display_name}价格对比`, description: seo.metaDescription, url: canonical, type: "website" },
     };
   }
+  if ((lastValue(params.brand) || lastValue(params.platform)) === "中转站") {
+    return {
+      title: "API 中转站目录",
+      description: "查看已收录 API 中转站的模型、计费方式、可用性和接口检测结果。",
+      alternates: { canonical: "https://ai.pricememo.cn/relays" },
+      robots: { index: false, follow: true },
+    };
+  }
   return {
     title: "全部 AI 商品报价",
     description: "浏览 ChatGPT、Claude、Gemini、Grok 与 X Premium 公开报价，比较库存、交付方式、更新时间和来源。",

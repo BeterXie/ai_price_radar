@@ -13,10 +13,17 @@ SOURCE_PLATFORM_LABELS = {
     "merchant_json": "商家 Feed",
     "woocommerce": "WooCommerce",
     "16688": "16688",
-    "schema_org": "独立站",
+    "schema_org": "Schema.org",
     "acg_faka": "异次元/ACG-Faka",
     "other": "其他独立站",
 }
+
+SOURCE_PLATFORM_GROUP_LABELS = {
+    "ldxp": "链动小铺",
+    "16688": "16688",
+    "independent": "独立站点",
+}
+INDEPENDENT_SOURCE_PLATFORMS = frozenset(SOURCE_PLATFORM_LABELS) - {"ldxp", "16688"}
 
 SOURCE_KIND_BY_PLATFORM = {
     "ldxp": "public_page",
@@ -40,9 +47,7 @@ PLATFORM_ALIASES = {
     "merchant_feed": "merchant_json",
 }
 
-DISABLED_SOURCE_PLATFORMS: set[str] = {
-    "dujiao_next",
-}
+DISABLED_SOURCE_PLATFORMS: set[str] = set()
 
 
 def get_disabled_source_platforms() -> set[str]:
@@ -65,7 +70,21 @@ def canonical_source_platform(value: str) -> str:
 
 def source_platform_label(value: str) -> str:
     platform = canonical_source_platform(value)
+    if platform == "independent":
+        return SOURCE_PLATFORM_GROUP_LABELS[platform]
     return SOURCE_PLATFORM_LABELS.get(platform, SOURCE_PLATFORM_LABELS["other"])
+
+
+def source_platform_group(value: str) -> str:
+    platform = canonical_source_platform(value)
+    return "independent" if platform in INDEPENDENT_SOURCE_PLATFORMS else platform
+
+
+def source_platform_filter_values(value: str) -> tuple[str, ...]:
+    platform = canonical_source_platform(value)
+    if platform == "independent":
+        return tuple(sorted(INDEPENDENT_SOURCE_PLATFORMS))
+    return (platform,)
 
 
 def source_kind(value: str) -> str:

@@ -30,7 +30,8 @@ def db(tmp_path: Path):
         session.close()
 
 
-def test_export_public_snapshot(db, tmp_path: Path):
+@pytest.mark.parametrize("source_platform", ["ldxp", "dujiao_next"])
+def test_export_public_snapshot(db, tmp_path: Path, source_platform):
     products = ensure_products(db)
     plus_product = products["chatgpt-plus"]
 
@@ -38,7 +39,7 @@ def test_export_public_snapshot(db, tmp_path: Path):
         token="test-shop-1",
         name="测试小铺",
         source_url="https://example.com/shop",
-        platform="ldxp",
+        platform=source_platform,
         is_visible=True,
         status="success",
     )

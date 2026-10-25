@@ -25,7 +25,7 @@ DEFAULT_PUBLIC_BASE_URL = os.getenv("PUBLIC_SITE_URL", "https://ai.pricememo.cn"
 
 # Mirrors apps/api/app/services/source_platform.py so exported JSON never
 # contains offers the public catalog hides.
-DISABLED_SOURCE_PLATFORMS: set[str] = {"dujiao_next"}
+DISABLED_SOURCE_PLATFORMS: set[str] = set()
 # Mirrors services/pricing.py: prices below this absolute floor are not trusted.
 MIN_TRUSTED_PRICE_CNY = Decimal("1.00")
 DEFAULT_STALE_OFFER_HOURS = 72

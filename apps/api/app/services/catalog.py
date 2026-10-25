@@ -34,6 +34,7 @@ from .source_platform import (
     public_https_url_or_empty,
     source_kind,
     source_kind_label,
+    source_platform_filter_values,
     source_platform_label,
 )
 
@@ -227,7 +228,7 @@ def _apply_offer_filters(stmt, filters: OfferFilters):
     if filters.search:
         stmt = _apply_search(stmt, filters.search)
     if filters.source_platform:
-        stmt = stmt.where(Shop.platform == filters.source_platform)
+        stmt = stmt.where(Shop.platform.in_(source_platform_filter_values(filters.source_platform)))
     if filters.delivery_type:
         stmt = stmt.where(Offer.delivery_type == filters.delivery_type)
     if filters.service_period:
@@ -563,7 +564,7 @@ def _price_trend(
         OfferHistory.observed_at >= cutoff,
     ]
     if source_platform:
-        conditions.append(Shop.platform == source_platform)
+        conditions.append(Shop.platform.in_(source_platform_filter_values(source_platform)))
     disabled_platforms = get_disabled_source_platforms()
     if disabled_platforms:
         conditions.append(Shop.platform.notin_(disabled_platforms))
@@ -1570,7 +1571,7 @@ def list_public_shops(
     base = base.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
 
     if platform_filter:
-        base = base.where(Shop.platform == platform_filter)
+        base = base.where(Shop.platform.in_(source_platform_filter_values(platform_filter)))
 
     if q:
         base = base.where(Shop.name.ilike(f"%{q}%"))

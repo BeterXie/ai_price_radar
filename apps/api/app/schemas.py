@@ -355,11 +355,11 @@ class ReportOut(BaseModel):
 class ShopRequestCreate(BaseModel):
     source_type: Literal[
         "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
-        "woocommerce", "schema_org", "acg_faka", "other",
+        "woocommerce", "schema_org", "acg_faka", "other", "independent",
     ] = "auto"
     declared_platform: Literal[
         "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
-        "woocommerce", "schema_org", "acg_faka", "other",
+        "woocommerce", "schema_org", "acg_faka", "other", "independent",
     ] | None = None
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)

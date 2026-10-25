@@ -99,11 +99,12 @@ from ..services.catalog import (
     SnapshotNotFoundError,
 )
 from ..services.source_platform import (
-    SOURCE_PLATFORM_LABELS,
+    SOURCE_PLATFORM_GROUP_LABELS,
     canonical_source_platform,
     get_disabled_source_platforms,
     prepare_source_submission,
     public_https_url_or_empty,
+    source_platform_group,
     source_platform_label,
     workflow_status,
 )
@@ -649,8 +650,8 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     ]
     if disabled_platforms:
         offer_conditions.append(Shop.platform.notin_(disabled_platforms))
-    source_platform_ids = sorted({
-        canonical_source_platform(value)
+    source_platform_ids = {
+        source_platform_group(value)
         for value in db.scalars(
             select(Shop.platform)
             .join(Offer, Offer.shop_id == Shop.id)
@@ -660,7 +661,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
             .distinct()
         )
         if value
-    })
+    }
     tag_rows = db.scalars(
         select(Offer.tags)
         .join(Shop, Offer.shop_id == Shop.id)
@@ -718,9 +719,9 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
         platforms=brands,
         brands=brands,
         source_platforms=[
-            {"id": platform_id, "label": source_platform_label(platform_id)}
-            for platform_id in source_platform_ids
-            if platform_id in SOURCE_PLATFORM_LABELS and platform_id not in disabled_platforms
+            {"id": platform_id, "label": label}
+            for platform_id, label in SOURCE_PLATFORM_GROUP_LABELS.items()
+            if platform_id in source_platform_ids
         ],
         product_types=product_types,
         tags=tags,

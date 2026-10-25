@@ -65,7 +65,7 @@ def test_unpublished_snapshot_never_exposes_offers(catalog_client):
 
 
 @pytest.mark.parametrize("hidden_scope", ["product", "offer", "platform"])
-def test_hidden_content_is_not_exposed_by_description_or_history(catalog_client, hidden_scope):
+def test_hidden_content_is_not_exposed_by_description_or_history(catalog_client, hidden_scope, monkeypatch):
     client, engine, (_, product_id, shop_id, offer_id) = catalog_client
     with Session(engine) as db:
         if hidden_scope == "product":
@@ -73,6 +73,7 @@ def test_hidden_content_is_not_exposed_by_description_or_history(catalog_client,
         elif hidden_scope == "offer":
             db.get(Offer, offer_id).hidden_reason = "Admin restriction"
         else:
+            monkeypatch.setattr("app.services.source_platform.DISABLED_SOURCE_PLATFORMS", {"dujiao_next"})
             db.get(Shop, shop_id).platform = "dujiao_next"
         db.commit()
     assert client.get(f"/api/v1/offers/{offer_id}/description").status_code == 404

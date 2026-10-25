@@ -30,7 +30,7 @@ from common import (
     upsert_offer,
     utcnow,
 )
-from connectors import acg_faka, get_connector, platform_16688, schema_org
+from connectors import acg_faka, dujiao_next, get_connector, platform_16688, schema_org
 from connectors.base import SourceFetchError, SourceUnavailableError
 from connectors.ldxp import load_records as load_ldxp_records
 from intake_bridge import IntakeBridge
@@ -179,7 +179,7 @@ def approved_intake_sources(db: Session) -> list[SourceSpec]:
     rows = list(db.execute(text(
         "SELECT id, source_type, source_url FROM source_intakes "
         "WHERE status IN ('approved', 'published') "
-        "AND source_type IN ('merchant_json', 'woocommerce', '16688', 'schema_org', 'acg_faka') "
+        "AND source_type IN ('dujiao_next', 'merchant_json', 'woocommerce', '16688', 'schema_org', 'acg_faka') "
         "AND detected_platform=source_type "
         "ORDER BY id"
     )).mappings())
@@ -234,6 +234,20 @@ def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:
         intake_ids = tuple(dict.fromkeys([*(previous.intake_ids if previous else ()), *spec.intake_ids]))
         merged[key] = SourceSpec(spec.connector, spec.source, intake_ids)
     return list(merged.values())
+
+
+def _inactive_dujiao_origins(db: Session) -> set[str]:
+    """Current intake decisions override approvals in the legacy discovery database."""
+    if not inspect(db.get_bind()).has_table("source_intakes"):
+        return set()
+    return {
+        str(source_url).rstrip("/")
+        for source_url in db.scalars(text(
+            "SELECT source_url FROM source_intakes "
+            "WHERE (source_type='dujiao_next' OR detected_platform='dujiao_next') "
+            "AND status NOT IN ('approved', 'published')"
+        ))
+    }
 
 
 def public_offer_count(
@@ -389,6 +403,9 @@ def _move_source_offers(
     elif spec.connector == "schema-org":
         _entry, source_url = schema_org._entry(spec.source)
         platform = "schema_org"
+    elif spec.connector == "dujiao-next":
+        source_url = dujiao_next._origin(dujiao_next._validate_store_url(spec.source))
+        platform = "dujiao_next"
     else:
         raise ValueError(f"unsupported source failure isolation: {spec.connector}")
     source_url = source_url.rstrip("/")
@@ -707,6 +724,22 @@ def publish_sources(
     """Publish atomically, isolating known external failures from healthy sources."""
     if not sources:
         raise ValueError("at least one catalog source is required")
+    inactive_dujiao_origins = _inactive_dujiao_origins(db)
+    eligible_sources: list[SourceSpec] = []
+    skipped_sources: list[ImportResult] = []
+    for spec in sources:
+        if (
+            inactive_dujiao_origins
+            and spec.connector == "dujiao-next"
+            and _dujiao_origin(spec.source) in inactive_dujiao_origins
+        ):
+            skipped_sources.append(ImportResult(
+                connector=spec.connector, source=spec.source, status="skipped_inactive",
+                reason="current intake is not approved or published",
+            ))
+        else:
+            eligible_sources.append(spec)
+    sources = eligible_sources
     try:
         with import_lock(db):
             products = ensure_products(db)
@@ -718,8 +751,15 @@ def publish_sources(
             )
             snapshot = begin_snapshot(db, source_label)
             if carry_forward_current and previous_snapshot_id is not None:
-                db.execute(update(Offer).where(Offer.snapshot_id == previous_snapshot_id).values(snapshot_id=snapshot.id))
-            imports: list[ImportResult] = []
+                inherited = update(Offer).where(Offer.snapshot_id == previous_snapshot_id)
+                if inactive_dujiao_origins:
+                    inactive_shops = select(Shop.id).where(
+                        Shop.platform == "dujiao_next",
+                        func.rtrim(Shop.source_url, "/").in_(inactive_dujiao_origins),
+                    )
+                    inherited = inherited.where(Offer.shop_id.not_in(inactive_shops))
+                db.execute(inherited.values(snapshot_id=snapshot.id))
+            imports = list(skipped_sources)
             published_at = utcnow()
             all_price_changes: list[Any] = []
             for spec in sources:
@@ -786,7 +826,7 @@ def publish_sources(
                         ),
                         new_shop_tokens=imported.new_shop_tokens,
                     )
-            if all(item.status != "imported" for item in imports):
+            if sources and all(item.status != "imported" for item in imports):
                 raise SourceImportError("all catalog sources are unavailable; keeping the previous snapshot")
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0

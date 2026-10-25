@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -262,6 +263,7 @@ def test_all_unavailable_sources_keep_previous_snapshot(monkeypatch, error_type)
     ("acg-faka", "acg_faka", "https://b.example/"),
     ("acg-faka", "acg_faka", "https://B.EXAMPLE:443/"),
     ("schema-org", "schema_org", "https://B.EXAMPLE:443/sitemap.xml"),
+    ("dujiao-next", "dujiao_next", "https://B.EXAMPLE:443/"),
 ])
 def test_fetch_failure_retains_only_its_shop_without_refreshing_observations(
     monkeypatch, carry_forward, connector, platform, source,
@@ -336,10 +338,10 @@ def test_unexpected_failure_after_skipped_source_still_rolls_back_everything(mon
         db.close()
 
 
-@pytest.mark.parametrize("connector", ["16688", "acg-faka", "schema-org"])
+@pytest.mark.parametrize("connector", ["16688", "acg-faka", "schema-org", "dujiao-next"])
 def test_certificate_verification_failure_keeps_previous_catalog(monkeypatch, connector):
     import ssl
-    from connectors import acg_faka, platform_16688, schema_org
+    from connectors import acg_faka, dujiao_next, platform_16688, schema_org
     from price_radar_http import PinnedHTTPSClient
 
     install_loader(monkeypatch)
@@ -362,6 +364,7 @@ def test_certificate_verification_failure_keeps_previous_catalog(monkeypatch, co
             "16688": (platform_16688, "https://www.16688.com.cn/shop/S1"),
             "acg-faka": (acg_faka, "https://b.example/"),
             "schema-org": (schema_org, "https://b.example/"),
+            "dujiao-next": (dujiao_next, "https://b.example/"),
         }[connector]
         monkeypatch.setattr(module, "PinnedHTTPSClient", UntrustedClient)
         monkeypatch.setitem(CONNECTORS, connector, module.load_records)
@@ -490,6 +493,124 @@ def test_approved_dujiao_sources_can_enter_atomic_publish(
         db.close()
 
 
+@pytest.mark.parametrize("intake_status", ["disabled", "rejected", "pending_review"])
+def test_current_intake_decision_overrides_legacy_dujiao_approval(monkeypatch, tmp_path, intake_status):
+    review_db = tmp_path / "discovery.db"
+    create_review_db(review_db)
+
+    def loader(source):
+        name = str(source).removeprefix("https://").split(".", 1)[0]
+        item = record(name)
+        item.update(source_platform="dujiao_next", shop_url=str(source))
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://approved.example/', 'approved')"
+        ))
+        db.commit()
+        legacy = [SourceSpec("dujiao-next", source) for source in approved_dujiao_sources(review_db)]
+        first = publish_sources(db, merge_sources([*legacy, *approved_intake_sources(db)]))
+        assert first.offer_count == 2
+
+        db.execute(text("UPDATE source_intakes SET status=:status WHERE id=1"), {"status": intake_status})
+        db.commit()
+        for _ in range(2):
+            current = publish_sources(db, merge_sources([*legacy, *approved_intake_sources(db)]))
+            assert current.offer_count == 1
+            assert [row.source for row in current.imports if row.status == "imported"] == ["https://future.example"]
+            assert [row.source for row in current.imports if row.status == "skipped_inactive"] == ["https://approved.example"]
+            assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == intake_status
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("intake_status", ["disabled", "rejected", "pending_review"])
+def test_incremental_other_source_does_not_inherit_inactive_dujiao(monkeypatch, intake_status):
+    install_loader(monkeypatch)
+
+    def loader(source):
+        name = str(source).removeprefix("https://").split(".", 1)[0]
+        item = record(name)
+        item.update(source_platform="dujiao_next", shop_url=str(source))
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://approved.example/', 'approved')"
+        ))
+        db.commit()
+        first = publish_sources(db, [
+            SourceSpec("dujiao-next", "https://approved.example"),
+            SourceSpec("dujiao-next", "https://enabled.example"),
+        ])
+        assert first.offer_count == 2
+        inactive_offer = db.query(Offer).join(Shop).filter(Shop.source_url == "https://approved.example").one()
+        original_observed_at = inactive_offer.observed_at
+
+        db.execute(text("UPDATE source_intakes SET status=:status WHERE id=1"), {"status": intake_status})
+        db.commit()
+        for _ in range(2):
+            current = publish_sources(db, [SourceSpec("merchant-json", "other")], carry_forward_current=True)
+            assert current.offer_count == 2
+            current_urls = {
+                url for url, in db.query(Shop.source_url).join(Offer).filter(Offer.snapshot_id == current.snapshot_id)
+            }
+            assert current_urls == {"https://enabled.example", "https://other.example"}
+        db.refresh(inactive_offer)
+        assert inactive_offer.snapshot_id == first.snapshot_id
+        assert inactive_offer.observed_at == original_observed_at
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("carry_forward", [False, True])
+@pytest.mark.parametrize("intake_status", ["disabled", "rejected", "pending_review"])
+def test_last_inactive_dujiao_source_publishes_empty_catalog_and_feed(monkeypatch, tmp_path, carry_forward, intake_status):
+    import export_snapshot
+
+    output_dir = tmp_path / "feed"
+    monkeypatch.setattr(export_snapshot, "DEFAULT_OUTPUT_DIR", output_dir)
+
+    def loader(source):
+        item = record("last")
+        item.update(source_platform="dujiao_next", shop_url=str(source))
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
+    db = session_for("sqlite://")
+    try:
+        create_source_intakes(db)
+        db.execute(text(
+            "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
+            "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://last.example/', 'approved')"
+        ))
+        db.commit()
+        sources = [SourceSpec("dujiao-next", "https://last.example")]
+        assert publish_sources(db, sources).offer_count == 1
+
+        db.execute(text("UPDATE source_intakes SET status=:status WHERE id=1"), {"status": intake_status})
+        db.commit()
+        current = publish_sources(db, sources, carry_forward_current=carry_forward)
+        assert current.offer_count == 0
+        assert db.query(Offer).filter(Offer.snapshot_id == current.snapshot_id).count() == 0
+        assert [item.status for item in current.imports] == ["skipped_inactive"]
+        feed = json.loads((output_dir / "latest.json").read_text(encoding="utf-8"))
+        assert feed["snapshot_id"] == str(current.snapshot_id)
+        snapshot_feed = json.loads((output_dir / "v1" / "snapshots" / f"{current.snapshot_id}.json").read_text(encoding="utf-8"))
+        assert sum(product["offer_count"] for product in snapshot_feed["products"]) == 0
+    finally:
+        db.close()
+
+
 def test_unreviewed_dujiao_bypass_requires_flag_and_environment_gate():
     source = "https://development.example"
     with pytest.raises(ValueError, match="not approved"):
@@ -581,7 +702,13 @@ def test_approved_woocommerce_intake_publishes_atomically_and_becomes_published(
         db.close()
 
 
-def test_disabled_dujiao_next_intake_is_excluded_from_approved_sources():
+def test_approved_dujiao_intake_is_published_and_retained_in_consecutive_refreshes(monkeypatch):
+    def loader(source):
+        item = record("dujiao")
+        item.update(source_platform="dujiao_next", shop_url=str(source))
+        yield item
+
+    monkeypatch.setitem(CONNECTORS, "dujiao-next", loader)
     db = session_for("sqlite://")
     try:
         create_source_intakes(db)
@@ -589,6 +716,14 @@ def test_disabled_dujiao_next_intake_is_excluded_from_approved_sources():
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "
             "VALUES (1, 'dujiao_next', 'dujiao_next', 'https://dujiao.example', 'approved')"
         ))
+        db.commit()
+        for _ in range(2):
+            sources = approved_intake_sources(db)
+            assert sources == [SourceSpec("dujiao-next", "https://dujiao.example", (1,))]
+            result = publish_sources(db, sources)
+            assert db.query(Offer).filter(Offer.snapshot_id == result.snapshot_id).count() == 1
+            assert db.execute(text("SELECT status FROM source_intakes WHERE id=1")).scalar_one() == "published"
+        db.execute(text("UPDATE source_intakes SET status='disabled' WHERE id=1"))
         db.commit()
         assert approved_intake_sources(db) == []
     finally:

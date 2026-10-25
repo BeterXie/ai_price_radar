@@ -277,22 +277,25 @@ def test_woocommerce_auto_approval_promotes_to_approved_intake(client, engine):
         assert intake.product_count == 3
 
 
-def test_disabled_dujiao_candidate_is_not_promoted(client, engine):
-    upsert(client, "https://disabled-dujiao.example.com/products/chatgpt", hint="dujiao_next")
+def test_dujiao_candidate_is_promoted_using_the_existing_approval_policy(client, engine):
+    upsert(client, "https://dujiao.example.com/products/chatgpt", hint="dujiao_next")
     task = claim(client)[0]
     response = report(
         client,
         task["candidate_id"],
         task["attempt_count"],
         detected_platform="dujiao_next",
-        detected_source_key="https://disabled-dujiao.example.com",
-        detected_source_url="https://disabled-dujiao.example.com/products/chatgpt",
+        detected_source_key="https://dujiao.example.com",
+        detected_source_url="https://dujiao.example.com/products/chatgpt",
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "pending_review"
-    assert response.json()["promoted_intake_id"] is None
+    assert response.json()["status"] == "promoted"
+    assert response.json()["promoted_intake_id"] is not None
     with Session(engine) as db:
-        assert db.scalar(select(SourceIntake)) is None
+        intake = db.get(SourceIntake, response.json()["promoted_intake_id"])
+        assert intake.source_type == "dujiao_next"
+        assert intake.status == "approved"
+        assert intake.source_url == "https://dujiao.example.com/"
 
 
 def test_16688_candidate_promotes_to_pending_review_by_default(client, engine):
@@ -518,20 +521,20 @@ def test_admin_candidate_actions_and_filters(client):
         ai_product_count=1,
         total_product_count=5,
     )
-    assert reported.json()["status"] == "pending_review"
-    assert reported.json()["promoted_intake_id"] is None
+    assert reported.json()["status"] == "promoted"
+    assert reported.json()["promoted_intake_id"] is not None
     promote = client.post(
         f"/api/v1/admin/source-candidates/{candidate_id}/promote",
         headers=ADMIN_HEADERS,
-        json={"reason": "disabled platform"},
+        json={"reason": "confirmed Dujiao source"},
     )
-    assert promote.status_code == 409
+    assert promote.status_code == 409  # Already promoted; manage the intake instead.
     rejected = client.post(
         f"/api/v1/admin/source-candidates/{candidate_id}/reject",
         headers=ADMIN_HEADERS,
         json={"reason": "after review"},
     )
-    assert rejected.status_code == 200
+    assert rejected.status_code == 409
 
 
 def test_admin_manual_promote_creates_approved_intake(client, engine):

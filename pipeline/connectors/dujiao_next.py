@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
+import ssl
 import urllib.parse
 from collections.abc import Iterable
 from pathlib import Path
@@ -11,7 +13,7 @@ from price_radar_http import PinnedHTTPSClient
 
 from currencies import normalize_currency
 
-from .base import validate_record
+from .base import SourceFetchError, validate_record
 
 
 name = "dujiao-next"
@@ -43,9 +45,14 @@ def _get_json(url: str, *, client: PinnedHTTPSClient | None = None) -> Any:
         request_timeout=20,
         user_agent="AI-Price-Radar-Importer/3.4",
     )
-    response = client.get(url, accept="application/json")
+    try:
+        response = client.get(url, accept="application/json")
+    except ssl.SSLCertVerificationError:
+        raise
+    except (OSError, http.client.HTTPException) as exc:
+        raise SourceFetchError(f"Dujiao-Next API request failed: {exc}") from exc
     if response.status != 200:
-        raise ValueError(f"Dujiao-Next API returned HTTP {response.status}")
+        raise SourceFetchError(f"Dujiao-Next API returned HTTP {response.status}")
     content_type = response.headers.get("content-type", "").casefold()
     if content_type and "json" not in content_type:
         raise ValueError("Dujiao-Next API must return JSON content")

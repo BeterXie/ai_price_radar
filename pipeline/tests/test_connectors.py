@@ -23,6 +23,18 @@ def test_connector_registry_includes_all_structured_platform_loaders():
     assert callable(get_connector("acg-faka"))
 
 
+@pytest.mark.parametrize("failure", [TimeoutError("timeout"), ConnectionResetError("reset"), 403, 503])
+def test_dujiao_transport_failures_are_isolated_from_other_catalog_sources(failure):
+    class Client:
+        def get(self, *_args, **_kwargs):
+            if isinstance(failure, Exception):
+                raise failure
+            return PinnedResponse(failure, {}, b"unavailable", "https://dujiao.example")
+
+    with pytest.raises(SourceFetchError):
+        dujiao_next._get_json("https://dujiao.example/api/v1/public/config", client=Client())
+
+
 @pytest.mark.parametrize(
     ("status", "body", "error_type"),
     [

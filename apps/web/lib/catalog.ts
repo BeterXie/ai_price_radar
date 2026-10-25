@@ -43,6 +43,7 @@ export const SCENARIO_LABELS: Record<string, string> = {
 
 export const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X", "Cursor"] as const;
 export type BrandName = (typeof BRAND_TABS)[number];
+export const RELAY_CATALOG_HREF = "/products?brand=%E4%B8%AD%E8%BD%AC%E7%AB%99";
 
 export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string }[]> = {
   OpenAI: [

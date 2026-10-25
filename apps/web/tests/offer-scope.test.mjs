@@ -4,6 +4,7 @@ import test from "node:test";
 import { filterValues, offerQuery } from "../components/product-workspace.tsx";
 import { hasNarrowingFilters, ProductCatalogPage } from "../components/product-catalog-page.tsx";
 import { BRAND_TABS, PRODUCT_TABS, ALL_PRODUCTS } from "../lib/catalog.ts";
+import RelaysPage from "../app/relays/page.tsx";
 
 test("offer scope defaults to directly comparable offers", () => {
   const query = offerQuery({});
@@ -59,4 +60,36 @@ test("智谱 is no longer a public brand tab and 中转站 is not a crawled bran
   assert.equal(BRAND_TABS.includes("中转站"), false);
   assert.equal(Object.keys(PRODUCT_TABS).includes("智谱"), false);
   assert.equal(ALL_PRODUCTS.some((product) => product.slug.startsWith("zhipu-")), false);
+});
+
+test("catalog relay tab and top-level relay entry share live station data and view controls", async (context) => {
+  const calls = [];
+  context.mock.method(globalThis, "fetch", async (url) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify(String(url).includes("/relays")
+      ? { enabled: true, items: [{ id: 42, name: "Live relay" }] }
+      : { relay_hub_enabled: true }), { status: 200 });
+  });
+  const catalog = await ProductCatalogPage({ rawParams: { brand: "中转站", view: "card", in_stock: "true" } });
+  const shortcut = await (RelaysPage.default || RelaysPage)({ searchParams: Promise.resolve({ view: "card" }) });
+  assert.equal(catalog.type.name, "RelayCatalogPage");
+  assert.equal(shortcut.type.name, "RelayCatalogPage");
+  function descendants(node) {
+    if (!node || typeof node !== "object") return [];
+    return [node, ...[node.props?.children].flat(Infinity).flatMap(descendants)];
+  }
+  for (const entry of [catalog, shortcut]) {
+    const nodes = descendants(await entry.type(entry.props));
+    const station = nodes.find((node) => node.type?.name === "RelayStationCard");
+    assert.equal(station?.props.station.id, 42);
+    assert.equal(station?.props.view, "card");
+    const list = nodes.find((node) => node.props?.["aria-label"] === "列表展示");
+    const listUrl = new URL(list.props.href, "https://ai.pricememo.cn");
+    assert.equal(listUrl.pathname, entry.props.basePath);
+    assert.equal(listUrl.searchParams.get("brand"), entry.props.basePath === "/products" ? "中转站" : null);
+    assert.equal(listUrl.searchParams.has("in_stock"), false);
+    assert.equal(nodes.filter((node) => node.props?.["aria-current"] === "page").length, 1);
+  }
+  assert.equal(calls.filter((url) => url.includes("/api/v1/relays")).length, 2);
+  assert.equal(calls.some((url) => url.includes("/catalog/groups")), false);
 });

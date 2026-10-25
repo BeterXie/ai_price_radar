@@ -3,17 +3,15 @@ import test from "node:test";
 
 import { isValidPublicSourceUrl, SOURCE_INTAKE_COPY, SOURCE_INTAKE_OPTIONS } from "../lib/source-intake.mjs";
 
-test("source intake defaults to auto and exposes source-specific examples", () => {
-  assert.equal(SOURCE_INTAKE_OPTIONS[0]?.id, "auto");
-  assert.match(SOURCE_INTAKE_COPY.auto.hint, /商品页面或公开 Feed/);
+test("source intake exposes four categories and identifies independent stores automatically", () => {
+  assert.deepEqual(SOURCE_INTAKE_OPTIONS.map(({ id, label }) => [id, label]), [
+    ["ldxp", "链动小铺"], ["16688", "16688"], ["independent", "独立站点"], ["relay", "API 中转站"],
+  ]);
   assert.match(SOURCE_INTAKE_COPY.ldxp.placeholder, /pay\.ldxp\.cn\/shop/);
-  assert.ok(SOURCE_INTAKE_OPTIONS.some((option) => option.id === "16688"));
   assert.match(SOURCE_INTAKE_COPY["16688"].placeholder, /16688\.com\.cn\/shop\/HARVEY/);
-  assert.match(SOURCE_INTAKE_COPY.dujiao_next.hint, /店铺根地址/);
-  assert.match(SOURCE_INTAKE_COPY.woocommerce.hint, /Store API/);
-  assert.match(SOURCE_INTAKE_COPY.schema_org.hint, /Schema\.org/);
-  assert.match(SOURCE_INTAKE_COPY.acg_faka.hint, /公开店铺根地址/);
-  assert.match(SOURCE_INTAKE_COPY.merchant_json.placeholder, /ai-price-radar\.json/);
+  assert.match(SOURCE_INTAKE_COPY.independent.hint, /自动识别 Dujiao-Next/);
+  assert.match(SOURCE_INTAKE_COPY.independent.hint, /JSON Feed/);
+  assert.match(SOURCE_INTAKE_COPY.relay.hint, /Base URL/);
 });
 
 test("client validation accepts a public HTTPS URL regardless of declared type", () => {

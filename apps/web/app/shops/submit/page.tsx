@@ -65,7 +65,7 @@ export default async function ShopSubmitPage({ searchParams }: { searchParams: P
           ) : null}
         </div>
 
-        <ShopRequestForm initialSourceType={type === "relay" ? "relay" : "auto"} />
+        <ShopRequestForm initialSourceType={type === "relay" ? "relay" : "ldxp"} />
       </section>
     </main>
   );

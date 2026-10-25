@@ -9,12 +9,13 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
 import { ReportForm } from "@/components/report-form";
 import { SearchBox } from "@/components/search-box";
+import { RelayCatalogPage } from "@/components/relay-catalog-page";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
 import { getProductSeoContent } from "@/lib/product-seo";
 import type { Meta } from "@/lib/types";
 
-import { BRAND_TABS, type BrandName, PRODUCT_TABS } from "@/lib/catalog";
+import { BRAND_TABS, type BrandName, PRODUCT_TABS, RELAY_CATALOG_HREF } from "@/lib/catalog";
 
 const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
@@ -31,6 +32,9 @@ export function hasNarrowingFilters(rawParams: RawSearchParams) {
 }
 
 export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
+  if (!productSlug && (single(rawParams, "brand") || single(rawParams, "platform")) === "中转站") {
+    return <RelayCatalogPage rawParams={rawParams} basePath="/products" />;
+  }
   let detailQuery = offerQuery(rawParams);
   const searchQuery = single(rawParams, "q").trim();
   const [initialProduct, metaResult] = await Promise.all([
@@ -63,15 +67,10 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   }
 
   const activeBrand = product?.brand || single(rawParams, "brand") || single(rawParams, "platform");
-  const isRelayBrand = activeBrand === "中转站";
   const activeSourcePlatform = single(rawParams, "source_platform");
   const catalogQuery = new URLSearchParams(detailQuery);
   catalogQuery.delete("platform");
-  if (isRelayBrand) {
-    catalogQuery.delete("brand");
-    catalogQuery.set("delivery_type", "relay_api");
-    catalogQuery.delete("comparable");
-  } else if (activeBrand) {
+  if (activeBrand) {
     catalogQuery.set("brand", activeBrand);
   }
   if (searchQuery) catalogQuery.set("q", searchQuery);
@@ -132,9 +131,6 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   let headingTitle = "AI 商品报价";
   let headingDescription = "按品牌、商品类型、交付方式、库存和更新时间筛选公开报价。";
   if (activeBrand) headingTitle = `${activeBrand} 报价`;
-  if (isRelayBrand) {
-    headingDescription = "聚合各大公开店铺中的 API 中转、反代及中转站服务报价。";
-  }
   if (searchQuery) {
     headingTitle = `“${searchQuery}”的报价`;
     headingDescription = "多个关键词共同匹配商品、品牌或店铺名称。继续按套餐、库存、交付方式和更新时间缩小范围。";
@@ -170,11 +166,10 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
               ))}
               {meta.relay_hub_enabled !== false ? (
                 <Link
-                  href={catalogHref("中转站")}
+                  href={RELAY_CATALOG_HREF}
                   prefetch={true}
-                  aria-current={isRelayBrand ? "page" : undefined}
                   className="filter-chip"
-                  title="中转 / 反代报价"
+                  title="API 中转站目录"
                 >
                   <PlatformIcon platform="中转站" />中转站
                   {meta.relay_station_count ? <span className="mono text-[10px] opacity-70">{meta.relay_station_count}</span> : null}
@@ -209,7 +204,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           <div className="filter-group">
             <Link href={sourceHref()} prefetch={true} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip filter-all">全部来源</Link>
             <div className="filter-options">
-              {meta.source_platforms.filter((source) => source.id !== "dujiao_next").map((source) => (
+              {meta.source_platforms.map((source) => (
                 <Link key={source.id} href={sourceHref(source.id)} prefetch={true} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className="filter-chip">{source.label}</Link>
               ))}
             </div>
@@ -217,20 +212,6 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           {!metaResult ? <span className="ml-2 text-xs text-[color:var(--muted)]">来源选项暂不可用，可继续浏览当前报价</span> : null}
         </nav>
       </section>
-      {isRelayBrand && meta.relay_hub_enabled !== false ? (
-        <aside className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 text-xs shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <span className="text-base">🔄</span>
-            <div>
-              <span className="font-semibold text-[color:var(--ink)]">寻找直接对接各大模型的第三方 API 中转服务商？</span>
-              <p className="text-[color:var(--muted)] mt-0.5">下方展示的是店铺售卖的中转/反代商品。如需查看独立中转站目录、模型支持与费率说明，请前往专区。</p>
-            </div>
-          </div>
-          <Link href="/relays" className="font-semibold text-[color:var(--ink)] underline underline-offset-4 hover:opacity-80 shrink-0">
-            前往中转站专区 &rarr;
-          </Link>
-        </aside>
-      ) : null}
       <section className="catalog-scope-bar" aria-labelledby="selected-scope-title" data-vds-layer="inscription">
         <div className="catalog-scope-copy">
           <strong id="selected-scope-title">已选条件</strong>
