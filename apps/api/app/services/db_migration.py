@@ -91,6 +91,7 @@ def ensure_db_schema(engine: Engine) -> None:
             logger.info("Skipping schema auto-migration for dialect %s", dialect_name)
             return
         ensure_relay_monitoring(conn)
+        ensure_relay_probe_metrics(conn)
         _hide_retired_products(conn)
 
 
@@ -135,6 +136,18 @@ def ensure_relay_monitoring(conn) -> None:
         Column("http_status", Integer),
         Index("ix_relay_probe_station_time", "station_id", "checked_at"),
     ).create(conn, checkfirst=True)
+
+
+def ensure_relay_probe_metrics(conn) -> None:
+    from sqlalchemy import inspect
+
+    if "relay_probe_results" not in inspect(conn).get_table_names():
+        return
+    columns = {row["name"] for row in inspect(conn).get_columns("relay_probe_results")}
+    for name in ("connect_latency_ms", "first_token_ms", "input_tokens", "cached_input_tokens"):
+        if name not in columns:
+            # No defaults: historical samples did not measure these values.
+            conn.execute(text(f"ALTER TABLE relay_probe_results ADD COLUMN {name} INTEGER"))
 
 
 def _migrate_sqlite(conn) -> None:

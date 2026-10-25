@@ -9,6 +9,7 @@ import { getMeta, getRelayStations } from "@/lib/api";
 import { BRAND_TABS } from "@/lib/catalog";
 import { SITE_URL } from "@/lib/site";
 import { RelayStationCard } from "@/components/relay-station-card";
+import { RelayRefresh } from "@/components/relay-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,7 @@ export default async function RelaysPage({ searchParams }: { searchParams: Promi
 
       <div className="content-stage py-10 sm:py-12">
         <AdSlot placement="relay_hub" limit={2} className="mb-8" />
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm text-[color:var(--muted)]"><p>检测采用真实模型请求；近 24 小时成功率基于有效采样，不能代表全站或所有模型。</p><Link href="/shops/submit?type=relay" className="button-secondary">申请录入中转站</Link></div>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm text-[color:var(--muted)]"><p>真实模型探测 · 可用率统计近 7 天，缓存与首 Token 统计近 24 小时；仅代表当前检测模型。</p><Link href="/shops/submit?type=relay" className="button-secondary">申请录入中转站</Link></div>
 
         {!enabled ? (
           <section className="empty-state" role="status">
@@ -101,7 +102,7 @@ export default async function RelaysPage({ searchParams }: { searchParams: Promi
               title="已收录中转站"
               description={<>赞助站点会带有明确的“赞助”标识并排在前面；其余按运营者设置的顺序展示。模型列表以站点公开说明为准，实际可用性可能随时变化。</>}
               action={
-                <div role="group" aria-label="中转站展示方式" className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs">
+                <div className="flex flex-wrap items-center gap-3"><RelayRefresh /><div role="group" aria-label="中转站展示方式" className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-1 text-xs">
                   {(["list", "card"] as const).map((mode) => {
                     const ModeIcon = mode === "card" ? SquaresFour : ListBullets;
                     return (
@@ -118,12 +119,13 @@ export default async function RelaysPage({ searchParams }: { searchParams: Promi
                       </Link>
                     );
                   })}
-                </div>
+                </div></div>
               }
             />
             <div className="relay-grid mt-4" data-view={view}>
-              {stations.map((station) => <RelayStationCard key={`${station.id}-${view}`} station={station} view={view} />)}
+              {stations.map((station) => <RelayStationCard key={station.id} station={station} view={view} />)}
             </div>
+            <p className="mt-4 text-xs leading-6 text-[color:var(--muted)]">站点 PING 为检测服务器到 API 的 TCP/TLS 建连耗时。缓存命中率按接口返回的缓存读取 Token 占比计算，短提示可能不触发缓存；未返回用量时显示暂无数据。历史条从旧到新，绿为成功、红为异常、黄为配置诊断、灰为无样本。</p>
           </>
         )}
 

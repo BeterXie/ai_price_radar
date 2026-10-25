@@ -136,7 +136,7 @@ class FakeClient:
         self.error = error
         self.calls = []
 
-    def post_json(self, url, body, *, headers):
+    def post_json(self, url, body, *, headers, accept="application/json", on_chunk=None):
         self.calls.append((url, body, headers))
         if self.error:
             raise self.error
@@ -218,7 +218,7 @@ def test_rejection_stops_monitoring_and_approval_is_explicit(relay_api):
 @pytest.mark.parametrize(("protocol", "base", "suffix", "header", "response"), [
     ("openai", "https://api.example.com/proxy/v1", "/proxy/v1/chat/completions", "Authorization", {"choices": [{"message": {"content": "OK"}}]}),
     ("anthropic", "https://api.example.com/prefix", "/prefix/v1/messages", "x-api-key", {"content": [{"type": "text", "text": "OK"}]}),
-    ("gemini", "https://api.example.com/v1beta", "/v1beta/models/test-model:generateContent", "x-goog-api-key", {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]}),
+    ("gemini", "https://api.example.com/v1beta", "/v1beta/models/test-model:streamGenerateContent?alt=sse", "x-goog-api-key", {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]}),
 ])
 def test_probe_sends_real_completion_to_configured_prefix(relay_api, protocol, base, suffix, header, response):
     _, factory = relay_api
@@ -234,6 +234,7 @@ def test_probe_sends_real_completion_to_configured_prefix(relay_api, protocol, b
         assert url.endswith(suffix)
         assert KEY in headers[header]
         assert KEY not in url and KEY not in json.dumps(request)
+        assert result.first_token_ms is None  # A JSON fallback is not streaming TTFT.
         health = relay_health(db, station)
         assert health.success_rate_24h == 100 and health.sample_count_24h == 1
 
@@ -308,7 +309,8 @@ def test_rollup_excludes_old_samples_and_configuration_diagnostics(relay_api):
         health = relay_health(db, station)
         assert health.success_rate_24h == 50
         assert health.sample_count_24h == 2 and health.diagnostic_count_24h == 1
-        assert [sample.status for sample in health.recent_samples] == ["credential_error", "timeout", "healthy"]
+        assert health.availability_7d == 33.33 and health.sample_count_7d == 3
+        assert [sample.status for sample in health.recent_samples] == ["unhealthy", "credential_error", "timeout", "healthy"]
         assert all(sample.checked_at.tzinfo is not None for sample in health.recent_samples)
         configure_relay(db, station, {"probe_model": "new-model"})
         assert relay_health(db, station).sample_count_24h == 0
@@ -322,14 +324,14 @@ def test_public_recent_samples_are_bounded_chronological_and_contain_no_credenti
         db.add(station)
         db.flush()
         now = datetime.now(timezone.utc)
-        for age in range(35):
+        for age in range(70):
             db.add(RelayProbeResult(station_id=station.id, revision=1, status="healthy" if age % 2 else "timeout", latency_ms=age, checked_at=now - timedelta(minutes=age)))
         db.commit()
     public = client.get("/api/v1/relays").json()["items"][0]["health"]
     samples = public["recent_samples"]
-    assert public["sample_count_24h"] == 35
-    assert len(samples) == 24
-    assert [sample["latency_ms"] for sample in samples] == list(range(23, -1, -1))
+    assert public["sample_count_24h"] == 70
+    assert len(samples) == 60
+    assert [sample["latency_ms"] for sample in samples] == list(range(59, -1, -1))
     assert all(set(sample) == {"checked_at", "status", "latency_ms"} for sample in samples)
     assert all(sample["checked_at"].endswith("Z") for sample in samples)
 
@@ -345,6 +347,77 @@ def test_health_keeps_last_check_when_24h_window_is_empty(relay_api):
         health = relay_health(db, station)
         assert health.status == "stale" and health.checked_at is not None
         assert health.sample_count_24h == 0 and health.success_rate_24h is None
+
+
+def test_metric_rollups_use_own_windows_known_usage_and_current_revision(relay_api):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Metrics", monitor_enabled=True, monitor_revision=2)
+        db.add(station)
+        db.flush()
+        now = datetime.now(timezone.utc)
+        # Cache ratio is token weighted: (50 + 300) / (100 + 400).
+        for age, status, total, cached, first, revision in [
+            (1, "healthy", 100, 50, 100, 2),
+            (2, "healthy", 400, 300, 300, 2),
+            (3, "healthy", None, None, None, 2),
+            (4, "timeout", 1000, 1000, 1, 2),
+            (5, "config_error", 1000, 1000, 1, 2),
+            (25, "unhealthy", None, None, None, 2),
+            (26, "healthy", 1000, 1000, 1, 2),
+            (169, "unhealthy", None, None, None, 2),
+            (1, "unhealthy", 1000, 1000, 1, 1),
+        ]:
+            db.add(RelayProbeResult(station_id=station.id, revision=revision, checked_at=now-timedelta(hours=age), status=status, latency_ms=500, connect_latency_ms=25, first_token_ms=first, input_tokens=total, cached_input_tokens=cached))
+        db.commit()
+        health = relay_health(db, station)
+        assert health.sample_count_24h == 4 and health.success_rate_24h == 75
+        assert health.sample_count_7d == 6 and health.availability_7d == 66.67
+        assert health.diagnostic_count_7d == 1
+        assert health.cache_hit_rate_24h == 70 and health.cache_sample_count_24h == 2
+        assert health.first_token_p50_ms == 200 and health.first_token_sample_count_24h == 2
+        assert health.connect_latency_ms == 25
+        assert len(health.recent_samples) == 7
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_streaming_probe_persists_measured_timings_and_usage_only(relay_api, monkeypatch, truncated):
+    from price_radar_http import PinnedResponse
+
+    _, factory = relay_api
+    clock = [100.0]
+    monkeypatch.setattr("app.services.relay_monitor.time.monotonic", lambda: clock[0])
+
+    class StreamingClient:
+        def post_json(self, url, body, *, headers, accept, on_chunk):
+            assert accept == "text/event-stream"
+            assert body["stream"] is True and body["stream_options"]["include_usage"] is True
+            clock[0] += .01
+            on_chunk(b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n')
+            clock[0] += .12
+            on_chunk(b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\n')
+            clock[0] += .1
+            tail = b'data: {"choices":[],"usage":{"prompt_tokens":100,"prompt_tokens_details":{"cached_tokens":25}}}\n\ndata: [DONE]\n\n'
+            if truncated:
+                tail += b'data: {"error":{"message":"failed"}}\n'
+            on_chunk(tail)
+            return PinnedResponse(200, {"content-type": "text/event-stream; charset=utf-8"}, tail, 12)
+
+    with factory() as db:
+        station = RelayStation(name="Streaming", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        result = probe_relay(db, station, client=StreamingClient())
+        if truncated:
+            assert result.status == "invalid_response"
+            assert result.first_token_ms is None and result.cached_input_tokens is None
+            return
+        assert result.status == "healthy"
+        assert result.connect_latency_ms == 12 and result.first_token_ms == 130
+        assert result.latency_ms == 230
+        assert result.input_tokens == 100 and result.cached_input_tokens == 25
+        assert KEY not in relay_health(db, station).model_dump_json()
 
 
 def test_worker_claims_once_and_never_probes_unapproved_stations(relay_api, monkeypatch):

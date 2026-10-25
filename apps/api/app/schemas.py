@@ -1694,7 +1694,16 @@ class RelayHealthOut(BaseModel):
     status: str = "not_checked"
     checked_at: datetime | None = None
     probe_model: str = ""
+    probe_protocol: str = "openai"
     latency_ms: int | None = None
+    connect_latency_ms: int | None = None
+    availability_7d: float | None = None
+    sample_count_7d: int = 0
+    diagnostic_count_7d: int = 0
+    cache_hit_rate_24h: float | None = None
+    cache_sample_count_24h: int = 0
+    first_token_p50_ms: int | None = None
+    first_token_sample_count_24h: int = 0
     success_rate_24h: float | None = None
     sample_count_24h: int = 0
     diagnostic_count_24h: int = 0

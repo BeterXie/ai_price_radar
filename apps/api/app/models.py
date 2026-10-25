@@ -672,3 +672,7 @@ class RelayProbeResult(Base):
     status: Mapped[str] = mapped_column(String(30))
     latency_ms: Mapped[int] = mapped_column(Integer)
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    connect_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    first_token_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cached_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)

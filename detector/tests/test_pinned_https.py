@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+from http.client import IncompleteRead
 import socket
+import threading
 import time
 
 import pytest
@@ -225,3 +227,107 @@ def test_api_key_is_never_sent_to_private_dns_address():
     with pytest.raises(ValueError, match="non-public"):
         client.post_json("https://relay.example/v1/messages", {}, headers={"x-api-key": "secret"})
     assert connections == []
+
+
+def test_stream_callback_receives_network_fragment_before_response_finishes():
+    client_socket, server_socket = socket.socketpair()
+    delivered = threading.Event()
+    before_finish = []
+
+    def serve():
+        try:
+            server_socket.recv(4096)
+            server_socket.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: first\n\n")
+            before_finish.append(delivered.wait(2))
+            server_socket.sendall(b"data: last\n\n")
+        finally:
+            server_socket.close()
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda *_args, **_kwargs: client_socket,
+        ssl_context=FakeTLSContext(),
+    )
+    chunks = []
+
+    def receive(chunk):
+        chunks.append(chunk)
+        if b"first" in b"".join(chunks):
+            delivered.set()
+
+    result = client.post_json("https://relay.example/v1/chat/completions", {}, on_chunk=receive)
+    thread.join(3)
+    assert before_finish == [True]
+    assert result.body == b"data: first\n\ndata: last\n\n" == b"".join(chunks)
+
+
+def test_connection_timing_includes_tcp_tls_and_excludes_dns(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr("price_radar_http.pinned.time.monotonic", lambda: clock[0])
+
+    def resolver(*_args, **_kwargs):
+        clock[0] += 5
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
+
+    def connector(*_args, **_kwargs):
+        clock[0] += .012
+        return FakeSocket(response(b"{}"))
+
+    class TimedTLS(FakeTLSContext):
+        def wrap_socket(self, raw, server_hostname):
+            clock[0] += .018
+            return super().wrap_socket(raw, server_hostname)
+
+    client = PinnedHTTPSClient(resolver=resolver, connector=connector, ssl_context=TimedTLS())
+    assert client.post_json("https://relay.example", {}).connect_latency_ms == 30
+
+
+def test_streaming_keeps_byte_budget_and_never_delivers_oversized_chunk():
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda *_args, **_kwargs: FakeSocket(response(b"123456789")),
+        ssl_context=FakeTLSContext(), max_response_bytes=8,
+    )
+    chunks = []
+    with pytest.raises(ValueError, match="size limit"):
+        client.post_json("https://relay.example", {}, on_chunk=chunks.append)
+    assert chunks == []
+
+
+def test_stream_read_cannot_bypass_total_deadline(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr("price_radar_http.pinned.time.monotonic", lambda: clock[0])
+
+    class SlowBody(io.BytesIO):
+        def read1(self, size):
+            clock[0] += 2
+            return super().read1(size)
+
+    class SlowSocket(FakeSocket):
+        def makefile(self, *_args, **_kwargs):
+            return SlowBody(self.response)
+
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda *_args, **_kwargs: SlowSocket(response(b"data: text\n\n")),
+        ssl_context=FakeTLSContext(), max_task_seconds=1,
+    )
+    chunks = []
+    with pytest.raises(TimeoutError, match="total time limit"):
+        client.post_json("https://relay.example", {}, on_chunk=chunks.append)
+    assert chunks == []
+
+
+def test_premature_eof_with_content_length_rejects_even_a_finished_sse_event():
+    body = b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n'
+    wire = f"HTTP/1.1 200 OK\r\nContent-Length: {len(body) + 10}\r\nConnection: close\r\n\r\n".encode() + body
+    client = PinnedHTTPSClient(
+        resolver=lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))],
+        connector=lambda *_args, **_kwargs: FakeSocket(wire),
+        ssl_context=FakeTLSContext(),
+    )
+    with pytest.raises(IncompleteRead) as error:
+        client.post_json("https://relay.example", {}, on_chunk=lambda _chunk: None)
+    assert error.value.expected == 10

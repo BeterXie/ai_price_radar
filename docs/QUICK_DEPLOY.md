@@ -335,6 +335,17 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_relay_monitoring_v22.py
 
+# 中转站连接耗时、首 Token 与缓存用量迁移 (v23)；v3.9.19 切换前执行，
+# 必须在 v22 后先用临时 PostgreSQL 16 演练两次。旧记录新增指标保持 NULL，
+# 不补造历史数据。shared_http 同步重建 source-detector、crawler 和 importer。
+docker run --rm \
+  --network ai-price-radar_default \
+  --env-file .env \
+  -v "$PWD:/workspace:ro" \
+  -w /workspace \
+  ai-price-radar-api \
+  python scripts/migrate_relay_probe_metrics_v23.py
+
 $COMPOSE up -d --no-deps api
 # 等待 ai-price-radar-api-1 healthy，确认 /health 返回目标版本
 

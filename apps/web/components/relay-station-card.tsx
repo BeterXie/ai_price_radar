@@ -1,6 +1,6 @@
 import { ArrowSquareOut, CaretDown } from "@phosphor-icons/react/ssr";
 import { AdLink } from "@/components/ad-link";
-import { RelayHealthPanel, RelayHealthSummary } from "@/components/relay-health";
+import { RelayHealthPanel } from "@/components/relay-health";
 import { RelayStationIcon } from "@/components/relay-station-icon";
 import { exactTime, relativeTime } from "@/lib/format";
 import type { RelayStationPublic } from "@/lib/types";
@@ -9,9 +9,9 @@ export function RelayStationCard({ station, view = "card" }: { station: RelaySta
   const isList = view === "list";
   let host = "";
   try { host = station.url ? new URL(station.url).hostname : ""; } catch { /* The API omits unsafe public URLs. */ }
-  const hasDetails = isList || Boolean(station.description || station.tagline || station.supported_models.length || station.tags.length > 3 || station.health?.probe_model);
+  const hasDetails = Boolean(station.description || station.tagline || station.supported_models.length || station.tags.length > (isList ? 0 : 3) || (isList && (station.price_note || station.billing_note)));
   let summaryLabel = "站点详细介绍";
-  if (isList) summaryLabel = "查看模型与检测详情";
+  if (isList) summaryLabel = "完整报价与站点详情";
   else if (station.supported_models.length > 0) summaryLabel = `${station.supported_models.length} 个模型与站点介绍`;
   const pricing = (
     <section className="relay-pricing" aria-label="站点报价">
@@ -47,27 +47,26 @@ export function RelayStationCard({ station, view = "card" }: { station: RelaySta
                 <p className="relay-list-price" title={station.price_note || undefined}>{station.price_note || "价格待补充"}</p>
                 {station.billing_note ? <p className="relay-list-billing" title={station.billing_note}>{station.billing_note}</p> : null}
               </div>
-              <RelayHealthSummary health={station.health} />
             </div>
             {visit ? <div className="relay-list-actions">{visit}</div> : null}
           </>
         ) : (
-          <div className="relay-card-comparison">{pricing}<RelayHealthPanel health={station.health} /></div>
+          pricing
         )}
       </div>
+      <RelayHealthPanel health={station.health} />
       {!isList && station.tags.length > 0 ? <div className="relay-tags" aria-label="特性标签">{station.tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}{station.tags.length > 3 ? <span>+{station.tags.length - 3}</span> : null}</div> : null}
       {hasDetails ? (
         <details className="relay-description">
           <summary><span className="inline-flex items-center gap-2">{summaryLabel} <CaretDown size={14} aria-hidden="true" /></span>{isList ? updated : null}</summary>
-          {isList ? <div className="relay-card-comparison">{pricing}<RelayHealthPanel health={station.health} /></div> : null}
+          {isList ? pricing : null}
           {station.supported_models.length > 0 ? <div className="relay-chip-row mt-3" aria-label="支持的模型">{station.supported_models.map((model) => <span key={model} className="relay-chip mono">{model}</span>)}</div> : null}
-          {station.health?.probe_model ? <p className="relay-card-desc">检测模型：{station.health.probe_model}。绿色为成功、红色为异常、黄色为配置诊断，灰色表示无样本；配置诊断不计入成功率。</p> : null}
           {station.tagline ? <p className="relay-card-desc">{station.tagline}</p> : null}
           {station.tags.length > (isList ? 0 : 3) ? <p className="relay-card-desc">特性：{station.tags.slice(isList ? 0 : 3).join("、")}</p> : null}
           {station.description ? <p className="relay-card-desc">{station.description}</p> : null}
         </details>
       ) : null}
-      {!isList ? <footer className="relay-card-footer">{updated}{visit}</footer> : null}
+      {!isList || !hasDetails ? <footer className="relay-card-footer">{updated}{!isList ? visit : null}</footer> : null}
     </article>
   );
 }

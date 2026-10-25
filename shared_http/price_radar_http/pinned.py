@@ -23,6 +23,7 @@ class PinnedResponse:
     status: int
     headers: dict[str, str]
     body: bytes
+    connect_latency_ms: int | None = None
 
     @property
     def status_code(self) -> int:
@@ -171,6 +172,7 @@ class PinnedHTTPSClient:
         body: bytes = b"",
         content_type: str = "",
         extra_headers: dict[str, str] | None = None,
+        on_chunk: Callable[[bytes], None] | None = None,
     ) -> PinnedResponse:
         for key, header_value in (extra_headers or {}).items():
             if key.casefold() not in {"authorization", "x-api-key", "anthropic-version", "x-goog-api-key"}:
@@ -181,12 +183,17 @@ class PinnedHTTPSClient:
         parsed = urllib.parse.urlsplit(url)
         host = parsed.hostname or ""
         port = parsed.port or 443
+        # Resolve and validate before timing TCP + TLS. _connect reuses these
+        # pinned addresses, including retries, without another DNS lookup.
+        self._pinned_addresses_for(host, port)
+        connect_started = time.monotonic()
         raw_socket = self._connect(host, port)
         tls_socket: ssl.SSLSocket | None = None
         response: http.client.HTTPResponse | None = None
         try:
             raw_socket.settimeout(min(self.request_timeout, self._remaining_seconds()))
             tls_socket = self.ssl_context.wrap_socket(raw_socket, server_hostname=host)
+            connect_latency_ms = max(0, round((time.monotonic() - connect_started) * 1000))
             target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
             host_header = f"[{host}]" if ":" in host else host
             headers = [
@@ -219,8 +226,15 @@ class PinnedHTTPSClient:
                 read_size = min(64 * 1024, self.max_response_bytes - response_total + 1, self.remaining_bytes + 1)
                 if read_size <= 0:
                     raise ValueError("source response exceeds total size limit")
-                chunk = response.read(read_size)
+                # read() may wait for the entire requested buffer. read1()
+                # delivers available stream data so first-text timing is real.
+                chunk = response.read1(read_size) if on_chunk else response.read(read_size)
+                self._remaining_seconds()
                 if not chunk:
+                    if response.length is not None and response.length > 0:
+                        # read1() can return EOF with a declared body still
+                        # outstanding. Do not accept a truncated response.
+                        raise http.client.IncompleteRead(b"", response.length)
                     break
                 response_total += len(chunk)
                 self.remaining_bytes -= len(chunk)
@@ -229,7 +243,9 @@ class PinnedHTTPSClient:
                 if self.remaining_bytes < 0:
                     raise ValueError("source response exceeds total size limit")
                 chunks.append(chunk)
-            return PinnedResponse(response.status, headers, b"".join(chunks))
+                if on_chunk:
+                    on_chunk(chunk)
+            return PinnedResponse(response.status, headers, b"".join(chunks), connect_latency_ms)
         finally:
             if response is not None:
                 response.close()
@@ -248,6 +264,7 @@ class PinnedHTTPSClient:
         *,
         accept: str = "application/json",
         headers: dict[str, str] | None = None,
+        on_chunk: Callable[[bytes], None] | None = None,
     ) -> PinnedResponse:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         return self._request(
@@ -257,4 +274,5 @@ class PinnedHTTPSClient:
             body=body,
             content_type="application/json",
             extra_headers=headers,
+            on_chunk=on_chunk,
         )

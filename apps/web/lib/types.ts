@@ -279,7 +279,16 @@ export type RelayHealth = {
   status: string;
   checked_at: string | null;
   probe_model: string;
+  probe_protocol: string;
   latency_ms: number | null;
+  connect_latency_ms: number | null;
+  availability_7d: number | null;
+  sample_count_7d: number;
+  diagnostic_count_7d: number;
+  cache_hit_rate_24h: number | null;
+  cache_sample_count_24h: number;
+  first_token_p50_ms: number | null;
+  first_token_sample_count_24h: number;
   success_rate_24h: number | null;
   sample_count_24h: number;
   diagnostic_count_24h: number;
@@ -692,4 +701,3 @@ export type AdminBroadcastItem = {
   created_by: string;
   created_at: string;
 };
-
