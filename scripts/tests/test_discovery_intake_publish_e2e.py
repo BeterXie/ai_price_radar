@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -105,8 +106,10 @@ def _upsert_claim_report(
     return candidate_id, reported.json()
 
 
-def test_dujiao_candidate_stays_pending_and_never_reaches_publish(tmp_path, monkeypatch):
+@pytest.mark.parametrize("auto_approve", [False, True])
+def test_dujiao_candidate_uses_configured_approval_policy(tmp_path, monkeypatch, auto_approve):
     engine, database_url, client = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(get_settings(), "discovery_dujiao_auto_approve", auto_approve)
     try:
         candidate_id, reported = _upsert_claim_report(
             client,
@@ -116,22 +119,24 @@ def test_dujiao_candidate_stays_pending_and_never_reaches_publish(tmp_path, monk
             source_key="https://dujiao-e2e.example.com",
             source_url="https://dujiao-e2e.example.com",
         )
-        # dujiao_next 在禁用平台清单中：候选可以完成检测，但即便
-        # discovery_dujiao_auto_approve=True 也不会被自动批准或促进为收录申请。
-        assert reported["status"] == "pending_review"
-        assert reported["promoted_intake_id"] is None
+        assert reported["status"] == "promoted"
+        assert reported["promoted_intake_id"] is not None
 
-        # 发布门禁因此没有可发布来源（与 v3.7.42 起 dujiao_next 完全排除一致）。
         pipeline_db = session_for(database_url)
         try:
-            assert approved_intake_sources(pipeline_db) == []
+            sources = approved_intake_sources(pipeline_db)
+            assert len(sources) == (1 if auto_approve else 0)
+            if auto_approve:
+                assert sources[0].connector == "dujiao-next"
+                assert sources[0].intake_ids == (reported["promoted_intake_id"],)
         finally:
             pipeline_db.close()
 
         with Session(engine) as db:
-            assert db.scalar(select(SourceIntake)) is None
+            intake = db.get(SourceIntake, reported["promoted_intake_id"])
+            assert intake.status == ("approved" if auto_approve else "pending_review")
             candidate = db.scalar(select(SourceCandidate).where(SourceCandidate.id == candidate_id))
-            assert candidate.status == "pending_review"
+            assert candidate.status == "promoted"
     finally:
         _cleanup()
 
@@ -184,7 +189,7 @@ def test_woocommerce_candidate_publishes_with_shop_platform(tmp_path, monkeypatc
         assert catalog.status_code == 200
         assert catalog.json()["offer_count"] == 1
         meta = client.get("/api/v1/meta").json()
-        assert any(item["id"] == "woocommerce" for item in meta["source_platforms"])
+        assert [item["id"] for item in meta["source_platforms"]] == ["independent"]
     finally:
         _cleanup()
 
@@ -310,7 +315,7 @@ def test_woocommerce_no_public_offers_stays_no_products_and_meta_unchanged(tmp_p
             assert intake.status == "no_products"
             assert intake.product_count == 0
         meta = client.get("/api/v1/meta").json()
-        assert all(item["id"] != "woocommerce" for item in meta["source_platforms"])
+        assert meta["source_platforms"] == []
     finally:
         _cleanup()
 
@@ -374,6 +379,6 @@ def test_woocommerce_partial_scan_requires_review_before_publish(tmp_path, monke
             intake = db.scalar(select(SourceIntake).where(SourceIntake.id == intake_id))
             assert intake.status == "published"
         meta = client.get("/api/v1/meta").json()
-        assert any(item["id"] == "woocommerce" for item in meta["source_platforms"])
+        assert [item["id"] for item in meta["source_platforms"]] == ["independent"]
     finally:
         _cleanup()
