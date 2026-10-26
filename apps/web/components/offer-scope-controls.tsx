@@ -28,7 +28,7 @@ const DELIVERY_OPTIONS = [
 ];
 
 const PERIOD_OPTIONS = [
-  ["", "全部期限"], ["one_day", "1 天"], ["one_week", "1 周"], ["one_month", "1 个月"],
+  ["", "全部期限"], ["one_day", "1 天"], ["one_week", "1 周"], ["fifteen_days", "15 天"], ["one_month", "1 个月"],
   ["three_months", "3 个月"], ["six_months", "6 个月"], ["one_year", "1 年"], ["unknown", "期限未知"],
 ];
 

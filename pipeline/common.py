@@ -406,6 +406,8 @@ def service_period(text: str) -> str:
         return "three_months"
     if contains(text, ["月卡", "一个月", "月付"]) or re.search(r"(?<!\d)(?:1\s*个月|(?:2[0-9]|3[0-1])\s*天)", text):
         return "one_month"
+    if re.search(r"(?<!\d)15\s*天", text):
+        return "fifteen_days"
     if contains(text, ["周卡", "一周"]) or re.search(r"(?<!\d)(?:1\s*周|7\s*天)", text):
         return "one_week"
     if contains(text, ["日抛", "一天"]) or re.search(r"(?<!\d)(?:1\s*天|24\s*(?:小时|h))", text):
@@ -422,6 +424,7 @@ def warranty_type(text: str) -> str:
         ("one_day", r"(?:24\s*小时|(?:1|一)\s*天)"),
         ("three_days", r"(?:3|三)\s*天"),
         ("seven_days", r"(?:7|七)\s*天"),
+        ("fifteen_days", r"(?:15|十五)\s*天"),
     )
     for warranty, duration in durations:
         if re.search(rf"质保[^\d]{{0,4}}(?<!\d){duration}|(?<!\d){duration}[^\d]{{0,4}}质保", text):
@@ -887,6 +890,7 @@ def upsert_offer(
                 pass
         changed = True
     is_manually_locked = (not is_new_offer) and (("manual_override" in (offer.tags or [])) or (offer.classification_confidence == 100))
+    was_unclassified = offer.product_id is None
     if not is_manually_locked:
         offer.product_id = products[result.slug].id if result.slug and result.slug in products else None
     offer.price = price
@@ -921,6 +925,18 @@ def upsert_offer(
     if is_new_offer:
         offer.active = True
         offer.approved = result.slug is not None and result.confidence >= 80
+    elif (
+        not is_manually_locked
+        and was_unclassified
+        and offer.product_id is not None
+        and result.confidence >= 80
+        and shop.platform in {"ldxp", "16688"}
+        and offer.active
+        and not str(offer.hidden_reason or "").strip()
+    ):
+        # Previously unsupported brands already have raw rows. A later sync
+        # must publish newly recognized offers without reviving hidden ones.
+        offer.approved = True
     offer.updated_at = utcnow()
     if changed:
         db.add(OfferHistory(offer_id=offer.id, price=price, currency=currency, stock_count=count, stock_status=status, observed_at=observed_at))

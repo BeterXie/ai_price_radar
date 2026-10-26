@@ -80,3 +80,47 @@ def test_plan_registration_restores_pro_previously_hidden_by_seed():
         max_20x = db.scalar(select(Product).where(Product.slug == "claude-pro-20x"))
         assert max_20x.display_name == "Claude Max 20x"
     engine.dispose()
+
+
+@pytest.mark.parametrize("source", ["ldxp", "16688"])
+@pytest.mark.parametrize(("title", "category", "description", "slug"), [
+    ("【使用7天｜质保7天】Business / Team 标准席位续费码【仅限旧空间续费】", "", "不是5Xteam；可与个人 Plus 共存", "chatgpt-business"),
+    ("【使用15天｜质保15天】Business / Team 标准席位激活码【仅限激活新空间】", "OpenAI Pro 20x", "本商品按15天出售", "chatgpt-business"),
+    ("Perplexity Max 自助充值月卡(无积分)", "", "Perplexity Max 200刀/月（有 JPT / Claude 模型）", None),
+    ("Perplexity Max月卡 200刀 iOS充值", "OpenAI Pro 20x", "支持 ChatGPT Pro 和 Claude Pro", None),
+    ("Muse AI 10亿token成品号（类似于SuperGroK bot）", "成品plus区", "支持 Claude、Gemini、GPT", "muse-account"),
+    ("Muse成品号+10亿token质保首登", "OpenAI Pro 5x", "价值100刀，可使用GPT模型", "muse-account"),
+    ("Muse AI邀请码 10亿token免费拿（对标SuperGro-k bot）", "", "", "muse-invite"),
+    ("JEV 成品账号", "OpenAI Pro 20x", "支持 GPT 和 Claude", "jev-account"),
+    ("JEV 邀请码", "", "", "jev-invite"),
+    ("JEV Plus 会员月卡", "GPT Plus", "", "jev-subscription"),
+    ("Muse AI 手机接码", "", "", "muse-access-service"),
+    ("JEV AI订阅", "", "", "jev-subscription"),
+    ("ChatGPT Pro 500 会员", "OpenAI Pro 20x", "", "chatgpt-pro-500"),
+    ("ChatGPT Pro $200 月卡", "OpenAI Pro 5x", "", "chatgpt-pro-200"),
+    ("Codex 点数充值 250点数", "OpenAI Pro 20x", "200刀套餐也可充值", None),
+    ("XG-200刀额度", "", "", None),
+    ("Amusement 游戏账号", "", "", None),
+    ("Jevons 教程会员", "", "", None),
+    ("The X Subscription Premium 月卡", "", "", "x-subscription-premium"),
+    ("X Plus 订阅", "", "", "x-subscription-plus"),
+    ("X Ultra 订阅", "", "", "x-subscription-ultra"),
+    ("X Premium 月卡", "", "", "x-premium"),
+    ("X Premium+ 月卡", "", "", "x-premium-plus"),
+    ("Grok Teams 团队套餐", "Grok Super", "", "grok-team"),
+    ("Codex Pro 5X 【保订阅~智利/埃及卡冲】支持续费（不支持升级菲区20x）", "OpenAI Pro 20x", "", "chatgpt-pro-5x"),
+])
+def test_catalog_brand_and_plan_regressions(source, title, category, description, slug):
+    result = classify_product(title, category, description, source_platform=source)
+    assert result.slug == slug
+
+
+@pytest.mark.parametrize("source", ["ldxp", "16688"])
+def test_business_sku_duration_wins_over_shared_monthly_description(source):
+    result = classify_product(
+        "【使用15天｜质保15天】Business / Team 标准席位激活码【仅限激活新空间】",
+        "OpenAI Pro 20x", "标准套餐一个月，全程质保", source_platform=source,
+    )
+    assert result.slug == "chatgpt-business"
+    assert result.service_period == "fifteen_days"
+    assert result.warranty == "fifteen_days"

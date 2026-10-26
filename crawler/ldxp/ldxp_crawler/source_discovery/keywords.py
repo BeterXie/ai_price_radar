@@ -16,6 +16,8 @@ BRAND_KEYWORDS: dict[str, list[str]] = {
     "claude": ["claude", "claude pro", "claude api", "anthropic"],
     "gemini": ["gemini", "gemini advanced", "google one ai", "gemini api"],
     "grok": ["grok", "supergrok", "xai api", "x.ai"],
+    "muse": ["muse", "muse ai", "muse.ai"],
+    "jev": ["jev"],
     "developer_tools": ["cursor", "windsurf", "augment", "github copilot"],
 }
 
@@ -89,6 +91,8 @@ def bing_16688_queries(keywords: Sequence[str] = ()) -> list[str]:
         "Claude",
         "Gemini",
         "Grok",
+        "Muse AI",
+        "JEV",
         # Priority 2 – specific plans
         "ChatGPT Plus",
         "ChatGPT Pro",

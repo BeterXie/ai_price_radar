@@ -1,22 +1,46 @@
 # 账号套餐、搜索与中转站监测
 
-套餐名称核对日期：2026-10-24。分类表示商家商品原文声明的套餐，不能代替对实际账号权益的核验。
+套餐名称核对日期：2026-10-26。分类表示商家商品原文声明的套餐，不能代替对实际账号权益的核验。前台将官方套餐与 API、接码、旧套餐和等级待确认商品分行展示。
 
 ## 套餐对应
 
 | 品牌 | 分类规则 | 官方来源 |
 | --- | --- | --- |
-| OpenAI | Free、Go、Plus、Pro 5x、Pro 20x 分开；未注明倍率的 Pro 独立展示；Business / 原 Team、Edu、Enterprise 分开；K12 仅保留为商家标签 | [ChatGPT Pricing](https://learn.chatgpt.com/docs/pricing) |
+| OpenAI | Go、Plus、Pro 100、Pro 200、Pro 500、Business / 原 Team、Edu、Enterprise；Pro 100 / 200 / 500 对应官方美元月费。仅标 5x / 20x 的商品保留为旧标记，不能保证当前用量；K12 仅为商家标签 | [ChatGPT Pricing](https://learn.chatgpt.com/docs/pricing)、[Pro tiers](https://help.openai.com/en/articles/9793128-about-chatgpt-pro-tiers) |
 | Claude | Pro、Max 5x、Max 20x、倍率未注明的 Max、Team、Enterprise 分开；5x 是 Max 相对 Pro 的用量档位 | [Claude Pricing](https://claude.com/pricing) |
 | Gemini | Google AI Plus、Pro、Ultra 及明确标注的 Ultra 倍率分开；Advanced 保留为历史名称；Gemini 2.5 Pro 等模型名不能作为账号 Pro 套餐的证据 | [Google AI Plans](https://one.google.com/intl/en/about/google-ai-plans/) |
 | Cursor | 当前 Plus、Premium、Super、Ultra、Teams 与仍在商品中出现的 Pro、Pro+ 分开；不推断不同版本权益相同 | [Pricing](https://cursor.com/pricing)、[Models and pricing](https://cursor.com/docs/models-and-pricing) |
 | Grok | 当前 Plus、Premium、Super、Ultra 分开；商家仍标注 SuperGrok、SuperGrok Heavy 时保留独立分类；X Premium 是另一个产品系列 | [xAI Pricing](https://x.ai/pricing) |
+| X | The X Subscription 的 Plus、Premium、Super、Ultra、Teams、Enterprise 与原 Basic、X Premium、Premium+ 分开；明确写“统一订阅”时才将 Premium 归入新套餐 | [The X Subscription](https://docs.x.ai/x-subscription/overview)、[X Premium](https://help.x.com/en/using-x/x-premium) |
+| MUSE | 接入链动小铺与 16688 中明确标注 Muse / Muse AI / muse.ai 的账号、邀请码、订阅及接码。公开官网未列明套餐，不能用“10亿 Token”或“类似 SuperGrok”推断等级 | [Muse 官网](https://muse.ai/) |
+| JEV | 接入商品原文明确标注 JEV 的账号、邀请码、订阅及接码；品牌词设英文边界，避免误匹配 Jevons 等词。尚无已核验官网套餐，暂不创建猜测等级 | 待补官方来源 |
 
-明确标题优先于店铺分类；Free、底号、未订阅账号不会因店铺分类或营销描述变成高等级订阅。Claude、Gemini、Cursor、Grok 的订阅没有明确等级时单独列为“等级未注明”，不猜测为 Pro。套餐、交付方式、周期、质保继续分别记录和筛选。
+Grok 和 Cursor 的官网当前包含 Teams / Enterprise。The X Subscription 将 Grok、Cursor 与 X 统一，但切换并非强制；旧套餐的价格与功能在切换或取消前继续，因此旧 Pro / Pro+、SuperGrok 和 X Premium 不能直接映射成新套餐。
+
+明确标题优先于店铺分类；Free、底号、未订阅账号不会因店铺分类或营销描述变成高等级订阅。Claude、Gemini、Cursor、Grok 的订阅没有明确等级时单独列为“等级未注明”，不猜测为 Pro。套餐、交付方式、周期、质保继续分别记录和筛选。标题明确写 15 天的商品按 15 天展示与筛选，不再由共用月卡描述推断为一个月；15 天质保单独识别。
+
+商品标题中的 MUSE / JEV 等售卖品牌优先于后面的对比品牌；Perplexity 不属于当前支持品牌，不能因描述含 Claude、GPT 或 200 美元而进入它们的套餐。Business / Team 标准席位优先于商家分类中的 Pro。点数、余额和额度不能当作 Pro 美元月费。说明中列举多个品牌不作为品牌兜底依据。
 
 `apps/api/app/services/account_plans.py` 集中定义套餐及对应关系，采集分类与后台重新分类共用 API 的身份判断。前端筛选和机器人查询同步更新。现有 `claude-pro-20x` URL 仍在使用，展示名称改为 Claude Max 20x；`grok-super` 对应 SuperGrok，新的 Grok Super 使用 `grok-plan-super`。
 
 套餐核对与价格核对分开。未核实的新价格不填入官方价格参考；原有价格保留其核实日期。Google AI Pro 的价格参考只挂在 `gemini-pro`，不再套用到历史 Advanced 商品。
+
+2026-10-26 仅新增已核验的 Pro 100 / 200 / 500 美元月费参考。Claude 和 Google 页面会按地区显示税费及本币，未把当前本地显示金额写作美元价格。
+
+## 历史商品修复
+
+先按 `docs/QUICK_DEPLOY.md` 完成发布门禁和备份。修复工具默认只读预览，不注册产品、不改报价；`--apply` 复用后台重新分类，补齐产品并修复品牌、套餐和同款分组指纹，保留人工分类与隐藏状态：
+
+```text
+python scripts/reclassify_account_offers.py --dry-run
+python scripts/reclassify_account_offers.py --apply
+```
+
+`DATABASE_URL` 必须指向待处理数据库。输出按原分类 → 新分类汇总数量；再次应用应没有分类变化。原 `reclassify_pro_offers.py` 已改为同一工具入口，不再把所有未知 Pro 默认移到 20x，也不再隐藏通用 Pro。
+
+链动小铺和 16688 中以前未识别、仍 active、没有隐藏原因或人工锁定的原始商品，在重分类或下一次同步确认后自动进入公开目录。手动隐藏和手动归类不会被自动恢复。部署时此改动涉及 crawler / pipeline，需要重建相应服务，并完成 runbook 要求的一次完整目录刷新，刷新成功后才恢复定时任务。
+
+本地验证覆盖分类、导入、后台重分类与价格逻辑的 574 项回归，以及来源发现的 21 项测试、前端套餐的 2 项测试和 TypeScript 类型检查。线上公开数据与截图中的 26 条商品用于本地演练，修复后再次预览无分类变化。Ferdium 页面验证确认四条 Business / Team 席位与 MUSE 商品进入正确品牌和分类；JEV 尚无可核验的公开商品样本，页面保留空状态。
 
 ## 搜索与筛选
 

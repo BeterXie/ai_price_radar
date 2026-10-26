@@ -22,6 +22,16 @@ CHECKED_AT = date(2026, 7, 29)
 # Official list prices are references, not currency conversions. Localized pricing,
 # taxes, app-store fees, promotions and availability can differ by region.
 OFFICIAL_REFERENCES: dict[str, OfficialPriceReference] = {
+    **{
+        f"chatgpt-pro-{amount}": OfficialPriceReference(
+            provider="OpenAI", plan=f"ChatGPT Pro {amount}", price=Decimal(amount),
+            currency="USD", billing_period="month",
+            url="https://help.openai.com/en/articles/9793128-about-chatgpt-pro-tiers",
+            checked_at=date(2026, 10, 26),
+            note="官方美元月费档位；税费、地区与支付渠道可能不同。旧倍率标签不保证当前用量。",
+        )
+        for amount in ("100", "200", "500")
+    },
     "chatgpt-plus": OfficialPriceReference(
         provider="OpenAI",
         plan="ChatGPT Plus",

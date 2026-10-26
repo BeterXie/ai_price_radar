@@ -32,6 +32,8 @@ DEFAULT_AI_KEYWORDS = (
     "gemini",
     "grok",
     "cursor",
+    "muse",
+    "jev",
     "augment",
 )
 HOME_FINGERPRINTS = (

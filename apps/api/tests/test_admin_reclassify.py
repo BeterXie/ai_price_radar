@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import Base
 from app.models import Offer, Product, RawProduct, Shop
 from app.routers.admin import reclassify
+import pytest
 
 
 def test_reclassify_clears_an_invalid_previous_product():
@@ -35,6 +36,57 @@ def test_reclassify_clears_an_invalid_previous_product():
         db.refresh(offer)
         assert offer.product_id is None
         assert result == {"ok": True, "changed": 1, "unclassified": 1}
+
+
+@pytest.mark.parametrize("source", ["ldxp", "16688"])
+def test_historical_plan_repair_is_previewable_and_preserves_manual_decisions(source, monkeypatch):
+    from pathlib import Path
+    from sqlalchemy import select
+    from app.services.account_plans import ensure_account_plans
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3]))
+    from scripts.reclassify_account_offers import preview
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        ensure_account_plans(db)
+        old_pro = db.scalar(select(Product).where(Product.slug == "chatgpt-pro-20x"))
+        shop = Shop(token="REPAIR", name="Test", platform=source, source_url="https://example.com")
+        db.add(shop)
+        db.flush()
+        cases = [
+            ("Business / Team 标准席位续费码", "不是5Xteam", "chatgpt-business", []),
+            ("Perplexity Max 自助充值月卡", "200刀/月（支持Claude模型）", None, []),
+            ("ChatGPT Pro 200刀月卡", "", "chatgpt-pro-200", []),
+            ("Muse成品号+10亿token", "支持GPT", "muse-account", []),
+            ("JEV 成品账号", "", "jev-account", []),
+            ("JEV 成品账号", "", "chatgpt-pro-20x", ["manual_override"]),
+        ]
+        offers = []
+        for index, (title, description, expected, tags) in enumerate(cases):
+            raw = RawProduct(shop_id=shop.id, source_product_key=str(index), original_name=title, raw_json={"description": description})
+            db.add(raw)
+            db.flush()
+            offer = Offer(raw_product_id=raw.id, shop_id=shop.id, product_id=None if index == 4 else old_pro.id, active=True, approved=index != 4, tags=tags)
+            db.add(offer)
+            offers.append(offer)
+        db.commit()
+        before = [(offer.product_id, offer.approved, offer.item_fingerprint) for offer in offers]
+        report = preview(db)
+        assert report["changed"] == 5
+        assert report["manual_skipped"] == 1
+        assert before == [(offer.product_id, offer.approved, offer.item_fingerprint) for offer in offers]
+        assert not db.dirty
+        result = reclassify(db)
+        assert result["changed"] == 5
+        for offer, (_, _, expected, _) in zip(offers, cases):
+            db.refresh(offer)
+            target = db.get(Product, offer.product_id) if offer.product_id else None
+            assert (target.slug if target else None) == expected
+        assert offers[4].approved
+        assert reclassify(db)["changed"] == 0
+    engine.dispose()
 
 
 def test_reclassify_uses_16688_detail_fields():

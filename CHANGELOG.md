@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.27] - 2026-10-27
+
+- Align brand account filters with verified official plans and separate legacy seller labels and uncertain tiers.
+- Correct Business / Team, Perplexity and Muse product assignments; preserve explicit 15-day service and warranty periods.
+- Add MUSE and JEV discovery, ingestion, historical reclassification and catalog filters for LDXP and 16688.
+- Include the unreleased v3.9.26 AllTokens cache-usage reconciliation from commit 515a3e2.
+- No schema migration. Rebuild crawler/importer and run historical offer repair plus a complete multi-source refresh before restoring timers.
+
 ## [3.9.16] - 2026-10-25
 
 - Make the v22 release migration independent of application initialization and host dotenv permissions; preserve the unprivileged deployment image and root-only environment file.

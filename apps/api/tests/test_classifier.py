@@ -73,20 +73,20 @@ def test_16688_alias_can_use_description_context():
         ("ChatGPT 5✖️Pro 一个月", "chatgpt-pro-5x"),
         ("ChatGPT Pro x 20 会员", "chatgpt-pro-20x"),
         ("GPT Pro20× 一个月", "chatgpt-pro-20x"),
-        ("ChatGPT Pro 200刀会员", "chatgpt-pro-20x"),
+        ("ChatGPT Pro 200刀会员", "chatgpt-pro-200"),
         ("ChatGPT Pro 5天账号", "chatgpt-pro"),
         ("ChatGPT Pro 20刀账号", "chatgpt-pro"),
         ("ChatGPT Pro 500x账号", "chatgpt-pro"),
         ("ChatGPT Pro 5倍成品号", "chatgpt-pro-5x"),
-        ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "chatgpt-pro-20x"),
-        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "chatgpt-pro-20x"),
-        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 100刀PRO", "chatgpt-pro-5x"),
-        ("GPT-PRO代充-充自己号《正规充值》 · 100刀PRO", "chatgpt-pro-5x"),
-        ("ChatGPT Pro｜续费充值（月卡）【 5x / 100刀】 · 标准版", "chatgpt-pro-5x"),
-        ("ChatGPT Pro｜续费充值（月卡）【 20x / 200刀】 · 标准版", "chatgpt-pro-20x"),
-        ("gpt-200刀", "chatgpt-pro-20x"),
-        ("gpt pro一个月100刀的自助卡密质保", "chatgpt-pro-5x"),
-        ("gpt pro一个月200刀的自助卡密质保", "chatgpt-pro-20x"),
+        ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "chatgpt-pro-200"),
+        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "chatgpt-pro-200"),
+        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 100刀PRO", "chatgpt-pro-100"),
+        ("GPT-PRO代充-充自己号《正规充值》 · 100刀PRO", "chatgpt-pro-100"),
+        ("ChatGPT Pro｜续费充值（月卡）【 5x / 100刀】 · 标准版", "chatgpt-pro-100"),
+        ("ChatGPT Pro｜续费充值（月卡）【 20x / 200刀】 · 标准版", "chatgpt-pro-200"),
+        ("gpt-200刀", "chatgpt-pro-200"),
+        ("gpt pro一个月100刀的自助卡密质保", "chatgpt-pro-100"),
+        ("gpt pro一个月200刀的自助卡密质保", "chatgpt-pro-200"),
         ("GPT Plus 官方充值", "chatgpt-plus"),
         ("ChatGPT Go 正规充值", "chatgpt-go"),
         ("一个月 GPT Go会员 美区订阅", "chatgpt-go"),
@@ -97,10 +97,10 @@ def test_openai_mainstream_tiers_are_distinct(title: str, slug: str):
 
 
 def test_production_reclassified_pro_offers():
-    assert classify_product("PRO200刀有质保20X【正规充值】 可以续费 客服转账免手续费", category="OpenAI Pro 20X 充值").slug == "chatgpt-pro-20x"
-    assert classify_product("正规G Pro直充【20X-200刀款】 月卡套餐 全程质保订阅，同步官方退款政策", category="OpenAI Pro 20X 充值").slug == "chatgpt-pro-20x"
-    assert classify_product("【官方代充】G Pro 200刀 20x 1-5分钟到账", category="OpenAI Pro 20X 充值").slug == "chatgpt-pro-20x"
-    assert classify_product("纯plus+pro—200刀", category="codex API").slug == "chatgpt-pro-20x"
+    assert classify_product("PRO200刀有质保20X【正规充值】 可以续费 客服转账免手续费", category="OpenAI Pro 20X 充值").slug == "chatgpt-pro-200"
+    assert classify_product("正规G Pro直充【20X-200刀款】 月卡套餐 全程质保订阅，同步官方退款政策", category="OpenAI Pro 20X 充值").slug == "chatgpt-pro-200"
+    assert classify_product("【官方代充】G Pro 200刀 20x 1-5分钟到账", category="OpenAI Pro 20X 充值").slug == "chatgpt-pro-200"
+    assert classify_product("纯plus+pro—200刀", category="codex API").slug == "chatgpt-pro-200"
 
 
 def test_explicit_title_tier_wins_over_a_wrong_source_category():
@@ -367,6 +367,8 @@ def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
         ("X Premium 124小时官方直充", "unknown"),
         ("X Premium 1个月官方直充", "one_month"),
         ("X Premium 7天官方直充", "one_week"),
+        ("X Premium 15天官方直充", "fifteen_days"),
+        ("X Premium 115天官方直充", "unknown"),
         ("X Premium 24小时官方直充", "one_day"),
     ],
 )
@@ -386,6 +388,8 @@ def test_x_premium_service_periods(title: str, period: str):
         ("24小时", "one_day"),
         ("3天", "three_days"),
         ("7天", "seven_days"),
+        ("15天", "fifteen_days"),
+        ("115天", "unknown"),
         ("30天", "subscription_term"),
         ("1个月", "subscription_term"),
     ],

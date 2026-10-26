@@ -26,24 +26,24 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("ChatGPT 5✖️Pro 一个月", "", "chatgpt-pro-5x"),
         ("ChatGPT Pro x 20 会员", "", "chatgpt-pro-20x"),
         ("GPT Pro20× 一个月", "", "chatgpt-pro-20x"),
-        ("ChatGPT Pro 200刀会员", "", "chatgpt-pro-20x"),
+        ("ChatGPT Pro 200刀会员", "", "chatgpt-pro-200"),
         ("ChatGPT Pro 5天账号", "", "chatgpt-pro"),
         ("ChatGPT Pro 20刀账号", "", "chatgpt-pro"),
         ("ChatGPT Pro 500x账号", "", "chatgpt-pro"),
         ("ChatGPT Pro 5倍成品号", "", "chatgpt-pro-5x"),
-        ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "", "chatgpt-pro-20x"),
-        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "", "chatgpt-pro-20x"),
-        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 100刀PRO", "", "chatgpt-pro-5x"),
-        ("GPT-PRO代充-充自己号《正规充值》 · 100刀PRO", "", "chatgpt-pro-5x"),
-        ("ChatGPT Pro｜续费充值（月卡）【 5x / 100刀】 · 标准版", "", "chatgpt-pro-5x"),
-        ("ChatGPT Pro｜续费充值（月卡）【 20x / 200刀】 · 标准版", "", "chatgpt-pro-20x"),
-        ("PRO200刀有质保20X【正规充值】 可以续费 客服转账免手续费", "OpenAI Pro 20X 充值", "chatgpt-pro-20x"),
-        ("正规G Pro直充【20X-200刀款】 月卡套餐 全程质保订阅，同步官方退款政策", "OpenAI Pro 20X 充值", "chatgpt-pro-20x"),
-        ("【官方代充】G Pro 200刀 20x 1-5分钟到账", "OpenAI Pro 20X 充值", "chatgpt-pro-20x"),
-        ("纯plus+pro—200刀", "codex API", "chatgpt-pro-20x"),
-        ("gpt-200刀", "", "chatgpt-pro-20x"),
-        ("gpt pro一个月100刀的自助卡密质保", "", "chatgpt-pro-5x"),
-        ("gpt pro一个月200刀的自助卡密质保", "", "chatgpt-pro-20x"),
+        ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "", "chatgpt-pro-200"),
+        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "", "chatgpt-pro-200"),
+        ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 100刀PRO", "", "chatgpt-pro-100"),
+        ("GPT-PRO代充-充自己号《正规充值》 · 100刀PRO", "", "chatgpt-pro-100"),
+        ("ChatGPT Pro｜续费充值（月卡）【 5x / 100刀】 · 标准版", "", "chatgpt-pro-100"),
+        ("ChatGPT Pro｜续费充值（月卡）【 20x / 200刀】 · 标准版", "", "chatgpt-pro-200"),
+        ("PRO200刀有质保20X【正规充值】 可以续费 客服转账免手续费", "OpenAI Pro 20X 充值", "chatgpt-pro-200"),
+        ("正规G Pro直充【20X-200刀款】 月卡套餐 全程质保订阅，同步官方退款政策", "OpenAI Pro 20X 充值", "chatgpt-pro-200"),
+        ("【官方代充】G Pro 200刀 20x 1-5分钟到账", "OpenAI Pro 20X 充值", "chatgpt-pro-200"),
+        ("纯plus+pro—200刀", "codex API", "chatgpt-pro-200"),
+        ("gpt-200刀", "", "chatgpt-pro-200"),
+        ("gpt pro一个月100刀的自助卡密质保", "", "chatgpt-pro-100"),
+        ("gpt pro一个月200刀的自助卡密质保", "", "chatgpt-pro-200"),
         ("GPT Plus 官方充值", "GPT Pro 20X 充值", "chatgpt-plus"),
         ("ChatGPT Go 正规充值", "GPT Team/Go", "chatgpt-go"),
         ("一个月 GPT Go会员 美区订阅", "GPT Team/Go", "chatgpt-go"),
@@ -123,6 +123,60 @@ def test_description_is_only_used_for_tags_and_risks():
     assert "限制退款" in result.risks
 
 
+@pytest.mark.parametrize("source", ["ldxp", "16688"])
+@pytest.mark.parametrize(("title", "description", "expected"), [
+    ("Muse AI 10亿token成品号（类似于SuperGroK bot）", "支持GPT模型", "muse-account"),
+    ("Muse AI邀请码 10亿token免费拿", "", "muse-invite"),
+    ("JEV 成品账号", "支持 ChatGPT 和 Claude", "jev-account"),
+    ("JEV 邀请码", "", "jev-invite"),
+    ("JEV Plus 会员月卡", "", "jev-subscription"),
+    ("Perplexity Max 自助充值月卡", "200刀/月（有 JPT / Claude 模型）", None),
+    ("Business / Team 标准席位续费码", "不是5Xteam，可与个人Plus共存", "chatgpt-business"),
+])
+def test_new_brands_and_wrong_assignments_survive_import(source, title, description, expected):
+    from common import Base, Offer
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        products = ensure_products(db)
+        record = {
+            "token": "test-brands",
+            "shop_name": "test",
+            "shop_url": "https://example.com/shop",
+            "source_platform": source,
+            "product_key": "sku-1",
+            "product_name": title,
+            "category_name": "",
+            "listed_price": "20",
+            "raw_json": {"description": description},
+        }
+        upsert_offer(db, record, products)
+        db.flush()
+        offer = db.scalar(select(Offer))
+        assert offer.product_id == (products[expected].id if expected else None)
+        assert offer.approved is bool(expected)
+        if expected:
+            # This raw SKU may have existed before the brand was supported.
+            offer.product_id = None
+            offer.approved = False
+        # Repeating a source sync must preserve the correct category.
+        upsert_offer(db, record, products)
+        db.flush()
+        assert offer.product_id == (products[expected].id if expected else None)
+        assert offer.approved is bool(expected)
+        if expected:
+            offer.product_id = None
+            offer.approved = False
+            offer.hidden_reason = "manual moderation"
+            upsert_offer(db, record, products)
+            db.flush()
+            assert not offer.approved
+    engine.dispose()
+
+
 def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
     result = classify(
         "官方充值 Plus CDK",
@@ -185,8 +239,8 @@ def test_product_catalog_groups_openai_and_retires_legacy_team_product():
         db.flush()
         products = ensure_products(db)
         assert products["chatgpt-k12"].platform == "OpenAI"
-        assert products["chatgpt-pro-5x"].display_name == "ChatGPT Pro 5x"
-        assert products["chatgpt-pro-20x"].display_name == "ChatGPT Pro 20x"
+        assert products["chatgpt-pro-5x"].display_name == "ChatGPT Pro 5x（旧标记）"
+        assert products["chatgpt-pro-20x"].display_name == "ChatGPT Pro 20x（旧标记）"
         assert products["codex-access"].platform == "OpenAI"
         assert products["x-premium-basic"].platform == "X"
         assert products["x-premium-plus"].display_name == "X Premium+"
@@ -262,6 +316,8 @@ def test_decision_facts_and_fingerprint_are_stable_across_date_prefixes():
         ("X Premium 124小时官方直充", "unknown"),
         ("X Premium 1个月官方直充", "one_month"),
         ("X Premium 7天官方直充", "one_week"),
+        ("X Premium 15天官方直充", "fifteen_days"),
+        ("X Premium 115天官方直充", "unknown"),
         ("X Premium 24小时官方直充", "one_day"),
     ],
 )
@@ -281,6 +337,8 @@ def test_x_premium_service_periods(title: str, period: str):
         ("24小时", "one_day"),
         ("3天", "three_days"),
         ("7天", "seven_days"),
+        ("15天", "fifteen_days"),
+        ("115天", "unknown"),
         ("30天", "subscription_term"),
         ("1个月", "subscription_term"),
     ],

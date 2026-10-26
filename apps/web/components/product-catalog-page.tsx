@@ -15,7 +15,7 @@ import { exactTime, relativeTime } from "@/lib/format";
 import { getProductSeoContent } from "@/lib/product-seo";
 import type { Meta } from "@/lib/types";
 
-import { BRAND_TABS, type BrandName, PRODUCT_TABS, RELAY_CATALOG_HREF } from "@/lib/catalog";
+import { BRAND_TABS, type BrandName, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF } from "@/lib/catalog";
 
 const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
@@ -83,6 +83,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
     ? activeBrand as BrandName
     : null;
   const productTabs = productTabBrand ? PRODUCT_TABS[productTabBrand] : [];
+  const officialTabs = productTabs.filter((tab) => !tab.other);
+  const otherTabs = productTabs.filter((tab) => tab.other);
+  const officialSource = productTabBrand ? OFFICIAL_PLAN_SOURCES[productTabBrand] : undefined;
   const scopeQuery = new URLSearchParams(detailQuery);
   if (searchQuery) scopeQuery.set("q", searchQuery);
   const filters = filterValues(rawParams);
@@ -179,13 +182,13 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           </div>
         </nav>
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
-          <span className="filter-label">账号套餐</span>
+          <span className="filter-label">{officialTabs.length ? "官方套餐" : "商品类别"}</span>
           <div className="filter-group">
             <Link href={catalogHref(activeBrand)} prefetch={true} aria-current={!product ? "page" : undefined} className="filter-chip filter-all">
               全部商品
             </Link>
             <div className="filter-options">
-              {productTabs.map((tab) => (
+              {(officialTabs.length ? officialTabs : otherTabs).map((tab) => (
                 <Link
                   key={tab.slug}
                   href={productHref(tab.slug)}
@@ -199,6 +202,26 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
             </div>
           </div>
         </nav>
+        {officialTabs.length > 0 && otherTabs.length > 0 ? (
+          <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="其他商品筛选">
+            <span className="filter-label">其他商品</span>
+            <div className="filter-group">
+              <div className="filter-options">
+                {otherTabs.map((tab) => (
+                  <Link key={tab.slug} href={productHref(tab.slug)} prefetch={true} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">
+                    {tab.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </nav>
+        ) : null}
+        {officialSource ? (
+          <p className="mt-2 text-xs text-[color:var(--muted)]">
+            官方套餐名称核对于 2026-10-26。服务类、旧套餐和等级待确认商品单独列出。{" "}
+            <a href={officialSource} target="_blank" rel="noreferrer" className="underline">查看官网套餐</a>
+          </p>
+        ) : null}
         <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="来源平台筛选">
           <span className="filter-label">来源平台</span>
           <div className="filter-group">

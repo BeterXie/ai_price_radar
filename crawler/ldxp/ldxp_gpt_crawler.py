@@ -44,6 +44,8 @@ DEFAULT_KEYWORDS = [
     "grok",
     "supergrok",
     "cursor",
+    "muse",
+    "jev",
     "team",
     "接码",
 ]

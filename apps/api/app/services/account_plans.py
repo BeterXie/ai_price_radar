@@ -12,7 +12,12 @@ SUBSCRIPTION_MARKERS = ("会员", "订阅", "套餐", "代充", "直充", "月�
 
 # Existing public slugs remain identifiers; their labels describe the actual plan.
 PLAN_PRODUCTS = [
-    ("chatgpt-pro", "OpenAI", "ChatGPT Pro（倍率未注明）", "未注明 5x / 20x；不猜测用量档位"),
+    ("chatgpt-pro", "OpenAI", "ChatGPT Pro（档位未注明）", "未注明 Pro 100 / 200 / 500；不猜测档位"),
+    ("chatgpt-pro-100", "OpenAI", "ChatGPT Pro 100", "官方 $100/月档位；实际用量以官方当前规则为准"),
+    ("chatgpt-pro-200", "OpenAI", "ChatGPT Pro 200", "官方 $200/月档位；不承诺旧版 20x 用量"),
+    ("chatgpt-pro-500", "OpenAI", "ChatGPT Pro 500", "官方 $500/月档位"),
+    ("chatgpt-pro-5x", "OpenAI", "ChatGPT Pro 5x（旧标记）", "仅有商家 5x 标记，尚不能确认当前官方档位"),
+    ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x（旧标记）", "仅有商家 20x 标记，尚不能确认当前官方档位"),
     ("chatgpt-business", "OpenAI", "ChatGPT Business", "Business / 原 Team 团队套餐"),
     ("chatgpt-edu", "OpenAI", "ChatGPT Edu", "明确标注 Edu 的教育套餐"),
     ("chatgpt-enterprise", "OpenAI", "ChatGPT Enterprise", "企业套餐"),
@@ -34,7 +39,15 @@ PLAN_PRODUCTS = [
     ("grok-premium", "Grok", "Grok Premium", "Premium 套餐"),
     ("grok-plan-super", "Grok", "Grok Super", "Super 套餐；不等同于旧 SuperGrok"),
     ("grok-ultra", "Grok", "Grok Ultra", "Ultra 套餐"),
+    ("grok-team", "Grok", "Grok Teams", "Teams 团队套餐"),
+    ("grok-enterprise", "Grok", "Grok Enterprise", "Enterprise 企业套餐"),
     ("grok-subscription", "Grok", "Grok 订阅（等级未注明）", "已标注订阅，但不能确认具体套餐"),
+    ("x-subscription-plus", "X", "The X Subscription Plus", "X / Grok / Cursor 统一订阅 Plus"),
+    ("x-subscription-premium", "X", "The X Subscription Premium", "统一订阅 Premium；区别于原 X Premium"),
+    ("x-subscription-super", "X", "The X Subscription Super", "X / Grok / Cursor 统一订阅 Super"),
+    ("x-subscription-ultra", "X", "The X Subscription Ultra", "X / Grok / Cursor 统一订阅 Ultra"),
+    ("x-subscription-teams", "X", "The X Subscription Teams", "统一订阅团队套餐"),
+    ("x-subscription-enterprise", "X", "The X Subscription Enterprise", "统一订阅企业套餐"),
     ("cursor-pro-plus", "Cursor", "Cursor Pro+", "Pro Plus 个人套餐"),
     ("cursor-ultra", "Cursor", "Cursor Ultra", "Ultra；套餐版本以来源说明为准"),
     ("cursor-plus", "Cursor", "Cursor Plus", "Plus 套餐"),
@@ -43,6 +56,8 @@ PLAN_PRODUCTS = [
     ("cursor-business", "Cursor", "Cursor Teams / Business", "团队席位；区别于个人套餐"),
     ("cursor-enterprise", "Cursor", "Cursor Enterprise", "企业套餐"),
     ("cursor-subscription", "Cursor", "Cursor 订阅（等级未注明）", "不把日卡或未注明等级的订阅当作 Pro"),
+    ("muse-subscription", "MUSE", "Muse AI 订阅（等级未注明）", "商家声明的订阅；官方等级尚未核实"),
+    ("jev-subscription", "JEV", "JEV 订阅（等级未注明）", "商家声明的订阅；官方等级尚未核实"),
 ]
 
 
@@ -54,6 +69,14 @@ def product_definitions(definitions: list[tuple]) -> list[tuple]:
         "chatgpt-k12", "OpenAI", "ChatGPT K12（商家标记）", "商家 K12 标签；不等同于 Business / Edu",
         "subscription", "保留明确标注 K12 的商家报价；该标签不代表已核验的官方套餐。",
     )
+    for brand, label in (("muse", "MUSE"), ("jev", "JEV")):
+        for suffix, name, kind, subtitle in (
+            ("account", "账号", "account", "基础账号、成品号；不按附带模型或 Token 数推断套餐"),
+            ("invite", "邀请码 / 激活码", "service", "邀请或激活类商品；不等同于付费订阅"),
+            ("access-service", "验证 / 接码", "service", "明确用于该品牌的验证与接码服务"),
+        ):
+            slug = f"{brand}-{suffix}"
+            result[slug] = (slug, label, f"{label} {name}", subtitle, kind, f"聚合 {label} {name}的公开报价。{subtitle}。")
     return list(result.values())
 
 
@@ -62,11 +85,11 @@ def _word(text: str, word: str) -> bool:
 
 
 def _tier(brand: str, text: str) -> str | None:
-    if brand in ("claude", "cursor"):
+    if brand in ("claude", "cursor", "grok"):
         if _word(text, "enterprise") or "企业版" in text:
-            return {"claude": "claude-enterprise", "cursor": "cursor-enterprise"}[brand]
+            return f"{brand}-enterprise"
         if _word(text, "team(?:s)?|business") or any(x in text for x in ("团队版", "团队套餐", "团队会员")):
-            return {"claude": "claude-team", "cursor": "cursor-business"}[brand]
+            return {"claude": "claude-team", "cursor": "cursor-business", "grok": "grok-team"}[brand]
     if brand == "claude":
         if re.search(r"(?<!\d)(?:20\s*(?:x|倍)|x\s*20)(?!\d)", text):
             return "claude-pro-20x"

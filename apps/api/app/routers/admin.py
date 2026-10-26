@@ -92,7 +92,7 @@ from ..schemas import (
     UserBotBindingRead,
 )
 from ..security import require_admin
-from ..services.classifier import classify_product
+from ..services.offer_classification import classify_offer
 from ..services.promo import AD_SLOTS_ENABLED_KEY, RELAY_HUB_ENABLED_KEY
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
@@ -465,26 +465,7 @@ def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
     )
     if offer is None:
         raise HTTPException(status_code=404, detail="offer not found")
-    source_platform = str(offer.shop.platform or "")
-    raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
-    category_values = [offer.raw_product.original_category]
-    if source_platform.strip().casefold() == "16688":
-        source_category = raw_json.get("sourceCategory") or raw_json.get("source_category")
-        if isinstance(source_category, dict):
-            category_values.append(source_category.get("name", ""))
-        elif source_category:
-            category_values.append(str(source_category))
-    description_values = [raw_json.get("description", "")]
-    if source_platform.strip().casefold() == "16688":
-        description_values.extend(raw_json.get(key, "") for key in ("content", "instruction", "remark"))
-    category = " ".join(str(value or "") for value in category_values)
-    description = " ".join(str(value or "") for value in description_values)
-    result = classify_product(
-        offer.raw_product.original_name,
-        category,
-        description,
-        source_platform=source_platform,
-    )
+    result = classify_offer(offer)
     target_product = (
         db.scalar(select(Product).where(Product.slug == result.slug))
         if result.slug
@@ -536,25 +517,7 @@ def reclassify(db: Session = Depends(get_db)) -> dict:
             if "manual_override" in (offer.tags or []) or (offer.classification_confidence or 0) >= 100:
                 continue
             source_platform = str(offer.shop.platform or "")
-            raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
-            category_values = [offer.raw_product.original_category]
-            if source_platform.strip().casefold() == "16688":
-                source_category = raw_json.get("sourceCategory") or raw_json.get("source_category")
-                if isinstance(source_category, dict):
-                    category_values.append(source_category.get("name", ""))
-                elif source_category:
-                    category_values.append(str(source_category))
-            description_values = [raw_json.get("description", "")]
-            if source_platform.strip().casefold() == "16688":
-                description_values.extend(raw_json.get(key, "") for key in ("content", "instruction", "remark"))
-            category = " ".join(str(value or "") for value in category_values)
-            description = " ".join(str(value or "") for value in description_values)
-            result = classify_product(
-                offer.raw_product.original_name,
-                category,
-                description,
-                source_platform=source_platform,
-            )
+            result = classify_offer(offer)
             offer.tags = result.tags
             offer.risk_flags = result.risk_flags
             offer.classification_confidence = result.confidence
@@ -570,7 +533,7 @@ def reclassify(db: Session = Depends(get_db)) -> dict:
                 offer.product_id = target_id
                 changed += 1
             if (
-                source_platform.strip().casefold() == "16688"
+                source_platform.strip().casefold() in {"16688", "ldxp"}
                 and was_unclassified
                 and target_id is not None
                 and result.confidence >= 80
