@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.28] - 2026-10-27
+
+- Classify real JEV Key-credit listings as API credit and provide separate API filters for MUSE and JEV.
+- Keep Team seats with quota-comparison wording in Business; continue excluding numeric Codex credit packages from account plans.
+- Supersedes the v3.9.27 deployment candidate before container switching. Includes its brand catalog changes and AllTokens cache-usage reconciliation.
+- No schema migration. The complete refresh and historical repair gates remain required.
+
 ## [3.9.27] - 2026-10-27
 
 - Align brand account filters with verified official plans and separate legacy seller labels and uncertain tiers.

@@ -18,5 +18,6 @@ test("MUSE and JEV have separate filters without invented official plans", () =>
     assert.ok(tabs.every((tab) => tab.other));
     assert.ok(tabs.some((tab) => tab.slug === `${brand.toLowerCase()}-account`));
     assert.ok(tabs.some((tab) => tab.slug === `${brand.toLowerCase()}-invite`));
+    assert.ok(tabs.some((tab) => tab.slug === `${brand.toLowerCase()}-api-credit`));
   }
 });

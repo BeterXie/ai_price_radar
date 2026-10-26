@@ -380,7 +380,7 @@ def delivery_form(text: str) -> str:
         return "verification_service"
     if contains(text, RELAY_MARKERS) and not contains(text, account_markers):
         return "relay_api"
-    if contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度"]):
+    if contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度", "key额度", "key 额度"]):
         return "api_credit"
     if contains(text, TRIAL_MARKERS):
         return "trial_account"

@@ -136,12 +136,14 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string; othe
   ],
   MUSE: [
     { label: "账号 / 成品号", slug: "muse-account", other: true },
+    { label: "API Key / 额度", slug: "muse-api-credit", other: true },
     { label: "邀请码 / 激活码", slug: "muse-invite", other: true },
     { label: "订阅等级待确认", slug: "muse-subscription", other: true },
     { label: "验证 / 接码", slug: "muse-access-service", other: true },
   ],
   JEV: [
     { label: "账号 / 成品号", slug: "jev-account", other: true },
+    { label: "API Key / 额度", slug: "jev-api-credit", other: true },
     { label: "邀请码 / 激活码", slug: "jev-invite", other: true },
     { label: "订阅等级待确认", slug: "jev-subscription", other: true },
     { label: "验证 / 接码", slug: "jev-access-service", other: true },

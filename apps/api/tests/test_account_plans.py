@@ -86,6 +86,9 @@ def test_plan_registration_restores_pro_previously_hidden_by_seed():
 @pytest.mark.parametrize(("title", "category", "description", "slug"), [
     ("【使用7天｜质保7天】Business / Team 标准席位续费码【仅限旧空间续费】", "", "不是5Xteam；可与个人 Plus 共存", "chatgpt-business"),
     ("【使用15天｜质保15天】Business / Team 标准席位激活码【仅限激活新空间】", "OpenAI Pro 20x", "本商品按15天出售", "chatgpt-business"),
+    ("Codex Team 月权益【车位】（正规车位）【可与plus并存，缓解额度不够用问题】（质保订阅 30 天）", "", "", "chatgpt-business"),
+    ("Team 标准席位一日卡，速刷（独享 Plus 同等额度）", "", "", "chatgpt-business"),
+    ("Team 标准席位三日卡，速刷（独享 Plus 同等额度）", "", "", "chatgpt-business"),
     ("Perplexity Max 自助充值月卡(无积分)", "", "Perplexity Max 200刀/月（有 JPT / Claude 模型）", None),
     ("Perplexity Max月卡 200刀 iOS充值", "OpenAI Pro 20x", "支持 ChatGPT Pro 和 Claude Pro", None),
     ("Muse AI 10亿token成品号（类似于SuperGroK bot）", "成品plus区", "支持 Claude、Gemini、GPT", "muse-account"),
@@ -99,6 +102,8 @@ def test_plan_registration_restores_pro_previously_hidden_by_seed():
     ("ChatGPT Pro 500 会员", "OpenAI Pro 20x", "", "chatgpt-pro-500"),
     ("ChatGPT Pro $200 月卡", "OpenAI Pro 5x", "", "chatgpt-pro-200"),
     ("Codex 点数充值 250点数", "OpenAI Pro 20x", "200刀套餐也可充值", None),
+    ("Codex 250额度", "OpenAI Pro 20x", "", None),
+    ("Codex 500刀额度", "OpenAI Pro 20x", "", None),
     ("XG-200刀额度", "", "", None),
     ("Amusement 游戏账号", "", "", None),
     ("Jevons 教程会员", "", "", None),
@@ -113,6 +118,18 @@ def test_plan_registration_restores_pro_previously_hidden_by_seed():
 def test_catalog_brand_and_plan_regressions(source, title, category, description, slug):
     result = classify_product(title, category, description, source_platform=source)
     assert result.slug == slug
+
+
+@pytest.mark.parametrize("source", ["ldxp", "16688"])
+@pytest.mark.parametrize(("title", "slug"), [
+    ("jev官方key额度5刀", "jev-api-credit"),
+    ("JEV 官方 Key 额度 5 刀", "jev-api-credit"),
+    ("Muse AI API Key 额度", "muse-api-credit"),
+])
+def test_new_brand_api_credit_is_not_an_account(source, title, slug):
+    result = classify_product(title, "", source_platform=source)
+    assert result.slug == slug
+    assert result.delivery_type == "api_credit"
 
 
 @pytest.mark.parametrize("source", ["ldxp", "16688"])

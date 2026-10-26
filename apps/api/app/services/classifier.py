@@ -280,7 +280,7 @@ def _delivery_type(text: str) -> str:
         return "verification_service"
     if _contains(text, RELAY_MARKERS) and not _contains(text, account_markers):
         return "relay_api"
-    if _contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度"]):
+    if _contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度", "key额度", "key 额度"]):
         return "api_credit"
     if _contains(text, TRIAL_MARKERS):
         return "trial_account"
@@ -459,7 +459,7 @@ def _detect_brand(title_text: str, category_text: str, description_text: str = "
     if _contains(clean_title, NON_TARGET_PLUS_MARKERS):
         return None
 
-    if re.search(r"\bbusiness\s+team\b", clean_title) and "席位" in clean_title:
+    if re.search(r"(?<![a-z])(?:business|team)(?![a-z])", clean_title) and _contains(clean_title, ["席位", "车位"]):
         return "chatgpt"
 
     if "plus" in clean_title and _contains(clean_title, IMPLICIT_CHATGPT_MARKERS):
@@ -658,6 +658,8 @@ def _classify_identity(
     ])
 
     if brand in {"muse", "jev"}:
+        if re.search(r"(?<![a-z])api(?![a-z])|key\s*额度", title_text):
+            return f"{brand}-api-credit", True
         if _is_chatgpt_service(title_text):
             return f"{brand}-access-service", True
         if _contains(title_text, ["邀请码", "邀请卡", "激活码", "兑换码", "cdk"]):
@@ -707,7 +709,10 @@ def _classify_identity(
         plan = account_plan(brand, title_text, category_text, description_text)
         return plan or "cursor-account", bool(plan) and not plan.endswith(("-account", "-subscription"))
 
-    if _contains(title_text, ["点数", "积分", "额度", "余额"]) and not _contains(title_text, CHATGPT_API_MARKERS):
+    if (
+        _contains(title_text, ["点数", "积分", "余额"])
+        or re.search(r"\d\s*(?:刀|美元|美金)?\s*额度|额度\s*\d", title_text)
+    ) and not _contains(title_text, CHATGPT_API_MARKERS):
         return None, False
 
     if _contains(identity_text, CHATGPT_API_MARKERS):

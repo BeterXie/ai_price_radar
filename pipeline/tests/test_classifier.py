@@ -130,8 +130,13 @@ def test_description_is_only_used_for_tags_and_risks():
     ("JEV 成品账号", "支持 ChatGPT 和 Claude", "jev-account"),
     ("JEV 邀请码", "", "jev-invite"),
     ("JEV Plus 会员月卡", "", "jev-subscription"),
+    ("jev官方key额度5刀", "", "jev-api-credit"),
+    ("Muse AI API Key 额度", "", "muse-api-credit"),
     ("Perplexity Max 自助充值月卡", "200刀/月（有 JPT / Claude 模型）", None),
     ("Business / Team 标准席位续费码", "不是5Xteam，可与个人Plus共存", "chatgpt-business"),
+    ("Codex Team 月权益【车位】（正规车位）【可与plus并存，缓解额度不够用问题】（质保订阅 30 天）", "", "chatgpt-business"),
+    ("Team 标准席位一日卡，速刷（独享 Plus 同等额度）", "", "chatgpt-business"),
+    ("Codex 250额度", "", None),
 ])
 def test_new_brands_and_wrong_assignments_survive_import(source, title, description, expected):
     from common import Base, Offer
@@ -158,6 +163,8 @@ def test_new_brands_and_wrong_assignments_survive_import(source, title, descript
         offer = db.scalar(select(Offer))
         assert offer.product_id == (products[expected].id if expected else None)
         assert offer.approved is bool(expected)
+        if expected and expected.endswith("-api-credit"):
+            assert offer.delivery_type == "api_credit"
         if expected:
             # This raw SKU may have existed before the brand was supported.
             offer.product_id = None

@@ -72,6 +72,7 @@ def product_definitions(definitions: list[tuple]) -> list[tuple]:
     for brand, label in (("muse", "MUSE"), ("jev", "JEV")):
         for suffix, name, kind, subtitle in (
             ("account", "账号", "account", "基础账号、成品号；不按附带模型或 Token 数推断套餐"),
+            ("api-credit", "API Key / 额度", "api", "API Key 与额度商品；不等同于账号订阅"),
             ("invite", "邀请码 / 激活码", "service", "邀请或激活类商品；不等同于付费订阅"),
             ("access-service", "验证 / 接码", "service", "明确用于该品牌的验证与接码服务"),
         ):

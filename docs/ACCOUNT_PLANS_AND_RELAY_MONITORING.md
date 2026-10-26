@@ -12,8 +12,8 @@
 | Cursor | 当前 Plus、Premium、Super、Ultra、Teams 与仍在商品中出现的 Pro、Pro+ 分开；不推断不同版本权益相同 | [Pricing](https://cursor.com/pricing)、[Models and pricing](https://cursor.com/docs/models-and-pricing) |
 | Grok | 当前 Plus、Premium、Super、Ultra 分开；商家仍标注 SuperGrok、SuperGrok Heavy 时保留独立分类；X Premium 是另一个产品系列 | [xAI Pricing](https://x.ai/pricing) |
 | X | The X Subscription 的 Plus、Premium、Super、Ultra、Teams、Enterprise 与原 Basic、X Premium、Premium+ 分开；明确写“统一订阅”时才将 Premium 归入新套餐 | [The X Subscription](https://docs.x.ai/x-subscription/overview)、[X Premium](https://help.x.com/en/using-x/x-premium) |
-| MUSE | 接入链动小铺与 16688 中明确标注 Muse / Muse AI / muse.ai 的账号、邀请码、订阅及接码。公开官网未列明套餐，不能用“10亿 Token”或“类似 SuperGrok”推断等级 | [Muse 官网](https://muse.ai/) |
-| JEV | 接入商品原文明确标注 JEV 的账号、邀请码、订阅及接码；品牌词设英文边界，避免误匹配 Jevons 等词。尚无已核验官网套餐，暂不创建猜测等级 | 待补官方来源 |
+| MUSE | 接入链动小铺与 16688 中明确标注 Muse / Muse AI / muse.ai 的账号、邀请码、订阅、API 额度及接码。公开官网未列明套餐，不能用“10亿 Token”或“类似 SuperGrok”推断等级 | [Muse 官网](https://muse.ai/) |
+| JEV | 接入商品原文明确标注 JEV 的账号、邀请码、订阅、API 额度及接码；品牌词设英文边界，避免误匹配 Jevons 等词。尚无已核验官网套餐，暂不创建猜测等级 | 待补官方来源 |
 
 Grok 和 Cursor 的官网当前包含 Teams / Enterprise。The X Subscription 将 Grok、Cursor 与 X 统一，但切换并非强制；旧套餐的价格与功能在切换或取消前继续，因此旧 Pro / Pro+、SuperGrok 和 X Premium 不能直接映射成新套餐。
 
@@ -40,7 +40,7 @@ python scripts/reclassify_account_offers.py --apply
 
 链动小铺和 16688 中以前未识别、仍 active、没有隐藏原因或人工锁定的原始商品，在重分类或下一次同步确认后自动进入公开目录。手动隐藏和手动归类不会被自动恢复。部署时此改动涉及 crawler / pipeline，需要重建相应服务，并完成 runbook 要求的一次完整目录刷新，刷新成功后才恢复定时任务。
 
-本地验证覆盖分类、导入、后台重分类与价格逻辑的 574 项回归，以及来源发现的 21 项测试、前端套餐的 2 项测试和 TypeScript 类型检查。线上公开数据与截图中的 26 条商品用于本地演练，修复后再次预览无分类变化。Ferdium 页面验证确认四条 Business / Team 席位与 MUSE 商品进入正确品牌和分类；JEV 尚无可核验的公开商品样本，页面保留空状态。
+本地验证覆盖分类、导入、后台重分类与价格逻辑，以及来源发现、前端套餐和 TypeScript 类型检查。线上公开数据与截图中的 26 条商品用于本地演练，修复后再次预览无分类变化。Ferdium 页面验证确认四条 Business / Team 席位与 MUSE 商品进入正确品牌和分类。2026-10-27 生产只读预览另发现两条真实 JEV 商品“jev官方key额度5刀”（报价 15343、15345），应归入 API Key / 额度，不作为账号订阅；已补充分类及导入回归。含“额度不够用”或“独享 Plus 同等额度”的 Team 席位仍属于 Business，具体数额的 Codex 额度包继续排除在账号套餐外。
 
 ## 搜索与筛选
 
