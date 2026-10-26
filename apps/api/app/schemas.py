@@ -1754,9 +1754,20 @@ class RelayHealthOut(BaseModel):
 
 
 class RelaySubmissionCreate(RelayStationBase):
+    tagline: str = Field(min_length=1, max_length=160)
+    description: str = Field(min_length=1, max_length=2000)
+    price_note: str = Field(min_length=1, max_length=200)
+    billing_note: str = Field(min_length=1, max_length=120)
     contact: str = Field(min_length=3, max_length=200)
     note: str = Field(default="", max_length=1000)
     authorization_confirmed: Literal[True]
+
+    @field_validator("tagline", "description", "price_note", "billing_note")
+    @classmethod
+    def require_public_profile(cls, value: str) -> str:
+        if not value:
+            raise ValueError("请完整填写中转站公开展示资料")
+        return value
 
     @field_validator("contact")
     @classmethod

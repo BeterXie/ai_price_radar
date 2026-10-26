@@ -55,6 +55,8 @@ def payload(**values):
         "name": "测试中转站", "url": "https://relay.example.com",
         "base_url": "https://api.example.com/proxy/v1/", "api_key": KEY,
         "probe_model": "test-model", "probe_protocol": "openai",
+        "tagline": "多模型统一接入", "description": "提供公开 API 接入，余额长期有效。",
+        "price_note": "按官网公示模型价格计费", "billing_note": "预付费，按量计费",
         "contact": "owner@example.com", "authorization_confirmed": True,
         **values,
     }
@@ -155,7 +157,14 @@ class FakeClient:
 def test_submission_is_private_until_approved_and_duplicates_cannot_replace_key(relay_api):
     client, factory = relay_api
     private_note = "仅管理员可见的申请说明"
-    response = client.post("/api/v1/relay-requests", json=payload(is_enabled=True, is_sponsored=True, note=private_note))
+    profile = {
+        "tagline": " 多模型统一接入 ", "description": " 接入 OpenAI 与 Claude\n余额长期有效，退款规则见官网。 ",
+        "supported_models": [" model-a ", "model-b", "model-a"],
+        "tags": [" 支持支付宝 ", "余额不过期", "支持支付宝"],
+        "price_note": " 官方价 0.7 折起 ", "billing_note": " 按量计费 / 包月套餐 ",
+    }
+    expected_profile = {**{key: value.strip() for key, value in profile.items() if isinstance(value, str)}, "supported_models": ["model-a", "model-b"], "tags": ["支持支付宝", "余额不过期"]}
+    response = client.post("/api/v1/relay-requests", json=payload(**profile, is_enabled=True, is_sponsored=True, note=private_note))
     assert response.status_code == 201, response.text
     station_id = response.json()["request_id"]
     assert client.get("/api/v1/relays").json()["items"] == []
@@ -165,6 +174,7 @@ def test_submission_is_private_until_approved_and_duplicates_cannot_replace_key(
         assert not station.is_enabled and not station.is_sponsored
         assert station.base_url == "https://api.example.com/proxy/v1"
         assert station.submission_note == private_note
+        assert {key: getattr(station, key) for key in expected_profile} == expected_profile
         assert station.encrypted_api_key.startswith("enc:v1:")
         assert decrypt_secret(station.encrypted_api_key) == KEY
     duplicate = client.post("/api/v1/relay-requests", json=payload(api_key="another-key"))
@@ -174,12 +184,14 @@ def test_submission_is_private_until_approved_and_duplicates_cannot_replace_key(
     assert admin.status_code == 200
     assert admin.json()[0]["has_api_key"] is True
     assert admin.json()[0]["submission_note"] == private_note
+    assert {key: admin.json()[0][key] for key in expected_profile} == expected_profile
     assert KEY not in admin.text and "encrypted_api_key" not in admin.text
     approved = client.patch(f"/api/v1/admin/relays/{station_id}", headers=ADMIN, json={"review_status": "approved", "is_enabled": True})
     assert approved.status_code == 200, approved.text
     public_response = client.get("/api/v1/relays")
     public = public_response.json()["items"][0]
     assert public["health"]["status"] == "not_checked"
+    assert {key: public[key] for key in expected_profile} == expected_profile
     assert not {"base_url", "api_key", "contact_email", "submitted_by", "submission_note"}.intersection(public)
     assert private_note not in public_response.text
     with factory() as db:
@@ -197,6 +209,35 @@ def test_submission_requires_owner_email_and_credentials(relay_api):
     assert client.post("/api/v1/relay-requests", json=payload(contact="someone@example.com")).status_code == 403
     assert client.post("/api/v1/relay-requests", json=payload(api_key="")).status_code == 422
     assert client.post("/api/v1/relay-requests", json=payload(authorization_confirmed=False)).status_code == 422
+
+
+@pytest.mark.parametrize("field", ["tagline", "description", "price_note", "billing_note"])
+@pytest.mark.parametrize("value", [None, "", " \n "])
+def test_submission_requires_complete_public_profile(relay_api, field, value):
+    client, factory = relay_api
+    request = payload()
+    if value is None:
+        request.pop(field)
+    else:
+        request[field] = value
+    response = client.post("/api/v1/relay-requests", json=request)
+    assert response.status_code == 422
+    assert any(field in error["loc"] for error in response.json()["detail"])
+    with factory() as db:
+        assert db.scalar(select(RelayStation)) is None
+
+
+@pytest.mark.parametrize("values", [
+    {"tagline": "a" * 161}, {"description": "a" * 2001},
+    {"price_note": "a" * 201}, {"billing_note": "a" * 121},
+    {"supported_models": [f"model-{n}" for n in range(41)]}, {"supported_models": ["m" * 61]},
+    {"tags": [f"tag-{n}" for n in range(13)]}, {"tags": ["t" * 31]},
+])
+def test_submission_rejects_profile_over_limits_without_exposing_key(relay_api, values):
+    client, _ = relay_api
+    response = client.post("/api/v1/relay-requests", json=payload(**values))
+    assert response.status_code == 422
+    assert KEY not in response.text
 
 
 def test_invalid_submission_never_echoes_key_in_validation_errors(relay_api):
