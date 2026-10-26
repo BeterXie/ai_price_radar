@@ -14,9 +14,9 @@ def event(payload):
     ("openai", {"usage": {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 0}}}, (100, 0)),
     ("anthropic", {"usage": {"input_tokens": 10, "cache_read_input_tokens": 80, "cache_creation_input_tokens": 10}}, (100, 80)),
     ("gemini", {"usageMetadata": {"promptTokenCount": 100, "cachedContentTokenCount": 80}}, (100, 80)),
-    ("openai", {"usage": {"prompt_tokens": 100}}, (None, None)),
+    ("openai", {"usage": {"prompt_tokens": 100}}, (100, None)),
     ("anthropic", {"usage": {"input_tokens": 100}}, (None, None)),
-    ("gemini", {"usageMetadata": {"promptTokenCount": 100}}, (None, None)),
+    ("gemini", {"usageMetadata": {"promptTokenCount": 100}}, (100, None)),
     ("openai", {"usage": {"prompt_tokens": 100, "prompt_tokens_details": {"cached_tokens": 101}}}, (None, None)),
     ("gemini", {"usageMetadata": {"promptTokenCount": True, "cachedContentTokenCount": 0}}, (None, None)),
     ("anthropic", {"usage": {"input_tokens": 2_147_483_647, "cache_read_input_tokens": 5}}, (None, None)),
@@ -56,6 +56,17 @@ def test_anthropic_usage_survives_output_only_message_delta():
     stream.feed(event({"type": "message_stop"}))
     assert stream.healthy
     assert (stream.input_tokens, stream.cached_input_tokens) == (200, 80)
+
+
+def test_sparse_openai_usage_keeps_input_count_without_inventing_cache():
+    stream = ProbeStream("openai", 0)
+    stream.feed(event({"choices": [], "usage": {"prompt_tokens": 12}}))
+    assert (stream.input_tokens, stream.cached_input_tokens) == (12, None)
+    stream.feed(event({"choices": [], "usage": {"prompt_tokens": 12, "prompt_tokens_details": {"cached_tokens": 5}}}))
+    stream.feed(event({"choices": [], "usage": {"prompt_tokens": 12}}))
+    assert (stream.input_tokens, stream.cached_input_tokens) == (12, 5)
+    stream.feed(event({"choices": [], "usage": {"prompt_tokens": 15}}))
+    assert (stream.input_tokens, stream.cached_input_tokens) == (15, None)
 
 
 def test_gemini_thoughts_are_not_first_output_and_usage_is_not_summed():

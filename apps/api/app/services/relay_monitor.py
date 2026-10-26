@@ -18,6 +18,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from ..models import RelayProbeResult, RelayStation
 from ..schemas import RelayHealthOut, RelayProbeSampleOut, RelayStationOut
 from .credential_crypto import decrypt_secret, encrypt_secret
+from .relay_key_usage import probe_usage, read_key_usage
 from .relay_probe_metrics import ProbeStream, input_usage
 
 logger = logging.getLogger(__name__)
@@ -188,7 +189,7 @@ def _has_completion(protocol: str, payload: object) -> bool:
     )
 
 
-def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None) -> RelayProbeResult | None:
+def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None, usage_client=None) -> RelayProbeResult | None:
     """One bounded completion; neither responses nor exceptions containing secrets are saved."""
     from price_radar_http import PinnedHTTPSClient
 
@@ -202,12 +203,20 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
     checked_at = datetime.now(timezone.utc)
     http_status = None
     connect_latency_ms = first_token_ms = input_tokens = cached_input_tokens = None
+    before = None
+    usage_client = usage_client or client
     try:
         key = decrypt_secret(station.encrypted_api_key)
         if not (key and station.base_url and station.probe_model):
             status = "config_error"
         else:
+            if station.probe_protocol == "openai":
+                # The current response may omit cache details even if the last
+                # sample had them. Capture its baseline before every probe.
+                before = read_key_usage(station.base_url, key, client=usage_client)
             url, payload, headers = _probe_request(station, key)
+            started = time.monotonic()
+            checked_at = datetime.now(timezone.utc)
             client = client or PinnedHTTPSClient(
                 max_response_bytes=64 * 1024, max_task_bytes=64 * 1024,
                 # Model queues can take over 15s before returning headers or
@@ -249,10 +258,20 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
         status = "connection_error"
     except RuntimeError:
         status = "credential_error"
+    latency_ms = max(0, round((time.monotonic() - started) * 1000))
+    if status == "healthy" and cached_input_tokens is None and input_tokens is not None and before is not None:
+        # Read fresh counters after the model call. One bounded retry allows
+        # for asynchronous usage writes; failures leave cache usage unknown.
+        for attempt in range(2):
+            after = read_key_usage(station.base_url, key, client=usage_client)
+            _, cached_input_tokens = probe_usage(before, after, input_tokens)
+            if cached_input_tokens is not None or after != before or attempt:
+                break
+            time.sleep(.25)
     result = RelayProbeResult(
         station_id=station.id, revision=station.monitor_revision,
         checked_at=checked_at, status=status, http_status=http_status,
-        latency_ms=max(0, round((time.monotonic() - started) * 1000)),
+        latency_ms=latency_ms,
         connect_latency_ms=connect_latency_ms, first_token_ms=first_token_ms,
         input_tokens=input_tokens, cached_input_tokens=cached_input_tokens,
     )

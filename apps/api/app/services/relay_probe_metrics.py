@@ -32,8 +32,10 @@ def input_usage(protocol: str, payload: dict) -> tuple[int | None, int | None]:
         total = _token_count(usage.get("prompt_tokens"))
         details = usage.get("prompt_tokens_details")
         read = _token_count(details.get("cached_tokens")) if isinstance(details, dict) else None
-    if total is None or read is None or read > total:
+    if total is None or (read is not None and read > total):
         return None, None
+    # Keep a reported inclusive input count even if the cache breakdown is
+    # absent. A separate accounting check may supply it; absence is never zero.
     return total, read
 
 
@@ -132,5 +134,5 @@ class ProbeStream:
             if self.first_token_ms is None:
                 self.first_token_ms = max(0, round((time.monotonic() - self.started) * 1000))
         total, cached = input_usage(self.protocol, usage_payload)
-        if total is not None:
+        if total is not None and (cached is not None or total != self.input_tokens):
             self.input_tokens, self.cached_input_tokens = total, cached

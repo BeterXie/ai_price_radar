@@ -140,9 +140,13 @@ class FakeClient:
         self.error = error
         self.calls = []
         self.model_calls = []
+        self.usage_calls = []
 
     def get(self, url, *, headers, accept):
         from price_radar_http import PinnedResponse
+        if url.endswith("/usage"):
+            self.usage_calls.append(url)
+            return PinnedResponse(404, {}, b"{}")
         self.model_calls.append(url)
         return PinnedResponse(200, {}, b'{"data":[{"id":"test-model"}]}')
 
@@ -411,7 +415,7 @@ def test_probe_allows_slow_model_headers_but_bounds_idle_and_total_time(
         configure_relay(db, station, {}, SecretStr(KEY))
         db.add(station)
         db.commit()
-        result = probe_relay(db, station)
+        result = probe_relay(db, station, usage_client=FakeClient())
         assert result.status == expected
         assert result.latency_ms == elapsed_ms
         assert result.first_token_ms == (16000 if expected == "healthy" else None)
@@ -510,7 +514,7 @@ def test_streaming_probe_persists_measured_timings_and_usage_only(relay_api, mon
     clock = [100.0]
     monkeypatch.setattr("app.services.relay_monitor.time.monotonic", lambda: clock[0])
 
-    class StreamingClient:
+    class StreamingClient(FakeClient):
         def post_json(self, url, body, *, headers, accept, on_chunk):
             assert accept == "text/event-stream"
             assert body["stream"] is True and body["stream_options"]["include_usage"] is True
@@ -540,6 +544,106 @@ def test_streaming_probe_persists_measured_timings_and_usage_only(relay_api, mon
         assert result.latency_ms == 230
         assert result.input_tokens == 100 and result.cached_input_tokens == 25
         assert KEY not in relay_health(db, station).model_dump_json()
+
+
+@pytest.mark.parametrize("streaming", [True, False])
+@pytest.mark.parametrize(("counter_updates", "expected", "after_error", "direct_cache", "lag"), [
+    ({"input_tokens": 112}, 0, None, None, False),
+    ({"input_tokens": 102, "cache_read_tokens": 30}, 10, None, None, False),
+    ({"input_tokens": 112, "requests": 12}, None, None, None, False),
+    ({"input_tokens": 113}, None, None, None, False),
+    ({"input_tokens": 112}, None, TimeoutError("private upstream error"), None, False),
+    ({"input_tokens": 112}, 5, None, 5, False),
+    ({"input_tokens": 112}, 0, None, None, True),
+])
+def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timings(
+    relay_api, monkeypatch, streaming, counter_updates, expected, after_error, direct_cache, lag,
+):
+    from price_radar_http import PinnedResponse
+
+    _, factory = relay_api
+    clock = [100.0]
+    monkeypatch.setattr("app.services.relay_monitor.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("app.services.relay_monitor.time.sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    baseline = {"requests": 10, "input_tokens": 100, "cache_read_tokens": 20, "cache_creation_tokens": 0}
+    snapshots = [baseline]
+    if lag:
+        snapshots.append(baseline)
+    snapshots.append({**baseline, "requests": 11, **counter_updates})
+
+    class Accounting:
+        calls = 0
+
+        def get(self, url, *, headers, accept):
+            assert url == "https://api.example.com/proxy/v1/usage"
+            assert headers == {"Authorization": "Bearer " + KEY}
+            clock[0] += 2  # Supplemental requests must not affect model latency.
+            self.calls += 1
+            if self.calls > 1 and after_error:
+                raise after_error
+            return PinnedResponse(200, {}, json.dumps({"usage": {"total": snapshots.pop(0)}}).encode())
+
+    class Completion:
+        def post_json(self, url, body, *, headers, accept, on_chunk):
+            clock[0] += .13
+            on_chunk(b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\n')
+            clock[0] += .1
+            usage = {"prompt_tokens": 12}
+            if direct_cache is not None:
+                usage["prompt_tokens_details"] = {"cached_tokens": direct_cache}
+            if not streaming:
+                return PinnedResponse(200, {"content-type": "application/json"}, json.dumps({
+                    "choices": [{"message": {"content": "OK"}}], "usage": usage,
+                }).encode(), 12)
+            on_chunk(b"data: " + json.dumps({"choices": [], "usage": usage}).encode() + b"\n\ndata: [DONE]\n\n")
+            return PinnedResponse(200, {"content-type": "text/event-stream"}, b"", 12)
+
+    with factory() as db:
+        station = RelayStation(name="Sparse usage", base_url="https://api.example.com/proxy/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        accounting = Accounting()
+        result = probe_relay(db, station, client=Completion(), usage_client=accounting)
+        assert result.status == "healthy"
+        assert result.input_tokens == 12 and result.cached_input_tokens == expected
+        assert result.latency_ms == 230 and result.first_token_ms == (130 if streaming else None) and result.connect_latency_ms == 12
+        assert accounting.calls == (1 if direct_cache is not None else 3 if lag else 2)
+        health = relay_health(db, station)
+        assert health.cache_sample_count_24h == (0 if expected is None else 1)
+        assert health.cache_hit_rate_24h == (None if expected is None else round(expected / 12 * 100, 2))
+        assert KEY not in health.model_dump_json()
+
+
+def test_consecutive_sparse_probes_each_collect_their_own_cache_sample(relay_api):
+    from price_radar_http import PinnedResponse
+
+    _, factory = relay_api
+
+    class Accounting:
+        calls = 0
+
+        def get(self, url, *, headers, accept):
+            requests = (self.calls + 1) // 2
+            self.calls += 1
+            return PinnedResponse(200, {}, json.dumps({"usage": {"total": {
+                "requests": requests, "input_tokens": requests * 12,
+                "cache_read_tokens": 0, "cache_creation_tokens": 0,
+            }}}).encode())
+
+    with factory() as db:
+        station = RelayStation(name="Consecutive", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        accounting = Accounting()
+        completion = FakeClient(body={"choices": [{"message": {"content": "OK"}}], "usage": {"prompt_tokens": 12}})
+        for _ in range(3):
+            result = probe_relay(db, station, client=completion, usage_client=accounting)
+            assert result.status == "healthy" and result.cached_input_tokens == 0
+        assert accounting.calls == 6 and len(completion.calls) == 3
+        health = relay_health(db, station)
+        assert health.cache_sample_count_24h == 3 and health.cache_hit_rate_24h == 0
 
 
 def test_worker_claims_once_and_never_probes_unapproved_stations(relay_api, monkeypatch):
