@@ -6,7 +6,7 @@ import { RelayHealthPanel } from "../components/relay-health.tsx";
 
 test("benchmark renders zero distinctly from unknown and shows both denominators", () => {
   const health = {
-    cache_hit_rate_24h: 0, cache_sample_count_24h: 2, cache_attempt_count_24h: 3,
+    cache_hit_rate_24h: 0, cache_sample_count_24h: 3, cache_attempt_count_24h: 4,
     candy_pass_rate_24h: 0, candy_sample_count_24h: 2, candy_passed_count_24h: 0,
     candy_inconclusive_count_24h: 1, candy_verdict: "failed", candy_answer: "29",
   };
@@ -14,8 +14,19 @@ test("benchmark renders zero distinctly from unknown and shows both denominators
   const html = render(health);
   assert.match(html, /糖果测试通过率/);
   assert.match(html, /重复输入缓存率/);
-  assert.match(html, /糖果：0\/2 次通过 · 1 次无法判定；缓存：2\/3 次用量完整/);
+  assert.match(html, /糖果：0\/2 次通过 · 1 次无法判定；缓存：3\/4 次用量完整 · 去极值后 1 次均值/);
   assert.match(html, /最近：未通过（29）/);
   assert.equal((html.match(/<dd>0%<\/dd>/g) || []).length, 2);
   assert.doesNotMatch(render({ ...health, cache_hit_rate_24h: null, candy_pass_rate_24h: null }), /<dd>0%<\/dd>/);
+});
+
+test("cache rate distinguishes insufficient samples from no data", () => {
+  for (const count of [0, 1, 2]) {
+    const html = renderToStaticMarkup(createElement(RelayHealthPanel, {
+      health: { cache_hit_rate_24h: null, cache_sample_count_24h: count, cache_attempt_count_24h: count }, now: 0,
+    }));
+    assert.match(html, /满 3 次后计算去极值均值/);
+    assert.match(html, count ? /<dd>样本不足<\/dd>/ : /<dd>暂无数据<\/dd>/);
+    assert.doesNotMatch(html, /<dd>0%<\/dd>/);
+  }
 });

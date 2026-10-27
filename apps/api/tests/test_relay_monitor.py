@@ -483,7 +483,7 @@ def test_metric_rollups_use_own_windows_known_usage_and_current_revision(relay_a
         db.add(station)
         db.flush()
         now = datetime.now(timezone.utc)
-        # Cache ratio is token weighted: (800 + 4800) / (1600 + 6400).
+        # Only two valid cache samples remain; a trimmed mean needs three.
         for age, status, total, cached, first, revision in [
             (1, "healthy", 1600, 800, 100, 2),
             (2, "healthy", 6400, 4800, 300, 2),
@@ -501,10 +501,49 @@ def test_metric_rollups_use_own_windows_known_usage_and_current_revision(relay_a
         assert health.sample_count_24h == 4 and health.success_rate_24h == 75
         assert health.sample_count_7d == 6 and health.availability_7d == 66.67
         assert health.diagnostic_count_7d == 1
-        assert health.cache_hit_rate_24h == 70 and health.cache_sample_count_24h == 2
+        assert health.cache_hit_rate_24h is None and health.cache_sample_count_24h == 2
         assert health.first_token_p50_ms == 200 and health.first_token_sample_count_24h == 2
         assert health.connect_latency_ms == 25
         assert len(health.recent_samples) == 7
+
+
+@pytest.mark.parametrize(("usage", "expected"), [
+    ([], None),
+    ([(1600, 800)], None),
+    ([(1600, 800), (6400, 4800)], None),
+    ([(2000, 2000), (2000, 0), (2000, 1000)], 50),
+    # Different input lengths: equal per-request weight, not token weight.
+    ([(10000, 10000), (20000, 4000), (100000, 60000), (2000, 0)], 40),
+    # Repeated extremes lose exactly one observation from either end.
+    ([(4585, 4352), (4585, 0), (4585, 0), (4585, 4352), (4585, 4352)], 63.28),
+    ([(2000, 2000)] * 4, 100),
+    ([(2000, 0)] * 4, 0),
+])
+def test_cache_rate_trims_one_extreme_each_then_averages_requests(relay_api, usage, expected):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Trimmed cache", monitor_enabled=True, monitor_revision=1)
+        db.add(station)
+        db.flush()
+        for total, cached in usage:
+            db.add(RelayProbeResult(
+                station_id=station.id, revision=1, status="healthy", latency_ms=10,
+                benchmark_version=BENCHMARK_VERSION, cache_probe_status="healthy",
+                input_tokens=total, cached_input_tokens=cached,
+            ))
+        # Unknown, short and invalid counts cannot supply the missing third
+        # sample or change which valid observations are trimmed.
+        for total, cached in [(2000, None), (100, 100), (2000, 2001), (2000, -1)]:
+            db.add(RelayProbeResult(
+                station_id=station.id, revision=1, status="healthy", latency_ms=10,
+                benchmark_version=BENCHMARK_VERSION, cache_probe_status="healthy",
+                input_tokens=total, cached_input_tokens=cached,
+            ))
+        db.commit()
+        health = relay_health(db, station)
+        assert health.cache_hit_rate_24h == expected
+        assert health.cache_sample_count_24h == len(usage)
+        assert len(list(db.scalars(select(RelayProbeResult)))) == len(usage) + 4
 
 
 @pytest.mark.parametrize("truncated", [False, True])
@@ -614,7 +653,7 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
         assert accounting.calls == (3 if direct_cache is not None else 5 if lag else 4)
         health = relay_health(db, station)
         assert health.cache_sample_count_24h == (0 if expected is None else 1)
-        assert health.cache_hit_rate_24h == (None if expected is None else round(expected / 1200 * 100, 2))
+        assert health.cache_hit_rate_24h is None  # One sample is not a trimmed mean.
         assert KEY not in health.model_dump_json()
 
 
@@ -772,7 +811,7 @@ def test_pair_scores_first_answer_only_and_measures_only_repeat(relay_api, answe
         assert health.candy_pass_rate_24h == (100 if verdict == "passed" else 0 if verdict == "failed" else None)
         assert health.cache_attempt_count_24h == 1
         assert health.cache_sample_count_24h == (1 if cache_status == "healthy" else 0)
-        assert health.cache_hit_rate_24h == (round(cached / total * 100, 2) if cache_status == "healthy" else None)
+        assert health.cache_hit_rate_24h is None  # One sample is not a trimmed mean.
 
 
 def test_first_failure_skips_repeat_and_legacy_cache_is_excluded(relay_api):

@@ -5,7 +5,7 @@ import json
 import logging
 import math
 import time
-from statistics import median
+from statistics import mean, median
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPException
@@ -114,7 +114,10 @@ def relay_health(db: Session, station: RelayStation) -> RelayHealthOut:
         and row.input_tokens is not None and row.input_tokens >= MIN_CACHE_INPUT_TOKENS
         and row.cached_input_tokens is not None and 0 <= row.cached_input_tokens <= row.input_tokens
     )]
-    input_total = sum(row.input_tokens for row in cache_samples)
+    # Trim one observation at each end, including ties. Keep the raw samples
+    # and average the remaining per-request rates with equal weight.
+    cache_rates = sorted(row.cached_input_tokens / row.input_tokens for row in cache_samples)
+    trimmed_cache_rates = cache_rates[1:-1]
     return RelayHealthOut(
         status=status,
         checked_at=checked,
@@ -125,7 +128,7 @@ def relay_health(db: Session, station: RelayStation) -> RelayHealthOut:
         availability_7d=round(sum(row.status == "healthy" for row in valid_7d) / len(valid_7d) * 100, 2) if valid_7d else None,
         sample_count_7d=len(valid_7d),
         diagnostic_count_7d=len(rows) - len(valid_7d),
-        cache_hit_rate_24h=round(sum(row.cached_input_tokens for row in cache_samples) / input_total * 100, 2) if input_total else None,
+        cache_hit_rate_24h=round(mean(trimmed_cache_rates) * 100, 2) if trimmed_cache_rates else None,
         cache_sample_count_24h=len(cache_samples),
         cache_attempt_count_24h=sum(row.cache_probe_status not in (None, "skipped") for row in benchmarks),
         cache_probe_status=latest.cache_probe_status if latest else None,
