@@ -702,7 +702,8 @@ table { font-variant-numeric: tabular-nums; }
 .relay-probe-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.6875rem; color: var(--muted); }
 .relay-protocol { flex: none; border-radius: 4px; padding: 2px 5px; background: var(--subtle); color: var(--muted); font-size: 0.625rem; }
 .relay-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
-.relay-metrics > div { min-width: 0; grid-column: span 2; padding: 10px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--subtle); }
+.relay-metrics > div { min-width: 0; grid-column: span 3; padding: 10px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--subtle); }
+.relay-benchmark-caption { margin-top: 8px; color: var(--muted); font-size: 0.625rem; line-height: 1.6; }
 .relay-metrics > [data-primary="true"] { grid-column: span 3; }
 .relay-metrics dt { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; color: var(--muted); font-size: 0.5625rem; line-height: 1.5; }
 .relay-metrics dt svg { flex: none; }
@@ -751,7 +752,7 @@ table { font-variant-numeric: tabular-nums; }
 .relay-list-price { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 0.8125rem; font-weight: 600; line-height: 1.4; }
 .relay-list-billing { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 0.625rem; line-height: 1.4; }
 .relay-list-item .relay-health-panel { margin-top: 8px; }
-.relay-list-item .relay-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; }
+.relay-list-item .relay-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; }
 .relay-list-item .relay-metrics > div { grid-column: auto; padding: 0 12px; border-width: 0 0 0 1px; border-radius: 0; background: transparent; }
 .relay-list-item .relay-metrics > div:first-child { padding-left: 0; border-left: 0; }
 .relay-list-item .relay-metrics dd { margin-top: 2px; font-size: 0.9375rem; }
@@ -773,7 +774,7 @@ table { font-variant-numeric: tabular-nums; }
   .relay-directory-actions { gap: 8px; }
   .relay-directory-actions > span { flex-basis: 100%; order: 1; }
   .relay-list-item .relay-metrics { gap: 8px 0; grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .relay-list-item .relay-metrics > div { grid-column: span 2; padding: 0 6px; }
+  .relay-list-item .relay-metrics > div { grid-column: span 3; padding: 0 6px; }
   .relay-list-item .relay-metrics > [data-primary="true"] { grid-column: span 3; }
   .relay-list-item .relay-metrics > div:nth-child(3) { padding-left: 0; border-left: 0; }
   .relay-price { font-size: 0.9375rem; }

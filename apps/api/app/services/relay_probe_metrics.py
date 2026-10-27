@@ -1,4 +1,4 @@
-"""Read bounded probe SSE events; retain only timings and reported token counts."""
+"""Read bounded probe SSE events and final text, excluding hidden reasoning."""
 from __future__ import annotations
 
 import json
@@ -43,6 +43,39 @@ def _has_text(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def completion_text(protocol: str, payload: dict, *, streaming: bool = False) -> str:
+    if protocol == "anthropic":
+        if streaming:
+            block = payload.get("delta") if payload.get("type") == "content_block_delta" else payload.get("content_block")
+            return block.get("text", "") if isinstance(block, dict) and block.get("type") in ("text", "text_delta") and isinstance(block.get("text"), str) else ""
+        parts = payload.get("content")
+    elif protocol == "gemini":
+        candidates = payload.get("candidates")
+        first = candidates[0] if isinstance(candidates, list) and candidates else {}
+        content = first.get("content") if isinstance(first, dict) else None
+        parts = content.get("parts") if isinstance(content, dict) else None
+    else:
+        choices = payload.get("choices")
+        first = choices[0] if isinstance(choices, list) and choices else {}
+        message = first.get("delta" if streaming else "message") if isinstance(first, dict) else None
+        parts = message.get("content") if isinstance(message, dict) else None
+        if isinstance(parts, str):
+            return parts
+    return "".join(part["text"] for part in parts if isinstance(part, dict) and not part.get("thought") and part.get("type", "text") == "text" and isinstance(part.get("text"), str)) if isinstance(parts, list) else ""
+
+
+def output_truncated(protocol: str, payload: dict) -> bool:
+    if protocol == "anthropic":
+        delta = payload.get("delta")
+        reason = delta.get("stop_reason") if isinstance(delta, dict) else payload.get("stop_reason")
+        return reason is not None and reason not in ("end_turn", "stop_sequence")
+    rows = payload.get("candidates" if protocol == "gemini" else "choices")
+    return any(
+        isinstance(row, dict) and row.get("finishReason" if protocol == "gemini" else "finish_reason") not in (None, "STOP" if protocol == "gemini" else "stop")
+        for row in rows
+    ) if isinstance(rows, list) else False
+
+
 class ProbeStream:
     def __init__(self, protocol: str, started: float):
         self.protocol = protocol
@@ -55,6 +88,8 @@ class ProbeStream:
         self.first_token_ms: int | None = None
         self.input_tokens: int | None = None
         self.cached_input_tokens: int | None = None
+        self.answer = ""
+        self.answer_truncated = False
 
     @property
     def healthy(self) -> bool:
@@ -95,6 +130,9 @@ class ProbeStream:
         if not isinstance(payload, dict) or payload.get("error") or payload.get("type") == "error":
             self.invalid = True
             return
+        answer = completion_text(self.protocol, payload, streaming=True)
+        self.answer_truncated |= output_truncated(self.protocol, payload) or len(self.answer) + len(answer) > 512
+        self.answer = (self.answer + answer)[:512]
         text = False
         usage_payload = payload
         if self.protocol == "anthropic":

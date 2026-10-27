@@ -1744,6 +1744,14 @@ class RelayHealthOut(BaseModel):
     diagnostic_count_7d: int = 0
     cache_hit_rate_24h: float | None = None
     cache_sample_count_24h: int = 0
+    cache_attempt_count_24h: int = 0
+    cache_probe_status: str | None = None
+    candy_pass_rate_24h: float | None = None
+    candy_sample_count_24h: int = 0
+    candy_passed_count_24h: int = 0
+    candy_inconclusive_count_24h: int = 0
+    candy_verdict: str | None = None
+    candy_answer: str | None = None
     first_token_p50_ms: int | None = None
     first_token_sample_count_24h: int = 0
     success_rate_24h: float | None = None

@@ -679,3 +679,7 @@ class RelayProbeResult(Base):
     first_token_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cached_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    benchmark_version: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    candy_verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    candy_answer: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    cache_probe_status: Mapped[str | None] = mapped_column(String(30), nullable=True)

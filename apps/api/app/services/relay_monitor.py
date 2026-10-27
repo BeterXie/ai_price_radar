@@ -18,8 +18,9 @@ from sqlalchemy.orm.attributes import flag_modified
 from ..models import RelayProbeResult, RelayStation
 from ..schemas import RelayHealthOut, RelayProbeSampleOut, RelayStationOut
 from .credential_crypto import decrypt_secret, encrypt_secret
+from .relay_benchmark import BENCHMARK_PROMPT, BENCHMARK_VERSION, MIN_CACHE_INPUT_TOKENS, candy_answer
 from .relay_key_usage import probe_usage, read_key_usage
-from .relay_probe_metrics import ProbeStream, input_usage
+from .relay_probe_metrics import ProbeStream, completion_text, input_usage, output_truncated
 
 logger = logging.getLogger(__name__)
 PROBE_INTERVAL = timedelta(hours=1)
@@ -102,10 +103,15 @@ def relay_health(db: Session, station: RelayStation) -> RelayHealthOut:
         status = "stale"
     if not station.monitor_enabled:
         status = "disabled"
-    latencies = sorted(row.latency_ms for row in successes)
-    first_tokens = [row.first_token_ms for row in successes if row.first_token_ms is not None]
-    cache_samples = [row for row in successes if (
-        row.input_tokens is not None and row.input_tokens > 0
+    benchmarks = [row for row in rows_24h if row.benchmark_version == BENCHMARK_VERSION]
+    benchmark_successes = [row for row in benchmarks if row.status == "healthy"]
+    candy_samples = [row for row in benchmarks if row.candy_verdict in ("passed", "failed")]
+    candy_passed = sum(row.candy_verdict == "passed" for row in candy_samples)
+    latencies = sorted(row.latency_ms for row in benchmark_successes)
+    first_tokens = [row.first_token_ms for row in benchmark_successes if row.first_token_ms is not None]
+    cache_samples = [row for row in benchmark_successes if (
+        row.cache_probe_status == "healthy"
+        and row.input_tokens is not None and row.input_tokens >= MIN_CACHE_INPUT_TOKENS
         and row.cached_input_tokens is not None and 0 <= row.cached_input_tokens <= row.input_tokens
     )]
     input_total = sum(row.input_tokens for row in cache_samples)
@@ -121,6 +127,14 @@ def relay_health(db: Session, station: RelayStation) -> RelayHealthOut:
         diagnostic_count_7d=len(rows) - len(valid_7d),
         cache_hit_rate_24h=round(sum(row.cached_input_tokens for row in cache_samples) / input_total * 100, 2) if input_total else None,
         cache_sample_count_24h=len(cache_samples),
+        cache_attempt_count_24h=sum(row.cache_probe_status not in (None, "skipped") for row in benchmarks),
+        cache_probe_status=latest.cache_probe_status if latest else None,
+        candy_pass_rate_24h=round(candy_passed / len(candy_samples) * 100, 2) if candy_samples else None,
+        candy_sample_count_24h=len(candy_samples),
+        candy_passed_count_24h=candy_passed,
+        candy_inconclusive_count_24h=len(benchmarks) - len(candy_samples),
+        candy_verdict=latest.candy_verdict if latest else None,
+        candy_answer=latest.candy_answer if latest else None,
         first_token_p50_ms=round(median(first_tokens)) if first_tokens else None,
         first_token_sample_count_24h=len(first_tokens),
         success_rate_24h=round(len(successes) / len(valid) * 100, 2) if valid else None,
@@ -145,83 +159,62 @@ def _probe_request(station: RelayStation | ProbeTarget, key: str) -> tuple[str, 
     if station.probe_protocol == "anthropic":
         base = base if base.endswith("/v1") else base + "/v1"
         return base + "/messages", {
-            "model": model, "max_tokens": 8, "stream": True, "messages": [{"role": "user", "content": "Reply OK"}],
+            "model": model, "max_tokens": 4096, "stream": True,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": BENCHMARK_PROMPT, "cache_control": {"type": "ephemeral"}}]}],
         }, {"x-api-key": key, "anthropic-version": "2023-06-01"}
     if station.probe_protocol == "gemini":
         base = base if base.endswith(("/v1beta", "/v1")) else base + "/v1beta"
         model = model.removeprefix("models/")
         return base + "/models/" + quote(model, safe="") + ":streamGenerateContent?alt=sse", {
-            "contents": [{"parts": [{"text": "Reply OK"}]}], "generationConfig": {"maxOutputTokens": 8},
+            "contents": [{"parts": [{"text": BENCHMARK_PROMPT}]}], "generationConfig": {"maxOutputTokens": 4096},
         }, {"x-goog-api-key": key}
     base = base if base.endswith("/v1") else base + "/v1"
     return base + "/chat/completions", {
-        "model": model, "max_tokens": 8, "stream": True, "stream_options": {"include_usage": True},
-        "messages": [{"role": "user", "content": "Reply OK"}],
+        "model": model, "max_tokens": 4096, "stream": True, "stream_options": {"include_usage": True},
+        "prompt_cache_key": f"pricememo-{station.id}-{station.monitor_revision}-{BENCHMARK_VERSION}",
+        "messages": [{"role": "user", "content": BENCHMARK_PROMPT}],
     }, {"Authorization": "Bearer " + key}
 
 
-def _has_text(content: object) -> bool:
-    if isinstance(content, str):
-        return bool(content.strip())
-    return isinstance(content, list) and any(
-        isinstance(part, dict) and isinstance(part.get("text"), str) and bool(part["text"].strip())
-        for part in content
-    )
+@dataclass
+class CompletionMeasurement:
+    status: str
+    latency_ms: int = 0
+    http_status: int | None = None
+    connect_latency_ms: int | None = None
+    first_token_ms: int | None = None
+    input_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    answer: str = field(default="", repr=False)
+    answer_truncated: bool = False
 
 
-def _has_completion(protocol: str, payload: object) -> bool:
-    if not isinstance(payload, dict) or payload.get("error"):
-        return False
-    if protocol == "anthropic":
-        content = payload.get("content")
-        return isinstance(content, list) and _has_text(content)
-    if protocol == "gemini":
-        candidates = payload.get("candidates")
-        return isinstance(candidates, list) and any(
-            isinstance(row, dict) and isinstance(row.get("content"), dict)
-            and isinstance(row["content"].get("parts"), list) and _has_text(row["content"]["parts"])
-            for row in candidates
-        )
-    choices = payload.get("choices")
-    return isinstance(choices, list) and any(
-        isinstance(row, dict) and isinstance(row.get("message"), dict) and _has_text(row["message"].get("content"))
-        for row in choices
-    )
-
-
-def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None, usage_client=None) -> RelayProbeResult | None:
-    """One bounded completion; neither responses nor exceptions containing secrets are saved."""
+def _measure_completion(station: RelayStation | ProbeTarget, key: str, *, client=None, usage_client=None, measure_cache=False) -> CompletionMeasurement:
+    """One bounded call. Raw responses and exceptions never enter the database."""
     from price_radar_http import PinnedHTTPSClient
 
-    if isinstance(station, ProbeTarget) and db.scalar(select(RelayStation.id).where(
-        RelayStation.id == station.id, RelayStation.monitor_revision == station.monitor_revision,
-        RelayStation.is_enabled.is_(True), RelayStation.review_status == "approved",
-        RelayStation.monitor_enabled.is_(True),
-    )) is None:
-        return None  # Configuration changes invalidate claims that have not started.
     started = time.monotonic()
-    checked_at = datetime.now(timezone.utc)
     http_status = None
     connect_latency_ms = first_token_ms = input_tokens = cached_input_tokens = None
     before = None
+    answer = ""
+    answer_truncated = False
     usage_client = usage_client or client
     try:
-        key = decrypt_secret(station.encrypted_api_key)
         if not (key and station.base_url and station.probe_model):
             status = "config_error"
         else:
-            if station.probe_protocol == "openai":
+            if measure_cache and station.probe_protocol == "openai":
                 # The current response may omit cache details even if the last
                 # sample had them. Capture its baseline before every probe.
                 before = read_key_usage(station.base_url, key, client=usage_client)
             url, payload, headers = _probe_request(station, key)
             started = time.monotonic()
-            checked_at = datetime.now(timezone.utc)
             client = client or PinnedHTTPSClient(
-                max_response_bytes=64 * 1024, max_task_bytes=64 * 1024,
+                max_response_bytes=128 * 1024, max_task_bytes=128 * 1024,
                 # Model queues can take over 15s before returning headers or
                 # text. Allow that wait while keeping the whole probe bounded.
-                max_task_seconds=45, request_timeout=30,
+                max_task_seconds=90, request_timeout=60,
             )
             stream = ProbeStream(station.probe_protocol, time.monotonic())
             response = client.post_json(url, payload, headers=headers, accept="text/event-stream", on_chunk=stream.feed)
@@ -241,13 +234,17 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
                         if stream.healthy:
                             first_token_ms = stream.first_token_ms
                             input_tokens, cached_input_tokens = stream.input_tokens, stream.cached_input_tokens
+                            answer, answer_truncated = stream.answer, stream.answer_truncated
                     else:
                         # Some relays ignore stream=true. Validate the JSON,
                         # but never present its full-response time as TTFT.
                         body = json.loads(response.body)
-                        status = "healthy" if _has_completion(station.probe_protocol, body) else "invalid_response"
+                        answer = completion_text(station.probe_protocol, body) if isinstance(body, dict) and not body.get("error") else ""
+                        status = "healthy" if answer.strip() else "invalid_response"
                         if status == "healthy":
                             input_tokens, cached_input_tokens = input_usage(station.probe_protocol, body)
+                            answer_truncated = output_truncated(station.probe_protocol, body) or len(answer) > 512
+                            answer = answer[:512]
                 except (ValueError, TypeError, RecursionError):
                     status = "invalid_response"
             else:
@@ -259,7 +256,7 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
     except RuntimeError:
         status = "credential_error"
     latency_ms = max(0, round((time.monotonic() - started) * 1000))
-    if status == "healthy" and cached_input_tokens is None and input_tokens is not None and before is not None:
+    if measure_cache and status == "healthy" and cached_input_tokens is None and input_tokens is not None and before is not None:
         # Read fresh counters after the model call. One bounded retry allows
         # for asynchronous usage writes; failures leave cache usage unknown.
         for attempt in range(2):
@@ -268,12 +265,43 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
             if cached_input_tokens is not None or after != before or attempt:
                 break
             time.sleep(.25)
+    return CompletionMeasurement(status, latency_ms, http_status, connect_latency_ms, first_token_ms, input_tokens, cached_input_tokens, answer, answer_truncated)
+
+
+def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None, usage_client=None) -> RelayProbeResult | None:
+    """Score only the warmup, then measure an identical input's cache reads."""
+    if isinstance(station, ProbeTarget) and db.scalar(select(RelayStation.id).where(
+        RelayStation.id == station.id, RelayStation.monitor_revision == station.monitor_revision,
+        RelayStation.is_enabled.is_(True), RelayStation.review_status == "approved",
+        RelayStation.monitor_enabled.is_(True),
+    )) is None:
+        return None
+    checked_at = datetime.now(timezone.utc)
+    try:
+        key = decrypt_secret(station.encrypted_api_key)
+        first = _measure_completion(station, key, client=client, usage_client=usage_client)
+    except RuntimeError:
+        first = CompletionMeasurement("credential_error")
+    verdict, answer = candy_answer(first.answer, truncated=first.answer_truncated) if first.status == "healthy" else ("inconclusive", None)
+    repeat = CompletionMeasurement("skipped")
+    if first.status == "healthy":
+        # No previous assistant answer is appended. A wrong first answer is
+        # retained, even when the second request happens to answer correctly.
+        repeat = _measure_completion(station, key, client=client, usage_client=usage_client, measure_cache=True)
+        if repeat.status == "healthy":
+            if repeat.input_tokens is not None and repeat.input_tokens < MIN_CACHE_INPUT_TOKENS:
+                repeat.status = "insufficient_input"
+            elif repeat.input_tokens is None or repeat.cached_input_tokens is None:
+                repeat.status = "usage_missing"
     result = RelayProbeResult(
         station_id=station.id, revision=station.monitor_revision,
-        checked_at=checked_at, status=status, http_status=http_status,
-        latency_ms=latency_ms,
-        connect_latency_ms=connect_latency_ms, first_token_ms=first_token_ms,
-        input_tokens=input_tokens, cached_input_tokens=cached_input_tokens,
+        checked_at=checked_at, status=first.status, http_status=first.http_status,
+        latency_ms=first.latency_ms,
+        connect_latency_ms=first.connect_latency_ms, first_token_ms=first.first_token_ms,
+        # For this benchmark these counts belong exclusively to the repeat.
+        input_tokens=repeat.input_tokens, cached_input_tokens=repeat.cached_input_tokens,
+        benchmark_version=BENCHMARK_VERSION, candy_verdict=verdict, candy_answer=answer,
+        cache_probe_status=repeat.status,
     )
     db.add(result)
     db.commit()

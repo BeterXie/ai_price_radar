@@ -93,6 +93,7 @@ def ensure_db_schema(engine: Engine) -> None:
         ensure_relay_monitoring(conn)
         ensure_relay_probe_metrics(conn)
         ensure_relay_model_catalog(conn)
+        ensure_relay_benchmark(conn)
         _hide_retired_products(conn)
 
 
@@ -149,6 +150,17 @@ def ensure_relay_probe_metrics(conn) -> None:
         if name not in columns:
             # No defaults: historical samples did not measure these values.
             conn.execute(text(f"ALTER TABLE relay_probe_results ADD COLUMN {name} INTEGER"))
+
+
+def ensure_relay_benchmark(conn) -> None:
+    from sqlalchemy import inspect
+
+    if "relay_probe_results" not in inspect(conn).get_table_names():
+        return
+    columns = {row["name"] for row in inspect(conn).get_columns("relay_probe_results")}
+    for name, sql_type in {"benchmark_version": "VARCHAR(30)", "candy_verdict": "VARCHAR(20)", "candy_answer": "VARCHAR(6)", "cache_probe_status": "VARCHAR(30)"}.items():
+        if name not in columns:
+            conn.execute(text(f"ALTER TABLE relay_probe_results ADD COLUMN {name} {sql_type}"))
 
 
 def ensure_relay_model_catalog(conn) -> None:

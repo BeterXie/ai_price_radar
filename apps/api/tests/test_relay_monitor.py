@@ -17,6 +17,7 @@ from app.main import app
 from app.models import RelayProbeResult, RelayStation, SystemSetting, User
 from app.security import require_current_user
 from app.services.credential_crypto import decrypt_secret, encrypt_secret
+from app.services.relay_benchmark import BENCHMARK_VERSION
 from app.services.relay_monitor import claim_probe, configure_relay, probe_relay, relay_health, run_due_probes
 
 ADMIN = {"X-Admin-Key": "relay-admin-test"}
@@ -351,8 +352,8 @@ def test_transport_failure_is_recorded_without_sensitive_error_text(relay_api, e
 
 @pytest.mark.parametrize(("header_delay", "body_delays", "expected", "elapsed_ms"), [
     (16, (0, 0), "healthy", 16000),
-    (31, (0, 0), "timeout", 30000),
-    (20, (20, 6), "timeout", 45000),
+    (61, (0, 0), "timeout", 60000),
+    (40, (40, 11), "timeout", 90000),
 ])
 def test_probe_allows_slow_model_headers_but_bounds_idle_and_total_time(
     relay_api, monkeypatch, header_delay, body_delays, expected, elapsed_ms,
@@ -482,10 +483,10 @@ def test_metric_rollups_use_own_windows_known_usage_and_current_revision(relay_a
         db.add(station)
         db.flush()
         now = datetime.now(timezone.utc)
-        # Cache ratio is token weighted: (50 + 300) / (100 + 400).
+        # Cache ratio is token weighted: (800 + 4800) / (1600 + 6400).
         for age, status, total, cached, first, revision in [
-            (1, "healthy", 100, 50, 100, 2),
-            (2, "healthy", 400, 300, 300, 2),
+            (1, "healthy", 1600, 800, 100, 2),
+            (2, "healthy", 6400, 4800, 300, 2),
             (3, "healthy", None, None, None, 2),
             (4, "timeout", 1000, 1000, 1, 2),
             (5, "config_error", 1000, 1000, 1, 2),
@@ -494,7 +495,7 @@ def test_metric_rollups_use_own_windows_known_usage_and_current_revision(relay_a
             (169, "unhealthy", None, None, None, 2),
             (1, "unhealthy", 1000, 1000, 1, 1),
         ]:
-            db.add(RelayProbeResult(station_id=station.id, revision=revision, checked_at=now-timedelta(hours=age), status=status, latency_ms=500, connect_latency_ms=25, first_token_ms=first, input_tokens=total, cached_input_tokens=cached))
+            db.add(RelayProbeResult(station_id=station.id, revision=revision, checked_at=now-timedelta(hours=age), status=status, latency_ms=500, connect_latency_ms=25, first_token_ms=first, input_tokens=total, cached_input_tokens=cached, benchmark_version=BENCHMARK_VERSION, cache_probe_status="healthy"))
         db.commit()
         health = relay_health(db, station)
         assert health.sample_count_24h == 4 and health.success_rate_24h == 75
@@ -565,7 +566,9 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
     clock = [100.0]
     monkeypatch.setattr("app.services.relay_monitor.time.monotonic", lambda: clock[0])
     monkeypatch.setattr("app.services.relay_monitor.time.sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
-    baseline = {"requests": 10, "input_tokens": 100, "cache_read_tokens": 20, "cache_creation_tokens": 0}
+    baseline = {"requests": 10, "input_tokens": 10000, "cache_read_tokens": 2000, "cache_creation_tokens": 0}
+    counter_updates = {key: value if key == "requests" else value * 100 for key, value in counter_updates.items()}
+    expected = expected * 100 if expected is not None else None
     snapshots = [baseline]
     if lag:
         snapshots.append(baseline)
@@ -588,9 +591,9 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
             clock[0] += .13
             on_chunk(b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\n')
             clock[0] += .1
-            usage = {"prompt_tokens": 12}
+            usage = {"prompt_tokens": 1200}
             if direct_cache is not None:
-                usage["prompt_tokens_details"] = {"cached_tokens": direct_cache}
+                usage["prompt_tokens_details"] = {"cached_tokens": direct_cache * 100}
             if not streaming:
                 return PinnedResponse(200, {"content-type": "application/json"}, json.dumps({
                     "choices": [{"message": {"content": "OK"}}], "usage": usage,
@@ -606,12 +609,12 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
         accounting = Accounting()
         result = probe_relay(db, station, client=Completion(), usage_client=accounting)
         assert result.status == "healthy"
-        assert result.input_tokens == 12 and result.cached_input_tokens == expected
+        assert result.input_tokens == 1200 and result.cached_input_tokens == expected
         assert result.latency_ms == 230 and result.first_token_ms == (130 if streaming else None) and result.connect_latency_ms == 12
         assert accounting.calls == (1 if direct_cache is not None else 3 if lag else 2)
         health = relay_health(db, station)
         assert health.cache_sample_count_24h == (0 if expected is None else 1)
-        assert health.cache_hit_rate_24h == (None if expected is None else round(expected / 12 * 100, 2))
+        assert health.cache_hit_rate_24h == (None if expected is None else round(expected / 1200 * 100, 2))
         assert KEY not in health.model_dump_json()
 
 
@@ -627,7 +630,7 @@ def test_consecutive_sparse_probes_each_collect_their_own_cache_sample(relay_api
             requests = (self.calls + 1) // 2
             self.calls += 1
             return PinnedResponse(200, {}, json.dumps({"usage": {"total": {
-                "requests": requests, "input_tokens": requests * 12,
+                "requests": requests, "input_tokens": requests * 1200,
                 "cache_read_tokens": 0, "cache_creation_tokens": 0,
             }}}).encode())
 
@@ -637,11 +640,11 @@ def test_consecutive_sparse_probes_each_collect_their_own_cache_sample(relay_api
         db.add(station)
         db.commit()
         accounting = Accounting()
-        completion = FakeClient(body={"choices": [{"message": {"content": "OK"}}], "usage": {"prompt_tokens": 12}})
+        completion = FakeClient(body={"choices": [{"message": {"content": "21"}}], "usage": {"prompt_tokens": 1200}})
         for _ in range(3):
             result = probe_relay(db, station, client=completion, usage_client=accounting)
             assert result.status == "healthy" and result.cached_input_tokens == 0
-        assert accounting.calls == 6 and len(completion.calls) == 3
+        assert accounting.calls == 6 and len(completion.calls) == 6
         health = relay_health(db, station)
         assert health.cache_sample_count_24h == 3 and health.cache_hit_rate_24h == 0
 
@@ -656,7 +659,7 @@ def test_worker_claims_once_and_never_probes_unapproved_stations(relay_api, monk
     client.patch(f"/api/v1/admin/relays/{station_id}", headers=ADMIN, json={"review_status": "approved", "is_enabled": True})
     run_due_probes(factory)
     run_due_probes(factory)
-    assert len(fake.calls) == 1
+    assert len(fake.calls) == 2
     assert fake.model_calls == []  # Metadata sync has an independent loop.
     assert client.post(f"/api/v1/admin/relays/{station_id}/probe", headers=ADMIN).status_code == 409
     with factory() as db:
@@ -695,7 +698,7 @@ def test_configuration_change_invalidates_old_claim_without_duplicate_new_probe(
         fake = FakeClient()
         assert probe_relay(worker, old_target, client=fake) is None
         assert probe_relay(worker, new_target, client=fake).status == "healthy"
-        assert len(fake.calls) == 1 and fake.calls[0][1]["model"] == "replacement-model"
+        assert len(fake.calls) == 2 and fake.calls[0][1]["model"] == "replacement-model"
         assert claim_probe(worker, station_id) is None
 
 
@@ -733,3 +736,57 @@ def test_explicit_key_replacement_advances_revision_even_when_editor_has_stale_k
         second.commit()
         assert b.monitor_revision == 3
         assert decrypt_secret(b.encrypted_api_key) == KEY
+
+
+@pytest.mark.parametrize(("answer", "verdict"), [("21", "passed"), ("29", "failed"), ("21 or 29", "inconclusive")])
+@pytest.mark.parametrize(("repeat_status", "total", "cached", "cache_status"), [
+    (200, 4096, 3072, "healthy"), (200, 4096, 0, "healthy"),
+    (200, 4096, None, "usage_missing"), (200, 8, 0, "insufficient_input"),
+    (429, None, None, "rate_limited"),
+])
+def test_pair_scores_first_answer_only_and_measures_only_repeat(relay_api, answer, verdict, repeat_status, total, cached, cache_status):
+    _, factory = relay_api
+
+    class Pair(FakeClient):
+        def post_json(self, url, body, **kwargs):
+            if self.calls:
+                self.status = repeat_status
+                self.body = {"choices": [{"message": {"content": "21"}}], "usage": {"prompt_tokens": total, "prompt_tokens_details": {"cached_tokens": cached}}}
+            else:
+                self.body = {"choices": [{"message": {"content": answer}}], "usage": {"prompt_tokens": 8192, "prompt_tokens_details": {"cached_tokens": 8192}}}
+            return super().post_json(url, body, **kwargs)
+
+    with factory() as db:
+        station = RelayStation(name="Pair", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        pair = Pair()
+        result = probe_relay(db, station, client=pair)
+        assert len(pair.calls) == 2 and pair.calls[0] == pair.calls[1]
+        assert result.status == "healthy" and result.candy_verdict == verdict
+        assert result.cache_probe_status == cache_status
+        health = relay_health(db, station)
+        assert health.candy_sample_count_24h == (0 if verdict == "inconclusive" else 1)
+        assert health.candy_inconclusive_count_24h == (1 if verdict == "inconclusive" else 0)
+        assert health.candy_pass_rate_24h == (100 if verdict == "passed" else 0 if verdict == "failed" else None)
+        assert health.cache_attempt_count_24h == 1
+        assert health.cache_sample_count_24h == (1 if cache_status == "healthy" else 0)
+        assert health.cache_hit_rate_24h == (round(cached / total * 100, 2) if cache_status == "healthy" else None)
+
+
+def test_first_failure_skips_repeat_and_legacy_cache_is_excluded(relay_api):
+    _, factory = relay_api
+    with factory() as db:
+        station = RelayStation(name="Failed pair", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.flush()
+        db.add(RelayProbeResult(station_id=station.id, revision=station.monitor_revision, status="healthy", latency_ms=10, input_tokens=4096, cached_input_tokens=4096))
+        db.commit()
+        fake = FakeClient(error=TimeoutError())
+        result = probe_relay(db, station, client=fake)
+        assert len(fake.calls) == 1 and result.cache_probe_status == "skipped"
+        health = relay_health(db, station)
+        assert health.candy_inconclusive_count_24h == 1 and health.candy_sample_count_24h == 0
+        assert health.cache_attempt_count_24h == 0 and health.cache_hit_rate_24h is None

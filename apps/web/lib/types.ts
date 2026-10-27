@@ -287,6 +287,14 @@ export type RelayHealth = {
   diagnostic_count_7d: number;
   cache_hit_rate_24h: number | null;
   cache_sample_count_24h: number;
+  cache_attempt_count_24h: number;
+  cache_probe_status: string | null;
+  candy_pass_rate_24h: number | null;
+  candy_sample_count_24h: number;
+  candy_passed_count_24h: number;
+  candy_inconclusive_count_24h: number;
+  candy_verdict: string | null;
+  candy_answer: string | null;
   first_token_p50_ms: number | null;
   first_token_sample_count_24h: number;
   success_rate_24h: number | null;
