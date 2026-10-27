@@ -104,7 +104,9 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
             </div>
             <details className="relay-directory-notes">
               <summary>检测指标与展示说明</summary>
-              <p>每小时探测当前配置的模型。站点 PING 为检测服务器到 API 的 TCP/TLS 建连耗时；可用率统计近 7 天，缓存命中率与首 Token P50 统计近 24 小时。缓存按接口返回的缓存读取 Token 占比计算，短提示可能不触发缓存；缺失数据不计为零。</p>
+              <p>每小时对当前配置的模型运行一轮测试。首次请求回答固定糖果题，最终整数 21 为通过，其他整数为未通过；超时、截断或无法识别的回答单列为无法判定。通过率只反映这道题的结果，不认证模型身份或整体能力。</p>
+              <p>第二次请求重复相同长输入，不附带前次答案。重复输入缓存率按近 24 小时第二次请求的缓存读取 Token 总和 / 输入 Token 总和计算；旧短提示、输入不足和缺失用量不计入，明确返回零才显示零。同一会话或固定缓存标识不能保证上游命中缓存。</p>
+              <p>站点 PING 为检测服务器到 API 的 TCP/TLS 建连耗时。对话延迟和首 Token P50 来自首次请求，首 Token 不计心跳与思考内容；可用率统计近 7 天首次请求的成功比例。</p>
               <p>历史条从旧到新，绿为成功、红为异常、黄为配置诊断、灰为无样本。赞助站点带有“赞助”标识并优先展示，其余按运营者设置的顺序排列。收录不构成推荐或担保。</p>
               <p>如需查看店铺出售的中转类商品，可浏览 <Link href="/products?comparable=false&delivery_type=relay_api" className="underline underline-offset-4">中转 / 反代商品报价</Link>。</p>
             </details>

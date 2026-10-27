@@ -23,6 +23,6 @@ export function RelayProbeFields({ value, onChange, required = false, hasApiKey 
       <label className="grid gap-2 text-sm">检测模型 ID<input required={required || value.monitor_enabled} maxLength={120} value={value.probe_model} onChange={(e) => onChange({ probe_model: e.target.value })} placeholder="填写此密钥有权限使用的模型 ID" className="field text-sm"/></label>
     </div>
     {!required && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value.monitor_enabled} onChange={(e) => onChange({ monitor_enabled: e.target.checked })}/>开启定时检测</label>}
-    <p className="text-xs leading-6 text-[color:var(--muted)]">审核上线后，每小时最多发送一次简短模型请求，可能消耗少量额度。密钥加密保存，不公开展示；检测结果仅代表该密钥和模型在采样时的表现。</p>
+    <p className="text-xs leading-6 text-[color:var(--muted)]">审核上线后，每小时最多发送两次相同长输入请求，测试糖果题和重复输入缓存，会消耗额度；每次输出上限 4,096 Token。密钥加密保存，不公开展示；检测结果仅代表该密钥和模型在采样时的表现。</p>
   </fieldset>;
 }
