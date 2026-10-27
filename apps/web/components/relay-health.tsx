@@ -57,12 +57,12 @@ export function RelayHealthPanel({ health, now }: { health?: Health; now: number
   return (
     <section className="relay-health-panel" data-status={status} aria-label="接口稳定性">
       <dl className="relay-metrics">
-        <div data-primary="true" title="最近一次真实模型请求的总耗时；失败时结合检测状态判断"><dt><Lightning size={12} aria-hidden />对话延迟</dt><dd>{latency(health?.latency_ms, true)}</dd></div>
+        <div data-primary="true" title="最近一次糖果题首次请求，从发起到响应结束的总耗时，包含上游排队、推理和答案传输；失败时结合检测状态判断"><dt><Lightning size={12} aria-hidden />糖果题总耗时</dt><dd>{latency(health?.latency_ms, true)}</dd></div>
         <div data-primary="true" title="检测服务器到 API 的 TCP 连接与 TLS 握手耗时，含连接重试，不含 DNS；不是 ICMP Ping"><dt><Globe size={12} aria-hidden />站点 PING</dt><dd>{latency(health?.connect_latency_ms, true)}</dd></div>
         <div title={`近 7 天 ${health?.sample_count_7d || 0} 次有效探测的成功比例；另有 ${health?.diagnostic_count_7d || 0} 次配置诊断不计入。仅代表当前检测模型。`}><dt>可用率 <span>· 7天</span></dt><dd>{percentage(health?.availability_7d)}</dd></div>
         <div title={`每轮先预热，再重复相同长输入；仅统计第二次请求的缓存读取 Token / 总输入 Token，按 Token 加权。近 24 小时 ${health?.cache_attempt_count_24h || 0} 次重复请求中 ${health?.cache_sample_count_24h || 0} 次用量完整。旧短提示、输入不足和缺失用量均不计入。最近：${cacheLabels[health?.cache_probe_status || ""] || labels[health?.cache_probe_status || ""] || "暂无检测"}。`}><dt>重复输入缓存率 <span>· 24h</span></dt><dd>{percentage(health?.cache_hit_rate_24h)}</dd></div>
         <div title={`固定糖果题，首次回答最终整数 21 为通过，其他整数为未通过；超时、截断和无法识别的回答单独计数。只反映该题结果，不认证模型身份或整体能力。最近：${candyLabel}${health?.candy_answer ? `（${health.candy_answer}）` : ""}。`}><dt>糖果测试通过率 <span>· 24h</span></dt><dd>{percentage(health?.candy_pass_rate_24h)}</dd></div>
-        <div title={`近 24 小时 ${health?.first_token_sample_count_24h || 0} 次成功流式探测，从请求发起到首个非空文本的耗时中位数；心跳和思考内容不计入。`}><dt>首 Token P50 <span>· 24h</span></dt><dd>{latency(health?.first_token_p50_ms)}</dd></div>
+        <div title={`近 24 小时 ${health?.first_token_sample_count_24h || 0} 次成功流式糖果题请求，从发起到首个答案文本的等待时间中位数，包含上游排队和推理等待。心跳与思考片段不作为首字。题目要求只输出最终整数，因此首字可能接近总耗时。`}><dt>糖果题首字 P50 <span>· 24h</span></dt><dd>{latency(health?.first_token_p50_ms)}</dd></div>
       </dl>
       <p className="relay-benchmark-caption">糖果：{health?.candy_passed_count_24h || 0}/{health?.candy_sample_count_24h || 0} 次通过 · {health?.candy_inconclusive_count_24h || 0} 次无法判定；缓存：{health?.cache_sample_count_24h || 0}/{health?.cache_attempt_count_24h || 0} 次用量完整</p>
       <div className="relay-history-heading"><span>近 60 次检测 <span>· {samples.length} 次记录</span></span><span>{health?.checked_at ? <time dateTime={health.checked_at} title={exactTime(health.checked_at)}>{relativeTime(health.checked_at, now)}检测</time> : "等待首次检测"}</span></div>
