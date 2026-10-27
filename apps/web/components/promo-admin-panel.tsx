@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RelayProbeFields } from "@/components/relay-probe-fields";
 import { RelayGroupFields, groupInputs, type RelayGroupDraft } from "@/components/relay-group-fields";
 import { RelayHealth } from "@/components/relay-health";
@@ -265,9 +265,18 @@ export function PromoAdminPanel({
   const [relayDraft, setRelayDraft] = useState<RelayDraft>({ ...EMPTY_RELAY, supported_models_text: "", tags_text: "" });
   const [editingRelayId, setEditingRelayId] = useState<number | null>(null);
   const [relayFormOpen, setRelayFormOpen] = useState(false);
+  const [relayFormOpenCount, setRelayFormOpenCount] = useState(0);
+  const relayFormRef = useRef<HTMLFormElement>(null);
+  const relayNameRef = useRef<HTMLInputElement>(null);
   const [savingRelay, setSavingRelay] = useState(false);
   const [relayBusyId, setRelayBusyId] = useState<number | null>(null);
   const [relayError, setRelayError] = useState("");
+
+  useEffect(() => {
+    if (!relayFormOpen) return;
+    relayNameRef.current?.focus({ preventScroll: true });
+    relayFormRef.current?.scrollIntoView({ behavior: "instant", block: "start" });
+  }, [relayFormOpen, relayFormOpenCount]);
 
   const loadRelays = useCallback(async () => {
     setLoadingRelays(true);
@@ -311,6 +320,8 @@ export function PromoAdminPanel({
       setRelayDraft({ ...EMPTY_RELAY, supported_models_text: "", tags_text: "" });
     }
     setRelayFormOpen(true);
+    // Reveal the form even when the same station is opened again.
+    setRelayFormOpenCount((count) => count + 1);
   };
 
   const submitRelay = async (event: React.FormEvent) => {
@@ -647,14 +658,14 @@ export function PromoAdminPanel({
           </div>
 
           {relayFormOpen ? (
-            <form onSubmit={submitRelay} className="space-y-4 border-b border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-5">
+            <form ref={relayFormRef} aria-labelledby="relay-form-title" onSubmit={submitRelay} className="scroll-mt-24 space-y-4 border-b border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-5">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">{editingRelayId !== null ? `编辑中转站 #${editingRelayId}` : "添加中转站"}</h3>
-                <button type="button" onClick={() => setRelayFormOpen(false)} className="text-xs text-[color:var(--muted)] hover:text-[color:var(--ink)]"><X size={16} /></button>
+                <h3 id="relay-form-title" className="text-sm font-semibold">{editingRelayId !== null ? `编辑中转站 #${editingRelayId}` : "添加中转站"}</h3>
+                <button type="button" aria-label="关闭中转站表单" onClick={() => setRelayFormOpen(false)} className="text-xs text-[color:var(--muted)] hover:text-[color:var(--ink)]"><X size={16} /></button>
               </div>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="text-xs font-medium text-black/70">名称 *
-                  <input type="text" required maxLength={100} value={relayDraft.name} onChange={(e) => setRelayDraft((d) => ({ ...d, name: e.target.value }))} placeholder="例如：XX API 中转" className="field mt-1 text-sm" />
+                  <input ref={relayNameRef} type="text" required maxLength={100} value={relayDraft.name} onChange={(e) => setRelayDraft((d) => ({ ...d, name: e.target.value }))} placeholder="例如：XX API 中转" className="field mt-1 text-sm" />
                 </label>
                 <label className="text-xs font-medium text-black/70">站点地址（HTTPS）
                   <input type="text" maxLength={1000} value={relayDraft.url} onChange={(e) => setRelayDraft((d) => ({ ...d, url: e.target.value }))} placeholder="https://api.example.com" className="field mt-1 text-sm" />
