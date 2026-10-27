@@ -569,7 +569,7 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
     baseline = {"requests": 10, "input_tokens": 10000, "cache_read_tokens": 2000, "cache_creation_tokens": 0}
     counter_updates = {key: value if key == "requests" else value * 100 for key, value in counter_updates.items()}
     expected = expected * 100 if expected is not None else None
-    snapshots = [baseline]
+    snapshots = [{**baseline, "requests": 9, "input_tokens": 8800}, baseline, baseline]
     if lag:
         snapshots.append(baseline)
     snapshots.append({**baseline, "requests": 11, **counter_updates})
@@ -582,7 +582,7 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
             assert headers == {"Authorization": "Bearer " + KEY}
             clock[0] += 2  # Supplemental requests must not affect model latency.
             self.calls += 1
-            if self.calls > 1 and after_error:
+            if self.calls > 3 and after_error:
                 raise after_error
             return PinnedResponse(200, {}, json.dumps({"usage": {"total": snapshots.pop(0)}}).encode())
 
@@ -611,7 +611,7 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
         assert result.status == "healthy"
         assert result.input_tokens == 1200 and result.cached_input_tokens == expected
         assert result.latency_ms == 230 and result.first_token_ms == (130 if streaming else None) and result.connect_latency_ms == 12
-        assert accounting.calls == (1 if direct_cache is not None else 3 if lag else 2)
+        assert accounting.calls == (3 if direct_cache is not None else 5 if lag else 4)
         health = relay_health(db, station)
         assert health.cache_sample_count_24h == (0 if expected is None else 1)
         assert health.cache_hit_rate_24h == (None if expected is None else round(expected / 1200 * 100, 2))
@@ -644,7 +644,7 @@ def test_consecutive_sparse_probes_each_collect_their_own_cache_sample(relay_api
         for _ in range(3):
             result = probe_relay(db, station, client=completion, usage_client=accounting)
             assert result.status == "healthy" and result.cached_input_tokens == 0
-        assert accounting.calls == 6 and len(completion.calls) == 6
+        assert accounting.calls == 12 and len(completion.calls) == 6
         health = relay_health(db, station)
         assert health.cache_sample_count_24h == 3 and health.cache_hit_rate_24h == 0
 
@@ -790,3 +790,30 @@ def test_first_failure_skips_repeat_and_legacy_cache_is_excluded(relay_api):
         health = relay_health(db, station)
         assert health.candy_inconclusive_count_24h == 1 and health.candy_sample_count_24h == 0
         assert health.cache_attempt_count_24h == 0 and health.cache_hit_rate_24h is None
+
+
+@pytest.mark.parametrize("direct_cache", [None, 3072])
+def test_late_warmup_accounting_cannot_be_misattributed_to_repeat(relay_api, monkeypatch, direct_cache):
+    from app.services.relay_key_usage import KeyUsage
+
+    _, factory = relay_api
+    calls = []
+    before = KeyUsage(10, 10000, 0, 0)
+    delayed = KeyUsage(11, 14096, 0, 0)
+
+    def accounting(*args, **kwargs):
+        calls.append(1)
+        return before if len(calls) <= 3 else delayed
+
+    monkeypatch.setattr("app.services.relay_monitor.read_key_usage", accounting)
+    monkeypatch.setattr("app.services.relay_monitor.time.sleep", lambda _: None)
+    with factory() as db:
+        station = RelayStation(name="Delayed warmup", base_url="https://api.example.com/v1", probe_model="test-model", monitor_enabled=True)
+        configure_relay(db, station, {}, SecretStr(KEY))
+        db.add(station)
+        db.commit()
+        fake = FakeClient(body={"choices": [{"message": {"content": "21"}}], "usage": {"prompt_tokens": 4096, "prompt_tokens_details": {"cached_tokens": direct_cache}}})
+        result = probe_relay(db, station, client=fake)
+        assert len(fake.calls) == 2 and len(calls) == 3
+        assert result.cached_input_tokens == direct_cache
+        assert result.cache_probe_status == ("healthy" if direct_cache is not None else "usage_missing")

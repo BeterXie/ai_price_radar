@@ -187,9 +187,10 @@ class CompletionMeasurement:
     cached_input_tokens: int | None = None
     answer: str = field(default="", repr=False)
     answer_truncated: bool = False
+    accounting_settled: bool = False
 
 
-def _measure_completion(station: RelayStation | ProbeTarget, key: str, *, client=None, usage_client=None, measure_cache=False) -> CompletionMeasurement:
+def _measure_completion(station: RelayStation | ProbeTarget, key: str, *, client=None, usage_client=None, measure_cache=False, settle_usage=False) -> CompletionMeasurement:
     """One bounded call. Raw responses and exceptions never enter the database."""
     from price_radar_http import PinnedHTTPSClient
 
@@ -199,12 +200,13 @@ def _measure_completion(station: RelayStation | ProbeTarget, key: str, *, client
     before = None
     answer = ""
     answer_truncated = False
+    accounting_settled = False
     usage_client = usage_client or client
     try:
         if not (key and station.base_url and station.probe_model):
             status = "config_error"
         else:
-            if measure_cache and station.probe_protocol == "openai":
+            if (measure_cache or settle_usage) and station.probe_protocol == "openai":
                 # The current response may omit cache details even if the last
                 # sample had them. Capture its baseline before every probe.
                 before = read_key_usage(station.base_url, key, client=usage_client)
@@ -256,16 +258,19 @@ def _measure_completion(station: RelayStation | ProbeTarget, key: str, *, client
     except RuntimeError:
         status = "credential_error"
     latency_ms = max(0, round((time.monotonic() - started) * 1000))
-    if measure_cache and status == "healthy" and cached_input_tokens is None and input_tokens is not None and before is not None:
+    if status == "healthy" and input_tokens is not None and before is not None and (settle_usage or cached_input_tokens is None):
         # Read fresh counters after the model call. One bounded retry allows
         # for asynchronous usage writes; failures leave cache usage unknown.
         for attempt in range(2):
             after = read_key_usage(station.base_url, key, client=usage_client)
-            _, cached_input_tokens = probe_usage(before, after, input_tokens)
-            if cached_input_tokens is not None or after != before or attempt:
+            _, accounted_cache = probe_usage(before, after, input_tokens)
+            accounting_settled = accounted_cache is not None
+            if cached_input_tokens is None:
+                cached_input_tokens = accounted_cache
+            if accounting_settled or after != before or attempt:
                 break
             time.sleep(.25)
-    return CompletionMeasurement(status, latency_ms, http_status, connect_latency_ms, first_token_ms, input_tokens, cached_input_tokens, answer, answer_truncated)
+    return CompletionMeasurement(status, latency_ms, http_status, connect_latency_ms, first_token_ms, input_tokens, cached_input_tokens, answer, answer_truncated, accounting_settled)
 
 
 def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None, usage_client=None) -> RelayProbeResult | None:
@@ -279,7 +284,7 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
     checked_at = datetime.now(timezone.utc)
     try:
         key = decrypt_secret(station.encrypted_api_key)
-        first = _measure_completion(station, key, client=client, usage_client=usage_client)
+        first = _measure_completion(station, key, client=client, usage_client=usage_client, settle_usage=True)
     except RuntimeError:
         first = CompletionMeasurement("credential_error")
     verdict, answer = candy_answer(first.answer, truncated=first.answer_truncated) if first.status == "healthy" else ("inconclusive", None)
@@ -287,7 +292,10 @@ def probe_relay(db: Session, station: RelayStation | ProbeTarget, *, client=None
     if first.status == "healthy":
         # No previous assistant answer is appended. A wrong first answer is
         # retained, even when the second request happens to answer correctly.
-        repeat = _measure_completion(station, key, client=client, usage_client=usage_client, measure_cache=True)
+        # Identical input sizes make a delayed warmup charge indistinguishable
+        # from the repeat's charge. Only use counter deltas after proving the
+        # warmup was accounted for; direct response usage remains usable.
+        repeat = _measure_completion(station, key, client=client, usage_client=usage_client, measure_cache=first.accounting_settled)
         if repeat.status == "healthy":
             if repeat.input_tokens is not None and repeat.input_tokens < MIN_CACHE_INPUT_TOKENS:
                 repeat.status = "insufficient_input"

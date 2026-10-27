@@ -357,7 +357,7 @@ docker run --rm \
   ai-price-radar-api \
   python scripts/migrate_relay_model_catalog_v24.py
 
-# v25 糖果测试与重复输入缓存基准；v3.9.29 切换前，在临时 PostgreSQL 16
+# v25 糖果测试与重复输入缓存基准；v3.9.29 / v3.9.30 切换前，在临时 PostgreSQL 16
 # 连续演练两次。新增字段保持 NULL，旧短提示不计入新缓存统计。
 docker run --rm \
   --network ai-price-radar_default \
