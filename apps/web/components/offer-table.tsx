@@ -8,6 +8,7 @@ import { DELIVERY_TYPE_LABELS, PERIOD_LABELS, SCENARIO_LABELS, WARRANTY_LABELS }
 import { exactTime, money, relativeTime, stockLabel } from "@/lib/format";
 import { fetchGroupShopOffers } from "@/lib/group-offers";
 import { getGuideLinkLabel, resolveGuideHref } from "@/lib/guides/matcher";
+import { productDisplayName } from "@/lib/product-identity";
 
 const OFFER_BATCH_SIZE = 30;
 const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -161,7 +162,7 @@ function ContextualGuideLink({ productSlug, deliveryType }: { productSlug?: stri
   );
 }
 
-function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQuery = "" }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null; filterQuery?: string }) {
+function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQuery = "", compact = false }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null; filterQuery?: string; compact?: boolean }) {
   const [description, setDescription] = useState<string | null>(null);
   const [shopOffers, setShopOffers] = useState<Offer[] | null>(group && group.offer_count === 1 ? [offer] : null);
   const [shopOffersUpdated, setShopOffersUpdated] = useState(false);
@@ -216,6 +217,9 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   const shownPrice = group?.lowest_price ?? offer.price;
   const shownCurrency = group?.lowest_price ? group.price_currency : offer.currency;
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
+  const productPageQuery = new URLSearchParams(filterQuery);
+  productPageQuery.delete("brand");
+  if (!productPageQuery.has("comparable")) productPageQuery.set("comparable", "false");
   const initialClickCount = (group ? group.click_count : offer.click_count) || 0;
   const [clickCount, setClickCount] = useState(initialClickCount);
 
@@ -232,7 +236,24 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   };
 
   return (
-    <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className="group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]">
+    <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className={`group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]${compact ? " catalog-offer" : ""}`}>
+      {compact ? (
+        <summary className="catalog-offer-summary">
+          <div className="catalog-offer-product">
+            <h3>{offer.original_name}</h3>
+            <div className="catalog-offer-meta">
+              {productName && productSlug ? <Link href={`/products/${encodeURIComponent(productSlug)}?${productPageQuery}`}>{productName}</Link> : null}
+              <span>{group ? `${group.shop_count} 家店铺` : offer.shop_name}</span>
+              <time dateTime={group?.latest_observed_at || offer.observed_at} title={exactTime(group?.latest_observed_at || offer.observed_at)} suppressHydrationWarning>{relativeTime(group?.latest_observed_at || offer.observed_at)}更新</time>
+            </div>
+            {!offer.is_comparable ? <p className="catalog-offer-warning">相关商品，不直接比价</p> : !offer.is_trusted_price ? <p className="catalog-offer-warning">价格偏离同类报价</p> : null}
+          </div>
+          <div className="catalog-offer-delivery"><span>{DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type}</span><span>{PERIOD_LABELS[offer.service_period] || offer.service_period}</span></div>
+          <span className={`catalog-offer-stock ${shownStock > 0 ? "is-available" : ""}`}>{shownStock > 0 ? "有货" : stockLabel(offer.stock_status)}</span>
+          <span className="catalog-offer-price">{money(shownPrice, shownCurrency)}</span>
+          <CaretDown className="catalog-offer-chevron" size={17} aria-hidden="true" />
+        </summary>
+      ) : (
       <summary className="grid min-h-[84px] cursor-pointer list-none gap-4 px-4 py-4 marker:hidden sm:px-5 lg:grid-cols-[minmax(0,1fr)_150px_150px_32px] lg:items-center [&::-webkit-details-marker]:hidden">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -293,6 +314,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
         <CaretDown className="transition-transform duration-150 group-open/offer:rotate-180" size={20} aria-hidden="true" />
       </summary>
+      )}
 
       <div className="border-t border-[color:var(--line-strong)] bg-[color:var(--panel)] px-4 py-6 sm:px-5">
         {offer.low_price_warning && (
@@ -380,13 +402,17 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   );
 }
 
-function TableFrame({ children, footer }: { children: React.ReactNode; footer: React.ReactNode }) {
+function TableFrame({ children, footer, compact = false }: { children: React.ReactNode; footer: React.ReactNode; compact?: boolean }) {
   return (
-    <div className="data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
-      <div className="bg-[color:var(--subtle)] px-5 py-3 text-xs text-[color:var(--muted)]">
-        <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看交付、售后和来源</div>
-        <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>观测价</span><span>详情</span></div>
-      </div>
+    <div className={`data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]${compact ? " catalog-offer-table" : ""}`}>
+      {compact ? (
+        <div className="catalog-offer-columns" aria-hidden="true"><span>商品</span><span>交付 / 期限</span><span>库存</span><span>观测价</span><span /></div>
+      ) : (
+        <div className="bg-[color:var(--subtle)] px-5 py-3 text-xs text-[color:var(--muted)]">
+          <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看交付、售后和来源</div>
+          <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>观测价</span><span>详情</span></div>
+        </div>
+      )}
       <div className="divide-y divide-[color:var(--line)]">{children}</div>
       {footer}
     </div>
@@ -401,6 +427,7 @@ export function OfferGroupTable({
   filterQuery = "",
   loadMorePath,
   showProduct = false,
+  compact = false,
 }: {
   groups: OfferGroup[];
   productSlug?: string;
@@ -409,6 +436,7 @@ export function OfferGroupTable({
   filterQuery?: string;
   loadMorePath?: string;
   showProduct?: boolean;
+  compact?: boolean;
 }) {
   const [loadedGroups, setLoadedGroups] = useState(groups);
   const [loadError, setLoadError] = useState(false);
@@ -442,8 +470,8 @@ export function OfferGroupTable({
 
   if (!groups.length) return <div className="empty-state">当前筛选条件下没有可展示的同款报价。请调整筛选条件后再试。</div>;
   return (
-    <TableFrame footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 组报价` : `已显示全部 ${totalCount} 组报价`}</div>}>
-      {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? group.product_name : undefined} snapshotId={snapshotId} filterQuery={filterQuery} />)}
+    <TableFrame compact={compact} footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 组报价` : `已显示全部 ${totalCount} 组报价`}</div>}>
+      {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? productDisplayName(group.product_slug, group.product_name) : undefined} snapshotId={snapshotId} filterQuery={filterQuery} compact={compact} />)}
     </TableFrame>
   );
 }

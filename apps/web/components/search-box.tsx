@@ -21,8 +21,9 @@ export function SearchBox({ defaultValue = "", filters = {} }: { defaultValue?: 
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="搜索产品或交付方式"
-        aria-label="搜索产品或交付方式"
+        placeholder="搜索商品、品牌或店铺"
+        aria-label="搜索商品、品牌或店铺"
+        maxLength={100}
         className="min-h-11 min-w-0 flex-1 bg-transparent px-1 outline-none placeholder:text-[color:var(--muted)]/70"
       />
       <button className="button-primary tactile shrink-0">

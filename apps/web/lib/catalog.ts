@@ -45,6 +45,9 @@ export const SCENARIO_LABELS: Record<string, string> = {
 
 export const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X", "Cursor", "MUSE", "JEV"] as const;
 export type BrandName = (typeof BRAND_TABS)[number];
+export const STANDALONE_PRODUCTS = [{ label: "手机接码", slug: "chatgpt-access-service" }] as const;
+export const PRODUCT_CATEGORIES = [...BRAND_TABS, "手机接码"] as const;
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 export const RELAY_CATALOG_HREF = "/products?brand=%E4%B8%AD%E8%BD%AC%E7%AB%99";
 
 export const OFFICIAL_PLAN_SOURCES: Partial<Record<BrandName, string>> = {
@@ -58,7 +61,7 @@ export const OFFICIAL_PLAN_SOURCES: Partial<Record<BrandName, string>> = {
 
 // API access, seller labels and uncertain tiers are useful filters, but must
 // not be presented as additional official account plans.
-export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string; other?: boolean }[]> = {
+export const PRODUCT_TABS: Record<ProductCategory, { label: string; slug: string; other?: boolean }[]> = {
   OpenAI: [
     { label: "Free", slug: "chatgpt-account" },
     { label: "Plus", slug: "chatgpt-plus" },
@@ -74,7 +77,6 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string; othe
     { label: "Pro 20x 旧标记", slug: "chatgpt-pro-20x", other: true },
     { label: "K12 商家标记", slug: "chatgpt-k12", other: true },
     { label: "OpenAI API", slug: "openai-api-credit", other: true },
-    { label: "手机接码", slug: "chatgpt-access-service", other: true },
   ],
   Claude: [
     { label: "Pro", slug: "claude-pro" },
@@ -148,9 +150,10 @@ export const PRODUCT_TABS: Record<BrandName, { label: string; slug: string; othe
     { label: "订阅等级待确认", slug: "jev-subscription", other: true },
     { label: "验证 / 接码", slug: "jev-access-service", other: true },
   ],
+  手机接码: [{ label: "手机接码", slug: "chatgpt-access-service", other: true }],
 };
 
-export const ALL_PRODUCTS = BRAND_TABS.flatMap((brand) =>
+export const ALL_PRODUCTS = PRODUCT_CATEGORIES.flatMap((brand) =>
   PRODUCT_TABS[brand].map((product) => ({
     brand,
     ...product,

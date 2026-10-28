@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CaretDown, SlidersHorizontal } from "@phosphor-icons/react/ssr";
 
 export type OfferFilterValues = {
   comparable: string;
@@ -96,24 +97,30 @@ export function OfferScopeControls({
   resetHref,
   hiddenFields = {},
   defaultOpen = false,
+  compact = false,
+  quickFilter,
 }: {
   action: string;
   values: OfferFilterValues;
   resetHref: string;
   hiddenFields?: Record<string, string>;
   defaultOpen?: boolean;
+  compact?: boolean;
+  quickFilter?: React.ReactNode;
 }) {
   const activeFilterCount = Object.entries(values).filter(([name, value]) => name === "comparable" ? value === "false" : Boolean(value)).length;
   return (
-    <section className="offer-filters py-5" aria-labelledby="offer-filter-title">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div><h2 id="offer-filter-title" className="text-sm font-semibold">更多条件</h2><p className="mt-1 text-xs text-[color:var(--muted)]">继续按交付形态、期限、质保和价格范围缩小报价。</p></div>
-        <Link href={resetHref} className="button-tertiary !min-h-9 !px-3 text-xs">重置筛选</Link>
-      </div>
+    <section className={compact ? "catalog-filters" : "offer-filters py-5"} aria-label="报价筛选">
       <details className="offer-filter-disclosure" open={defaultOpen}>
-        <summary>展开筛选 <span>{activeFilterCount ? `${activeFilterCount} 项已选` : "全部条件"}</span></summary>
-        <div className="mt-3"><FilterForm action={action} values={values} hiddenFields={hiddenFields} /></div>
+        <summary><SlidersHorizontal size={17} aria-hidden="true" />筛选 {activeFilterCount ? <span>{activeFilterCount}</span> : null}<CaretDown size={14} className="filter-disclosure-chevron" aria-hidden="true" /></summary>
+        <div className="mt-3"><FilterForm key={JSON.stringify({ values, hiddenFields })} action={action} values={values} hiddenFields={hiddenFields} /></div>
       </details>
+      {quickFilter || activeFilterCount > 0 ? (
+        <div className="filter-toolbar-actions">
+          {quickFilter}
+          {activeFilterCount > 0 ? <Link href={resetHref} className="filter-reset">重置筛选</Link> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

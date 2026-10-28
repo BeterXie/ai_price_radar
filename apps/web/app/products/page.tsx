@@ -3,6 +3,7 @@ import { permanentRedirect } from "next/navigation";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
 import { getProductSeoContent } from "@/lib/product-seo";
+import { STANDALONE_PRODUCTS } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ function lastValue(value: string | string[] | undefined) {
 
 export async function generateMetadata({ searchParams }: { searchParams: SearchParams }): Promise<Metadata> {
   const params = await searchParams;
-  const slug = lastValue(params.product);
+  const standalone = STANDALONE_PRODUCTS.find((item) => item.label === (lastValue(params.brand) || lastValue(params.platform)));
+  const slug = lastValue(params.product) || standalone?.slug || "";
   if (slug) {
     const product = await getProduct(slug, "comparable=true");
     if (!product) return { title: "产品不存在", robots: { index: false, follow: true } };
@@ -53,6 +55,17 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
 export default async function ProductsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const slug = lastValue(params.product);
+  const standalone = STANDALONE_PRODUCTS.find((item) => item.label === (lastValue(params.brand) || lastValue(params.platform)));
+  if (!slug && standalone) {
+    const query = new URLSearchParams();
+    for (const [key, rawValue] of Object.entries(params)) {
+      if (["brand", "platform", "product"].includes(key)) continue;
+      const value = lastValue(rawValue);
+      if (value) query.set(key, value);
+    }
+    const suffix = query.toString();
+    permanentRedirect(`/products/${encodeURIComponent(standalone.slug)}${suffix ? `?${suffix}` : ""}`);
+  }
   if (slug) {
     const query = new URLSearchParams();
     for (const [key, rawValue] of Object.entries(params)) {

@@ -82,6 +82,85 @@ def test_plan_registration_restores_pro_previously_hidden_by_seed():
     engine.dispose()
 
 
+def test_chatgpt_access_product_sync_preserves_offer_link_and_stays_out_of_openai_filter():
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.database import Base
+    from app.models import CatalogSnapshot, Offer, Product, RawProduct, Shop
+    from app.services.account_plans import ensure_account_plans
+    from app.services.catalog import list_product_cards
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    try:
+        with Session(engine) as db:
+            snapshot = CatalogSnapshot(source="test", published_at=now)
+            product = Product(
+                slug="chatgpt-access-service",
+                platform="OpenAI",
+                display_name="ChatGPT 手机接码",
+                subtitle="旧分类",
+                description="旧商品说明",
+                product_type="service",
+            )
+            shop = Shop(token="test-shop", name="Test", source_url="https://example.com/shop")
+            db.add_all([snapshot, product, shop])
+            db.flush()
+            raw = RawProduct(
+                shop_id=shop.id,
+                source_product_key="test-service",
+                original_name="ChatGPT 手机接码",
+                source_url="https://example.com/item",
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            offer = Offer(
+                raw_product_id=raw.id,
+                product_id=product.id,
+                shop_id=shop.id,
+                price=Decimal("5.00"),
+                stock_status="in_stock",
+                delivery_type="verification_service",
+                is_comparable=True,
+                item_fingerprint="chatgpt-access-service-test",
+                snapshot_id=snapshot.id,
+                source_url=raw.source_url,
+                observed_at=now,
+                active=True,
+                approved=True,
+            )
+            db.add(offer)
+            db.flush()
+            original_product_id = product.id
+            original_offer_id = offer.id
+
+            ensure_account_plans(db)
+            db.flush()
+
+            migrated = db.get(Product, original_product_id)
+            linked_offer = db.get(Offer, original_offer_id)
+            assert migrated.slug == "chatgpt-access-service"
+            assert migrated.platform == "手机接码"
+            assert migrated.display_name == "手机接码"
+            assert "ChatGPT" in migrated.subtitle and "OpenAI" in migrated.subtitle
+            assert migrated.product_type == "service"
+            assert linked_offer.product_id == original_product_id
+            assert linked_offer.product.id == original_product_id
+
+            assert list_product_cards(db, platform="OpenAI", snapshot_id=snapshot.id) == []
+            mobile_cards = list_product_cards(db, platform="手机接码", snapshot_id=snapshot.id)
+            assert [card.slug for card in mobile_cards] == ["chatgpt-access-service"]
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.parametrize("source", ["ldxp", "16688"])
 @pytest.mark.parametrize(("title", "category", "description", "slug"), [
     ("【使用7天｜质保7天】Business / Team 标准席位续费码【仅限旧空间续费】", "", "不是5Xteam；可与个人 Plus 共存", "chatgpt-business"),

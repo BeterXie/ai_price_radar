@@ -42,7 +42,7 @@ export function RelayStationCard({ station, view = "card", initialNow }: { stati
   const visit = station.url ? <AdLink kind="relays" id={station.id} href={station.url} className="button-secondary relay-visit" ariaLabel={`前往 ${station.name}（新窗口打开）`}>前往官网 <ArrowSquareOut size={14} /></AdLink> : null;
   const updated = <span className="relay-updated">资料更新 {station.updated_at ? <time dateTime={station.updated_at} title={exactTime(station.updated_at)}>{relativeTime(station.updated_at, now)}</time> : "待确认"}</span>;
   return (
-    <article className={`relay-card${isList ? " relay-list-item" : ""}`} data-sponsored={station.is_sponsored ? "true" : "false"} aria-labelledby={`relay-${station.id}-title`}>
+    <article id={`relay-${station.id}`} className={`relay-card${isList ? " relay-list-item" : ""}`} data-sponsored={station.is_sponsored ? "true" : "false"} aria-labelledby={`relay-${station.id}-title`}>
       <div className={isList ? "relay-list-summary" : "relay-card-summary"}>
         <header className="relay-card-header">
           <RelayStationIcon key={station.url} id={station.id} name={station.name} website={station.url} />

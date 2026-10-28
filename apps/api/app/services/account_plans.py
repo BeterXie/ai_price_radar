@@ -10,6 +10,14 @@ import re
 SUBSCRIPTION_MARKERS = ("会员", "订阅", "套餐", "代充", "直充", "月卡", "年卡", "日卡", "subscription")
 
 
+# Existing service products use stable slugs, but do not belong to the OpenAI brand filter.
+CHATGPT_ACCESS_SERVICE_PRODUCT = (
+    "chatgpt-access-service", "手机接码", "手机接码",
+    "适用于 ChatGPT / OpenAI 的注册验证、手机号接码与开通服务", "service",
+    "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。",
+)
+
+
 # Existing public slugs remain identifiers; their labels describe the actual plan.
 PLAN_PRODUCTS = [
     ("chatgpt-pro", "OpenAI", "ChatGPT Pro（档位未注明）", "未注明 Pro 100 / 200 / 500；不猜测档位"),
@@ -65,6 +73,7 @@ def product_definitions(definitions: list[tuple]) -> list[tuple]:
     result = {row[0]: row for row in definitions}
     for slug, brand, name, subtitle in PLAN_PRODUCTS:
         result[slug] = (slug, brand, name, subtitle, "subscription", f"聚合 {name} 的公开报价。{subtitle}。")
+    result["chatgpt-access-service"] = CHATGPT_ACCESS_SERVICE_PRODUCT
     result["chatgpt-k12"] = (
         "chatgpt-k12", "OpenAI", "ChatGPT K12（商家标记）", "商家 K12 标签；不等同于 Business / Edu",
         "subscription", "保留明确标注 K12 的商家报价；该标签不代表已核验的官方套餐。",
