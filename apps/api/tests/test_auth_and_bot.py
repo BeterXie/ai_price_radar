@@ -549,7 +549,11 @@ def test_bot_brand_reads_visible_categories_from_catalog(bot_product_catalog, bo
         assert card.display_name in reply
         assert f"¥{card.lowest_price:.2f}" in reply
     assert "ChatGPT Plus" not in reply
-    assert "34.65" in reply and "1.00" in reply and "New OpenAI Plan" in reply
+    assert "34.65" in reply and "New OpenAI Plan" in reply
+    assert "1.00" not in reply
+    phone_reply = handle_chat_command("chatgpt接码", db=db)
+    assert phone_reply.startswith(f"🎯【{products['chatgpt-access-service'].display_name}】全网比价推荐"), phone_reply
+    assert "¥1.00" in phone_reply
 
 
 def test_bot_ranking_merges_same_items_and_uses_site_order(bot_product_catalog, bot_quote):

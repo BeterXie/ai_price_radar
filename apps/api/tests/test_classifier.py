@@ -200,6 +200,11 @@ def test_description_cannot_supply_missing_brand_context():
     assert "限制退款" in result.risk_flags
 
 
+def test_chatgpt_accounts_that_are_already_phone_verified_are_not_service_offers():
+    assert classify_product("ChatGPT Plus 成品号 已接码").slug == "chatgpt-plus"
+    assert classify_product("ChatGPT Free 账号 已接码").slug == "chatgpt-account"
+
+
 @pytest.mark.parametrize(
     ("title", "category", "slug"),
     [

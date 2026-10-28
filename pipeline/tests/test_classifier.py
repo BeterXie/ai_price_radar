@@ -257,6 +257,62 @@ def test_product_catalog_groups_openai_and_retires_legacy_team_product():
         db.close()
 
 
+def test_mobile_verification_product_sync_preserves_existing_product_and_offer_link():
+    from decimal import Decimal
+    from sqlalchemy import func, select
+    from common import Offer
+
+    db = session_for("sqlite+pysqlite:///:memory:")
+    try:
+        shop = Shop(token="mobile-test-shop", name="Test shop", source_url="https://example.com/shop")
+        product = Product(
+            slug="chatgpt-access-service",
+            platform="OpenAI",
+            display_name="ChatGPT 手机接码",
+            subtitle="旧分类",
+            description="旧商品说明",
+            product_type="service",
+        )
+        db.add_all([shop, product])
+        db.flush()
+        product_id = product.id
+        raw = RawProduct(
+            shop_id=shop.id,
+            source_product_key="mobile-test-item",
+            original_name="ChatGPT 手机接码",
+            source_url="https://example.com/item",
+        )
+        db.add(raw)
+        db.flush()
+        offer = Offer(raw_product_id=raw.id, product_id=product_id, shop_id=shop.id, price=Decimal("5.00"))
+        db.add(offer)
+        db.flush()
+        offer_id = offer.id
+
+        products = ensure_products(db)
+        db.flush()
+        # Repeated sync updates the same primary key and never creates a replacement.
+        ensure_products(db)
+        db.flush()
+
+        migrated = db.get(Product, product_id)
+        linked_offer = db.get(Offer, offer_id)
+        assert products["chatgpt-access-service"].id == product_id
+        assert migrated.platform == "手机接码"
+        assert migrated.display_name == "手机接码"
+        assert "ChatGPT" in migrated.subtitle and "OpenAI" in migrated.subtitle
+        assert migrated.product_type == "service"
+        assert linked_offer.product_id == product_id
+        assert db.scalar(
+            select(func.count(Product.id)).where(Product.slug == "chatgpt-access-service")
+        ) == 1
+        assert classify("Codex 手机接码", "OpenAI").slug == "chatgpt-access-service"
+        # Receiving verification earlier is account metadata, not a phone-service SKU.
+        assert classify("ChatGPT Plus 成品号 已接码").slug == "chatgpt-plus"
+    finally:
+        db.close()
+
+
 def test_plus_does_not_inherit_k12_tags_from_description():
     result = classify("ChatGPT Plus 成品号", "GPT", {"description": "支持 Team、Business 和 K12"})
     assert result.slug == "chatgpt-plus"

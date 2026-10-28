@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { ArrowRight, ArrowUpRight, Check } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls } from "@/components/offer-scope-controls";
-import { SectionIntro } from "@/components/page-shell";
 import { PlatformIcon } from "@/components/platform-icon";
 import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
 import { ReportForm } from "@/components/report-form";
@@ -14,8 +13,7 @@ import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
 import { getProductSeoContent } from "@/lib/product-seo";
 import type { Meta } from "@/lib/types";
-
-import { BRAND_TABS, type BrandName, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF } from "@/lib/catalog";
+import { BRAND_TABS, type BrandName, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
 
 const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
@@ -35,6 +33,10 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   if (!productSlug && (single(rawParams, "brand") || single(rawParams, "platform")) === "中转站") {
     return <RelayCatalogPage rawParams={rawParams} basePath="/products" />;
   }
+  if (!productSlug) {
+    const service = STANDALONE_PRODUCTS.find((item) => item.label === (single(rawParams, "brand") || single(rawParams, "platform")));
+    if (service) productSlug = service.slug;
+  }
   let detailQuery = offerQuery(rawParams);
   const searchQuery = single(rawParams, "q").trim();
   const [initialProduct, metaResult] = await Promise.all([
@@ -44,11 +46,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const meta = metaResult || EMPTY_META;
   if (productSlug && !initialProduct) notFound();
   let product = initialProduct;
-  // Product cards count every public offer, but the workspace defaults to the
-  // "仅可直接比较" scope. A product whose offers are all shared pools, relays or
-  // trial accounts would therefore open with an empty ledger even though the
-  // card promised offers. When the visitor did not choose the scope explicitly,
-  // widen it to all offers and say so instead of showing nothing.
+  // Widen a product's default scope only when it has related offers and the
+  // visitor has not explicitly narrowed the scope. Keep the explanation in
+  // ProductWorkspace so related offers cannot be mistaken for comparable ones.
   let scopeExpanded = false;
   if (
     product &&
@@ -70,46 +70,31 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const activeSourcePlatform = single(rawParams, "source_platform");
   const catalogQuery = new URLSearchParams(detailQuery);
   catalogQuery.delete("platform");
-  if (activeBrand) {
-    catalogQuery.set("brand", activeBrand);
-  }
+  if (activeBrand) catalogQuery.set("brand", activeBrand);
   if (searchQuery) catalogQuery.set("q", searchQuery);
   let catalogLoadFailed = false;
   const catalog = product ? null : await getCatalogGroups(catalogQuery.toString()).catch(() => {
     catalogLoadFailed = true;
     return null;
   });
-  const productTabBrand = activeBrand && Object.prototype.hasOwnProperty.call(PRODUCT_TABS, activeBrand)
+  const productTabBrand = BRAND_TABS.includes(activeBrand as BrandName)
     ? activeBrand as BrandName
     : null;
   const productTabs = productTabBrand ? PRODUCT_TABS[productTabBrand] : [];
   const officialTabs = productTabs.filter((tab) => !tab.other);
   const otherTabs = productTabs.filter((tab) => tab.other);
   const officialSource = productTabBrand ? OFFICIAL_PLAN_SOURCES[productTabBrand] : undefined;
-  const scopeQuery = new URLSearchParams(detailQuery);
-  if (searchQuery) scopeQuery.set("q", searchQuery);
   const filters = filterValues(rawParams);
-  // Any narrowing (keyword / platform / price / stock …) makes an empty result
-  // ambiguous: it may just mean "no match for these filters", not "no offers".
-  // `comparable` defaults to "true" and is therefore only a filter when "false".
-  const hasActiveFilters = Boolean(
-    searchQuery ||
-      activeSourcePlatform ||
-      filters.delivery_type ||
-      filters.period ||
-      filters.warranty ||
-      filters.auto_delivery ||
-      filters.updated_within_hours ||
-      filters.min_price ||
-      filters.max_price ||
-      filters.in_stock ||
-      filters.comparable === "false"
-  );
+  if (scopeExpanded) filters.comparable = "false";
+  // Page URLs retain comparable=false; the API intentionally omits it when
+  // including related offers. Reusing the API query here would lose that choice.
+  const scopeQuery = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  if (activeSourcePlatform) scopeQuery.set("source_platform", activeSourcePlatform);
+  if (searchQuery) scopeQuery.set("q", searchQuery);
+  const hasActiveFilters = Boolean(searchQuery || activeSourcePlatform || hasNarrowingFilters(rawParams) || filters.comparable === "false");
   const catalogHref = (brand = "") => {
     const next = new URLSearchParams(scopeQuery);
-    next.delete("platform");
     if (brand) next.set("brand", brand);
-    else next.delete("brand");
     return withQuery("/products", next);
   };
   const productHref = (slug: string) => withQuery(`/products/${encodeURIComponent(slug)}`, scopeQuery);
@@ -123,251 +108,141 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   const navigationQuery = new URLSearchParams();
   if (!product && activeBrand) navigationQuery.set("brand", activeBrand);
   if (activeSourcePlatform) navigationQuery.set("source_platform", activeSourcePlatform);
-  if (!product && searchQuery) navigationQuery.set("q", searchQuery);
+  if (searchQuery) navigationQuery.set("q", searchQuery);
   const navigationHref = withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", navigationQuery);
+  const clearFiltersHref = activeBrand ? `/products?brand=${encodeURIComponent(activeBrand)}` : "/products";
+  const relatedQuery = new URLSearchParams(scopeQuery);
+  relatedQuery.set("comparable", "false");
+  if (activeBrand) relatedQuery.set("brand", activeBrand);
+  const relatedHref = withQuery("/products", relatedQuery);
+  const stockQuery = new URLSearchParams(scopeQuery);
+  if (activeBrand) stockQuery.set("brand", activeBrand);
+  if (filters.in_stock === "true") stockQuery.delete("in_stock");
+  else stockQuery.set("in_stock", "true");
   const hiddenFields = {
     ...(!product && activeBrand ? { brand: activeBrand } : {}),
     ...(activeSourcePlatform ? { source_platform: activeSourcePlatform } : {}),
     ...(searchQuery ? { q: searchQuery } : {}),
   };
-  const updatedWithinLabel: Record<string, string> = { "6": "6 小时内", "24": "24 小时内", "72": "3 天内", "168": "7 天内" };
-  let headingTitle = "AI 商品报价";
-  let headingDescription = "按品牌、商品类型、交付方式、库存和更新时间筛选公开报价。";
-  if (activeBrand) headingTitle = `${activeBrand} 报价`;
-  if (searchQuery) {
-    headingTitle = `“${searchQuery}”的报价`;
-    headingDescription = "多个关键词共同匹配商品、品牌或店铺名称。继续按套餐、库存、交付方式和更新时间缩小范围。";
-  }
-  if (product) {
-    headingTitle = `${product.display_name} 报价`;
-    headingDescription = getProductSeoContent(product.slug, product.display_name, product.description).intro;
-  }
+  const headingTitle = product ? `${product.display_name} 报价` : searchQuery ? `“${searchQuery}”的报价` : activeBrand ? `${activeBrand} 报价` : "报价目录";
 
   return (
-    <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="scope-rails selected-summary grouped-ledger responsive-filter-disclosure">
-      <header className="catalog-heading">
-        <div className="catalog-heading-copy">
-          <p className="text-xs font-semibold text-[color:var(--brand-strong)]">{product ? product.brand : activeBrand || "全部品牌"}</p>
-          <h1 data-vds-role="title">{headingTitle}</h1>
-          <p id={product ? "product-description" : undefined} data-vds-role="explanation">{headingDescription}</p>
+    <main id="main-content" className="catalog-page shell">
+      <header className="catalog-page-heading">
+        <div>
+          <h1>{headingTitle}</h1>
+          {product ? <p id="product-description">{getProductSeoContent(product.slug, product.display_name, product.description).intro}</p> : null}
         </div>
-        {!product ? <div className="catalog-heading-search"><SearchBox key={searchQuery} defaultValue={searchQuery} filters={{ ...filters, ...hiddenFields }} /></div> : null}
+        {!product ? <div className="catalog-page-search"><SearchBox key={searchQuery} defaultValue={searchQuery} filters={{ ...filters, ...hiddenFields }} /></div> : null}
       </header>
 
-      <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="报价快捷筛选">
-        <nav className="filter-rail" aria-label="品牌筛选">
-          <span className="filter-label">品牌</span>
-          <div className="filter-group">
-            <Link href={catalogHref()} prefetch={true} aria-current={!activeBrand ? "page" : undefined} className="filter-chip filter-all">
-              <PlatformIcon platform="" />全部
-            </Link>
-            <div className="filter-options">
-              {BRAND_TABS.map((brand) => (
-                <Link key={brand} href={catalogHref(brand)} prefetch={true} aria-current={activeBrand === brand ? "page" : undefined} className="filter-chip">
-                  <PlatformIcon platform={brand} />{brand}
-                </Link>
-              ))}
-              {meta.relay_hub_enabled !== false ? (
-                <Link
-                  href={RELAY_CATALOG_HREF}
-                  prefetch={true}
-                  className="filter-chip"
-                  title="API 中转站目录"
-                >
-                  <PlatformIcon platform="中转站" />中转站
-                  {meta.relay_station_count ? <span className="mono text-[10px] opacity-70">{meta.relay_station_count}</span> : null}
-                </Link>
+      <div className="catalog-layout">
+        <aside className="catalog-sidebar">
+          <nav className="catalog-brands" aria-label="品牌与商品筛选">
+            <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部品牌</Link>
+            {BRAND_TABS.map((brand) => (
+              <Link key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined}>
+                <PlatformIcon platform={brand} size={19} />{brand}
+              </Link>
+            ))}
+            {STANDALONE_PRODUCTS.map((service) => (
+              <Link key={service.slug} href={productHref(service.slug)} className="catalog-service-link" aria-current={product?.slug === service.slug ? "page" : undefined}>
+                <PlatformIcon platform={service.label} size={19} />{service.label}
+              </Link>
+            ))}
+            {meta.relay_hub_enabled !== false ? (
+              <Link href={RELAY_CATALOG_HREF} className="catalog-relay-link"><PlatformIcon platform="中转站" size={19} />中转站<ArrowUpRight size={14} aria-hidden="true" /></Link>
+            ) : null}
+          </nav>
+        </aside>
+
+        <div className="catalog-content">
+          {productTabs.length > 0 ? (
+            <div className="catalog-plans">
+              <nav aria-label="商品类型筛选" className="catalog-plan-row">
+                <span className="catalog-plan-label">{officialTabs.length ? "官方套餐" : "商品类别"}</span>
+                <div className="catalog-plan-options">
+                  <Link href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">全部</Link>
+                  {(officialTabs.length ? officialTabs : otherTabs).map((tab) => (
+                    <Link key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
+                  ))}
+                </div>
+                {officialSource ? <a href={officialSource} target="_blank" rel="noreferrer" className="catalog-official-link">官网套餐 <ArrowUpRight size={14} aria-hidden="true" /></a> : null}
+              </nav>
+              {officialTabs.length > 0 && otherTabs.length > 0 ? (
+                <details className="catalog-other-plans" open={otherTabs.some((tab) => tab.slug === product?.slug)}>
+                  <summary>其他商品</summary>
+                  <nav aria-label="其他商品筛选" className="catalog-plan-options">
+                    {otherTabs.map((tab) => (
+                      <Link key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
+                    ))}
+                  </nav>
+                </details>
               ) : null}
             </div>
-          </div>
-        </nav>
-        <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="商品类型筛选">
-          <span className="filter-label">{officialTabs.length ? "官方套餐" : "商品类别"}</span>
-          <div className="filter-group">
-            <Link href={catalogHref(activeBrand)} prefetch={true} aria-current={!product ? "page" : undefined} className="filter-chip filter-all">
-              全部商品
-            </Link>
-            <div className="filter-options">
-              {(officialTabs.length ? officialTabs : otherTabs).map((tab) => (
-                <Link
-                  key={tab.slug}
-                  href={productHref(tab.slug)}
-                  prefetch={true}
-                  aria-current={product?.slug === tab.slug ? "page" : undefined}
-                  className="filter-chip"
-                >
-                  {tab.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </nav>
-        {officialTabs.length > 0 && otherTabs.length > 0 ? (
-          <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="其他商品筛选">
-            <span className="filter-label">其他商品</span>
-            <div className="filter-group">
-              <div className="filter-options">
-                {otherTabs.map((tab) => (
-                  <Link key={tab.slug} href={productHref(tab.slug)} prefetch={true} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">
-                    {tab.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </nav>
-        ) : null}
-        {officialSource ? (
-          <p className="mt-2 text-xs text-[color:var(--muted)]">
-            官方套餐名称核对于 2026-10-26。服务类、旧套餐和等级待确认商品单独列出。{" "}
-            <a href={officialSource} target="_blank" rel="noreferrer" className="underline">查看官网套餐</a>
-          </p>
-        ) : null}
-        <nav className="filter-rail mt-2 border-t border-[color:var(--line)] pt-2" aria-label="来源平台筛选">
-          <span className="filter-label">来源平台</span>
-          <div className="filter-group">
-            <Link href={sourceHref()} prefetch={true} aria-current={!activeSourcePlatform ? "page" : undefined} className="filter-chip filter-all">全部来源</Link>
-            <div className="filter-options">
+          ) : null}
+
+          <div className="catalog-source-row">
+            <nav className="catalog-sources" aria-label="来源平台筛选">
+              <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined}>全部来源</Link>
               {meta.source_platforms.map((source) => (
-                <Link key={source.id} href={sourceHref(source.id)} prefetch={true} aria-current={activeSourcePlatform === source.id ? "page" : undefined} className="filter-chip">{source.label}</Link>
+                <Link key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined}>{source.label}</Link>
               ))}
-            </div>
+            </nav>
+            {!metaResult ? <span className="catalog-source-error" role="status">来源选项暂不可用</span> : null}
           </div>
-          {!metaResult ? <span className="ml-2 text-xs text-[color:var(--muted)]">来源选项暂不可用，可继续浏览当前报价</span> : null}
-        </nav>
-      </section>
-      <section className="catalog-scope-bar" aria-labelledby="selected-scope-title" data-vds-layer="inscription">
-        <div className="catalog-scope-copy">
-          <strong id="selected-scope-title">已选条件</strong>
-          这些条件会同时作用于下面的报价。
-        </div>
-        <div className="catalog-scope-values" data-vds-role="evidence">
-          <div className="catalog-scope-value"><span>商品</span><strong>{product?.display_name || searchQuery || "全部商品"}</strong></div>
-          <div className="catalog-scope-value"><span>品牌</span><strong>{activeBrand || "全部品牌"}</strong></div>
-          <div className="catalog-scope-value"><span>库存</span><strong>{filters.in_stock === "true" ? "仅看有货" : "全部库存"}</strong></div>
-          <div className="catalog-scope-value"><span>更新时间</span><strong>{updatedWithinLabel[filters.updated_within_hours] || "全部时间"}</strong></div>
-        </div>
-      </section>
-      {product ? (
-        <ProductWorkspace
-          product={product}
-          rawParams={rawParams}
-          query={detailQuery}
-          filterAction={`/products/${encodeURIComponent(product.slug)}`}
-          resetHref={navigationHref}
-          hiddenFields={hiddenFields}
-          scopeExpanded={scopeExpanded}
-        />
-      ) : catalog ? (
-        <>
-          <AdSlot placement="catalog_top" limit={2} className="mt-6" />
-          <section className="catalog-stats" aria-label="目录报价概况">
-            <p><ShieldCheck size={15} /><span>{catalog.trusted_offer_count} 条纳入统计</span></p>
-            <p><Package size={15} /><span>{catalog.in_stock_count} 条有货</span></p>
-            <p><Stack size={15} /><span>{catalog.offer_total} 条报价，其中 {catalog.comparable_offer_count} 条可比较</span></p>
-            <p><Clock size={15} /><span>更新于 {relativeTime(catalog.last_updated_at)}</span></p>
-          </section>
 
-          <OfferScopeControls
-            action="/products"
-            values={filters}
-            hiddenFields={hiddenFields}
-            resetHref={navigationHref}
-            defaultOpen={false}
-          />
-
-          <section className="pb-12">
-            {catalog.items.length > 0 ? (
-              <>
-                <SectionIntro title="当前报价" description={<>相同商品会合并显示。当前筛选结果共 {catalog.total} 组报价，展开后可查看店铺、交付方式和商品原文。</>} />
-                <div className="mt-4">
-                  <OfferGroupTable
-                    key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
-                    groups={catalog.items}
-                    totalCount={catalog.total}
-                    snapshotId={catalog.snapshot_id}
-                    filterQuery={catalogQuery.toString()}
-                    loadMorePath="/api/v1/catalog/groups"
-                    showProduct
-                  />
-                </div>
-              </>
-            ) : activeBrand && productTabs.length > 0 ? (
-              <>
-                <SectionIntro
-                  title={hasActiveFilters ? `${activeBrand} 筛选结果` : `${activeBrand} 监测商品`}
-                  description={
-                    hasActiveFilters ? (
-                      <>当前筛选条件下没有匹配的报价。可调整或清除下方筛选条件重新查看；也可以直接浏览该品牌下的监测商品台账：</>
+          {product ? (
+            <ProductWorkspace product={product} rawParams={rawParams} query={detailQuery} filterAction={`/products/${encodeURIComponent(product.slug)}`} resetHref={navigationHref} hiddenFields={hiddenFields} scopeExpanded={scopeExpanded} />
+          ) : (
+            <>
+              <OfferScopeControls
+                action="/products"
+                values={filters}
+                hiddenFields={hiddenFields}
+                resetHref={navigationHref}
+                compact
+                quickFilter={<Link href={withQuery("/products", stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}
+              />
+              {catalog ? (
+                <>
+                  <AdSlot placement="catalog_top" limit={2} variant="compact" className="catalog-ad" />
+                  <section className="catalog-results" aria-labelledby="catalog-results-title">
+                    <div className="catalog-results-heading">
+                      <h2 id="catalog-results-title">{filters.comparable === "false" ? "全部报价" : "可比报价"}<span>{catalog.total.toLocaleString("zh-CN")} 组</span></h2>
+                      <time dateTime={catalog.last_updated_at || undefined} title={exactTime(catalog.last_updated_at)}>{catalog.last_updated_at ? `${relativeTime(catalog.last_updated_at)}更新` : "暂无更新"}</time>
+                    </div>
+                    {catalog.items.length > 0 ? (
+                      <OfferGroupTable key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`} groups={catalog.items} totalCount={catalog.total} snapshotId={catalog.snapshot_id} filterQuery={catalogQuery.toString()} loadMorePath="/api/v1/catalog/groups" showProduct compact />
                     ) : (
-                      <>当前快照暂无可比现货报价，监控爬虫正在持续扫描相关店铺。点击可查看各商品详情台账、历史报价趋势或订阅到价提醒：</>
-                    )
-                  }
-                />
-                <div className="mt-4 rounded-2xl border border-[color:var(--line)] bg-[color:var(--subtle)]/40 p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-[color:var(--ink)]">
-                      {activeBrand} 包含的监测商品
-                    </h3>
-                    <Link
-                      href="/shops/submit"
-                      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--brand)] bg-[color:var(--brand)]/10 px-3 py-1 text-xs font-medium text-[color:var(--brand)] hover:bg-[color:var(--brand)]/20 transition"
-                    >
-                      <span>提交该品牌店铺报价</span>
-                      <span>→</span>
-                    </Link>
+                      <div className="catalog-empty">
+                        <h3>{hasActiveFilters ? "没有匹配的报价" : "暂无可比报价"}</h3>
+                        <p>{hasActiveFilters ? "试试减少筛选条件，或更换关键词。" : "可以稍后再来，或查看其他商品。"}</p>
+                        <Link href={hasActiveFilters ? clearFiltersHref : relatedHref} className="button-secondary">{hasActiveFilters ? "清除筛选" : "查看相关报价"}<ArrowRight size={16} aria-hidden="true" /></Link>
+                      </div>
+                    )}
+                    {!catalog.items.length && productTabs.length > 0 ? (
+                      <nav className="catalog-empty-products" aria-label={`${activeBrand} 商品`}>
+                        {productTabs.map((tab) => <Link key={tab.slug} href={productHref(tab.slug)}>{tab.label}<ArrowRight size={15} aria-hidden="true" /></Link>)}
+                      </nav>
+                    ) : null}
+                  </section>
+                  <div className="catalog-bottom">
+                    <details className="catalog-report"><summary>反馈报价问题</summary><div className="catalog-report-form"><ReportForm /></div></details>
+                    <time dateTime={catalog.snapshot_at || undefined}>{exactTime(catalog.snapshot_at)}</time>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {productTabs.map((tab) => (
-                      <Link
-                        key={tab.slug}
-                        href={`/products/${encodeURIComponent(tab.slug)}`}
-                        className="group flex flex-col justify-between rounded-xl border border-[color:var(--line)] bg-[color:var(--panel)] p-4 shadow-sm transition hover:border-[color:var(--brand)] hover:shadow-md"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <PlatformIcon platform={activeBrand} size={16} />
-                            <span className="font-semibold group-hover:text-[color:var(--brand)]">{tab.label}</span>
-                          </div>
-                          <p className="mt-1 text-xs text-[color:var(--muted)]">
-                            查看历史报价与到价提醒
-                          </p>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--brand-strong)] font-medium">
-                          <span>进入商品台账 →</span>
-                          <span className="text-[color:var(--muted)] font-normal">监控中</span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <SectionIntro title="当前报价" description={<>相同商品会合并显示。当前筛选结果共 {catalog.total} 组报价，展开后可查看店铺、交付方式和商品原文。</>} />
-                <div className="mt-4">
-                  <OfferGroupTable
-                    key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`}
-                    groups={catalog.items}
-                    totalCount={catalog.total}
-                    snapshotId={catalog.snapshot_id}
-                    filterQuery={catalogQuery.toString()}
-                    loadMorePath="/api/v1/catalog/groups"
-                    showProduct
-                  />
-                </div>
-              </>
-            )}
-          </section>
-          <section className="border-t border-[color:var(--line-strong)] py-12"><div className="max-w-2xl"><ReportForm /></div></section>
-          <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(catalog.snapshot_at)}</p>
-        </>
-      ) : catalogLoadFailed ? (
-        <section className="empty-state my-10" role="alert" data-vds-layer="evidence">
-          <h2 className="text-2xl font-semibold text-[color:var(--ink)]">当前报价暂时无法加载</h2>
-          <p className="mt-3 text-sm leading-6">筛选条件没有丢失。可以退出错误预览后重新读取当前报价。</p>
-          <Link href={navigationHref} className="button-primary mt-6">重新读取报价</Link>
-        </section>
-      ) : null}
+                </>
+              ) : catalogLoadFailed ? (
+                <section className="catalog-empty" role="alert">
+                  <h2>报价暂时无法加载</h2>
+                  <p>筛选条件已保留，请稍后重试。</p>
+                  <Link href={catalogHref(activeBrand)} className="button-primary">重新读取报价</Link>
+                </section>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

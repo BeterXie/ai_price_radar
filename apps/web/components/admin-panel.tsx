@@ -28,12 +28,12 @@ import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { CouponsAdminPanel } from "@/components/coupons-admin-panel";
 import { PromoAdminPanel } from "@/components/promo-admin-panel";
 import { UsersAdminPanel } from "@/components/users-admin-panel";
-import { BRAND_TABS, type BrandName, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
+import { PRODUCT_CATEGORIES, type ProductCategory, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 export type AdminTab = "settings" | "promo" | "users" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
-type CategoryMode = "all" | "restricted" | "unclassified" | BrandName;
+type CategoryMode = "all" | "restricted" | "unclassified" | ProductCategory;
 type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
 type ScopeFilter = "current" | "all";
@@ -1718,7 +1718,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                   </span>
                 )}
               </button>
-              {BRAND_TABS.map((brand) => {
+              {PRODUCT_CATEGORIES.map((brand) => {
                 const count = stats?.brand_counts?.[brand];
                 return (
                   <button
@@ -1835,7 +1835,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                     </button>
                   );
                 })()}
-                {(selectedCategory === "all" ? ALL_PRODUCTS : PRODUCT_TABS[selectedCategory as BrandName] || []).map((tab) => {
+                {(selectedCategory === "all" ? ALL_PRODUCTS : PRODUCT_TABS[selectedCategory as ProductCategory] || []).map((tab) => {
                   const pCount = stats?.product_counts?.[tab.slug];
                   return (
                     <button
@@ -2073,7 +2073,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                       className="w-full rounded-[10px] border hairline bg-[color:var(--panel)] px-3 py-2 text-xs"
                     >
                       <option value="">未分类 / 暂不归类</option>
-                      {BRAND_TABS.map((brand) => (
+                      {PRODUCT_CATEGORIES.map((brand) => (
                         <optgroup key={brand} label={brand}>
                           {PRODUCT_TABS[brand].map((p) => (
                             <option key={p.slug} value={p.slug}>

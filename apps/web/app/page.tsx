@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle, Clock, Database, Fire, Package, ShieldCheck, Sparkle } from "@phosphor-icons/react/ssr";
+import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
 import { SearchBox } from "@/components/search-box";
 import { ProductCard } from "@/components/product-card";
 import { PlatformIcon } from "@/components/platform-icon";
-import { SectionIntro } from "@/components/page-shell";
-import { getProducts } from "@/lib/api";
-import { exactTime, money, relativeTime } from "@/lib/format";
+import { HomeRelays, HomeRelayPreview } from "@/components/home-relays";
+import { getMeta, getProducts } from "@/lib/api";
+import { productDisplayName } from "@/lib/product-identity";
+import { BRAND_TABS, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { exactTime, relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -32,148 +35,78 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const data = await getProducts("sort=quality");
+  const [data, meta] = await Promise.all([
+    getProducts("sort=quality"),
+    getMeta().catch(() => null),
+  ]);
   const products = data.items.slice(0, 6);
-  const liveProducts = data.items.filter((product) => product.in_stock_count > 0).slice(0, 3);
+
   return (
-    <main id="main-content" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="snapshot-rail ledger-alignment semantic-search responsive-recomposition">
-      <div className="snapshot-rail" data-vds-role="evidence" data-vds-cause="持续显示本轮报价的新鲜度与来源证据">
-        <div className="shell snapshot-rail-inner">
-          <span className="snapshot-state">{data.snapshot_at ? `${relativeTime(data.snapshot_at)}完成刷新` : "暂未取得刷新时间"}</span>
-          <span>快照 #{data.snapshot_id || "—"} · {data.offer_count} 条报价 · {data.in_stock_count} 条有货</span>
-          <span>每条报价保留来源和观测时间</span>
-        </div>
-      </div>
-
-      <section className="home-hero border-b border-[color:var(--line-strong)]">
-        <div className="shell grid items-center gap-10 py-10 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,.72fr)] lg:py-14 xl:gap-16" data-vds-layer="event">
-          <div className="min-w-0">
-            <p className="eyebrow">公开 AI 商品报价</p>
-            <h1 className="display-title mt-4" data-vds-role="title">先分清商品，<span className="whitespace-nowrap">再比较价格</span></h1>
-            <p className="lede mt-5" data-vds-role="explanation">把公开店铺里的订阅、账号、API 额度和辅助服务整理到同一份报价台账。按库存、交付方式、来源和更新时间筛选，再进入商品页核对。</p>
-            <div className="mt-7 max-w-2xl"><SearchBox /></div>
-            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-[color:var(--muted)]">
-              <span className="font-medium">常用入口</span>
-              <Link href="/skills" className="quick-link font-semibold text-[color:var(--brand-strong)]">🔥 技能与实验室</Link>
-              <Link href="/products?platform=OpenAI" className="quick-link">OpenAI</Link>
-              <Link href="/products?platform=Claude" className="quick-link">Claude</Link>
-              <Link href="/relays" className="quick-link">中转站</Link>
-              <Link href="/products?in_stock=true" className="quick-link">仅看有货</Link>
-              <Link href="/guides/buying-checklist" className="quick-link">购买前检查</Link>
-            </div>
-          </div>
-
-          <aside className="live-board min-w-0 overflow-hidden" aria-label="刚更新的有货报价" data-vds-layer="evidence">
-            <div className="flex items-center justify-between gap-4 border-b border-[color:var(--line)] p-5">
-              <h2 className="text-lg font-semibold tracking-[-.025em]">刚更新的有货报价</h2>
-              <span className={`status-pill ${data.snapshot_at ? "status-success" : "status-info"}`}>{data.snapshot_at ? `${relativeTime(data.snapshot_at)}刷新` : "暂无更新时间"}</span>
-            </div>
-            <div className="divide-y divide-[color:var(--line)]">
-              {liveProducts.map((product) => (
-                <Link key={product.slug} href={`/products/${encodeURIComponent(product.slug)}`} className="group grid min-h-[92px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-5 py-4 hover:bg-[color:var(--subtle)]">
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-2 text-xs text-[color:var(--muted)]"><PlatformIcon platform={product.brand} size={14} />{product.brand} · {relativeTime(product.last_updated_at)}</p>
-                    <h3 className="mt-2 truncate font-semibold tracking-[-.02em] group-hover:underline">{product.display_name}</h3>
-                    <p className="mt-1 flex items-center gap-1.5 text-xs text-[color:var(--muted)]"><Package size={14} />{product.in_stock_count} 条有货</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="mono text-lg font-semibold">{money(product.lowest_price, product.price_currency)}</p>
-                    <p className="mt-1 text-[11px] text-[color:var(--muted)]">观测价</p>
-                  </div>
-                </Link>
-              ))}
-              {liveProducts.length === 0 ? (
-                <p className="px-5 py-8 text-sm text-[color:var(--muted)]">当前没有已确认有货的报价。</p>
-              ) : null}
-            </div>
-            <Link href="/products" className="live-board-link" data-vds-role="action">查看全部报价 <ArrowRight size={17} /></Link>
-          </aside>
-        </div>
-
-        <div className="shell"><AdSlot placement="home_hero" limit={2} className="pb-8" /></div>
-
-        <dl className="shell home-stats" aria-label="报价概况">
-          <div><dt>商品分类</dt><dd>{data.total} 种</dd></div>
-          <div><dt>当前报价</dt><dd>{data.offer_count} 条</dd></div>
-          <div><dt>有货报价</dt><dd>{data.in_stock_count} 条</dd></div>
-          <div><dt>最近更新</dt><dd>{exactTime(data.snapshot_at)}</dd></div>
-        </dl>
+    <main id="main-content" className="home-page">
+      <section className="home-search-stage shell" aria-labelledby="home-title">
+        <h1 id="home-title">AI 订阅比价</h1>
+        <div className="home-search"><SearchBox /></div>
+        <p className="home-snapshot">
+          <span><strong>{data.offer_count.toLocaleString("zh-CN")}</strong> 条报价</span>
+          <span><strong>{data.in_stock_count.toLocaleString("zh-CN")}</strong> 条有货</span>
+          <time dateTime={data.snapshot_at || undefined} title={exactTime(data.snapshot_at)}>
+            {data.snapshot_at ? `${relativeTime(data.snapshot_at)}更新` : "暂无更新时间"}
+          </time>
+        </p>
       </section>
 
-      {/* Community Skills & Degradation Benchmark Lab Feature Banner */}
-      <section className="border-b border-[color:var(--line-strong)] bg-[color:var(--subtle)]/50 py-8 sm:py-10">
-        <div className="shell">
-          <div className="rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-6 sm:p-8 shadow-sm">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="max-w-2xl">
-                <div className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
-                  <Fire size={14} weight="fill" />
-                  新板块上线 · 零测试降智评测与精选技能库
-                </div>
-                <h2 className="mt-3 text-xl font-bold tracking-tight text-[color:var(--foreground)] sm:text-2xl lg:text-3xl">
-                  大模型真假满血？先测“鹈鹕骑自行车”再买订阅
-                </h2>
-                <p className="mt-2 text-sm leading-relaxed text-[color:var(--muted)] sm:text-base">
-                  实测 GPT-6 Astra、GPT-5.6、Gemini 3.8 等前沿模型零测试 2D SVG 动效，内置 6 大模型产物在线沙箱竞技场。收录 Karpathy 审美重塑、Vercel 原生浏览器等 11 款 GitHub 热门开源生产级 Skill。
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
-                    # 鹈鹕骑车降智评测
-                  </span>
-                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
-                    # 猪八戒骑车
-                  </span>
-                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
-                    # taste-skill 前端去模版
-                  </span>
-                  <span className="rounded-md border border-[color:var(--line)] bg-[color:var(--card)] px-2.5 py-1 text-xs font-medium text-[color:var(--muted)]">
-                    # agent-browser
-                  </span>
-                </div>
-              </div>
+      <nav className="home-brands shell" aria-label="按品牌或商品查看报价">
+        {BRAND_TABS.map((brand) => (
+          <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`}>
+            <PlatformIcon platform={brand} size={26} />
+            <span>{brand}</span>
+          </Link>
+        ))}
+        {STANDALONE_PRODUCTS.map((product) => (
+          <Link key={product.slug} href={`/products/${product.slug}`} className="home-service-link">
+            <PlatformIcon platform={product.label} size={26} />
+            <span>{product.label}</span>
+          </Link>
+        ))}
+      </nav>
 
-              <div className="flex shrink-0 flex-col sm:flex-row lg:flex-col gap-3">
-                <Link
-                  href="/skills/pelican-bicycle-benchmark"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--foreground)] px-5 py-3 text-sm font-semibold text-[color:var(--panel)] shadow-sm hover:opacity-90 transition active:scale-95"
-                >
-                  <span>进入降智评测竞技场</span>
-                  <ArrowRight size={16} weight="bold" />
-                </Link>
-                <Link
-                  href="/skills"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--card)] px-5 py-3 text-sm font-semibold text-[color:var(--foreground)] hover:bg-[color:var(--hover)] transition"
-                >
-                  <span>浏览全部社区技能与博文</span>
-                </Link>
-              </div>
+      <section className="home-quotes shell" aria-labelledby="home-quotes-title">
+        <div className="home-section-heading">
+          <h2 id="home-quotes-title">当前报价</h2>
+          <Link href="/products" className="text-action">全部报价 <ArrowRight size={18} aria-hidden="true" /></Link>
+        </div>
+        {products.length ? (
+          <div className="home-product-list">
+            <div className="home-product-columns" aria-hidden="true">
+              <span>商品</span><span>有货报价</span><span>更新</span><span>有货观测价</span><span />
             </div>
+            {products.map((product) => <ProductCard key={product.slug} product={{ ...product, display_name: productDisplayName(product.slug, product.display_name) }} />)}
           </div>
-        </div>
+        ) : (
+          <div className="empty-state">
+            <p>暂无公开报价</p>
+            <Link href="/products" className="button-secondary mt-5">查看报价目录</Link>
+          </div>
+        )}
+        <AdSlot placement="home_hero" limit={2} className="mt-6" />
       </section>
 
-      <section className="shell py-12 sm:py-16" data-vds-layer="evidence">
-        <SectionIntro title="当前报价" description="优先显示有货、近期更新且商品口径明确的报价。" action={<Link href="/products" className="button-secondary">查看全部报价 <ArrowRight size={17} /></Link>} />
-        <div className="mt-2">{products.map((product) => <ProductCard key={product.slug} product={product} />)}</div>
-      </section>
+      {meta?.relay_hub_enabled !== false ? (
+        <Suspense fallback={<HomeRelayPreview loading />}>
+          <HomeRelays />
+        </Suspense>
+      ) : null}
 
-      <section className="method-band border-y border-[color:var(--line-strong)]">
-        <div className="shell grid lg:grid-cols-[.58fr_1.42fr]">
-          <div className="border-b border-[color:var(--line)] py-10 lg:border-b-0 lg:border-r lg:pr-10 lg:py-12">
-            <h2 className="text-3xl font-semibold tracking-[-.04em]">报价包含哪些信息</h2>
-            <p className="mt-4 max-w-md text-sm leading-7 text-[color:var(--muted)]">每条报价保留来源、更新时间、商品类型和交付说明。用于展示的参考价只在同类商品内计算。</p>
-            <Link href="/methodology" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[color:var(--brand-strong)]">查看数据方法 <ArrowRight size={17} /></Link>
-          </div>
-          <div className="divide-y divide-[color:var(--line)] lg:grid lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-            {[
-              { Icon: Database, title: "查看原始商品页", copy: "每条报价都会保留店铺、商品标题和原始购买链接。" },
-              { Icon: Clock, title: "标明数据时间", copy: "每条报价都会显示最近一次观测时间，长时间未更新的报价会降低展示优先级。" },
-              { Icon: ShieldCheck, title: "限制来自商品说明", copy: "限制、质保和售后提示只引用商品原文，不替商家补充或推断。" },
-              { Icon: CheckCircle, title: "有误可提交纠错", copy: "分类、价格或库存有问题，可以提交纠错。" },
-            ].map(({ Icon, title, copy }) => <div key={title} className="method-item p-7 lg:p-8"><Icon size={22} className="text-[color:var(--brand)]" /><h3 className="mt-5 text-lg font-semibold">{title}</h3><p className="mt-2 max-w-sm text-sm leading-6 text-[color:var(--muted)]">{copy}</p></div>)}
-          </div>
-        </div>
-      </section>
+      <nav className="home-resources shell" aria-label="更多工具与指南">
+        {[
+          { href: "/skills", title: "技能与实验室" },
+          { href: "/skills/pelican-bicycle-benchmark", title: "模型评测" },
+          { href: "/guides/buying-checklist", title: "购买前检查" },
+          { href: "/methodology", title: "数据方法" },
+        ].map(({ href, title }) => (
+          <Link href={href} key={href}><span>{title}</span><ArrowUpRight size={18} aria-hidden="true" /></Link>
+        ))}
+      </nav>
     </main>
   );
 }

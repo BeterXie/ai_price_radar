@@ -19,7 +19,7 @@ PRODUCTS = [
     ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x", "Pro 20x 订阅与成品号", "subscription", "聚合明确标注为 ChatGPT Pro 20x 的公开报价。"),
     ("chatgpt-pro", "OpenAI", "ChatGPT Pro", "未注明 5x 或 20x 的 Pro", "subscription", "聚合未明确标注 5x 或 20x 倍率的 ChatGPT Pro 公开报价。"),
     ("openai-api-credit", "OpenAI", "OpenAI API 额度", "API Key 与额度商品", "api", "聚合 OpenAI API 额度、余额和 Key 类商品。"),
-    ("chatgpt-access-service", "OpenAI", "ChatGPT 手机接码", "接码、验证与开通服务", "service", "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。"),
+    ("chatgpt-access-service", "手机接码", "手机接码", "适用于 ChatGPT / OpenAI 的注册验证、手机号接码与开通服务", "service", "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。"),
     ("codex-access", "OpenAI", "Codex 账号与访问", "账号、订阅与访问类商品", "account", "已合并至 ChatGPT Plus。"),
     ("claude-team", "Claude", "Claude Team", "Team 团队版席位与组织号", "subscription", "聚合 Claude Team 团队版席位、拼车与独享组织公开报价。"),
     ("claude-account", "Claude", "Claude 账号", "基础账号与访问类商品", "account", "聚合 Claude 基础账号与访问类公开报价。"),

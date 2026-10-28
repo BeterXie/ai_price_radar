@@ -79,7 +79,7 @@ BRAND_GROUPS: dict[str, dict[str, Any]] = {
     "OpenAI": {
         "title": "OpenAI / ChatGPT 全系列最低报价一览",
         "aliases": ["openai", "chatgpt", "gpt"],
-        "hint": "发送具体型号（如「chatgpt plus」、「chatgpt 5x」、「chatgpt 20x」、「chatgpt go」、「chatgpt接码」）可查看最低价与店铺详情。",
+        "hint": "发送具体型号（如「chatgpt plus」、「chatgpt 5x」、「chatgpt 20x」、「chatgpt go」）可查看最低价与店铺详情。",
     },
     "Gemini": {
         "title": "Gemini 全系列最低报价一览",

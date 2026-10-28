@@ -93,3 +93,89 @@ test("catalog relay tab and top-level relay entry share live station data and vi
   assert.equal(calls.filter((url) => url.includes("/api/v1/relays")).length, 2);
   assert.equal(calls.some((url) => url.includes("/catalog/groups")), false);
 });
+
+const widenedCatalogScope = {
+  brand: "Claude",
+  source_platform: "independent",
+  comparable: "false",
+  in_stock: "true",
+  delivery_type: "finished_account",
+  period: "one_month",
+  warranty: "covered",
+  auto_delivery: "false",
+  updated_within_hours: "24",
+  min_price: "25.50",
+  max_price: "100",
+  q: "Max 微风",
+};
+
+function catalogDescendants(node) {
+  if (!node || typeof node !== "object") return [];
+  return [node, ...[node.props?.children].flat(Infinity).flatMap(catalogDescendants)];
+}
+
+function catalogLink(nodes, predicate) {
+  return nodes.find((node) => typeof node.props?.href === "string" && predicate(new URL(node.props.href, "https://example.test")));
+}
+
+function assertCatalogScope(link, expected) {
+  assert.ok(link, "expected a catalog navigation link");
+  const url = new URL(link.props.href, "https://example.test");
+  for (const [key, value] of Object.entries(expected)) {
+    assert.equal(url.searchParams.get(key), value, `${url.pathname} must retain ${key}`);
+  }
+  return url;
+}
+
+function mockCatalogMetadata() {
+  return {
+    platforms: [], brands: [], product_types: [], tags: [],
+    source_platforms: [{ id: "independent", label: "独立站点" }, { id: "16688", label: "16688" }],
+  };
+}
+
+test("brand, source and product navigation retain the widened scope and intersecting filters", async (context) => {
+  context.mock.method(globalThis, "fetch", async (url) => new Response(JSON.stringify(
+    String(url).includes("/meta")
+      ? mockCatalogMetadata()
+      : { items: [], total: 0, snapshot_id: 42, offer_total: 0, in_stock_count: 0, comparable_offer_count: 0, trusted_offer_count: 0, last_updated_at: null, snapshot_at: null }
+  ), { status: 200 }));
+
+  const nodes = catalogDescendants(await ProductCatalogPage({ rawParams: widenedCatalogScope }));
+  const brandLink = catalogLink(nodes, (url) => url.pathname === "/products" && url.searchParams.get("brand") === "Gemini");
+  assertCatalogScope(brandLink, { ...widenedCatalogScope, brand: "Gemini" });
+
+  const sourceLink = catalogLink(nodes, (url) => url.pathname === "/products" && url.searchParams.get("source_platform") === "16688");
+  assertCatalogScope(sourceLink, { ...widenedCatalogScope, source_platform: "16688" });
+
+  const productLink = catalogLink(nodes, (url) => url.pathname === "/products/claude-pro");
+  const { brand, ...productScope } = widenedCatalogScope;
+  assertCatalogScope(productLink, productScope);
+});
+
+test("catalog failure retry retains the complete current scope", async (context) => {
+  context.mock.method(globalThis, "fetch", async (url) => {
+    if (String(url).includes("/meta")) return new Response(JSON.stringify(mockCatalogMetadata()), { status: 200 });
+    return new Response("catalog temporarily unavailable", { status: 503 });
+  });
+
+  const nodes = catalogDescendants(await ProductCatalogPage({ rawParams: widenedCatalogScope }));
+  const alert = nodes.find((node) => node.props?.role === "alert");
+  assert.ok(alert, "catalog failure must expose an error state");
+  const retryLink = catalogLink(catalogDescendants(alert), (url) => url.pathname === "/products");
+  assertCatalogScope(retryLink, widenedCatalogScope);
+});
+
+test("empty brand catalog keeps its brand when opening related offers", async (context) => {
+  context.mock.method(globalThis, "fetch", async (url) => new Response(JSON.stringify(
+    String(url).includes("/meta")
+      ? mockCatalogMetadata()
+      : { items: [], total: 0, snapshot_id: 42, offer_total: 0, in_stock_count: 0, comparable_offer_count: 0, trusted_offer_count: 0, last_updated_at: null, snapshot_at: null }
+  ), { status: 200 }));
+
+  const nodes = catalogDescendants(await ProductCatalogPage({ rawParams: { brand: "Claude" } }));
+  const empty = nodes.find((node) => node.props?.className === "catalog-empty");
+  assert.ok(empty, "an empty brand catalog must expose its related-offers action");
+  const relatedLink = catalogLink(catalogDescendants(empty), (url) => url.pathname === "/products");
+  assertCatalogScope(relatedLink, { brand: "Claude", comparable: "false" });
+});

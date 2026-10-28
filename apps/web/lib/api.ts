@@ -16,6 +16,7 @@ import type {
 
 import { cache } from "react";
 import { getSnapshotCatalog } from "@/lib/snapshot-catalog";
+import { normalizeProductIdentity } from "@/lib/product-identity";
 
 // Keep the final fallback identical to next.config.ts and snapshot-catalog.ts:
 // local development assumes the API runs on the host at 127.0.0.1:8000.
@@ -71,10 +72,11 @@ export async function getProducts(query = ""): Promise<CatalogResponse> {
     // so the two branches return consistent ordering for the same request.
     const snapshotData = await getSnapshotCatalog().catch(() => null);
     if (snapshotData && snapshotData.items.length > 0) {
-      return snapshotData;
+      return { ...snapshotData, items: snapshotData.items.map(normalizeProductIdentity) };
     }
   }
-  return apiFetch(`/api/v1/products${query ? `?${query}` : ""}`, 2, { next: { revalidate: 30 } });
+  const data = await apiFetch<CatalogResponse>(`/api/v1/products${query ? `?${query}` : ""}`, 2, { next: { revalidate: 30 } });
+  return { ...data, items: data.items.map(normalizeProductIdentity) };
 }
 
 export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPage> {
@@ -83,9 +85,10 @@ export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPag
 
 export const getProduct = cache(async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {
   try {
-    return await apiFetch(`/api/v1/products/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`, 2, {
+    const product = await apiFetch<ProductDetail>(`/api/v1/products/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`, 2, {
       next: { revalidate: 30 },
     });
+    return normalizeProductIdentity(product);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
