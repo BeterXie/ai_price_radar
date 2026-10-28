@@ -511,15 +511,20 @@ def test_metric_rollups_use_own_windows_known_usage_and_current_revision(relay_a
     ([], None),
     ([(1600, 800)], None),
     ([(1600, 800), (6400, 4800)], None),
-    ([(2000, 2000), (2000, 0), (2000, 1000)], 50),
+    ([(2000, 2000), (2000, 0), (2000, 1000)], None),
+    ([(2000, 2000), (2000, 500), (2000, 1000)], 50),
     # Different input lengths: equal per-request weight, not token weight.
-    ([(10000, 10000), (20000, 4000), (100000, 60000), (2000, 0)], 40),
+    ([(10000, 10000), (20000, 4000), (100000, 60000), (2000, 0)], 60),
+    ([(10000, 10000), (20000, 4000), (100000, 60000), (2000, 200), (2000, 0)], 40),
     # Repeated extremes lose exactly one observation from either end.
-    ([(4585, 4352), (4585, 0), (4585, 0), (4585, 4352), (4585, 4352)], 63.28),
+    ([(4585, 4352), (4585, 0), (4585, 0), (4585, 4352), (4585, 4352)], 94.92),
     ([(2000, 2000)] * 4, 100),
-    ([(2000, 0)] * 4, 0),
+    ([(2000, 0)] * 4, None),
+    ([(2000, 0)] * 4 + [(2000, 1800)], None),
+    ([(2000, 0)] * 4 + [(2000, 1800), (2000, 1900)], None),
+    ([(2000, 1), (2000, 2), (2000, 3), (2000, 0)], .1),
 ])
-def test_cache_rate_trims_one_extreme_each_then_averages_requests(relay_api, usage, expected):
+def test_cache_rate_excludes_zero_then_trims_one_extreme_each_and_averages(relay_api, usage, expected):
     _, factory = relay_api
     with factory() as db:
         station = RelayStation(name="Trimmed cache", monitor_enabled=True, monitor_revision=1)
@@ -542,7 +547,8 @@ def test_cache_rate_trims_one_extreme_each_then_averages_requests(relay_api, usa
         db.commit()
         health = relay_health(db, station)
         assert health.cache_hit_rate_24h == expected
-        assert health.cache_sample_count_24h == len(usage)
+        assert health.cache_sample_count_24h == sum(cached > 0 for _, cached in usage)
+        assert health.cache_attempt_count_24h == len(usage) + 4
         assert len(list(db.scalars(select(RelayProbeResult)))) == len(usage) + 4
 
 
@@ -652,7 +658,7 @@ def test_sparse_usage_fallback_only_attributes_this_probe_and_keeps_model_timing
         assert result.latency_ms == 230 and result.first_token_ms == (130 if streaming else None) and result.connect_latency_ms == 12
         assert accounting.calls == (3 if direct_cache is not None else 5 if lag else 4)
         health = relay_health(db, station)
-        assert health.cache_sample_count_24h == (0 if expected is None else 1)
+        assert health.cache_sample_count_24h == (1 if expected else 0)
         assert health.cache_hit_rate_24h is None  # One sample is not a trimmed mean.
         assert KEY not in health.model_dump_json()
 
@@ -685,7 +691,9 @@ def test_consecutive_sparse_probes_each_collect_their_own_cache_sample(relay_api
             assert result.status == "healthy" and result.cached_input_tokens == 0
         assert accounting.calls == 12 and len(completion.calls) == 6
         health = relay_health(db, station)
-        assert health.cache_sample_count_24h == 3 and health.cache_hit_rate_24h == 0
+        assert health.cache_sample_count_24h == 0 and health.cache_hit_rate_24h is None
+        assert health.cache_attempt_count_24h == 3
+        assert [row.cached_input_tokens for row in db.scalars(select(RelayProbeResult))] == [0, 0, 0]
 
 
 def test_worker_claims_once_and_never_probes_unapproved_stations(relay_api, monkeypatch):
@@ -810,7 +818,7 @@ def test_pair_scores_first_answer_only_and_measures_only_repeat(relay_api, answe
         assert health.candy_inconclusive_count_24h == (1 if verdict == "inconclusive" else 0)
         assert health.candy_pass_rate_24h == (100 if verdict == "passed" else 0 if verdict == "failed" else None)
         assert health.cache_attempt_count_24h == 1
-        assert health.cache_sample_count_24h == (1 if cache_status == "healthy" else 0)
+        assert health.cache_sample_count_24h == (1 if cache_status == "healthy" and cached else 0)
         assert health.cache_hit_rate_24h is None  # One sample is not a trimmed mean.
 
 

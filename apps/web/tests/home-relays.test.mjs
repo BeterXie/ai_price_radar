@@ -45,12 +45,14 @@ test("homepage relay preview respects disabled, empty and unavailable states", a
   assert.doesNotMatch(failed, /home-relay-card/);
 });
 
-test("homepage relay metrics distinguish measured zero from missing or insufficient samples", () => {
-  const measured = station(1, { health: { status: "unhealthy", availability_7d: 0, sample_count_7d: 1, cache_hit_rate_24h: 0, cache_sample_count_24h: 3 } });
+test("homepage relay metrics distinguish zero availability and nonzero cache statistics", () => {
+  const measured = station(1, { health: { status: "unhealthy", availability_7d: 0, sample_count_7d: 1, cache_hit_rate_24h: 94.92, cache_sample_count_24h: 3 } });
   const missing = station(2, { health: { availability_7d: null, sample_count_7d: 0, cache_hit_rate_24h: null, cache_sample_count_24h: 0 } });
   const insufficient = station(3, { health: { cache_hit_rate_24h: 90, cache_sample_count_24h: 2 } });
   const html = render({ data: { enabled: true, total: 3, items: [measured, missing, insufficient] } });
-  assert.equal((html.match(/<dd>0%<\/dd>/g) || []).length, 2);
+  assert.equal((html.match(/<dd>0%<\/dd>/g) || []).length, 1);
+  assert.match(html, /<dd>94.92%<\/dd>/);
+  assert.match(html, /先排除零命中/);
   assert.match(html, /<dd>暂无数据<\/dd>/);
   assert.match(html, /<dd>样本不足<\/dd>/);
   assert.doesNotMatch(html, /<dd>90%<\/dd>/);

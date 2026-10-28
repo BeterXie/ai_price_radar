@@ -112,10 +112,10 @@ def relay_health(db: Session, station: RelayStation) -> RelayHealthOut:
     cache_samples = [row for row in benchmark_successes if (
         row.cache_probe_status == "healthy"
         and row.input_tokens is not None and row.input_tokens >= MIN_CACHE_INPUT_TOKENS
-        and row.cached_input_tokens is not None and 0 <= row.cached_input_tokens <= row.input_tokens
+        and row.cached_input_tokens is not None and 0 < row.cached_input_tokens <= row.input_tokens
     )]
-    # Trim one observation at each end, including ties. Keep the raw samples
-    # and average the remaining per-request rates with equal weight.
+    # Exclude zero hits, then trim one observation at each end, including ties.
+    # Keep all raw samples and average the remaining rates with equal weight.
     cache_rates = sorted(row.cached_input_tokens / row.input_tokens for row in cache_samples)
     trimmed_cache_rates = cache_rates[1:-1]
     return RelayHealthOut(

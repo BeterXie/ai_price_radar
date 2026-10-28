@@ -41,7 +41,7 @@ export function HomeRelayPreview({ data = null, loading = false }: { data?: Rela
                   </div>
                   <dl className="home-relay-metrics">
                     <div><dt>可用率 · 7天</dt><dd>{availability}</dd></div>
-                    <div title="近24小时重复输入缓存率，去掉最高和最低值后的测试均值；至少3个有效样本。"><dt>缓存率 · 24h</dt><dd>{cacheRate}</dd></div>
+                    <div title="近24小时重复输入缓存率，先排除零命中，再各去掉一个最高值和最低值后取平均；至少3个非零有效样本。"><dt>缓存率 · 24h</dt><dd>{cacheRate}</dd></div>
                   </dl>
                   <div className="home-relay-state">
                     <span className="home-relay-model" title={health?.probe_model || undefined}>{health?.probe_model || "未设置检测模型"}</span>

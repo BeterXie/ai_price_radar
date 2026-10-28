@@ -1742,8 +1742,8 @@ class RelayHealthOut(BaseModel):
     availability_7d: float | None = None
     sample_count_7d: int = 0
     diagnostic_count_7d: int = 0
-    cache_hit_rate_24h: float | None = Field(default=None, description="近 24 小时逐次缓存率各去掉一个最高值和最低值后的算术平均（百分数）；不足 3 个有效样本时为 null。")
-    cache_sample_count_24h: int = Field(default=0, description="近 24 小时去除极值前的有效缓存样本数；极值并列时也仅各去掉一条。")
+    cache_hit_rate_24h: float | None = Field(default=None, description="近 24 小时逐次缓存率先排除零命中，再各去掉一个最高值和最低值后的算术平均（百分数）；不足 3 个非零有效样本时为 null。")
+    cache_sample_count_24h: int = Field(default=0, description="近 24 小时排除零命中后、去除极值前的有效缓存样本数；极值并列时也仅各去掉一条。")
     cache_attempt_count_24h: int = 0
     cache_probe_status: str | None = None
     candy_pass_rate_24h: float | None = None
