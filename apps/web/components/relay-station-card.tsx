@@ -83,7 +83,7 @@ export function RelayStationCard({ station, view = "card", initialNow }: { stati
           {!station.model_catalog?.synced_at && station.supported_models.length > 0 ? <div className="relay-chip-row mt-3" aria-label="站方填写的模型">{station.supported_models.map((model) => <span key={model} className="relay-chip mono">{model}</span>)}</div> : null}
           {group ? <div className="mt-2 text-xs text-[color:var(--muted)]">
             <p>{group.description}</p>
-            <p>分组倍率为站内计费系数，最终费用以官网为准。{group.source === "公开价格接口" ? "公开分组不代表当前密钥均可使用。" : ""}探活数据来自已配置密钥，切换分组仅查看资料。</p>
+            <p>分组倍率为站内计费系数，最终费用以官网为准。{group.source === "公开价格接口" || group.source === "模型广场" ? "公开分组不代表当前密钥均可使用。" : ""}探活数据来自已配置密钥，切换分组仅查看资料。</p>
             {group.source !== "站方填写" && automatic?.synced_at ? <p>分组同步于 <time dateTime={automatic.synced_at} title={exactTime(automatic.synced_at)}>{relativeTime(automatic.synced_at, now)}</time></p> : null}
           </div> : null}
           <RelayModelCatalog key={group?.id || "all"} catalog={station.model_catalog} group={group} now={now} />

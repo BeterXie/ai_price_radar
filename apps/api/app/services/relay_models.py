@@ -143,7 +143,7 @@ def sync_relay_models(db: Session, target: ProbeTarget, *, client=None, group_cl
         status = "invalid_response"
     except RuntimeError:
         status = "credential_error"
-    # Billing/pricing metadata has its own request budget and success state;
+    # Group metadata has its own request budget and success state;
     # a failed model list must not suppress otherwise valid group metadata.
     from .relay_groups import fetch_group_catalog
     group_catalog = fetch_group_catalog(target, key, client=group_client) if key else None

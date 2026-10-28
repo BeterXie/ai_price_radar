@@ -11,14 +11,99 @@ from test_relay_monitor import ADMIN, KEY, payload, relay_api
 
 
 class GroupClient:
-    def __init__(self, *responses):
+    def __init__(self, *responses, plaza=(404, {})):
         self.responses = list(responses)
+        self.plaza = plaza
         self.calls = []
 
     def get(self, url, *, accept, headers):
         self.calls.append((url, headers))
-        status, body = self.responses.pop(0)
+        response = self.plaza if url.endswith("/api/v1/model-plaza") else self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        if isinstance(response, PinnedResponse):
+            return response
+        status, body = response
         return PinnedResponse(status, {}, json.dumps(body).encode())
+
+
+def plaza(*groups):
+    return 200, {"code": 0, "data": {"groups": list(groups)}}
+
+
+def test_public_plaza_precedes_key_billing_and_only_publishes_public_metadata():
+    fake = GroupClient((200, {"group_rate_multiplier": .12}), plaza=plaza(
+        {"id": 8, "name": "Public GPT", "rate_multiplier": .2, "user_rate_multiplier": .12,
+         "description": KEY, "balance": 500, "models": [{"name": "gpt-a"}, {"name": "gpt-a"}]},
+        {"id": 9, "name": "Public Gemini", "rate_multiplier": 0, "models": []},
+        {"id": 10, "name": "Private", "is_exclusive": True, "models": [{"name": "private-model"}]},
+    ))
+    result = fetch_group_catalog(target(base="https://api.example.com/prefix/v1beta"), KEY, client=fake)
+    assert result["status"] == "ok" and result["source"] == "public_model_plaza"
+    assert result["groups"] == [
+        {"id": "8", "name": "Public GPT", "ratio": .2, "effective_ratio": None, "description": "", "models": ["gpt-a"]},
+        {"id": "9", "name": "Public Gemini", "ratio": 0, "effective_ratio": None, "description": "", "models": []},
+    ]
+    assert fake.calls == [("https://api.example.com/prefix/api/v1/model-plaza", {})]
+    assert fake.responses and KEY not in json.dumps(result) and "balance" not in json.dumps(result)
+
+
+def test_empty_plaza_is_authoritative_and_missing_model_membership_stays_unknown():
+    result = fetch_group_catalog(target(), KEY, client=GroupClient(plaza=plaza()))
+    assert result["source"] == "public_model_plaza" and result["groups"] == []
+    result = fetch_group_catalog(target(), KEY, client=GroupClient(plaza=plaza({"id": 1, "name": "Public"})))
+    assert result["groups"][0]["models"] is None
+
+
+@pytest.mark.parametrize("response", [
+    (401, {}), (403, {}), (404, {}), (405, {}), (200, {"success": False}),
+    PinnedResponse(200, {"content-type": "text/html; charset=utf-8"}, b"<!doctype html><html>SPA</html>"),
+])
+def test_unavailable_or_unsupported_plaza_falls_back_to_billing(response):
+    fake = GroupClient((200, {"group_rate_multiplier": .18}), plaza=response)
+    result = fetch_group_catalog(target(), KEY, client=fake)
+    assert result["source"] == "key_billing" and result["groups"][0]["ratio"] == .18
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.parametrize("rows", [
+    None, [{"id": True, "name": "Invalid ID"}], [{"id": 1, "name": KEY}],
+    [{"id": 1, "name": "Public", "models": [{"name": KEY}]}],
+    [{"id": 1, "name": "Public"}] * 2,
+    [{"id": 1, "name": "Public"}] * 101,
+    [{"id": 1, "name": "Public", "models": [{"name": "model"}] * 2001}],
+])
+def test_invalid_plaza_cannot_replace_previous_public_groups(relay_api, rows):
+    _, factory = relay_api
+    with factory() as db:
+        station, snapshot = configured_station(db)
+        assert sync_relay_models(db, snapshot, client=ModelClient({"data": []}), group_client=GroupClient(plaza=plaza({"id": 1, "name": "Public", "models": []})))
+        previous = station.model_catalog["group_catalog"]
+        fake = GroupClient(plaza=(200, {"code": 0, "data": {"groups": rows}}))
+        assert sync_relay_models(db, snapshot, client=ModelClient({"data": []}), group_client=fake)
+        current = station.model_catalog["group_catalog"]
+        assert current["status"] == "invalid_response"
+        assert current["source"] == "public_model_plaza"
+        assert current["groups"] == previous["groups"] and current["synced_at"] == previous["synced_at"]
+        assert len(fake.calls) == 1
+
+
+@pytest.mark.parametrize("response,expected", [(TimeoutError(), "timeout"), ((503, {}), "upstream_error")])
+def test_plaza_survives_model_failure_and_later_temporary_group_failure(relay_api, response, expected):
+    client, factory = relay_api
+    with factory() as db:
+        station, snapshot = configured_station(db)
+        revision = station.monitor_revision
+        assert sync_relay_models(db, snapshot, client=ModelClient(error=TimeoutError()), group_client=GroupClient(plaza=plaza({"id": 1, "name": "Public", "models": [{"name": "gpt-a"}]})))
+        saved = station.model_catalog["group_catalog"]
+        assert station.model_catalog["status"] == "timeout" and saved["status"] == "ok"
+        public = client.get("/api/v1/relays").json()["items"][0]["model_catalog"]["group_catalog"]
+        assert public["source"] == "public_model_plaza" and public["groups"][0]["models"] == ["gpt-a"]
+        assert sync_relay_models(db, snapshot, client=ModelClient({"data": []}), group_client=GroupClient(plaza=response))
+        current = station.model_catalog["group_catalog"]
+        assert current["status"] == expected and current["source"] == "public_model_plaza"
+        assert current["groups"] == saved["groups"] and current["synced_at"] == saved["synced_at"]
+        assert station.monitor_revision == revision
 
 
 def test_key_billing_reads_multiple_real_groups_without_account_details():
@@ -31,7 +116,10 @@ def test_key_billing_reads_multiple_real_groups_without_account_details():
     assert result["groups"][0] == {"id": "24", "name": "GPT Enterprise", "ratio": .25, "effective_ratio": .3, "description": "", "models": None}
     assert result["groups"][1]["ratio"] == 0
     assert "balance" not in json.dumps(result) and KEY not in json.dumps(result)
-    assert fake.calls == [("https://api.example.com/prefix/v1/sub2api/billing", {"Authorization": "Bearer " + KEY})]
+    assert fake.calls == [
+        ("https://api.example.com/prefix/api/v1/model-plaza", {}),
+        ("https://api.example.com/prefix/v1/sub2api/billing", {"Authorization": "Bearer " + KEY}),
+    ]
 
 
 def test_single_key_group_does_not_invent_a_name_or_model_scope():
@@ -50,7 +138,7 @@ def test_public_new_api_groups_use_declared_model_membership_and_no_auth_header(
     assert result["groups"][0]["models"] == ["model-a", "model-b"]
     assert result["groups"][1]["models"] == ["model-a"]
     assert result["groups"][2]["models"] == [] and result["groups"][2]["ratio"] is None
-    assert fake.calls[1] == ("https://api.example.com/prefix/api/pricing", {})
+    assert fake.calls[2] == ("https://api.example.com/prefix/api/pricing", {})
 
 
 def test_omitted_membership_is_unknown_and_unsafe_metadata_is_omitted():
@@ -64,7 +152,7 @@ def test_omitted_membership_is_unknown_and_unsafe_metadata_is_omitted():
 def test_billing_error_is_not_misrepresented_as_success(status, expected):
     fake = GroupClient((status, {"error": KEY}))
     result = fetch_group_catalog(target(), KEY, client=fake)
-    assert result["status"] == expected and "groups" not in result and len(fake.calls) == 1
+    assert result["status"] == expected and "groups" not in result and len(fake.calls) == 2
 
 
 @pytest.mark.parametrize("body", [

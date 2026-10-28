@@ -326,7 +326,7 @@ export type RelayGroup = {
 
 export type RelayGroupCatalog = {
   status: string;
-  source: "" | "key_billing" | "public_pricing";
+  source: "" | "key_billing" | "public_pricing" | "public_model_plaza";
   checked_at: string | null;
   synced_at: string | null;
   groups: RelayGroup[];

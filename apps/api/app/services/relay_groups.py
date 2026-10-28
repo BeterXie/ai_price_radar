@@ -79,6 +79,44 @@ def _pricing_groups(payload: dict, key: str) -> list[dict]:
     return groups
 
 
+def _plaza_groups(payload: dict, key: str) -> list[dict]:
+    data = payload.get("data")
+    if "code" not in payload or not isinstance(data, dict) or "groups" not in data:
+        raise CatalogResponseError("unsupported")
+    if type(payload["code"]) is not int or payload["code"] != 0:
+        raise CatalogResponseError("invalid_response")
+    rows = data["groups"]
+    if not isinstance(rows, list) or len(rows) > 100:
+        raise CatalogResponseError("invalid_response")
+    groups = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise CatalogResponseError("invalid_response")
+        if row.get("is_exclusive") is True:
+            continue
+        identity = row.get("id")
+        name = _text(row.get("name"), key)
+        if type(identity) is not int or identity <= 0 or not name:
+            raise CatalogResponseError("invalid_response")
+        models = None
+        if "models" in row:
+            if not isinstance(row["models"], list) or len(row["models"]) > 2000:
+                raise CatalogResponseError("invalid_response")
+            models = []
+            for model in row["models"]:
+                model_id = _text(model.get("name"), key, 200) if isinstance(model, dict) else ""
+                if not model_id:
+                    raise CatalogResponseError("invalid_response")
+                models.append(model_id)
+        groups.append({
+            "id": str(identity), "name": name,
+            "ratio": _ratio(row.get("rate_multiplier")), "effective_ratio": None,
+            "description": _text(row.get("description"), key, 500),
+            "models": models,
+        })
+    return groups
+
+
 def fetch_group_catalog(target: ProbeTarget, key: str, *, client=None) -> dict:
     from price_radar_http import PinnedHTTPSClient
 
@@ -91,10 +129,32 @@ def fetch_group_catalog(target: ProbeTarget, key: str, *, client=None) -> dict:
         base = base.rsplit("/", 1)[0]
     # Same configured host and prefix only; redirects are rejected by the client.
     client = client or PinnedHTTPSClient(
-        max_response_bytes=1024 * 1024, max_task_bytes=2 * 1024 * 1024,
+        max_response_bytes=1024 * 1024, max_task_bytes=3 * 1024 * 1024,
         max_task_seconds=45, request_timeout=30,
     )
     try:
+        # The anonymous plaza describes the site's public groups. Billing only
+        # describes this key, so a successful billing response cannot stand in
+        # for the public directory. Never send the key or a panel JWT here.
+        response = client.get(base + "/api/v1/model-plaza", accept="application/json", headers={})
+        groups = None
+        if response.status_code not in (401, 403, 404, 405):
+            if not 200 <= response.status_code < 300:
+                raise CatalogResponseError("upstream_error")
+            # Some sites serve their SPA for unknown API paths.
+            if "text/html" not in response.headers.get("content-type", "").lower():
+                payload = json.loads(response.body)
+                if isinstance(payload, dict):
+                    try:
+                        groups = _plaza_groups(payload, key)
+                    except CatalogResponseError as exc:
+                        if exc.status != "unsupported":
+                            raise
+        if groups is not None:
+            groups = RelayGroupConfig.model_validate({"groups": groups}).model_dump()["groups"]
+            result.update(status="ok", source="public_model_plaza", synced_at=checked, groups=groups)
+            return result
+
         response = client.get(base + "/v1/sub2api/billing", accept="application/json", headers={"Authorization": "Bearer " + key})
         if response.status_code in (404, 405):
             # New API pricing is public. Do not send the configured key to a

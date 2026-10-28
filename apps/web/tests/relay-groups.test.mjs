@@ -33,6 +33,22 @@ test("known group models control the visible list; unknown scope keeps the key l
   assert.match(unknown, /Model A/);
 });
 
+test("public plaza groups expose their model scope and preserve manual overrides", () => {
+  const station = {
+    model_catalog: { group_catalog: { source: "public_model_plaza", groups: [
+      { id: "8", name: "Public GPT", ratio: .2, models: ["b"] },
+      { id: "9", name: "Public Gemini", ratio: .5, models: [] },
+    ] } },
+    groups: [{ id: "9", name: "人工 Gemini", ratio: .4, models: ["a"] }],
+  };
+  const groups = relayGroups(station);
+  assert.equal(groups[0].source, "模型广场");
+  assert.deepEqual(modelsForGroup(models, groups[0]).map((model) => model.id), ["b"]);
+  assert.equal(groups[1].source, "站方填写");
+  assert.equal(groups[1].ratio, .4);
+  assert.deepEqual(modelsForGroup(models, groups[1]), models);
+});
+
 test("fresh group membership is not labeled as an old model list after model sync failure", () => {
   const catalog = { status: "timeout", checked_at: "2026-10-26T00:00:00Z", synced_at: "2026-10-25T00:00:00Z", models };
   const html = renderToStaticMarkup(createElement(RelayModelCatalog, { catalog, group: { id: "g", name: "VIP", models: ["new-model"] } }));

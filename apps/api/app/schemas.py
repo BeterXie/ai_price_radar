@@ -1802,7 +1802,7 @@ class RelayModelInfo(BaseModel):
 
 class RelayGroupCatalog(BaseModel):
     status: str = "not_checked"
-    source: Literal["", "key_billing", "public_pricing"] = ""
+    source: Literal["", "key_billing", "public_pricing", "public_model_plaza"] = ""
     checked_at: datetime | None = None
     synced_at: datetime | None = None
     groups: list[RelayGroup] = Field(default_factory=list)

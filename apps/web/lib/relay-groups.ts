@@ -3,7 +3,8 @@ import type { RelayGroup, RelayModelInfo, RelayStationPublic } from "@/lib/types
 export function relayGroups(station: RelayStationPublic) {
   const automatic = station.model_catalog?.group_catalog;
   const groups = new Map<string, RelayGroup & { source: string }>();
-  for (const group of automatic?.groups || []) groups.set(group.id, { ...group, source: automatic?.source === "key_billing" ? "密钥接口" : "公开价格接口" });
+  const source = automatic?.source === "public_model_plaza" ? "模型广场" : automatic?.source === "key_billing" ? "密钥接口" : "公开价格接口";
+  for (const group of automatic?.groups || []) groups.set(group.id, { ...group, source });
   for (const group of station.groups || []) groups.set(group.id, { ...group, source: "站方填写" });
   return [...groups.values()];
 }
