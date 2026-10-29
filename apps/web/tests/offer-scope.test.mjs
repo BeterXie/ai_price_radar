@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { filterValues, offerQuery } from "../components/product-workspace.tsx";
+import { OfferScopeControls } from "../components/offer-scope-controls.tsx";
 import { hasNarrowingFilters, ProductCatalogPage } from "../components/product-catalog-page.tsx";
 import { BRAND_TABS, PRODUCT_TABS, ALL_PRODUCTS } from "../lib/catalog.ts";
 import RelaysPage from "../app/relays/page.tsx";
@@ -30,29 +31,44 @@ test("narrowing filters are detected independently of the comparable scope", () 
   assert.equal(hasNarrowingFilters({ source_platform: "ldxp" }), true);
 });
 
-test("catalog search retains source, brand and offer filters", async (context) => {
-  context.mock.method(globalThis, "fetch", async (url) => new Response(JSON.stringify(
-    String(url).includes("/meta")
-      ? { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] }
-      : { items: [], total: 0, page: 1, page_size: 30 }
-  ), { status: 200 }));
+test("catalog filtering retains search, source, brand and offer filters without the removed search header", async (context) => {
+  const calls = [];
+  context.mock.method(globalThis, "fetch", async (url) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify(
+      String(url).includes("/meta")
+        ? { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] }
+        : { items: [], total: 0, page: 1, page_size: 30 }
+    ), { status: 200 });
+  });
   const tree = await ProductCatalogPage({ rawParams: { brand: "Claude", source_platform: "16688", in_stock: "true", period: "one_month", q: "Max" } });
-  function findSearch(node) {
-    if (!node || typeof node !== "object") return null;
-    if (node.type?.name === "SearchBox") return node;
-    const children = node.props?.children;
-    for (const child of Array.isArray(children) ? children.flat(Infinity) : [children]) {
-      const found = findSearch(child);
-      if (found) return found;
-    }
-    return null;
+  const nodes = catalogDescendants(tree);
+  const filters = nodes.find((node) => node.type?.name === "OfferScopeControls");
+  assert.ok(filters);
+  assert.equal(filters.props.hiddenFields.source_platform, "16688");
+  assert.equal(filters.props.hiddenFields.brand, "Claude");
+  assert.equal(filters.props.hiddenFields.q, "Max");
+  assert.equal(filters.props.values.in_stock, "true");
+  assert.equal(filters.props.values.period, "one_month");
+  const request = new URL(calls.find((url) => url.includes("/catalog/groups")));
+  for (const [key, value] of Object.entries({ brand: "Claude", source_platform: "16688", in_stock: "true", period: "one_month", q: "Max" })) {
+    assert.equal(request.searchParams.get(key), value);
   }
-  const search = findSearch(tree);
-  assert.ok(search);
-  assert.equal(search.props.filters.source_platform, "16688");
-  assert.equal(search.props.filters.brand, "Claude");
-  assert.equal(search.props.filters.in_stock, "true");
-  assert.equal(search.props.filters.period, "one_month");
+});
+
+test("catalog and product scopes expose search recovery without losing other filters", () => {
+  for (const action of ["/products", "/products/claude-pro"]) {
+    const hiddenFields = { q: "Max 微风", source_platform: "16688", ...(action === "/products" ? { brand: "Claude" } : {}) };
+    const values = filterValues({ comparable: "false", in_stock: "true", period: "one_month", min_price: "25" });
+    const nodes = catalogDescendants(OfferScopeControls({ action, values, hiddenFields, resetHref: "/products?q=Max" }));
+    const clear = nodes.find((node) => node.props?.["aria-label"] === "清除搜索关键词：Max 微风");
+    const url = assertCatalogScope(clear, { source_platform: "16688", comparable: "false", in_stock: "true", period: "one_month", min_price: "25" });
+    assert.equal(url.pathname, action);
+    assert.equal(url.searchParams.has("q"), false);
+    assert.equal(url.searchParams.get("brand"), action === "/products" ? "Claude" : null);
+  }
+  const unfiltered = catalogDescendants(OfferScopeControls({ action: "/products", values: filterValues({}), resetHref: "/products" }));
+  assert.equal(unfiltered.some((node) => node.props?.["aria-label"]?.startsWith("清除搜索关键词")), false);
 });
 
 test("智谱 is no longer a public brand tab and 中转站 is not a crawled brand", () => {

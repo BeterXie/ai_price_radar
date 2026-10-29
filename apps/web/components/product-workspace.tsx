@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowSquareOut, Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
@@ -7,9 +7,8 @@ import { JsonLd } from "@/components/structured-data";
 import { ProductEvidence } from "@/components/product-evidence";
 import { ProductHistoryPanel } from "@/components/product-history-panel";
 import { ReportForm } from "@/components/report-form";
-import { WatchButton } from "@/components/watch-button";
 import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
-import { exactTime, money, relativeTime } from "@/lib/format";
+import { exactTime, relativeTime } from "@/lib/format";
 import { getProductGuide } from "@/lib/guides/registry";
 import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
 import type { ProductDetail } from "@/lib/types";
@@ -128,24 +127,6 @@ export function ProductWorkspace({
         <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
         <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
       </section>
-
-      <section className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-stretch">
-        <div className="data-strip sm:grid-cols-3">
-          <div className="data-cell"><p className="data-label">近期有货观测价</p><p className="data-value">{money(product.lowest_price, product.price_currency)}</p></div>
-          <div className="data-cell"><p className="data-label">常见观测价</p><p className="data-value">{money(product.median_price, product.price_currency)}</p></div>
-          <div className="data-cell"><p className="data-label">信息覆盖</p><p className="data-value">{product.data_quality_score}<span className="ml-1 text-sm font-normal text-[color:var(--muted)]">/ 100，{product.data_quality_label}</span></p><p className="mt-1 text-xs text-[color:var(--muted)]">{product.source_count} 个来源</p></div>
-        </div>
-        <WatchButton slug={product.slug} name={product.display_name} currency={product.price_currency} suggestedPrice={product.lowest_price} />
-      </section>
-
-      {product.official_reference && (
-        <section className="evidence-callout mt-4" data-vds-layer="evidence">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <div><p className="section-kicker">官方价格参考 · 更新于 {product.official_reference.checked_at}</p><h2 className="mt-2 text-xl font-semibold">{product.official_reference.plan} · {product.official_reference.currency} {product.official_reference.price} / 月</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted)]">{product.official_reference.note}</p></div>
-            <a href={product.official_reference.url} target="_blank" rel="noreferrer" className="button-secondary shrink-0">查看官方来源 <ArrowSquareOut size={16} /></a>
-          </div>
-        </section>
-      )}
 
       <ProductEvidence sources={evidenceSources} />
 

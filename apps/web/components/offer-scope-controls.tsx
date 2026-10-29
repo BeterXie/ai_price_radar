@@ -109,12 +109,23 @@ export function OfferScopeControls({
   quickFilter?: React.ReactNode;
 }) {
   const activeFilterCount = Object.entries(values).filter(([name, value]) => name === "comparable" ? value === "false" : Boolean(value)).length;
+  const searchTerm = hiddenFields.q?.trim();
+  const clearSearchQuery = new URLSearchParams(
+    Object.entries({ ...hiddenFields, ...values }).filter(([name, value]) => name !== "q" && Boolean(value)),
+  );
+  const clearSearchHref = `${action}${clearSearchQuery.size ? `?${clearSearchQuery}` : ""}`;
   return (
     <section className={compact ? "catalog-filters" : "offer-filters py-5"} aria-label="报价筛选">
       <details className="offer-filter-disclosure" open={defaultOpen}>
         <summary><SlidersHorizontal size={17} aria-hidden="true" />筛选 {activeFilterCount ? <span>{activeFilterCount}</span> : null}<CaretDown size={14} className="filter-disclosure-chevron" aria-hidden="true" /></summary>
         <div className="mt-3"><FilterForm key={JSON.stringify({ values, hiddenFields })} action={action} values={values} hiddenFields={hiddenFields} /></div>
       </details>
+      {searchTerm ? (
+        <p className="mt-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[color:var(--muted)]">
+          <span className="min-w-0 break-all">搜索：{searchTerm}</span>
+          <Link href={clearSearchHref} className="filter-reset shrink-0" aria-label={`清除搜索关键词：${searchTerm}`}>清除关键词</Link>
+        </p>
+      ) : null}
       {quickFilter || activeFilterCount > 0 ? (
         <div className="filter-toolbar-actions">
           {quickFilter}

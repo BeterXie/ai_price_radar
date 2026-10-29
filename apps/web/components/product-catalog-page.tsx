@@ -7,11 +7,9 @@ import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { PlatformIcon } from "@/components/platform-icon";
 import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
 import { ReportForm } from "@/components/report-form";
-import { SearchBox } from "@/components/search-box";
 import { RelayCatalogPage } from "@/components/relay-catalog-page";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
-import { getProductSeoContent } from "@/lib/product-seo";
 import type { Meta } from "@/lib/types";
 import { BRAND_TABS, type BrandName, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
 
@@ -128,13 +126,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
 
   return (
     <main id="main-content" className="catalog-page shell">
-      <header className="catalog-page-heading">
-        <div>
-          <h1>{headingTitle}</h1>
-          {product ? <p id="product-description">{getProductSeoContent(product.slug, product.display_name, product.description).intro}</p> : null}
-        </div>
-        {!product ? <div className="catalog-page-search"><SearchBox key={searchQuery} defaultValue={searchQuery} filters={{ ...filters, ...hiddenFields }} /></div> : null}
-      </header>
+      <h1 className="sr-only">{headingTitle}</h1>
 
       <div className="catalog-layout">
         <aside className="catalog-sidebar">

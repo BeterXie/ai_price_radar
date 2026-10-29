@@ -59,7 +59,7 @@ def _create_source_intakes(db) -> None:
         "CREATE TABLE source_intakes ("
         "id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, detected_platform TEXT NOT NULL, "
         "source_url TEXT NOT NULL, status TEXT NOT NULL, product_count INTEGER NOT NULL DEFAULT 0, "
-        "finished_at TEXT, updated_at TEXT)"
+        "approved_at TEXT, finished_at TEXT, updated_at TEXT)"
     ))
     db.execute(text(
         "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, status) "

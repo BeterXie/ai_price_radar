@@ -108,7 +108,7 @@ def create_source_intakes(db) -> None:
         "CREATE TABLE source_intakes ("
         "id INTEGER PRIMARY KEY, source_type TEXT NOT NULL, detected_platform TEXT NOT NULL, "
         "source_url TEXT NOT NULL, status TEXT NOT NULL, product_count INTEGER NOT NULL DEFAULT 0, "
-        "finished_at TEXT, updated_at TEXT)"
+        "approved_at TEXT, finished_at TEXT, updated_at TEXT)"
     ))
     db.commit()
 
@@ -1003,7 +1003,7 @@ def create_intake_tables(db) -> None:
         "CREATE TABLE source_intakes ("
         "id INTEGER PRIMARY KEY, source_type TEXT, detected_platform TEXT, "
         "source_url TEXT, source_key TEXT, shop_name TEXT, contact_email TEXT, "
-        "status TEXT, product_count INT DEFAULT 0, finished_at TEXT, updated_at TEXT)"
+        "status TEXT, product_count INT DEFAULT 0, approved_at TEXT, finished_at TEXT, updated_at TEXT)"
     ))
     db.execute(text(
         "CREATE TABLE notification_outbox ("
@@ -1162,7 +1162,7 @@ def test_published_intake_skips_notification_when_no_email(monkeypatch: pytest.M
             "CREATE TABLE source_intakes ("
             "id INTEGER PRIMARY KEY, source_type TEXT, detected_platform TEXT, "
             "source_url TEXT, source_key TEXT, shop_name TEXT, contact_email TEXT, "
-            "status TEXT, product_count INT DEFAULT 0, finished_at TEXT, updated_at TEXT)"
+            "status TEXT, product_count INT DEFAULT 0, approved_at TEXT, finished_at TEXT, updated_at TEXT)"
         ))
         db.execute(text(
             "CREATE TABLE notification_outbox ("

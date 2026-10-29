@@ -792,6 +792,10 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       if (response.ok) {
+        if (action === "retry") {
+          const updated = await response.json().catch(() => null);
+          setActionToast(`申请 #${intakeId}：${updated?.decision_note || "已重新排队，等待后台处理"}`);
+        }
         await load();
       } else {
         const data = await response.json().catch(() => null);
@@ -1387,7 +1391,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                       </div>
                       <p className="mt-2 break-all text-sm font-medium">{intake.shop_name || "未填写来源名称"}</p>
                       <p className="mt-1 break-all text-xs leading-5 text-black/55">{intake.source_url}</p>
-                      <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email ? intake.contact_email : <span className="text-black/40">未填写（公网爬虫发现）</span>} · 商品数：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
+                      <p className="mt-2 text-xs text-black/50">联系邮箱：{intake.contact_email ? intake.contact_email : <span className="text-black/40">未填写（公网爬虫发现）</span>} · {["published", "onboarded"].includes(intake.status) ? "已发布商品数" : intake.status === "no_products" ? "可发布商品数" : "上次处理商品数"}：{intake.product_count} · 重试次数：{intake.attempt_count}</p>
                       {intake.note && <p className="mt-2 whitespace-pre-line text-sm leading-6 text-black/65">申请说明：{intake.note}</p>}
                       {intake.source_type === "other" && intake.status === "pending_review" && <p className="mt-2 text-sm leading-6 text-black/65">提示：如该店铺为链动小铺、独角数卡等支持的平台，可在上方切换类型或点击“重新检测”；点击批准将自动按检测平台接入。</p>}
                       {["merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"].includes(intake.source_type) && intake.status === "approved" && <p className="mt-2 text-sm leading-6 text-black/65">等待目录发布流程安全拉取并分类商品；成功进入完整快照后才会公开。</p>}
@@ -1418,7 +1422,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                           </button>
                         </>
                       )}
-                      {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button type="button" onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新验证</button>}
+                      {intake.source_type !== "other" && (intake.status === "no_products" || intake.status === "validation_failed") && <button type="button" onClick={() => updateIntake(intake.id, "retry")} className="tactile rounded-[10px] border hairline px-3 py-2 text-sm"><ArrowClockwise size={16} className="mr-1 inline" />重新排队</button>}
                       {Object.values(intake.email_status).some((mailStatus) => mailStatus === "failed") && <button type="button" onClick={() => retryFailedIntakeNotifications(intake.id)} className="tactile rounded-[10px] border border-[color:var(--danger)] px-3 py-2 text-sm text-[color:var(--danger)]"><ArrowClockwise size={16} className="mr-1 inline" />重发失败邮件</button>}
                     </div>
                   </div>

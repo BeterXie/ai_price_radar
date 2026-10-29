@@ -14,7 +14,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 from typing import Any, Mapping, Sequence
 
-from sqlalchemy import func, inspect, or_, select, text, update
+from sqlalchemy import DateTime, bindparam, func, inspect, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from common import (
@@ -42,6 +42,14 @@ PUBLISHABLE_DUJIAO_STATUSES = ("pending_review", "verified")
 STALE_OFFER_HOURS_ENV = "STALE_OFFER_HOURS"
 DEFAULT_STALE_OFFER_HOURS = 72
 MAX_STALE_OFFER_HOURS = 24 * 30
+NO_PRODUCTS_RETRY_INTERVAL = timedelta(hours=1)
+# Share the same gate with the legacy Dujiao approval override and result update.
+# A temporary empty catalog must not revoke approval, or bypass a later review decision.
+PUBLISHABLE_INTAKE_SQL = (
+    "detected_platform=source_type AND (status IN ('approved', 'published') OR "
+    "(status='no_products' AND approved_at IS NOT NULL "
+    "AND COALESCE(finished_at, updated_at, approved_at) <= :retry_before))"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,16 +181,19 @@ def load_merchant_sources(path: str | Path) -> list[str]:
     return [value.strip() for value in values]
 
 
-def approved_intake_sources(db: Session) -> list[SourceSpec]:
+def approved_intake_sources(db: Session, *, now: datetime | None = None) -> list[SourceSpec]:
     if not inspect(db.get_bind()).has_table("source_intakes"):
         return []
+    # Match the hourly full refresh while also bounding repeated/manual runs.
+    retry_before = (now or utcnow()) - NO_PRODUCTS_RETRY_INTERVAL
     rows = list(db.execute(text(
         "SELECT id, source_type, source_url FROM source_intakes "
-        "WHERE status IN ('approved', 'published') "
+        f"WHERE {PUBLISHABLE_INTAKE_SQL} "
         "AND source_type IN ('dujiao_next', 'merchant_json', 'woocommerce', '16688', 'schema_org', 'acg_faka') "
-        "AND detected_platform=source_type "
         "ORDER BY id"
-    )).mappings())
+    ).bindparams(bindparam("retry_before", type_=DateTime(timezone=True))), {
+        "retry_before": retry_before,
+    }).mappings())
     connector_by_type = {
         "dujiao_next": "dujiao-next",
         "merchant_json": "merchant-json",
@@ -236,8 +247,8 @@ def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:
     return list(merged.values())
 
 
-def _inactive_dujiao_origins(db: Session) -> set[str]:
-    """Current intake decisions override approvals in the legacy discovery database."""
+def _inactive_dujiao_origins(db: Session, *, now: datetime | None = None) -> set[str]:
+    """Current intake decisions and retry cooldown override legacy approvals."""
     if not inspect(db.get_bind()).has_table("source_intakes"):
         return set()
     return {
@@ -245,8 +256,10 @@ def _inactive_dujiao_origins(db: Session) -> set[str]:
         for source_url in db.scalars(text(
             "SELECT source_url FROM source_intakes "
             "WHERE (source_type='dujiao_next' OR detected_platform='dujiao_next') "
-            "AND status NOT IN ('approved', 'published')"
-        ))
+            f"AND NOT ({PUBLISHABLE_INTAKE_SQL})"
+        ).bindparams(bindparam("retry_before", type_=DateTime(timezone=True))), {
+            "retry_before": (now or utcnow()) - NO_PRODUCTS_RETRY_INTERVAL,
+        })
     }
 
 
@@ -699,7 +712,7 @@ def enqueue_published_intake_notifications(
             f"你的店铺收录申请（#{intake_id}）已完成读取，但暂未发现目录范围内商品。\n"
             f"店铺名称：{display_name or '未填写'}\n"
             f"店铺地址：{display_url}\n"
-            "管理员可以重新验证，或补充公开商品后再次提交。"
+            "已审批来源会在后续定时同步中重新检查，无需重复提交；也可由管理员重新排队。"
         )
     else:
         return
@@ -720,11 +733,14 @@ def publish_sources(
     source_label: str = "multi-source",
     carry_forward_current: bool = False,
     dry_run: bool = False,
+    now: datetime | None = None,
 ) -> PublishResult:
     """Publish atomically, isolating known external failures from healthy sources."""
     if not sources:
         raise ValueError("at least one catalog source is required")
-    inactive_dujiao_origins = _inactive_dujiao_origins(db)
+    started_at = now or utcnow()
+    retry_before = started_at - NO_PRODUCTS_RETRY_INTERVAL
+    inactive_dujiao_origins = _inactive_dujiao_origins(db, now=started_at)
     eligible_sources: list[SourceSpec] = []
     skipped_sources: list[ImportResult] = []
     for spec in sources:
@@ -735,7 +751,7 @@ def publish_sources(
         ):
             skipped_sources.append(ImportResult(
                 connector=spec.connector, source=spec.source, status="skipped_inactive",
-                reason="current intake is not approved or published",
+                reason="current intake is not eligible for publication",
             ))
         else:
             eligible_sources.append(spec)
@@ -800,25 +816,32 @@ def publish_sources(
                         valid_offer_ids=imported.offer_ids,
                     )
                 imports.append(imported)
+                intake_finished_at = utcnow()
                 for intake_id in spec.intake_ids:
                     intake_status = "published" if imported.public_offer_count > 0 else "no_products"
-                    db.execute(text(
+                    updated = db.execute(text(
                         "UPDATE source_intakes "
                         "SET status=:status, product_count=:product_count, "
-                        "finished_at=:published_at, updated_at=:published_at "
-                        "WHERE id=:intake_id AND status IN ('approved', 'published')"
+                        "finished_at=:finished_at, updated_at=:finished_at "
+                        f"WHERE id=:intake_id AND ({PUBLISHABLE_INTAKE_SQL})"
+                    ).bindparams(
+                        bindparam("finished_at", type_=DateTime(timezone=True)),
+                        bindparam("retry_before", type_=DateTime(timezone=True)),
                     ), {
                         "intake_id": intake_id,
                         "status": intake_status,
                         "product_count": imported.public_offer_count,
-                        "published_at": published_at,
+                        "finished_at": intake_finished_at,
+                        "retry_before": retry_before,
                     })
+                    if not updated.rowcount:
+                        continue
                     enqueue_published_intake_notifications(
                         db,
                         intake_id=intake_id,
                         intake_status=intake_status,
                         product_count=imported.public_offer_count,
-                        published_at=published_at,
+                        published_at=intake_finished_at,
                         preferred_shop_token=(
                             next(iter(imported.shop_tokens))
                             if len(imported.shop_tokens) == 1
@@ -898,10 +921,13 @@ def main() -> int:
         intake_attempts: dict[int, int] = {}
         if args.ldxp_db:
             intake_tokens, intake_attempts = collect_intake_metadata(load_ldxp_records(args.ldxp_db))
-        sources = merge_sources([*sources, *approved_intake_sources(db)])
+        # Keep the retry gate identical while merging legacy and intake sources.
+        # Crossing a cooldown boundary here must not import a legacy source without its intake IDs.
+        selection_time = utcnow()
+        sources = merge_sources([*sources, *approved_intake_sources(db, now=selection_time)])
         if not sources:
             parser.error("no importable sources were configured or approved")
-        result = publish_sources(db, sources)
+        result = publish_sources(db, sources, now=selection_time)
         onboarding_errors = onboard_validated_ldxp_intakes(
             db,
             snapshot_id=result.snapshot_id,
