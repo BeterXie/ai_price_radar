@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from datetime import timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "apps" / "api"))
+sys.path.insert(0, str(ROOT / "pipeline"))
 
 import publish_catalog
 from app.database import Base as ApiBase
