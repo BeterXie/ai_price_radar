@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.42] - 2026-10-31
+
+- Collect every catalog source into bounded temporary files before the atomic publication transaction; release selection reads before network I/O and recheck source approvals and snapshot identity before replay.
+- Serialize intake decisions with short PostgreSQL row locks during publication; preserve rollback, transient-source retention and cumulative click counters.
+- Replace the process-wide click mutex with asynchronous offer/shop and visitor keyed queues acquired before authentication and database checkout.
+- Return the atomic click increment directly and hold the key through request cancellation and session cleanup; retain the 60-second debounce contract.
+- Add independent-session SQLite and PostgreSQL concurrency, cancellation, approval-race and publication regression tests.
+- No schema migration. Rebuild API, Web and importer from this tag and complete one multi-source publication before restoring timers.
+
 ## [3.9.28] - 2026-10-27
 
 - Classify real JEV Key-credit listings as API credit and provide separate API filters for MUSE and JEV.

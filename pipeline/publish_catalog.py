@@ -6,9 +6,12 @@ import logging
 import os
 import re
 import sqlite3
+import tempfile
 import urllib.parse
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -107,6 +110,66 @@ class SourceImportError(RuntimeError):
     pass
 
 
+MAX_PREPARED_CATALOG_BYTES = 512 * 1024 * 1024
+
+
+@dataclass(slots=True)
+class PreparedSource:
+    spec: SourceSpec
+    path: Path
+    error: SourceUnavailableError | SourceFetchError | None = None
+    shop_tokens: set[str] = field(default_factory=set)
+    previous_shop_token: str | None = None
+
+    def records(self) -> Iterator[dict[str, Any]]:
+        if self.error is not None:
+            raise self.error
+        with self.path.open(encoding="utf-8") as stream:
+            for line in stream:
+                yield json.loads(line)
+
+
+def _prepared_json_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    raise TypeError(f"unsupported connector record value: {type(value).__name__}")
+
+
+def _prepare_sources(sources: Sequence[SourceSpec], directory: Path) -> list[PreparedSource]:
+    """Exhaust every connector before the first publishing write; bound memory and disk use."""
+    prepared: list[PreparedSource] = []
+    total_bytes = 0
+    for index, spec in enumerate(sources):
+        item = PreparedSource(spec, directory / f"{index}.jsonl")
+        current_record: dict[str, Any] | None = None
+        try:
+            loader = get_connector(spec.connector)
+            with item.path.open("w", encoding="utf-8", newline="\n") as stream:
+                for record in loader(spec.source):
+                    current_record = record
+                    line = json.dumps(record, ensure_ascii=False, default=_prepared_json_value) + "\n"
+                    total_bytes += len(line.encode("utf-8"))
+                    if total_bytes > MAX_PREPARED_CATALOG_BYTES:
+                        raise ValueError("prepared catalog exceeds the 512 MiB collection limit")
+                    stream.write(line)
+                    if isinstance(record, dict) and (token := str(record.get("token") or "").strip()):
+                        item.shop_tokens.add(token)
+                    current_record = None
+        except (SourceUnavailableError, SourceFetchError) as exc:
+            # Discard partial records for this source, just as a rolled-back SAVEPOINT did.
+            item.error = exc.with_traceback(None)
+        except Exception as exc:
+            label = current_record.get("product_name") if isinstance(current_record, dict) else None
+            detail = f" at record {label!r}" if label else ""
+            raise SourceImportError(
+                f"{spec.connector} import failed for {spec.source}{detail}: {exc}"
+            ) from exc
+        prepared.append(item)
+    return prepared
+
+
 class SnapshotExportError(RuntimeError):
     def __init__(self, snapshot_id: int, cause: Exception):
         super().__init__(f"snapshot {snapshot_id} was published but public feed export failed: {cause}")
@@ -182,7 +245,7 @@ def load_merchant_sources(path: str | Path) -> list[str]:
 
 
 def approved_intake_sources(db: Session, *, now: datetime | None = None) -> list[SourceSpec]:
-    if not inspect(db.get_bind()).has_table("source_intakes"):
+    if not inspect(db.connection()).has_table("source_intakes"):
         return []
     # Match the hourly full refresh while also bounding repeated/manual runs.
     retry_before = (now or utcnow()) - NO_PRODUCTS_RETRY_INTERVAL
@@ -249,7 +312,7 @@ def merge_sources(sources: Sequence[SourceSpec]) -> list[SourceSpec]:
 
 def _inactive_dujiao_origins(db: Session, *, now: datetime | None = None) -> set[str]:
     """Current intake decisions and retry cooldown override legacy approvals."""
-    if not inspect(db.get_bind()).has_table("source_intakes"):
+    if not inspect(db.connection()).has_table("source_intakes"):
         return set()
     return {
         str(source_url).rstrip("/")
@@ -346,9 +409,10 @@ def import_source_into_snapshot(
     snapshot_id: int,
     products: dict[str, Any] | None = None,
     collected_price_changes: list[Any] | None = None,
+    records: Iterable[dict[str, Any]] | None = None,
 ) -> ImportResult:
     """Import one source without committing or publishing the target snapshot."""
-    loader = get_connector(connector)
+    loader = get_connector(connector) if records is None else None
     products = products or ensure_products(db)
     result = ImportResult(connector=connector, source=str(source))
     offer_ids: set[int] = set()
@@ -356,7 +420,7 @@ def import_source_into_snapshot(
     new_shop_tokens: set[str] = set()
     current_record: dict[str, Any] | None = None
     try:
-        for record in loader(source):
+        for record in loader(source) if loader is not None else records:
             current_record = record
             result.total += 1
             result.raw_record_count += 1
@@ -726,6 +790,55 @@ def enqueue_published_intake_notifications(
     }, dedupe_key=dedupe_key)
 
 
+def _eligible_publish_sources(
+    db: Session, sources: Sequence[SourceSpec], *, now: datetime,
+    expected_intakes: Mapping[int, SourceSpec] | None = None,
+) -> tuple[list[SourceSpec], list[ImportResult], set[str], dict[int, SourceSpec]]:
+    inactive_dujiao_origins = _inactive_dujiao_origins(db, now=now)
+    current_intakes = {
+        intake_id: spec
+        for spec in approved_intake_sources(db, now=now)
+        for intake_id in spec.intake_ids
+    } if any(spec.intake_ids for spec in sources) else {}
+    eligible: list[SourceSpec] = []
+    skipped: list[ImportResult] = []
+    for spec in sources:
+        blocked = bool(inactive_dujiao_origins) and (
+            spec.connector == "dujiao-next"
+            and _dujiao_origin(spec.source) in inactive_dujiao_origins
+        )
+        if spec.intake_ids:
+            ids = tuple(
+                intake_id for intake_id in spec.intake_ids
+                if (current := current_intakes.get(intake_id)) is not None
+                and current.source == spec.source
+                and (expected_intakes is None or (
+                    intake_id in expected_intakes
+                    and current.connector == expected_intakes[intake_id].connector
+                    and current.source == expected_intakes[intake_id].source
+                ))
+            )
+            blocked = blocked or not ids
+            spec = SourceSpec(spec.connector, spec.source, ids)
+        if blocked:
+            skipped.append(ImportResult(
+                connector=spec.connector, source=spec.source, status="skipped_inactive",
+                reason="current intake is not eligible for publication",
+            ))
+        else:
+            eligible.append(spec)
+    return eligible, skipped, inactive_dujiao_origins, current_intakes
+
+
+def _current_snapshot_id(db: Session) -> int | None:
+    return db.scalar(
+        select(CatalogSnapshot.id)
+        .where(CatalogSnapshot.published_at.is_not(None))
+        .order_by(CatalogSnapshot.id.desc())
+        .limit(1)
+    )
+
+
 def publish_sources(
     db: Session,
     sources: Sequence[SourceSpec],
@@ -735,36 +848,106 @@ def publish_sources(
     dry_run: bool = False,
     now: datetime | None = None,
 ) -> PublishResult:
-    """Publish atomically, isolating known external failures from healthy sources."""
+    """Collect without a checked-out connection, then publish all local records atomically.
+
+    This operation owns its transaction; callers may have performed source-selection
+    reads, but must commit their own writes before calling it.
+    """
     if not sources:
         raise ValueError("at least one catalog source is required")
+    if db.new or db.dirty or db.deleted:
+        raise ValueError("commit pending changes before publishing a catalog")
     started_at = now or utcnow()
+    try:
+        eligible, skipped, _inactive, selected_intakes = _eligible_publish_sources(db, sources, now=started_at)
+        expected_snapshot_id = _current_snapshot_id(db)
+        previous_tokens: dict[tuple[str, str], str] = {}
+        if carry_forward_current and expected_snapshot_id is not None:
+            for spec in eligible:
+                source_type = {"woocommerce-store": "woocommerce"}.get(spec.connector, spec.connector.replace("-", "_"))
+                shop = resolve_intake_shop(
+                    db, source_url=spec.source, source_key=spec.source, source_type=source_type,
+                )
+                if shop:
+                    previous_tokens[(spec.connector, spec.source)] = str(shop["token"])
+        # Selection queries can autobegin a transaction. Release that connection before
+        # exhausting any network loader, including every later source in the catalog.
+        db.rollback()
+        with tempfile.TemporaryDirectory(prefix="ai-price-publish-") as directory:
+            prepared = _prepare_sources(eligible, Path(directory))
+            for item in prepared:
+                item.previous_shop_token = previous_tokens.get((item.spec.connector, item.spec.source))
+                if item.previous_shop_token:
+                    item.shop_tokens.add(item.previous_shop_token)
+            return _publish_prepared_sources(
+                db, prepared, skipped, expected_snapshot_id=expected_snapshot_id,
+                expected_intakes=selected_intakes,
+                source_label=source_label, carry_forward_current=carry_forward_current,
+                dry_run=dry_run, started_at=started_at,
+            )
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _lock_publish_intakes(db: Session, sources: Sequence[SourceSpec]) -> None:
+    """Serialize approval decisions only during the local-record write transaction."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    if not inspect(db.connection()).has_table("source_intakes"):
+        return
+    intake_ids = sorted({intake_id for spec in sources for intake_id in spec.intake_ids})
+    legacy_origins = sorted({spec.source.rstrip("/") for spec in sources if spec.connector == "dujiao-next"})
+    clauses = []
+    params: dict[str, Any] = {}
+    bindings = []
+    if intake_ids:
+        clauses.append("id IN :intake_ids")
+        params["intake_ids"] = intake_ids
+        bindings.append(bindparam("intake_ids", expanding=True))
+    if legacy_origins:
+        clauses.append("((source_type='dujiao_next' OR detected_platform='dujiao_next') AND rtrim(source_url, '/') IN :origins)")
+        params["origins"] = legacy_origins
+        bindings.append(bindparam("origins", expanding=True))
+    if clauses:
+        query = text("SELECT id FROM source_intakes WHERE " + " OR ".join(clauses) + " ORDER BY id FOR UPDATE")
+        list(db.scalars(query.bindparams(*bindings), params))
+
+
+def _publish_prepared_sources(
+    db: Session,
+    prepared: Sequence[PreparedSource],
+    skipped_sources: list[ImportResult],
+    *,
+    expected_snapshot_id: int | None,
+    expected_intakes: Mapping[int, SourceSpec],
+    source_label: str,
+    carry_forward_current: bool,
+    dry_run: bool,
+    started_at: datetime,
+) -> PublishResult:
     retry_before = started_at - NO_PRODUCTS_RETRY_INTERVAL
-    inactive_dujiao_origins = _inactive_dujiao_origins(db, now=started_at)
-    eligible_sources: list[SourceSpec] = []
-    skipped_sources: list[ImportResult] = []
-    for spec in sources:
-        if (
-            inactive_dujiao_origins
-            and spec.connector == "dujiao-next"
-            and _dujiao_origin(spec.source) in inactive_dujiao_origins
-        ):
-            skipped_sources.append(ImportResult(
-                connector=spec.connector, source=spec.source, status="skipped_inactive",
-                reason="current intake is not eligible for publication",
-            ))
-        else:
-            eligible_sources.append(spec)
-    sources = eligible_sources
     try:
         with import_lock(db):
-            products = ensure_products(db)
-            previous_snapshot_id = db.scalar(
-                select(CatalogSnapshot.id)
-                .where(CatalogSnapshot.published_at.is_not(None))
-                .order_by(CatalogSnapshot.id.desc())
-                .limit(1)
+            # Approval can change while collecting. Lock before rechecking so an
+            # administrator's decision cannot race the remaining local replay.
+            _lock_publish_intakes(db, [item.spec for item in prepared])
+            sources, newly_skipped, inactive_dujiao_origins, _current_intakes = _eligible_publish_sources(
+                db, [item.spec for item in prepared], now=started_at,
+                expected_intakes=expected_intakes,
             )
+            previous_snapshot_id = _current_snapshot_id(db)
+            if previous_snapshot_id != expected_snapshot_id:
+                raise SourceImportError("catalog changed during source collection; retry publication")
+            prepared_by_source = {(item.spec.connector, item.spec.source): item for item in prepared}
+            eligible_keys = {(spec.connector, spec.source) for spec in sources}
+            if carry_forward_current and previous_snapshot_id is not None and any(
+                item.spec.intake_ids and not item.previous_shop_token
+                and (item.spec.connector, item.spec.source) not in eligible_keys
+                for item in prepared
+            ):
+                raise SourceImportError("intake approval changed and its previous shop is unresolved; retry publication")
+            products = ensure_products(db)
             snapshot = begin_snapshot(db, source_label)
             if carry_forward_current and previous_snapshot_id is not None:
                 inherited = update(Offer).where(Offer.snapshot_id == previous_snapshot_id)
@@ -775,7 +958,21 @@ def publish_sources(
                     )
                     inherited = inherited.where(Offer.shop_id.not_in(inactive_shops))
                 db.execute(inherited.values(snapshot_id=snapshot.id))
-            imports = list(skipped_sources)
+                eligible_keys = {(spec.connector, spec.source) for spec in sources}
+                eligible_tokens = set().union(*(
+                    item.shop_tokens for item in prepared
+                    if (item.spec.connector, item.spec.source) in eligible_keys
+                ))
+                revoked_tokens = set().union(*(
+                    item.shop_tokens for item in prepared
+                    if (item.spec.connector, item.spec.source) not in eligible_keys
+                )) - eligible_tokens
+                if revoked_tokens:
+                    revoked_shops = select(Shop.id).where(Shop.token.in_(revoked_tokens))
+                    db.execute(update(Offer).where(
+                        Offer.snapshot_id == snapshot.id, Offer.shop_id.in_(revoked_shops),
+                    ).values(snapshot_id=previous_snapshot_id))
+            imports = [*skipped_sources, *newly_skipped]
             published_at = utcnow()
             all_price_changes: list[Any] = []
             for spec in sources:
@@ -789,6 +986,7 @@ def publish_sources(
                             snapshot_id=snapshot.id,
                             products=products,
                             collected_price_changes=source_price_changes,
+                            records=prepared_by_source[(spec.connector, spec.source)].records(),
                         )
                 except SourceImportError as exc:
                     if not isinstance(exc.__cause__, (SourceUnavailableError, SourceFetchError)):

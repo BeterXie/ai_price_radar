@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import html
 import ipaddress
 import math
 import re
-import threading
 import urllib.parse
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.routing import APIRoute
 from sqlalchemy import false, func, select, text, update
 from sqlalchemy.orm import Session
 
@@ -62,6 +64,7 @@ from ..schemas import (
     CommunitySkillDetailOut,
     CommunitySkillPageOut,
 )
+from ..services.click_locks import click_locks
 from ..services.community_skills import (
     get_community_skill_by_slug,
     list_community_skills,
@@ -111,6 +114,28 @@ from ..services.source_platform import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
+
+
+class _ClickRoute(APIRoute):
+    """Hold click keys until sync endpoint workers and request cleanup finish."""
+
+    async def handle(self, scope, receive, send):
+        # Wrap handle, not get_route_handler: the request-scope dependency stack
+        # is closed by the outer ASGI app, after endpoint serialization/sending.
+        task = asyncio.create_task(super().handle(scope, receive, send))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if not scope.get("_click_lock_acquired"):
+                task.cancel()
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                pass
+            raise
+
+
+_click_router = APIRouter(tags=["public"], route_class=_ClickRoute)
 settings = get_settings()
 
 
@@ -1120,17 +1145,26 @@ def public_community_skill_copy(
     return {"status": "ok"}
 
 
-# Serializes the debounce-check + insert for click tracking within this process
-# so concurrent requests cannot both pass the 60s debounce (single-instance deployment).
-_CLICK_DEBOUNCE_LOCK = threading.Lock()
-
-
 def _click_ip_hash(namespace: str, client_ip: str) -> str:
     return hmac.new(
         settings.session_secret_key.encode("utf-8"),
         f"{namespace}:{client_ip}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()[:32]
+
+
+async def _offer_click_lock(offer_id: int, request: Request) -> AsyncIterator[None]:
+    key = ("offer-click", str(offer_id), _click_ip_hash("offer-click", _client_address(request)))
+    async with click_locks.hold(key):
+        request.scope["_click_lock_acquired"] = True
+        yield
+
+
+async def _shop_click_lock(token: str, request: Request) -> AsyncIterator[None]:
+    key = ("shop-click", token, _click_ip_hash("shop-click", _client_address(request)))
+    async with click_locks.hold(key):
+        request.scope["_click_lock_acquired"] = True
+        yield
 
 
 def _settle_click_user_activity(db: Session, request: Request, current_user: User | None, now: datetime) -> None:
@@ -1147,7 +1181,14 @@ def _settle_click_user_activity(db: Session, request: Request, current_user: Use
     )
 
 
-@router.post("/offers/{offer_id}/click", response_model=OfferClickResponse)
+# Route-level dependencies run before parameter dependencies, including auth.
+# Keep this lock first: waiting requests must not hold a DB connection. Default
+# request scope also closes the DB dependency before releasing the click lock.
+@_click_router.post(
+    "/offers/{offer_id}/click",
+    response_model=OfferClickResponse,
+    dependencies=[Depends(_offer_click_lock)],
+)
 def record_offer_click(
     offer_id: int,
     request: Request,
@@ -1167,67 +1208,75 @@ def record_offer_click(
     user_agent = (request.headers.get("user-agent") or "")[:500]
     now = datetime.now(timezone.utc)
 
-    # 60-second debounce per IP per offer
+    # The route dependency already owns this offer/IP lock. Compute the sliding
+    # window here, after any lock wait and authentication have finished.
     debounce_cutoff = now - timedelta(seconds=60)
-    with _CLICK_DEBOUNCE_LOCK:
-        existing_click = db.scalar(
-            select(OfferClick.id).where(
-                OfferClick.offer_id == offer.id,
-                OfferClick.ip_hash == ip_hash,
-                OfferClick.created_at >= debounce_cutoff,
-            ).limit(1)
+    existing_click = db.scalar(
+        select(OfferClick.id).where(
+            OfferClick.offer_id == offer.id,
+            OfferClick.ip_hash == ip_hash,
+            OfferClick.created_at >= debounce_cutoff,
+        ).limit(1)
+    )
+
+    if existing_click:
+        return OfferClickResponse(
+            success=True,
+            recorded=False,
+            click_count=int(offer.click_count or 0),
         )
 
-        if existing_click:
-            return OfferClickResponse(
-                success=True,
-                recorded=False,
-                click_count=int(offer.click_count or 0),
-            )
+    product_slug = offer.product.slug if offer.product else None
+    user_id = current_user.id if current_user else None
+    click = OfferClick(
+        offer_id=offer.id,
+        shop_id=offer.shop_id,
+        user_id=user_id,
+        product_slug=product_slug,
+        ip_hash=ip_hash,
+        user_agent=user_agent,
+    )
+    db.add(click)
+    # Return the increment from this transaction; a post-commit refresh borrows
+    # another connection and can observe a later request's count instead.
+    click_count = db.execute(
+        update(Offer)
+        .where(Offer.id == offer.id)
+        .values(click_count=Offer.click_count + 1)
+        .returning(Offer.click_count)
+        .execution_options(synchronize_session=False)
+    ).scalar_one()
 
-        product_slug = offer.product.slug if offer.product else None
-        user_id = current_user.id if current_user else None
-        click = OfferClick(
-            offer_id=offer.id,
-            shop_id=offer.shop_id,
+    _settle_click_user_activity(db, request, current_user, now)
+
+    db.add(
+        UserActionLog(
             user_id=user_id,
-            product_slug=product_slug,
-            ip_hash=ip_hash,
+            action_type="offer_click",
+            action_name="去购买 (商品直达)",
+            target_id=str(offer.id),
+            page=f"/products/{product_slug}" if product_slug else "/",
+            ip_address=client_ip,
             user_agent=user_agent,
+            extra_data={"shop_id": offer.shop_id, "price": str(offer.price) if offer.price else None},
+            created_at=now,
         )
-        db.add(click)
-        # Atomic increment: read-modify-write loses updates under concurrency.
-        db.execute(
-            update(Offer).where(Offer.id == offer.id).values(click_count=Offer.click_count + 1)
-        )
+    )
 
-        _settle_click_user_activity(db, request, current_user, now)
-
-        db.add(
-            UserActionLog(
-                user_id=user_id,
-                action_type="offer_click",
-                action_name="去购买 (商品直达)",
-                target_id=str(offer.id),
-                page=f"/products/{product_slug}" if product_slug else "/",
-                ip_address=client_ip,
-                user_agent=user_agent,
-                extra_data={"shop_id": offer.shop_id, "price": str(offer.price) if offer.price else None},
-                created_at=now,
-            )
-        )
-
-        db.commit()
-        db.refresh(offer)
+    db.commit()
 
     return OfferClickResponse(
         success=True,
         recorded=True,
-        click_count=int(offer.click_count or 0),
+        click_count=int(click_count),
     )
 
 
-@router.post("/shops/{token}/click", response_model=OfferClickResponse)
+@_click_router.post(
+    "/shops/{token}/click",
+    response_model=OfferClickResponse,
+    dependencies=[Depends(_shop_click_lock)],
+)
 def record_shop_click(
     token: str,
     request: Request,
@@ -1250,49 +1299,48 @@ def record_shop_click(
     user_agent = (request.headers.get("user-agent") or "")[:500]
     now = datetime.now(timezone.utc)
 
-    # 60-second debounce per IP per shop
+    # The route dependency owns this shop/IP key before auth or DB checkout.
     debounce_cutoff = now - timedelta(seconds=60)
-    with _CLICK_DEBOUNCE_LOCK:
-        existing_click = db.scalar(
-            select(OfferClick.id).where(
-                OfferClick.shop_id == shop.id,
-                OfferClick.offer_id.is_(None),
-                OfferClick.ip_hash == ip_hash,
-                OfferClick.created_at >= debounce_cutoff,
-            ).limit(1)
-        )
+    existing_click = db.scalar(
+        select(OfferClick.id).where(
+            OfferClick.shop_id == shop.id,
+            OfferClick.offer_id.is_(None),
+            OfferClick.ip_hash == ip_hash,
+            OfferClick.created_at >= debounce_cutoff,
+        ).limit(1)
+    )
 
-        if existing_click:
-            return OfferClickResponse(success=True, recorded=False, click_count=0)
+    if existing_click:
+        return OfferClickResponse(success=True, recorded=False, click_count=0)
 
-        user_id = current_user.id if current_user else None
-        click = OfferClick(
-            offer_id=None,
-            shop_id=shop.id,
+    user_id = current_user.id if current_user else None
+    click = OfferClick(
+        offer_id=None,
+        shop_id=shop.id,
+        user_id=user_id,
+        product_slug=None,
+        ip_hash=ip_hash,
+        user_agent=user_agent,
+    )
+    db.add(click)
+
+    _settle_click_user_activity(db, request, current_user, now)
+
+    db.add(
+        UserActionLog(
             user_id=user_id,
-            product_slug=None,
-            ip_hash=ip_hash,
+            action_type="shop_click",
+            action_name="访问店铺 (商户直达)",
+            target_id=shop.token,
+            page=f"/shops/{shop.token}",
+            ip_address=client_ip,
             user_agent=user_agent,
+            extra_data={"shop_name": shop.name},
+            created_at=now,
         )
-        db.add(click)
+    )
 
-        _settle_click_user_activity(db, request, current_user, now)
-
-        db.add(
-            UserActionLog(
-                user_id=user_id,
-                action_type="shop_click",
-                action_name="访问店铺 (商户直达)",
-                target_id=shop.token,
-                page=f"/shops/{shop.token}",
-                ip_address=client_ip,
-                user_agent=user_agent,
-                extra_data={"shop_name": shop.name},
-                created_at=now,
-            )
-        )
-
-        db.commit()
+    db.commit()
 
     return OfferClickResponse(success=True, recorded=True, click_count=0)
 
@@ -1394,3 +1442,6 @@ def record_relay_click(station_id: int, request: Request, db: Session = Depends(
     db.commit()
     refreshed = db.get(RelayStation, station_id)
     return PromoClickResponse(status="ok", click_count=int(refreshed.click_count or 0) if refreshed else 0)
+
+
+router.include_router(_click_router)
