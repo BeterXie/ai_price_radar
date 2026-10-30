@@ -574,7 +574,7 @@ def _record(
     product_key, sku = _product_key(product, product_url)
     if offer is not None:
         offer_name = _text(offer.get("name"))
-        product_name = f"{product_name} · {offer_name}"
+        product_name = f"{product_name} {offer_name}"
         identity = _offer_identity(offer, product_url=product_url, origin=origin, currency=price.currency)
         variant_key = f"offer:{identity}"
         if len(product_key) + len(variant_key) + 1 > 300:

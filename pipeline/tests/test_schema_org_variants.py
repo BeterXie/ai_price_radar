@@ -49,7 +49,7 @@ def test_root_imports_same_origin_product_links_and_reuses_preloaded_page(monkey
     assert len(records) == 1
     assert records[0]["shop_url"] == root.rstrip('/')
     assert records[0]["product_url"] == detail
-    assert records[0]["product_name"] == "ChatGPT · Plus"
+    assert records[0]["product_name"] == "ChatGPT Plus"
 
 
 def test_named_tiers_keep_each_price_currency_stock_and_raw_metadata(monkeypatch):
@@ -67,11 +67,11 @@ def test_named_tiers_keep_each_price_currency_stock_and_raw_metadata(monkeypatch
     records = list(schema_org.load_records(page))
     assert len(records) == 5
     assert [(record['product_name'], record['listed_price'], record['currency'], record['product_status']) for record in records] == [
-        ('ChatGPT · Go', '58', 'CNY', 'in_stock'),
-        ('ChatGPT · Plus', '132', 'CNY', 'out_of_stock'),
-        ('ChatGPT · Pro 5x', '698', 'CNY', 'pre_order'),
-        ('ChatGPT · Pro 10x', '1280', 'CNY', 'in_stock'),
-        ('ChatGPT · Pro 25x', '500', 'USD', 'in_stock'),
+        ('ChatGPT Go', '58', 'CNY', 'in_stock'),
+        ('ChatGPT Plus', '132', 'CNY', 'out_of_stock'),
+        ('ChatGPT Pro 5x', '698', 'CNY', 'pre_order'),
+        ('ChatGPT Pro 10x', '1280', 'CNY', 'in_stock'),
+        ('ChatGPT Pro 25x', '500', 'USD', 'in_stock'),
     ]
     assert records[1]['stock_count'] == 0
     assert records[2]['raw_json']['description'] == 'Subscriptions'
@@ -132,7 +132,7 @@ def test_invalid_named_offers_do_not_inherit_another_variants_price(monkeypatch)
     install(monkeypatch, {page: html({"@type": "Product", "name": "Service", "offers": offers})})
     records = list(schema_org.load_records(page))
     assert [(r['product_name'], r['listed_price'], r['currency']) for r in records] == [
-        ('Service · Valid', '12', 'USD'), ('Service', '7', 'CNY'),
+        ('Service Valid', '12', 'USD'), ('Service', '7', 'CNY'),
     ]
     assert all(r['raw_json']['offers'] == offers for r in records)
 
@@ -150,3 +150,22 @@ def test_linked_non_product_pages_fall_back_to_sitemap_without_refetching(monkey
     records = list(schema_org.load_records(root))
     assert len(records) == 1
     assert calls == [root, non_product, root + 'sitemap.xml', detail]
+
+
+def test_named_plan_title_wins_over_parent_marketing_description(monkeypatch):
+    from common import classify
+
+    page = "https://shop.example/product/chatgpt"
+    offers = [
+        {"name": name, "price": str(price), "priceCurrency": "CNY", "availability": "InStock"}
+        for name, price in (("Go", 58), ("Plus", 132), ("Pro 5x", 698), ("Pro 10x", 1280), ("Pro 25x", 3350))
+    ]
+    install(monkeypatch, {page: html({
+        "@type": "Product", "name": "ChatGPT", "sku": "chatgpt",
+        "description": "ChatGPT Plus、Pro 200 与 Pro 500 正规订阅", "offers": offers,
+    })})
+    records = list(schema_org.load_records(page))
+    assert [classify(r["product_name"], r["category_name"], r["raw_json"], source_platform="schema_org").slug for r in records] == [
+        "chatgpt-go", "chatgpt-plus", "chatgpt-pro-100", "chatgpt-pro", "chatgpt-pro",
+    ]
+    assert [r["raw_json"]["schema_org_offer"]["name"] for r in records] == ["Go", "Plus", "Pro 5x", "Pro 10x", "Pro 25x"]
