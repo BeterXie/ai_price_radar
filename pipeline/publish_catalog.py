@@ -39,6 +39,7 @@ from connectors.base import SourceFetchError, SourceUnavailableError
 from connectors.ldxp import load_records as load_ldxp_records
 from intake_bridge import IntakeBridge
 from ldxp_intake import collect_intake_metadata, onboard_published_intakes, published_offer_counts
+from offer_staging import prepare_offer_staging
 
 
 UNREVIEWED_DUJIAO_ENV = "AI_PRICE_RADAR_ALLOW_UNREVIEWED_DUJIAO"
@@ -948,6 +949,7 @@ def _publish_prepared_sources(
                 for item in prepared
             ):
                 raise SourceImportError("intake approval changed and its previous shop is unresolved; retry publication")
+            offer_staging = prepare_offer_staging(db)
             products = ensure_products(db)
             snapshot = begin_snapshot(db, source_label)
             if carry_forward_current and previous_snapshot_id is not None:
@@ -1059,8 +1061,11 @@ def _publish_prepared_sources(
             if dry_run:
                 db.rollback()
             else:
+                if offer_staging is not None:
+                    offer_staging.apply(db)
                 snapshot.published_at = published_at
                 db.commit()
+                db.expire_all()
                 try:
                     from export_snapshot import export_public_snapshot
                     export_public_snapshot(db, snapshot.id)

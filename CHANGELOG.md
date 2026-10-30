@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.43] - 2026-10-31
+
+- Replay PostgreSQL offer and price-history changes in transaction-local temporary tables before one final merge, keeping live offer rows available for clicks throughout source processing.
+- Preserve cumulative click counters and click timestamps during the merge; abort and roll back if concurrent manual catalog decisions changed the baseline.
+- Retain source SAVEPOINT rollback, intake approval locks, history foreign keys and atomic snapshot publication. Temporary tables and search paths clean up with the transaction; no persistent schema migration.
+- Add real PostgreSQL tests for clicks during paused replay, counter preservation, manual conflicts, new offer/history insertion and connection cleanup.
+
 ## [3.9.42] - 2026-10-31
 
 - Collect every catalog source into bounded temporary files before the atomic publication transaction; release selection reads before network I/O and recheck source approvals and snapshot identity before replay.
