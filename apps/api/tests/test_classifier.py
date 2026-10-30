@@ -53,6 +53,50 @@ def test_16688_aliases_reject_non_products_and_preserve_api_classification(title
     assert classify_product(title, category, source_platform="16688").slug == expected
 
 
+@pytest.mark.parametrize("title", [
+    "IOS 【质保30天】 PLUS 订阅 官方充值 免排队 秒充(1-10分钟到账)（可屯卡）",
+    "ios正规plus年卡全程质保",
+])
+def test_16688_recharge_category_identifies_brandless_plus(title):
+    result = classify_product(title, "G直充", source_platform="16688")
+    assert (result.slug, result.confidence) == ("chatgpt-plus", 88)
+    assert classify_product(title, source_platform="16688").slug is None
+    assert classify_product(title, "G直充", source_platform="ldxp").slug is None
+    assert classify_product(title, "G直充 G直充", source_platform="16688").slug == "chatgpt-plus"
+    assert classify_product(title, "其他G直充商品", source_platform="16688").slug is None
+
+
+@pytest.mark.parametrize("title", ["Go会员", "Go订阅", "go cdk"])
+def test_16688_recharge_category_preserves_go_description_context(title):
+    assert classify_product(title, "G直充", "G Go", source_platform="16688").slug == "chatgpt-go"
+
+
+@pytest.mark.parametrize(("title", "expected"), [
+    ("百度网盘 Plus 年卡", None),
+    ("Gmail Plus 年卡", None),
+    ("Plus 使用指南", None),
+    ("Plus 镜像站", None),
+    ("Plus 中转 API额度", None),
+    ("Plus 手机接码 CDK", "chatgpt-access-service"),
+    ("Plus 实卡号码", "chatgpt-access-service"),
+    ("Plus 提链 CDK", "chatgpt-access-service"),
+    ("Plus 普号", "chatgpt-account"),
+    ("普通商品", None),
+    ("Perplexity Plus 年卡", None),
+    ("Claude Pro 官方充值", "claude-pro"),
+    ("Gemini Advanced 官方充值", "gemini-advanced"),
+    ("G pro5x 订阅 官方充值", "chatgpt-pro-5x"),
+    ("G pro 20x 订阅 官方充值", "chatgpt-pro-20x"),
+])
+def test_16688_recharge_category_preserves_title_identity(title, expected):
+    assert classify_product(title, "G直充", source_platform="16688").slug == expected
+
+
+@pytest.mark.parametrize("description", ["支持 ChatGPT 和 Claude", "Perplexity Plus 年卡"])
+def test_16688_recharge_category_does_not_override_conflicting_description(description):
+    assert classify_product("ios正规plus年卡全程质保", "G直充", description, source_platform="16688").slug is None
+
+
 def test_16688_alias_can_use_description_context():
     result = classify_product(
         "官方充值 Plus CDK",

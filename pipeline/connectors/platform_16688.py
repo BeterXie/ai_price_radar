@@ -23,6 +23,7 @@ CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 SHOP_DETAIL_PATH = "/shopApi/shop/detail"
 GOODS_DETAIL_PATH = "/shopApi/goods/detail"
 GOODS_LIST_PATH = "/shopApi/goods/list"
+GOODS_CATEGORY_LIST_PATH = "/shopApi/goodsCategory/list"
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 20 * 1024 * 1024
 MAX_TASK_SECONDS = 120
@@ -124,6 +125,7 @@ def _record(
     shop_no: str,
     shop_name: str,
     item: dict[str, Any],
+    category_name: str = "",
 ) -> dict[str, Any]:
     goods_no = str(item.get("goods_no") or "").strip()
     product_name = str(item.get("name") or "").strip()
@@ -145,7 +147,7 @@ def _record(
         "product_key": f"16688:{goods_no}",
         "variant_key": goods_no,
         "product_name": product_name,
-        "category_name": "",
+        "category_name": category_name,
         "product_url": f"{origin}/goods/{urllib.parse.quote(goods_no, safe='._~-')}",
         "listed_price": item.get("price"),
         "currency": "CNY",
@@ -205,6 +207,27 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     if not isinstance(items, list):
         raise ValueError("16688 goods API response is missing a list")
 
+    categories: dict[str, str] = {}
+    if any(isinstance(item, dict) and item.get("goods_category_no") for item in items):
+        category_listing = _post_json(
+            client,
+            f"{origin}{GOODS_CATEGORY_LIST_PATH}",
+            {"shop_no": shop_no},
+        )
+        category_items = category_listing.get("data")
+        if not isinstance(category_items, list):
+            raise ValueError("16688 category API response is missing a list")
+        for category in category_items:
+            if not isinstance(category, dict):
+                raise ValueError("16688 category item must be an object")
+            category_no = str(category.get("goods_category_no") or "").strip()
+            category_name = str(category.get("name") or "").strip()
+            if CODE_PATTERN.fullmatch(category_no) is None or not category_name:
+                raise ValueError("16688 category number or name is invalid")
+            if category_no in categories:
+                raise ValueError("16688 category list contains a duplicate category number")
+            categories[category_no] = category_name
+
     seen_goods: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
@@ -213,4 +236,10 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         if goods_no in seen_goods:
             raise ValueError("16688 goods list contains a duplicate goods number")
         seen_goods.add(goods_no)
-        yield _record(origin=origin, shop_no=shop_no, shop_name=shop_name, item=item)
+        yield _record(
+            origin=origin,
+            shop_no=shop_no,
+            shop_name=shop_name,
+            item=item,
+            category_name=categories.get(str(item.get("goods_category_no") or "").strip(), ""),
+        )

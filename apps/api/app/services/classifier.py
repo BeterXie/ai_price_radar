@@ -643,6 +643,17 @@ def _classify_identity(
         return None, False
 
     brand = _detect_brand(title_text, category_text, description_text)
+    if (
+        brand is None
+        and str(source_platform or "").strip().casefold() == PLATFORM_16688
+        and re.fullmatch(r"g\s*直充(?:\s+g\s*直充)*", category_text)
+        and _contains(title_text, CHATGPT_PLUS_MARKERS)
+        and not _contains(title_text, NON_TARGET_PLUS_MARKERS + GENERIC_EMAIL_MARKERS)
+        and not any(context_brand != "chatgpt" for context_brand in _explicit_brands(description_text))
+    ):
+        # Category metadata supplies identity, not a subscription verdict.
+        # Continue through the usual service, free-account and tier rules.
+        brand = "chatgpt"
     if brand == "perplexity":
         return None, False
     if brand is None:

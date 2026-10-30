@@ -72,6 +72,8 @@ The Common Crawl CDX service indexes URLs rather than page body text. Arbitrary-
 
 Submit an official shop URL such as `https://www.16688.com.cn/shop/HARVEY`. The connector first resolves the public alias through `POST /shopApi/shop/detail`, then reads the canonical shop number through `POST /shopApi/goods/list` with `sort=default`. Published records use the canonical URL and a platform-scoped shop token such as `16688-S343514`; product keys are prefixed with `16688:`. This keeps an 16688 shop distinct from a same-named shop on LDXP or another platform.
 
+16688 goods that reference `goods_category_no` are joined with `POST /shopApi/goodsCategory/list` using the canonical shop number. The category name is retained in the normalized record and the stored original category; missing or unknown IDs leave the category blank rather than borrowing another category. On this platform only, the exact `G直充` category supplies context for brandless Plus titles. Bare Plus titles without that context are still subject to the existing identity checks.
+
 16688 sources use the same asynchronous detector, administrator approval and atomic multi-source snapshot as the other public connectors. Automatic discovery approval is disabled by default with `DISCOVERY_16688_AUTO_APPROVE=false`.
 
 ## Unified source discovery engine
