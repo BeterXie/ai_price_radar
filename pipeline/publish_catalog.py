@@ -9,6 +9,7 @@ import sqlite3
 import tempfile
 import urllib.parse
 from collections.abc import Iterable, Iterator
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -978,7 +979,9 @@ def _publish_prepared_sources(
             for spec in sources:
                 source_price_changes: list[Any] = []
                 try:
-                    with db.begin_nested():
+                    with db.begin_nested(), closing(
+                        prepared_by_source[(spec.connector, spec.source)].records()
+                    ) as records:
                         imported = import_source_into_snapshot(
                             db,
                             connector=spec.connector,
@@ -986,7 +989,7 @@ def _publish_prepared_sources(
                             snapshot_id=snapshot.id,
                             products=products,
                             collected_price_changes=source_price_changes,
-                            records=prepared_by_source[(spec.connector, spec.source)].records(),
+                            records=records,
                         )
                 except SourceImportError as exc:
                     if not isinstance(exc.__cause__, (SourceUnavailableError, SourceFetchError)):
