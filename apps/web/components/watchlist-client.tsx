@@ -24,6 +24,7 @@ import {
   readAnonymousWatchlist,
   readUserWatchlist,
   WATCHLIST_EVENT,
+  watchItemsToMigrate,
   type WatchItem,
   writeAnonymousWatchlist,
   writeUserWatchlist,
@@ -89,8 +90,7 @@ export function WatchlistClient({ previewState }: { previewState?: "empty" | "lo
         if (generation !== loadGeneration.current) return;
 
         const local = readAnonymousWatchlist();
-        const existingCloudSlugs = new Set(cloudData.items.map((i) => i.product_slug));
-        const toMigrate = local.filter((item) => !existingCloudSlugs.has(item.slug));
+        const toMigrate = watchItemsToMigrate(local, cloudData.items);
 
         if (toMigrate.length > 0) {
           const results: boolean[] = [];

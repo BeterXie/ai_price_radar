@@ -1,4 +1,5 @@
 import { OFFICIAL_SOURCES } from "@/content/guides/sources";
+import { canonicalProductSlug } from "@/lib/catalog";
 import type { OfficialSource } from "@/lib/guides/types";
 import type { OfficialPriceReference } from "@/lib/types";
 
@@ -85,31 +86,31 @@ const PRODUCT_SEO: Record<string, ProductSeoContent> = {
       { question: "团队席位价格可以和个人 Plus 直接比较吗？", answer: "不建议。两者的账号归属、管理权限和失效风险不同，应分别查看。" },
     ],
   },
-  "chatgpt-pro-5x": {
-    metaDescription: "比较明确标注 ChatGPT Pro 5x 的公开报价、交付形态、库存、质保和更新时间。",
-    intro: "本页保留商家使用的 Pro 5x 旧标记。当前官方以 Pro 100、Pro 200、Pro 500 区分档位；仅有 5x 标签不能确认当前订阅档位或实际用量。",
-    comparisonPoints: ["核对商品是独享账号、充值服务还是共享使用形式。", "确认 5x 标识来自商品标题或明确权益说明，而不是分类猜测。", "查看质保、账号资料修改权限和价格偏低提示。"],
+  "chatgpt-pro-100": {
+    metaDescription: "比较 ChatGPT Pro 100 / 5x 公开报价、交付形态、库存、质保和更新时间。",
+    intro: "本页统一展示 ChatGPT Pro 100 与 Pro 5x 同级商品，保留商家原标题，按交付方式、期限和质保比较报价。",
+    comparisonPoints: ["核对商品是独享账号、充值服务还是共享使用形式。", "核对账号当前套餐、实际用量和订阅周期。", "查看质保、账号资料修改权限和商品原文。"],
     faqs: [
-      { question: "美元档位和 5x 标签如何归类？", answer: "明确注明美元档位的商品进入 Pro 100、Pro 200 或 Pro 500；只有旧 5x 标记的商品保留在本页。两者都未注明时保留在通用 Pro 分类。" },
-      { question: "Pro 号池会参与最低价吗？", answer: "共享号池可以作为相关商品展示，但不会参与独享或可直接比较报价的主最低价。" },
+      { question: "Pro 5x 商品在哪里查看？", answer: "Pro 5x 已并入 Pro 100 / 5x，本页保留商品原标题与来源链接。" },
+      { question: "Pro 号池会参与最低价吗？", answer: "共享号池作为相关商品展示，主最低价仅统计可直接比较的报价。" },
     ],
   },
-  "chatgpt-pro-20x": {
-    metaDescription: "比较明确标注 ChatGPT Pro 20x 的公开报价、库存、交付方式、期限、质保与来源。",
-    intro: "本页保留商家使用的 Pro 20x 旧标记。当前官方 Pro 200 的用量规则已有变化；仅有 20x 标签不能确认当前档位或保证旧用量。明确注明美元档位的商品单独归类。",
-    comparisonPoints: ["核对原文中的 20x 标记及当前账号的实际权益、使用周期和归属。", "区分独享账号、代充、共享号池和短期使用权。", "价格明显偏低时重点核对限制条件和售后范围。"],
+  "chatgpt-pro-200": {
+    metaDescription: "比较 ChatGPT Pro 200 / 20x 公开报价、库存、交付方式、期限、质保与来源。",
+    intro: "本页统一展示 ChatGPT Pro 200 与 Pro 20x 同级商品，保留商家原标题，按交付方式、期限和质保比较报价。",
+    comparisonPoints: ["核对当前账号的实际权益、使用周期和归属。", "区分独享账号、代充、共享号池和短期使用权。", "核对商品限制条件和售后范围。"],
     faqs: [
-      { question: "20x 和 5x 会混在一起吗？", answer: "不会。只有标题或明确商品信息确认倍率后才进入对应页面。" },
-      { question: "最低价是否代表完整 Pro 20x 账号？", answer: "不一定。请同时查看交付形态；页面会把不可直接比较的号池和服务报价排除在主最低价之外。" },
+      { question: "Pro 20x 商品在哪里查看？", answer: "Pro 20x 已并入 Pro 200 / 20x，本页保留商品原标题与来源链接。" },
+      { question: "最低价对应哪种交付？", answer: "请同时查看交付形态；主最低价仅统计可直接比较的报价，号池和服务报价按实际形态展示。" },
     ],
   },
   "chatgpt-pro": {
-    metaDescription: "查询未明确 5x 或 20x 倍率的 ChatGPT Pro 公开报价、交付方式、库存和更新时间。",
-    intro: "通用 ChatGPT Pro 页面收纳明确写明 Pro、但没有足够信息判断 5x 或 20x 倍率的商品，避免系统替商家猜测权益。",
-    comparisonPoints: ["先回到商品原文确认具体倍率、周期和账号类型。", "权益不清晰的报价不应直接与明确 5x 或 20x 商品比较。"],
+    metaDescription: "查询档位待确认的 ChatGPT Pro 公开报价、交付方式、库存和更新时间。",
+    intro: "通用 ChatGPT Pro 页面收纳明确写明 Pro、但信息不足以确认具体档位的商品。",
+    comparisonPoints: ["先回到商品原文确认具体档位、周期和账号类型。", "核对官方账户页的套餐与实际权益。"],
     faqs: [
-      { question: "为什么商品没有进入 Pro 5x 或 20x？", answer: "商品信息没有明确倍率时，系统会保留在通用 Pro 分类，不自动推断。" },
-      { question: "确认倍率后可以修正分类吗？", answer: "可以通过纠错入口提供来源信息，管理员核验后可重新分类。" },
+      { question: "哪些商品会保留在通用 Pro？", answer: "缺少明确档位信息的商品保留在通用 Pro；Pro 100 / 5x、Pro 200 / 20x 和 Pro 500 分别归类。" },
+      { question: "确认档位后可以修正分类吗？", answer: "可以通过纠错入口提供来源信息，管理员核验后可重新分类。" },
     ],
   },
   "openai-api-credit": {
@@ -272,8 +273,8 @@ const PRODUCT_OG_TITLES: Record<string, string> = {
   "chatgpt-plus": "ChatGPT Plus",
   "chatgpt-go": "ChatGPT Go",
   "chatgpt-k12": "ChatGPT K12",
-  "chatgpt-pro-5x": "ChatGPT Pro 5x",
-  "chatgpt-pro-20x": "ChatGPT Pro 20x",
+  "chatgpt-pro-100": "ChatGPT Pro 100 / 5x",
+  "chatgpt-pro-200": "ChatGPT Pro 200 / 20x",
   "chatgpt-pro": "ChatGPT Pro",
   "openai-api-credit": "OpenAI API Credit",
   "chatgpt-access-service": "ChatGPT / Codex Services",
@@ -296,7 +297,7 @@ const PRODUCT_OG_TITLES: Record<string, string> = {
 };
 
 export function getProductSeoContent(slug: string, displayName: string, fallbackDescription: string): ProductSeoContent {
-  return PRODUCT_SEO[slug] || {
+  return PRODUCT_SEO[canonicalProductSlug(slug)] || {
     metaDescription: fallbackDescription,
     intro: fallbackDescription,
     comparisonPoints: [
@@ -311,5 +312,5 @@ export function getProductSeoContent(slug: string, displayName: string, fallback
 }
 
 export function getProductOgTitle(slug: string) {
-  return PRODUCT_OG_TITLES[slug] || slug.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+  return PRODUCT_OG_TITLES[canonicalProductSlug(slug)] || slug.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
 }

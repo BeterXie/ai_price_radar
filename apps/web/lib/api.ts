@@ -17,6 +17,7 @@ import type {
 import { cache } from "react";
 import { getSnapshotCatalog } from "@/lib/snapshot-catalog";
 import { normalizeProductIdentity } from "@/lib/product-identity";
+import { canonicalProductSlug } from "@/lib/catalog";
 
 // Keep the final fallback identical to next.config.ts and snapshot-catalog.ts:
 // local development assumes the API runs on the host at 127.0.0.1:8000.
@@ -66,12 +67,18 @@ async function apiFetch<T>(path: string, retries = 2, init?: RequestInit): Promi
 }
 
 export async function getProducts(query = ""): Promise<CatalogResponse> {
+  const params = new URLSearchParams(query);
+  if (params.has("products")) {
+    const slugs = params.getAll("products").flatMap((value) => value.split(",").map((slug) => canonicalProductSlug(slug.trim())));
+    params.set("products", [...new Set(slugs)].join(","));
+    query = params.toString();
+  }
   const clean = query.trim();
   if (!clean || clean === "sort=quality") {
-    // getSnapshotCatalog applies the same quality ordering as the API path,
-    // so the two branches return consistent ordering for the same request.
+    // Old immutable snapshots still contain separate Pro 5x/20x categories.
+    // Use the live catalog until a canonical snapshot is published.
     const snapshotData = await getSnapshotCatalog().catch(() => null);
-    if (snapshotData && snapshotData.items.length > 0) {
+    if (snapshotData && snapshotData.items.length > 0 && snapshotData.items.every((item) => canonicalProductSlug(item.slug) === item.slug)) {
       return { ...snapshotData, items: snapshotData.items.map(normalizeProductIdentity) };
     }
   }
@@ -85,7 +92,7 @@ export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPag
 
 export const getProduct = cache(async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {
   try {
-    const product = await apiFetch<ProductDetail>(`/api/v1/products/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`, 2, {
+    const product = await apiFetch<ProductDetail>(`/api/v1/products/${encodeURIComponent(canonicalProductSlug(slug))}${query ? `?${query}` : ""}`, 2, {
       next: { revalidate: 30 },
     });
     return normalizeProductIdentity(product);

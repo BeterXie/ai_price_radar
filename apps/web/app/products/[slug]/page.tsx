@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
+import { canonicalProductSlug } from "@/lib/catalog";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
 import { getProductSeoContent } from "@/lib/product-seo";
@@ -35,5 +37,14 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
 
 export default async function ProductPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: SearchParams }) {
   const [{ slug }, rawParams] = await Promise.all([params, searchParams]);
-  return <ProductCatalogPage rawParams={rawParams} productSlug={slug} />;
+  const canonicalSlug = canonicalProductSlug(slug);
+  if (canonicalSlug !== slug) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(rawParams)) {
+      for (const entry of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(key, entry);
+    }
+    const suffix = query.toString();
+    permanentRedirect(`/products/${encodeURIComponent(canonicalSlug)}${suffix ? `?${suffix}` : ""}`);
+  }
+  return <ProductCatalogPage rawParams={rawParams} productSlug={canonicalSlug} />;
 }

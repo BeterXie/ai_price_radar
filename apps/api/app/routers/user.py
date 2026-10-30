@@ -62,6 +62,7 @@ from ..services.bot_binding import (
     update_binding_preferences,
 )
 from ..core.config import get_settings
+from ..services.account_plans import canonical_product_slug
 from ..services.catalog import _base_public_offer_query
 from ..services.notification_hub import handle_inbound_chat_message
 from ..services.source_platform import public_https_url_or_empty
@@ -338,7 +339,7 @@ def create_or_update_subscription(
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> UserSubscriptionRead:
-    clean_slug = payload.product_slug.strip().casefold()
+    clean_slug = canonical_product_slug(payload.product_slug)
     product = db.scalar(
         select(Product).where(Product.slug == clean_slug, Product.is_visible.is_(True))
     )
@@ -390,7 +391,7 @@ def delete_subscription(
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
-    clean_slug = slug.strip().casefold()
+    clean_slug = canonical_product_slug(slug)
     res = db.execute(
         delete(UserProductSubscription).where(
             UserProductSubscription.user_id == current_user.id,
@@ -408,7 +409,7 @@ def patch_subscription(
     current_user: User = Depends(require_current_user),
     db: Session = Depends(get_db),
 ) -> UserSubscriptionRead:
-    clean_slug = slug.strip().casefold()
+    clean_slug = canonical_product_slug(slug)
     sub = db.scalar(
         select(UserProductSubscription).where(
             UserProductSubscription.user_id == current_user.id,

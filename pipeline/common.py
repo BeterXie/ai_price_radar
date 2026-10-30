@@ -22,7 +22,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, Numeric, St
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from currencies import normalize_currency
-from app.services.account_plans import product_definitions
+from app.services.account_plans import merge_legacy_plan_offers, product_definitions
 
 
 class Base(DeclarativeBase):
@@ -781,7 +781,7 @@ def ensure_products(db: Session) -> dict[str, Product]:
         retired = existing.get(retired_slug)
         if retired is not None:
             retired.is_visible = False
-    db.flush()
+    merge_legacy_plan_offers(db, existing, Offer)
     return existing
 
 

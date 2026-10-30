@@ -76,6 +76,7 @@ from ..services.promo import (
     list_live_ad_slots,
     setting_enabled,
 )
+from ..services.account_plans import canonical_product_slug
 from ..services.source_intake import enqueue_submission_notifications
 from ..services.relay_icons import RelayIconBusy, get_relay_icon, make_icon_cache, read_icon_cache
 from ..services.auth import get_session_by_token, settle_session_activity
@@ -487,7 +488,7 @@ def product_groups(
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> OfferGroupPageResponse:
-    product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
+    product = db.scalar(select(Product).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product is None:
         raise HTTPException(status_code=404, detail="product not found")
     current = _snapshot_or_404(db, snapshot)
@@ -779,7 +780,7 @@ def _watch_targets(value: str) -> list[tuple[str, Decimal | None]]:
                 continue
             if not threshold.is_finite() or threshold <= 0:
                 continue
-        targets.append((slug, threshold))
+        targets.append((canonical_product_slug(slug), threshold))
         if len(targets) >= 20:
             break
     return targets
@@ -847,7 +848,7 @@ def create_report(payload: ReportCreate, request: Request, db: Session = Depends
     _enforce_report_rate_limit(request, db)
     if payload.kind == "shop_request":
         raise HTTPException(status_code=422, detail="use /api/v1/shop-requests for shop applications")
-    product_slug = payload.product_slug
+    product_slug = canonical_product_slug(payload.product_slug) if payload.product_slug is not None else None
     if product_slug is not None:
         product_slug = db.scalar(
             select(Product.slug).where(Product.slug == product_slug, Product.is_visible.is_(True))

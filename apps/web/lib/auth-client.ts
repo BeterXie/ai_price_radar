@@ -1,3 +1,4 @@
+import { canonicalProductSlug } from "./catalog";
 import type {
   AuthSessionState,
   CouponClaimResponse,
@@ -190,7 +191,14 @@ export interface UserSubscriptionListResponse {
 }
 
 export async function fetchUserSubscriptions(): Promise<UserSubscriptionListResponse> {
-  return jsonFetch<UserSubscriptionListResponse>("/api/v1/user/subscriptions");
+  const data = await jsonFetch<UserSubscriptionListResponse>("/api/v1/user/subscriptions");
+  const bySlug = new Map<string, UserSubscriptionItem>();
+  for (const item of data.items) {
+    const slug = canonicalProductSlug(item.product_slug);
+    if (!bySlug.has(slug) || item.product_slug === slug) bySlug.set(slug, item);
+  }
+  const items = [...bySlug].map(([slug, item]) => ({ ...item, product_slug: slug }));
+  return { ...data, items, count: items.length };
 }
 
 export interface UserSubscriptionSaveInput {
@@ -212,7 +220,7 @@ export interface UserSubscriptionSaveInput {
 export async function saveUserSubscription(payload: UserSubscriptionSaveInput): Promise<UserSubscriptionItem> {
   return jsonFetch<UserSubscriptionItem>("/api/v1/user/subscriptions", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, product_slug: canonicalProductSlug(payload.product_slug) }),
   });
 }
 
@@ -220,14 +228,14 @@ export async function updateUserSubscription(
   productSlug: string,
   changes: Omit<UserSubscriptionSaveInput, "product_slug">
 ): Promise<UserSubscriptionItem> {
-  return jsonFetch<UserSubscriptionItem>(`/api/v1/user/subscriptions/${encodeURIComponent(productSlug)}`, {
+  return jsonFetch<UserSubscriptionItem>(`/api/v1/user/subscriptions/${encodeURIComponent(canonicalProductSlug(productSlug))}`, {
     method: "PATCH",
     body: JSON.stringify(changes),
   });
 }
 
 export async function deleteUserSubscription(slug: string): Promise<{ success: boolean }> {
-  return jsonFetch<{ success: boolean }>(`/api/v1/user/subscriptions/${encodeURIComponent(slug)}`, {
+  return jsonFetch<{ success: boolean }>(`/api/v1/user/subscriptions/${encodeURIComponent(canonicalProductSlug(slug))}`, {
     method: "DELETE",
   });
 }

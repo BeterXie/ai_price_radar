@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bell, BellRinging } from "@phosphor-icons/react";
+import { canonicalProductSlug } from "@/lib/catalog";
 import {
   AUTH_CHANGE_EVENT,
   deleteUserSubscription,
@@ -46,7 +47,7 @@ function normalizeWatchItem(value: unknown): WatchItem | null {
   const threshold = normalizeWatchThreshold(typeof item.threshold === "string" ? item.threshold : "");
   if (threshold === null) return null;
   return {
-    slug: item.slug,
+    slug: canonicalProductSlug(item.slug),
     name: item.name,
     currency: typeof item.currency === "string" && item.currency.trim() ? item.currency : "CNY",
     threshold,
@@ -54,21 +55,33 @@ function normalizeWatchItem(value: unknown): WatchItem | null {
   };
 }
 
+function normalizeWatchItems(values: unknown[]): WatchItem[] {
+  const items = new Map<string, WatchItem>();
+  const canonicalSlugs = new Set<string>();
+  for (const value of values) {
+    const item = normalizeWatchItem(value);
+    if (!item) continue;
+    const isCanonical = (value as WatchItem).slug === item.slug;
+    if (!items.has(item.slug) || (isCanonical && !canonicalSlugs.has(item.slug))) items.set(item.slug, item);
+    if (isCanonical) canonicalSlugs.add(item.slug);
+  }
+  return [...items.values()];
+}
+
 function parseWatchlist(raw: string | null): WatchItem[] {
   if (!raw) return [];
   try {
     const value = JSON.parse(raw);
-    if (!Array.isArray(value)) return [];
-    const seen = new Set<string>();
-    return value.flatMap((item) => {
-      const normalized = normalizeWatchItem(item);
-      if (!normalized || seen.has(normalized.slug)) return [];
-      seen.add(normalized.slug);
-      return [normalized];
-    });
+    return Array.isArray(value) ? normalizeWatchItems(value) : [];
   } catch {
     return [];
   }
+}
+
+/** Cloud settings win when a local legacy slug names an existing subscription. */
+export function watchItemsToMigrate(local: WatchItem[], cloud: Pick<UserSubscriptionItem, "product_slug">[]): WatchItem[] {
+  const existing = new Set(cloud.map((item) => canonicalProductSlug(item.product_slug)));
+  return normalizeWatchItems(local).filter((item) => !existing.has(item.slug));
 }
 
 /**
@@ -78,10 +91,7 @@ function parseWatchlist(raw: string | null): WatchItem[] {
  */
 function persistWatchlist(key: string, items: WatchItem[], cap: number | null): boolean {
   if (typeof window === "undefined") return false;
-  let normalized = items.flatMap((item) => {
-    const value = normalizeWatchItem(item);
-    return value ? [value] : [];
-  });
+  let normalized = normalizeWatchItems(items);
   if (cap !== null) {
     normalized = normalized.slice(0, cap);
   }
@@ -163,7 +173,7 @@ function subscriptionToWatchItem(sub: UserSubscriptionItem): WatchItem {
 }
 
 export function WatchButton({
-  slug,
+  slug: inputSlug,
   name,
   currency = "CNY",
   suggestedPrice = "",
@@ -173,6 +183,7 @@ export function WatchButton({
   currency?: string;
   suggestedPrice?: string | null;
 }) {
+  const slug = canonicalProductSlug(inputSlug);
   const [watched, setWatched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +201,7 @@ export function WatchButton({
         if (auth.authenticated && auth.user) {
           const cloud = await fetchUserSubscriptions();
           if (cancelled) return;
-          const slugs = new Set(cloud.items.map((item) => item.product_slug));
+          const slugs = new Set(cloud.items.map((item) => canonicalProductSlug(item.product_slug)));
           setUserId(auth.user.id);
           setCloudSlugs(slugs);
           setWatched(slugs.has(slug));
@@ -235,7 +246,7 @@ export function WatchButton({
 
   async function refreshCloudState(accountId: number): Promise<Set<string>> {
     const cloud = await fetchUserSubscriptions();
-    const slugs = new Set(cloud.items.map((item) => item.product_slug));
+    const slugs = new Set(cloud.items.map((item) => canonicalProductSlug(item.product_slug)));
     setUserId(accountId);
     setCloudSlugs(slugs);
     setWatched(slugs.has(slug));

@@ -26,6 +26,7 @@ from ..schemas import (
     ShopProduct,
     ShopDetail,
 )
+from .account_plans import canonical_product_slug
 from .official_pricing import official_reference_for
 from .pricing import MIN_TRUSTED_PRICE, is_trusted_price, low_price_warning, price_median
 from .source_health import source_health
@@ -400,7 +401,7 @@ def get_product_recommendations(
     limit: int = 5,
 ) -> list[OfferPublic]:
     """Return trusted in-stock CNY quotes, with one representative per item."""
-    product_id = db.scalar(select(Product.id).where(Product.slug == slug, Product.is_visible.is_(True)))
+    product_id = db.scalar(select(Product.id).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product_id is None:
         return []
     snapshot = snapshot or get_current_snapshot(db)
@@ -741,7 +742,7 @@ def get_catalog_group_page(
     if q:
         stmt = _apply_search(stmt, q)
     if product_slug:
-        stmt = stmt.where(Product.slug == product_slug)
+        stmt = stmt.where(Product.slug == canonical_product_slug(product_slug))
     filtered_stmt = _apply_offer_filters(stmt, filters)
     fingerprint = func.coalesce(
         func.nullif(Offer.item_fingerprint, ""),
@@ -951,9 +952,9 @@ def _product_card_scope(
     if platform:
         stmt = stmt.where(Product.platform == platform)
     if product_slug:
-        stmt = stmt.where(Product.slug == product_slug)
+        stmt = stmt.where(Product.slug == canonical_product_slug(product_slug))
     if product_slugs:
-        stmt = stmt.where(Product.slug.in_(product_slugs))
+        stmt = stmt.where(Product.slug.in_(tuple(dict.fromkeys(canonical_product_slug(value) for value in product_slugs))))
     if product_type:
         stmt = stmt.where(Product.product_type == product_type)
     if q:
@@ -998,9 +999,9 @@ def count_product_cards(
         if platform:
             product_stmt = product_stmt.where(Product.platform == platform)
         if product_slug:
-            product_stmt = product_stmt.where(Product.slug == product_slug)
+            product_stmt = product_stmt.where(Product.slug == canonical_product_slug(product_slug))
         if product_slugs:
-            product_stmt = product_stmt.where(Product.slug.in_(product_slugs))
+            product_stmt = product_stmt.where(Product.slug.in_(tuple(dict.fromkeys(canonical_product_slug(value) for value in product_slugs))))
         if product_type:
             product_stmt = product_stmt.where(Product.product_type == product_type)
         return int(db.scalar(product_stmt) or 0)
@@ -1157,9 +1158,9 @@ def list_product_cards(
         if platform:
             product_query = product_query.where(Product.platform == platform)
         if product_slug:
-            product_query = product_query.where(Product.slug == product_slug)
+            product_query = product_query.where(Product.slug == canonical_product_slug(product_slug))
         if product_slugs:
-            product_query = product_query.where(Product.slug.in_(product_slugs))
+            product_query = product_query.where(Product.slug.in_(tuple(dict.fromkeys(canonical_product_slug(value) for value in product_slugs))))
         if product_type:
             product_query = product_query.where(Product.product_type == product_type)
         for prod in db.scalars(product_query):
@@ -1212,7 +1213,7 @@ def get_product_detail(
     filters: OfferFilters = OfferFilters(comparable=True),
     snapshot_id: int | None = None,
 ) -> ProductDetail | None:
-    product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
+    product = db.scalar(select(Product).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
@@ -1305,7 +1306,7 @@ def get_product_history(
     *,
     source_platform: str = "",
 ) -> ProductHistoryResponse | None:
-    product = db.scalar(select(Product).where(Product.slug == slug, Product.is_visible.is_(True)))
+    product = db.scalar(select(Product).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product is None:
         return None
     trend = _product_trend(db, product.id, source_platform=source_platform)
@@ -1321,7 +1322,7 @@ def get_product_offer_page(
     filters: OfferFilters = OfferFilters(),
     snapshot_id: int | None = None,
 ) -> list[OfferPublic] | None:
-    product_id = db.scalar(select(Product.id).where(Product.slug == slug, Product.is_visible.is_(True)))
+    product_id = db.scalar(select(Product.id).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product_id is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
@@ -1347,7 +1348,7 @@ def get_group_offers(
     filters: OfferFilters = OfferFilters(),
     snapshot_id: int | None = None,
 ) -> list[OfferPublic] | None:
-    product_id = db.scalar(select(Product.id).where(Product.slug == slug, Product.is_visible.is_(True)))
+    product_id = db.scalar(select(Product.id).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product_id is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)

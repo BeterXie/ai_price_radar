@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.services.account_plans import canonical_product_slug
 from app.services.credential_crypto import decrypt_secret
 
 from .formatter import render_qq_report, render_telegram_report
@@ -59,6 +60,7 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
 
                 if not slug:
                     continue
+                slug = canonical_product_slug(slug)
 
                 is_drop = getattr(evt, "is_drop", False)
                 new_price = getattr(evt, "new_price", Decimal(0))

@@ -1,3 +1,4 @@
+import { canonicalProductSlug } from "@/lib/catalog";
 import { PRODUCT_DELIVERY_TYPES } from "./product-delivery-map";
 import { KNOWN_DELIVERY_TYPES, PRODUCT_SLUGS, type DeliveryType, type KnownDeliveryType, type ProductSlug } from "./types";
 
@@ -30,7 +31,8 @@ export function resolveGuideHref(input: {
   productSlug?: string | null;
   deliveryType?: string | null;
 }): string {
-  const productSlug = productSlugs.has(input.productSlug || "") ? input.productSlug as ProductSlug : null;
+  const canonicalSlug = canonicalProductSlug(input.productSlug || "");
+  const productSlug = productSlugs.has(canonicalSlug) ? canonicalSlug as ProductSlug : null;
 
   if (
     productSlug

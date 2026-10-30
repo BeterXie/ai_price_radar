@@ -22,15 +22,15 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("ChatGPT Free 成品号", "", "chatgpt-account"),
         ("GPT Business Team K12 自动拉", "", "chatgpt-k12"),
         ("GPT Team 团队邀请 月付", "", "chatgpt-business"),
-        ("GPT PRO 成品号（5x）无质保版", "", "chatgpt-pro-5x"),
-        ("ChatGPT 5✖️Pro 一个月", "", "chatgpt-pro-5x"),
-        ("ChatGPT Pro x 20 会员", "", "chatgpt-pro-20x"),
-        ("GPT Pro20× 一个月", "", "chatgpt-pro-20x"),
+        ("GPT PRO 成品号（5x）无质保版", "", "chatgpt-pro-100"),
+        ("ChatGPT 5✖️Pro 一个月", "", "chatgpt-pro-100"),
+        ("ChatGPT Pro x 20 会员", "", "chatgpt-pro-200"),
+        ("GPT Pro20× 一个月", "", "chatgpt-pro-200"),
         ("ChatGPT Pro 200刀会员", "", "chatgpt-pro-200"),
         ("ChatGPT Pro 5天账号", "", "chatgpt-pro"),
         ("ChatGPT Pro 20刀账号", "", "chatgpt-pro"),
         ("ChatGPT Pro 500x账号", "", "chatgpt-pro"),
-        ("ChatGPT Pro 5倍成品号", "", "chatgpt-pro-5x"),
+        ("ChatGPT Pro 5倍成品号", "", "chatgpt-pro-100"),
         ("【官方代充】Codex Pro 20x 200刀 月卡（源头代充）", "", "chatgpt-pro-200"),
         ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 200刀PRO", "", "chatgpt-pro-200"),
         ("GPT Pro【官方充值｜月卡｜5x/20x | 质保30天订阅+封号】 · 100刀PRO", "", "chatgpt-pro-100"),
@@ -196,9 +196,9 @@ def test_16688_aliases_use_all_detail_fields_and_are_scoped_to_the_platform():
     source_platform="16688",
 )
     assert result.slug == "chatgpt-plus"
-    assert classify("G Pro X20 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
-    assert classify("G Pro 5倍官方充值月卡", source_platform="16688").slug == "chatgpt-pro-5x"
-    assert classify("G Pro X200 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-20x"
+    assert classify("G Pro X20 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-200"
+    assert classify("G Pro 5倍官方充值月卡", source_platform="16688").slug == "chatgpt-pro-100"
+    assert classify("G Pro X200 官方充值月卡", source_platform="16688").slug == "chatgpt-pro-200"
     assert classify("GP.T Plus 菲区 CDK").slug is None
     assert classify("Gro Heavy 速刷成品号", source_platform="16688").slug == "grok-heavy"
 
@@ -246,8 +246,8 @@ def test_product_catalog_groups_openai_and_retires_legacy_team_product():
         db.flush()
         products = ensure_products(db)
         assert products["chatgpt-k12"].platform == "OpenAI"
-        assert products["chatgpt-pro-5x"].display_name == "ChatGPT Pro 5x（旧标记）"
-        assert products["chatgpt-pro-20x"].display_name == "ChatGPT Pro 20x（旧标记）"
+        assert products["chatgpt-pro-100"].display_name == "ChatGPT Pro 100"
+        assert products["chatgpt-pro-200"].display_name == "ChatGPT Pro 200"
         assert products["codex-access"].platform == "OpenAI"
         assert products["x-premium-basic"].platform == "X"
         assert products["x-premium-plus"].display_name == "X Premium+"

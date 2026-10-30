@@ -14,7 +14,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .db import StateDB
-from .utils import extract_shop_token, extract_shop_urls, merge_unique, normalize_shop_url
+from .utils import extract_shop_identity, extract_shop_urls, merge_unique, normalize_shop_url
 
 SOURCE_SCORES = {
     "seed": 100,
@@ -73,7 +73,7 @@ class Discovery:
 
     def add_url(self, url: str, source: str, score: int) -> bool:
         normalized = normalize_shop_url(url)
-        token = extract_shop_token(normalized or "")
+        token = extract_shop_identity(normalized or "")
         if not normalized or not token:
             return False
         inserted = self.db.upsert_candidate(token, normalized, source, score)

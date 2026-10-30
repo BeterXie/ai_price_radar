@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
+import { canonicalProductSlug } from "@/lib/catalog";
 import { getProduct, getMeta } from "@/lib/api";
 import { PageHero } from "@/components/page-shell";
+import { offerQuery } from "@/components/product-workspace";
 import { OfferGroupTable } from "@/components/offer-table";
 import { ProductEvidence } from "@/components/product-evidence";
 import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
@@ -69,9 +71,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { source, slug } = await params;
   if (DISABLED_SOURCES.has(source)) notFound();
-  const product = await getProduct(slug, `source_platform=${encodeURIComponent(source)}`);
-  const pageMeta = getPageMeta(source, slug, product?.display_name ?? slug);
-  const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}/products/${encodeURIComponent(slug)}`;
+  const canonicalSlug = canonicalProductSlug(slug);
+  const product = await getProduct(canonicalSlug, `source_platform=${encodeURIComponent(source)}`);
+  const pageMeta = getPageMeta(source, canonicalSlug, product?.display_name ?? canonicalSlug);
+  const canonical = `${SITE_URL}/sources/${encodeURIComponent(source)}/products/${encodeURIComponent(canonicalSlug)}`;
   const hasOffers = (product?.offer_count ?? 0) >= 2;
 
   return {
@@ -90,17 +93,29 @@ export async function generateMetadata({
 
 export default async function SourceProductPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ source: string; slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { source, slug } = await params;
+  const [{ source, slug }, rawParams] = await Promise.all([params, searchParams]);
   if (DISABLED_SOURCES.has(source)) notFound();
+  const canonicalSlug = canonicalProductSlug(slug);
+  if (canonicalSlug !== slug) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(rawParams)) {
+      for (const entry of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(key, entry);
+    }
+    const suffix = query.toString();
+    permanentRedirect(`/sources/${encodeURIComponent(source)}/products/${encodeURIComponent(canonicalSlug)}${suffix ? `?${suffix}` : ""}`);
+  }
 
   // Validate source platform exists
   const apiMeta = await getMeta();
   if (!apiMeta.source_platforms.some((p) => p.id === source)) notFound();
 
-  const product = await getProduct(slug, `source_platform=${encodeURIComponent(source)}`);
+  const filterQuery = offerQuery({ ...rawParams, source_platform: source, comparable: rawParams.comparable ?? "false" }).toString();
+  const product = await getProduct(canonicalSlug, filterQuery);
   if (!product || product.offer_count === 0) notFound();
 
   const pageMeta = getPageMeta(source, slug, product.display_name);
@@ -184,7 +199,7 @@ export default async function SourceProductPage({
           productSlug={product.slug}
           totalCount={product.offer_group_count}
           snapshotId={product.snapshot_id}
-          filterQuery={`source_platform=${encodeURIComponent(source)}`}
+          filterQuery={filterQuery}
         />
       </section>
 

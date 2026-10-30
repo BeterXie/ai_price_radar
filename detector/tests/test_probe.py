@@ -27,6 +27,7 @@ def response(document, *, status=200, content_type="application/json"):
 
 def test_detector_recognizes_dujiao_brand_overlay():
     client = StubClient([
+        ProbeResponse(200, {"content-type": "text/html"}, b"<html></html>"),
         response({"status_code": 0, "data": {"brand": {"site_name": "Overlay Store"}}}),
         response({"status_code": 0, "data": [{}], "pagination": {"total": 7}}),
     ])
@@ -37,11 +38,8 @@ def test_detector_recognizes_dujiao_brand_overlay():
     assert result.product_count == 7
 
 
-def test_detector_recognizes_merchant_feed_after_dujiao_probe_fails():
+def test_detector_recognizes_merchant_feed_from_entry_response():
     client = StubClient([
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
         response({"items": [{"name": "ChatGPT Plus"}], "shop": {"name": "Feed Store"}}),
     ])
     result = probe_source("https://feed.example/catalog.json", client=client)
@@ -76,6 +74,7 @@ def test_detector_recognizes_16688_goods_url_and_normalizes_to_shop_number():
 
 def test_detector_recognizes_woocommerce_store_api_before_generic_json():
     client = StubClient([
+        ProbeResponse(200, {"content-type": "text/html"}, b"<html></html>"),
         ProbeResponse(404, {}, b""),
         ProbeResponse(
             200,
@@ -91,6 +90,7 @@ def test_detector_recognizes_woocommerce_store_api_before_generic_json():
 
 def test_detector_recognizes_acg_faka_store():
     client = StubClient([
+        ProbeResponse(200, {"content-type": "text/html"}, "<html><head><title>购物 - ACG Store</title></head></html>".encode()),
         ProbeResponse(404, {}, b""),  # dujiao
         ProbeResponse(404, {}, b""),  # woo
         response({
@@ -100,11 +100,6 @@ def test_detector_recognizes_acg_faka_store():
                 {"id": 2, "name": "Claude Pro", "price": "130.00"},
             ],
         }),  # acg commodity
-        ProbeResponse(
-            200,
-            {"content-type": "text/html"},
-            b"<html><head><title>\xe8\xb4\xad\xe7\x89\xa9 - ACG Store</title></head></html>",
-        ),  # home title
     ])
     result = probe_source("https://acg.example.com", client=client)
     assert result.detected_platform == "acg_faka"
@@ -118,10 +113,6 @@ def test_detector_recognizes_schema_org_product_page():
     {"@context":"https://schema.org","@type":"Product","name":"ChatGPT Plus"}
     </script></html>"""
     client = StubClient([
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
         ProbeResponse(200, {"content-type": "text/html"}, document),
     ])
     result = probe_source("https://structured.example/products/chatgpt", client=client)
@@ -139,11 +130,10 @@ def test_detector_finds_schema_org_product_through_same_origin_sitemap():
     {"@graph":[{"@type":"Product","name":"ChatGPT Plus"}]}
     </script>"""
     client = StubClient([
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
         ProbeResponse(200, {"content-type": "text/html"}, b"<html></html>"),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
         ProbeResponse(200, {"content-type": "application/xml"}, sitemap),
         ProbeResponse(200, {"content-type": "text/html"}, product),
     ])
@@ -160,11 +150,10 @@ def test_detector_recognizes_direct_nonstandard_sitemap_entry():
     {"@type":"Product","name":"ChatGPT Plus"}
     </script>"""
     client = StubClient([
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
-        ProbeResponse(404, {}, b""),
         ProbeResponse(200, {"content-type": "application/xml"}, sitemap),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
+        ProbeResponse(404, {}, b""),
         ProbeResponse(200, {"content-type": "text/html"}, product),
     ])
     result = probe_source("https://structured.example/product-sitemap.xml", client=client)

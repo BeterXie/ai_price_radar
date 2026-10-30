@@ -1,3 +1,12 @@
+const PRODUCT_SLUG_ALIASES: Readonly<Record<string, string>> = {
+  "chatgpt-pro-5x": "chatgpt-pro-100",
+  "chatgpt-pro-20x": "chatgpt-pro-200",
+};
+
+export function canonicalProductSlug(slug: string): string {
+  return Object.prototype.hasOwnProperty.call(PRODUCT_SLUG_ALIASES, slug) ? PRODUCT_SLUG_ALIASES[slug] : slug;
+}
+
 export const DELIVERY_TYPE_LABELS: Record<string, string> = {
   subscription_recharge: "官方直充 / 代充",
   finished_account: "成品账号",
@@ -66,15 +75,13 @@ export const PRODUCT_TABS: Record<ProductCategory, { label: string; slug: string
     { label: "Free", slug: "chatgpt-account" },
     { label: "Plus", slug: "chatgpt-plus" },
     { label: "Go", slug: "chatgpt-go" },
-    { label: "Pro 100", slug: "chatgpt-pro-100" },
-    { label: "Pro 200", slug: "chatgpt-pro-200" },
+    { label: "Pro 100 / 5x", slug: "chatgpt-pro-100" },
+    { label: "Pro 200 / 20x", slug: "chatgpt-pro-200" },
     { label: "Pro 500", slug: "chatgpt-pro-500" },
     { label: "Business / Team", slug: "chatgpt-business" },
     { label: "Edu", slug: "chatgpt-edu" },
     { label: "Enterprise", slug: "chatgpt-enterprise" },
     { label: "Pro 档位待确认", slug: "chatgpt-pro", other: true },
-    { label: "Pro 5x 旧标记", slug: "chatgpt-pro-5x", other: true },
-    { label: "Pro 20x 旧标记", slug: "chatgpt-pro-20x", other: true },
     { label: "K12 商家标记", slug: "chatgpt-k12", other: true },
     { label: "OpenAI API", slug: "openai-api-credit", other: true },
   ],

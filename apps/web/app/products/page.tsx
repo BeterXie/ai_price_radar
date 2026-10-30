@@ -3,7 +3,7 @@ import { permanentRedirect } from "next/navigation";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
 import { getProductSeoContent } from "@/lib/product-seo";
-import { STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { canonicalProductSlug, STANDALONE_PRODUCTS } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
 
 export default async function ProductsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const slug = lastValue(params.product);
+  const slug = canonicalProductSlug(lastValue(params.product));
   const standalone = STANDALONE_PRODUCTS.find((item) => item.label === (lastValue(params.brand) || lastValue(params.platform)));
   if (!slug && standalone) {
     const query = new URLSearchParams();
@@ -70,8 +70,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Sea
     const query = new URLSearchParams();
     for (const [key, rawValue] of Object.entries(params)) {
       if (["platform", "product"].includes(key)) continue;
-      const value = lastValue(rawValue);
-      if (value) query.set(key, value);
+      for (const value of Array.isArray(rawValue) ? rawValue : rawValue === undefined ? [] : [rawValue]) query.append(key, value);
     }
     const suffix = query.toString();
     permanentRedirect(`/products/${encodeURIComponent(slug)}${suffix ? `?${suffix}` : ""}`);

@@ -4,7 +4,7 @@ import { BRAND_TABS, PRODUCT_TABS } from "../lib/catalog.ts";
 
 test("official plan filters exclude merchant labels and uncertain tiers", () => {
   assert.deepEqual(PRODUCT_TABS.OpenAI.filter((tab) => !tab.other).map((tab) => tab.label), [
-    "Free", "Plus", "Go", "Pro 100", "Pro 200", "Pro 500", "Business / Team", "Edu", "Enterprise",
+    "Free", "Plus", "Go", "Pro 100 / 5x", "Pro 200 / 20x", "Pro 500", "Business / Team", "Edu", "Enterprise",
   ]);
   assert.deepEqual(PRODUCT_TABS.Claude.filter((tab) => !tab.other).map((tab) => tab.label), [
     "Pro", "Max 5x", "Max 20x", "Team", "Enterprise",

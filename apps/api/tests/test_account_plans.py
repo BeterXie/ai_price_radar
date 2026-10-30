@@ -192,7 +192,7 @@ def test_chatgpt_access_product_sync_preserves_offer_link_and_stays_out_of_opena
     ("X Premium 月卡", "", "", "x-premium"),
     ("X Premium+ 月卡", "", "", "x-premium-plus"),
     ("Grok Teams 团队套餐", "Grok Super", "", "grok-team"),
-    ("Codex Pro 5X 【保订阅~智利/埃及卡冲】支持续费（不支持升级菲区20x）", "OpenAI Pro 20x", "", "chatgpt-pro-5x"),
+    ("Codex Pro 5X 【保订阅~智利/埃及卡冲】支持续费（不支持升级菲区20x）", "OpenAI Pro 20x", "", "chatgpt-pro-100"),
 ])
 def test_catalog_brand_and_plan_regressions(source, title, category, description, slug):
     result = classify_product(title, category, description, source_platform=source)

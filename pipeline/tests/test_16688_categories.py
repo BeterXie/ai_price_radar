@@ -22,7 +22,7 @@ GOODS = [
     ("G96954851", "【美区IOS】质保30天（可覆盖）G pro 20x 订阅 官方充值 免排队 秒充(5-10分钟到账)", 1250, -1),
     ("G65523543", "ios正规plus年卡全程质保", 1250, -1),
 ]
-EXPECTED_SLUGS = ["chatgpt-plus", "chatgpt-pro-5x", "chatgpt-pro-20x", "chatgpt-plus"]
+EXPECTED_SLUGS = ["chatgpt-plus", "chatgpt-pro-100", "chatgpt-pro-200", "chatgpt-plus"]
 
 
 @pytest.fixture

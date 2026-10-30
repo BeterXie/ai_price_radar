@@ -629,6 +629,21 @@ def _classify_identity(
     description_text: str = "",
     source_platform: str = "",
 ) -> tuple[str | None, bool]:
+    if __package__:
+        from .account_plans import canonical_product_slug
+    else:
+        from account_plans import canonical_product_slug
+
+    slug, specific_match = _classify_identity_raw(title_text, category_text, description_text, source_platform)
+    return (canonical_product_slug(slug) if slug else None), specific_match
+
+
+def _classify_identity_raw(
+    title_text: str,
+    category_text: str,
+    description_text: str = "",
+    source_platform: str = "",
+) -> tuple[str | None, bool]:
     identity_text = normalize_title(" ".join([title_text, category_text]))
     tier_text = normalize_title(" ".join([identity_text, description_text]))
 

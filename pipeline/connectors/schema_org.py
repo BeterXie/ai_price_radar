@@ -37,6 +37,7 @@ MAX_JSONLD_NODES = 2_000
 
 _JSONLD_MEDIA_TYPE = "application/ld+json"
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+_PRODUCT_PATH = re.compile(r"/(?:products?|goods|item)/[^/]+/?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +165,27 @@ def _safe_same_origin_url(value: object, *, base_url: str, origin: str) -> str |
     return candidate if _same_origin(candidate, origin) else None
 
 
+def _home_product_urls(body: bytes, *, base_url: str, origin: str) -> list[str]:
+    links: list[str] = []
+    seen: set[str] = set()
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag.casefold() != "a":
+                return
+            candidate = _safe_same_origin_url(dict(attrs).get("href"), base_url=base_url, origin=origin)
+            if candidate is None or candidate in seen or not _PRODUCT_PATH.search(urllib.parse.urlsplit(candidate).path):
+                return
+            if len(seen) >= MAX_PRODUCT_URLS:
+                raise ValueError("Schema.org source exceeds product URL limit")
+            seen.add(candidate)
+            links.append(candidate)
+
+    Parser().feed(body.decode("utf-8", errors="replace"))
+    links.sort(key=lambda url: not bool(_PRODUCT_PATH.fullmatch(urllib.parse.urlsplit(url).path)))
+    return links
+
+
 def _entry(source: str | Path) -> tuple[str, str]:
     normalized = _normalized_url(str(source))
     origin = _origin(normalized)
@@ -277,11 +299,18 @@ def _entry_pages(
         if _looks_like_sitemap_url(entry_url):
             raise
         if _is_root_url(entry_url):
+            links = _home_product_urls(response.body, base_url=entry_url, origin=origin)
+            preloaded: dict[str, PinnedResponse] = {}
+            for page_url in links:
+                page = budget.get(page_url, accept="text/html,application/xhtml+xml;q=0.9,*/*;q=0.1")
+                preloaded[page_url] = page
+                if any(_has_type(node, "Product") for node in _jsonld_nodes(page.body)):
+                    return links, preloaded
             return _discover_product_pages(
                 f"{origin}/sitemap.xml",
                 origin,
                 budget,
-            ), {}
+            ), preloaded
         raise ValueError(
             "Schema.org source is not a sitemap or a page with Product JSON-LD"
         ) from None
@@ -513,6 +542,20 @@ def _product_key(product: dict[str, Any], product_url: str) -> tuple[str, str]:
     return key, ""
 
 
+def _offer_identity(offer: dict[str, Any], *, product_url: str, origin: str, currency: str) -> str:
+    identity: tuple[str, ...] | None = None
+    for field in ("sku", "productID", "mpn", "gtin", "gtin8", "gtin12", "gtin13", "gtin14", "@id"):
+        value = _text(offer.get(field))
+        if value:
+            identity = (field, value, currency)
+            break
+    if identity is None:
+        offer_url = _safe_same_origin_url(offer.get("url"), base_url=product_url, origin=origin) or ""
+        identity = ("name", " ".join(_text(offer.get("name")).split()).casefold(), offer_url, currency)
+    encoded = json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:24]
+
+
 def _record(
     product: dict[str, Any],
     *,
@@ -520,15 +563,29 @@ def _record(
     origin: str,
     token: str,
     references: dict[str, dict[str, Any]],
+    offer: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     product_name = _text(product.get("name"))
-    price = _select_price(product, references)
+    priced_product = {**product, "offers": [offer]} if offer is not None else product
+    price = _select_price(priced_product, references)
     if not product_name or price is None:
         return None
     product_url = _product_url(product, page_url=page_url, origin=origin)
     product_key, sku = _product_key(product, product_url)
+    if offer is not None:
+        offer_name = _text(offer.get("name"))
+        product_name = f"{product_name} · {offer_name}"
+        identity = _offer_identity(offer, product_url=product_url, origin=origin, currency=price.currency)
+        variant_key = f"offer:{identity}"
+        if len(product_key) + len(variant_key) + 1 > 300:
+            product_key = "product:" + hashlib.sha256(product_key.encode("utf-8")).hexdigest()
+        product_key = f"{product_key}:{variant_key}"
+        sku = _text(offer.get("sku")) or variant_key
+        product_url = _safe_same_origin_url(offer.get("url"), base_url=page_url, origin=origin) or product_url
     stock_count = 0 if price.availability in {"out_of_stock", "discontinued"} else None
     raw_json = dict(product)
+    if offer is not None:
+        raw_json["schema_org_offer"] = dict(offer)
     raw_json["schema_org_page_url"] = page_url
     raw_json["schema_org_price_field"] = price.field
     raw = {
@@ -551,6 +608,32 @@ def _record(
         "raw_json": raw_json,
     }
     return validate_record(raw)
+
+
+def _product_records(
+    product: dict[str, Any],
+    *,
+    page_url: str,
+    origin: str,
+    token: str,
+    references: dict[str, dict[str, Any]],
+) -> Iterator[dict[str, Any]]:
+    offers = _resolved_values(product.get("offers"), references)
+    named = [offer for offer in offers if _text(offer.get("name")) and not _has_type(offer, "AggregateOffer")]
+    arguments = {"page_url": page_url, "origin": origin, "token": token, "references": references}
+    if not named:
+        if record := _record(product, **arguments):
+            yield record
+        return
+    for offer in named:
+        if record := _record(product, offer=offer, **arguments):
+            yield record
+    unnamed = [offer for offer in offers if not _text(offer.get("name")) or _has_type(offer, "AggregateOffer")]
+    if unnamed:
+        record = _record({**product, "offers": unnamed}, **arguments)
+        if record is not None:
+            record["raw_json"]["offers"] = product.get("offers")
+            yield record
 
 
 def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
@@ -577,17 +660,15 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         for product in nodes:
             if not _has_type(product, "Product"):
                 continue
-            record = _record(
+            for record in _product_records(
                 product,
                 page_url=page_url,
                 origin=origin,
                 token=token,
                 references=references,
-            )
-            if record is None:
-                continue
-            identity = record["product_key"]
-            if identity in seen_products:
-                continue
-            seen_products.add(identity)
-            yield record
+            ):
+                identity = record["product_key"]
+                if identity in seen_products:
+                    continue
+                seen_products.add(identity)
+                yield record

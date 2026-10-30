@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import urllib.parse
@@ -8,13 +9,14 @@ from html.parser import HTMLParser
 from typing import Any
 
 from price_radar_http import PinnedHTTPSClient, PinnedResponse as ProbeResponse
-from sitemap import product_page_urls, sitemap_locations
+from sitemap import product_links, product_page_urls, sitemap_locations
 
 
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_TASK_BYTES = 2 * 1024 * 1024
 MAX_TASK_SECONDS = 15.0
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
+CATFK_HOSTS = {"catfk.com"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 LDXP_ITEM_PATH = re.compile(r"/item/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 LDXP_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
@@ -211,6 +213,37 @@ def _probe_ldxp_item(
     return ProbeResult("ldxp", source_url, token.casefold(), shop_name)
 
 
+def _probe_catfk(
+    parsed: urllib.parse.SplitResult,
+    token: str,
+    client: PinnedHTTPSClient,
+) -> ProbeResult:
+    if not LDXP_CODE.fullmatch(token):
+        raise ValueError("catfk shop code is invalid")
+    origin = f"https://{parsed.hostname}"
+    info = _json(client.post_json(f"{origin}/shopApi/Shop/info", {"token": token}))
+    if not isinstance(info, dict) or info.get("code") != 1 or not isinstance(info.get("data"), dict):
+        raise ValueError("source is not a valid catfk shop")
+    listing = _json(client.post_json(f"{origin}/shopApi/Shop/goodsList", {
+        "token": token, "keywords": "", "category_id": 0,
+        "goods_type": "card", "current": 1, "pageSize": 10,
+    }))
+    data = listing.get("data") if isinstance(listing, dict) else None
+    if not isinstance(listing, dict) or listing.get("code") != 1 or not isinstance(data, dict):
+        raise ValueError("catfk goods API returned an error")
+    items = data.get("list")
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise ValueError("catfk goods API response is invalid")
+    total = data.get("total")
+    product_count = int(total) if total not in (None, "") else len(items)
+    if product_count < 0:
+        raise ValueError("catfk goods API returned an invalid product count")
+    source_url = f"{origin}/shop/{urllib.parse.quote(token, safe='._~-')}"
+    identity = f"catfk:{token}" if len(token) <= 122 else "catfk:sha256:" + hashlib.sha256(token.casefold().encode("utf-8")).hexdigest()
+    shop_name = str(info["data"].get("nickname") or info["data"].get("name") or parsed.hostname).strip()
+    return ProbeResult("ldxp", source_url, identity.casefold(), shop_name, product_count)
+
+
 def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> ProbeResult:
     client = client or PinnedHTTPSClient(
         max_response_bytes=MAX_RESPONSE_BYTES,
@@ -222,6 +255,8 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
     parsed = urllib.parse.urlsplit(normalized)
     host = parsed.hostname or ""
     match = LDXP_PATH.fullmatch(parsed.path.rstrip("/"))
+    if host in CATFK_HOSTS and match:
+        return _probe_catfk(parsed, urllib.parse.unquote(match.group(1)).strip(), client)
     if host in LDXP_HOSTS and match:
         token = urllib.parse.unquote(match.group(1)).strip()
         canonical_host = "wzyp.cn" if host in {"wzyp.cn", "www.wzyp.cn"} else "pay.ldxp.cn"
@@ -244,6 +279,33 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         return _probe_16688_goods(parsed, goods_no, client)
 
     origin = urllib.parse.urlunsplit(("https", parsed.netloc, "", "", ""))
+    page: ProbeResponse | None = None
+    entry_error: Exception | None = None
+    try:
+        page = client.get(normalized, accept="text/html,application/xhtml+xml,application/json")
+    except (OSError, TimeoutError, ValueError) as exc:
+        entry_error = exc
+    if page is not None and page.status == 200:
+        if product_count := _schema_product_count(page.body):
+            return ProbeResult("schema_org", normalized, normalized, host, product_count)
+        if parsed.path in ("", "/") and not parsed.query:
+            for page_url in product_links(page.body, normalized, origin, client):
+                try:
+                    product_page = client.get(page_url, accept="text/html,application/xhtml+xml")
+                except (OSError, TimeoutError, ValueError):
+                    continue
+                if product_page.status == 200 and (count := _schema_product_count(product_page.body)):
+                    return ProbeResult("schema_org", origin, origin, host, count)
+        try:
+            document = _json(page)
+            items = document if isinstance(document, list) else document.get("items") if isinstance(document, dict) else None
+            if isinstance(items, list) and all(isinstance(item, dict) for item in items):
+                name = ""
+                if isinstance(document, dict) and isinstance(document.get("shop"), dict):
+                    name = str(document["shop"].get("name") or "").strip()
+                return ProbeResult("merchant_json", normalized, normalized, name, len(items))
+        except (ValueError, json.JSONDecodeError):
+            pass
     try:
         config = _json(client.get(f"{origin}/api/v1/public/config", accept="application/json"))
         products = _json(client.get(
@@ -301,7 +363,7 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
             if items and all(isinstance(item, dict) and "id" in item and "name" in item for item in items[:5]):
                 shop_name = host
                 try:
-                    home_page = client.get(origin, accept="text/html,application/xhtml+xml")
+                    home_page = page if page is not None and parsed.path in ("", "/") and not parsed.query else client.get(origin, accept="text/html,application/xhtml+xml")
                     if home_page.status == 200:
                         m = re.search(r"<title>(.*?)</title>", home_page.body.decode("utf-8", errors="replace"), re.I)
                         if m:
@@ -316,22 +378,11 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
     except (OSError, TimeoutError, ValueError, json.JSONDecodeError):
         pass
 
-    try:
-        document = _json(client.get(normalized, accept="application/json"))
-        items = document if isinstance(document, list) else document.get("items") if isinstance(document, dict) else None
-        if isinstance(items, list) and all(isinstance(item, dict) for item in items):
-            name = ""
-            if isinstance(document, dict) and isinstance(document.get("shop"), dict):
-                name = str(document["shop"].get("name") or "").strip()
-            return ProbeResult("merchant_json", normalized, normalized, name, len(items))
-    except (OSError, TimeoutError, ValueError, json.JSONDecodeError):
-        pass
-
-    page = client.get(normalized, accept="text/html,application/xhtml+xml")
+    if page is None:
+        assert entry_error is not None
+        raise entry_error
     if page.status != 200:
         raise ValueError(f"source returned HTTP {page.status}")
-    if product_count := _schema_product_count(page.body):
-        return ProbeResult("schema_org", normalized, normalized, host, product_count)
     if sitemap_result := _schema_from_sitemap(
         origin,
         client,

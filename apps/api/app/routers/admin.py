@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 RECLASSIFY_BATCH_SIZE = 200
 
+from ..services.account_plans import canonical_product_slug
 from ..database import get_db
 from ..models import (
     AdSlot,
@@ -360,7 +361,7 @@ def offers(
     if brand:
         stmt = stmt.where(Product.platform == brand)
     if product_slug:
-        stmt = stmt.where(Product.slug == product_slug)
+        stmt = stmt.where(Product.slug == canonical_product_slug(product_slug))
     if q and q.strip():
         cleaned_q = q.strip()
         term = f"%{cleaned_q}%"
@@ -443,7 +444,7 @@ def update_offer(offer_id: int, payload: AdminOfferUpdate, db: Session = Depends
         if not product_slug or str(product_slug).strip() == "":
             offer.product_id = None
         else:
-            product = db.scalar(select(Product).where(Product.slug == str(product_slug).strip()))
+            product = db.scalar(select(Product).where(Product.slug == canonical_product_slug(str(product_slug))))
             if product is None:
                 raise HTTPException(status_code=404, detail="product not found")
             offer.product_id = product.id

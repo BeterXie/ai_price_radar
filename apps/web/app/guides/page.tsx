@@ -6,6 +6,7 @@ import { GuideIndex } from "@/components/guides/guide-index";
 import { GuideJsonLd } from "@/components/guides/guide-json-ld";
 import { PageHero } from "@/components/page-shell";
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
+import { canonicalProductSlug } from "@/lib/catalog";
 import { BRAND_NAMES, breadcrumbJsonLd } from "./_shared";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -43,7 +44,7 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
   const params = await searchParams;
   const query = lastValue(params.q).trim();
   const brand = lastValue(params.brand);
-  const product = lastValue(params.product);
+  const product = canonicalProductSlug(lastValue(params.product));
   const delivery = lastValue(params.delivery);
 
   const hasStructuralFilters = Boolean(brand || product || delivery);

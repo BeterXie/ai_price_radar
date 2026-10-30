@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
@@ -10,11 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-ALLOWED_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
+INDEPENDENT_HOSTS = {"catfk.com"}
+ALLOWED_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"} | INDEPENDENT_HOSTS
 PRICE_RE = re.compile(r"(?:[¥￥]\s*)?(\d+(?:\.\d{1,2})?)")
 SHOP_PATH_RE = re.compile(r"/shop/([^/?#]+)", re.I)
 SHOP_URL_RE = re.compile(
-    r"(?:(?:https?:)?//)?(?:(?:pay\.|www\.)?ldxp\.cn|(?:www\.)?wzyp\.cn)/shop/[A-Za-z0-9._~-]+",
+    r"(?:(?:https?:)?//)?(?:(?:pay\.|www\.)?ldxp\.cn|(?:www\.)?wzyp\.cn|catfk\.com)/shop/[A-Za-z0-9._~-]+",
     re.I,
 )
 CLOSED_RE = re.compile(r"店铺已打烊|店铺打烊|已打烊|暂停营业|停止营业|暂不营业|closed", re.I)
@@ -74,7 +76,7 @@ def normalize_input_url(value: str) -> str:
     value = value.replace("\\u002F", "/").replace("\\u003A", ":")
     if value.startswith("//"):
         return "https:" + value
-    if re.match(r"^(?:(?:pay\.|www\.)?ldxp\.cn|(?:www\.)?wzyp\.cn)/", value, re.I):
+    if re.match(r"^(?:(?:pay\.|www\.)?ldxp\.cn|(?:www\.)?wzyp\.cn|catfk\.com)/", value, re.I):
         return "https://" + value
     return value
 
@@ -94,6 +96,20 @@ def extract_shop_token(value: str) -> Optional[str]:
         return token
     except Exception:
         return None
+
+
+def extract_shop_identity(value: str) -> Optional[str]:
+    """Return the local merchant key; API requests use extract_shop_token instead."""
+    token = extract_shop_token(value)
+    if not token:
+        return None
+    host = (urllib.parse.urlparse(normalize_input_url(value)).hostname or "").casefold()
+    if host in INDEPENDENT_HOSTS:
+        identity = f"catfk:{token}"
+        if len(identity) > 128:
+            identity = "catfk:sha256:" + hashlib.sha256(token.casefold().encode()).hexdigest()
+        return identity
+    return token
 
 
 def normalize_shop_url(value: str, preferred_host: str = "pay.ldxp.cn") -> Optional[str]:

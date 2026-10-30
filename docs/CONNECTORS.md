@@ -82,6 +82,20 @@ Submit an official shop URL such as `https://www.16688.com.cn/shop/HARVEY`. The 
 
 The Source Detector worker claims candidates with `FOR UPDATE SKIP LOCKED` leases, probes the platform with `PinnedHTTPSClient` budgets, reads a bounded public product sample, classifies product names with the catalog classifier, and reports exact `detected_source_url` / `detected_source_key` values. WooCommerce auto-approval requires a valid Store API contract, purchasable products, valid prices/currencies and at least one classified AI product. Schema.org candidates default to `pending_review`; `DISCOVERY_SCHEMA_AUTO_APPROVE` must be explicitly enabled before any strict auto-approval can occur. Qualified candidates are promoted idempotently into `source_intakes` (`origin='discovery'`) and enter the existing atomic publisher; no second publication path exists.
 
+## LDXP-compatible independent host
+
+`https://catfk.com/shop/{token}` uses the existing LDXP intake and crawler workflow while retaining `catfk.com` for the shop, API and product URLs. Public API payloads use the original token. Internally the merchant identity is `catfk:{token}` and the intake key is case-folded; long tokens use `catfk:sha256:` plus the hash of the case-folded token. This keeps an independent shop separate from an official LDXP shop with the same upstream token. A recognized application still follows the configured intake approval and publication policy.
+
+## Account plan names
+
+`chatgpt-pro-5x` is a compatibility alias of `chatgpt-pro-100`, and `chatgpt-pro-20x` aliases `chatgpt-pro-200`. New classification results and catalog filters use the canonical products. Merchant titles are preserved. Existing offers keep their IDs, history and moderation fields when their product association is merged. An explicitly stated dollar tier still takes precedence; unqualified Pro and other brands' multipliers are unchanged.
+
+## Schema.org independent shops
+
+Root shop URLs may expose their products through same-origin `/product/`, `/products/`, `/goods/` or `/item/` anchors. Detection reuses the initial page and checks bounded product links before unrelated platform probes; sitemap sampling prioritizes product paths ahead of language home pages. The importer follows the same public product evidence within its existing request limits.
+
+When a Product contains named Offers, each named package is imported separately with its own stable identity, price, currency and availability. The original Product and Offer names are retained together, so Go, Plus and Pro packages do not collapse into the cheapest package. Single or unnamed Offer data retains the existing behavior. Identification still follows the existing intake approval settings; this change does not approve sources by itself.
+
 ## Public source intake
 
 `POST /api/v1/shop-requests` is deliberately syntax-only: it normalizes an HTTPS URL and creates a `submitted` record without opening the URL. The separate detector validates a resolved public IP and connects directly to that IP while retaining the submitted hostname for TLS SNI and certificate checks. It permits only port 443, does not follow redirects, and enforces response-size and processing-time limits.

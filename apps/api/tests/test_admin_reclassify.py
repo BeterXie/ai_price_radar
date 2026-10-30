@@ -61,7 +61,7 @@ def test_historical_plan_repair_is_previewable_and_preserves_manual_decisions(so
             ("ChatGPT Pro 200刀月卡", "", "chatgpt-pro-200", []),
             ("Muse成品号+10亿token", "支持GPT", "muse-account", []),
             ("JEV 成品账号", "", "jev-account", []),
-            ("JEV 成品账号", "", "chatgpt-pro-20x", ["manual_override"]),
+            ("JEV 成品账号", "", "chatgpt-pro-200", ["manual_override"]),
         ]
         offers = []
         for index, (title, description, expected, tags) in enumerate(cases):
@@ -79,7 +79,9 @@ def test_historical_plan_repair_is_previewable_and_preserves_manual_decisions(so
         assert before == [(offer.product_id, offer.approved, offer.item_fingerprint) for offer in offers]
         assert not db.dirty
         result = reclassify(db)
-        assert result["changed"] == 5
+        # The old Pro identity is merged before reclassification; the already
+        # correct Pro 200 SKU therefore needs no additional classification edit.
+        assert result["changed"] == 4
         for offer, (_, _, expected, _) in zip(offers, cases):
             db.refresh(offer)
             target = db.get(Product, offer.product_id) if offer.product_id else None

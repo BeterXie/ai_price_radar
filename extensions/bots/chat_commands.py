@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, contains_eager
 from app.database import SessionLocal
 from app.models import CatalogSnapshot, Offer, OfferHistory, Product, UserBotBinding
 from app.schemas import OfferGroupPublic, OfferPublic
-from app.services.account_plans import PLAN_PRODUCTS
+from app.services.account_plans import PLAN_PRODUCTS, canonical_product_slug
 from app.services.bot_binding import complete_qq_binding
 from app.services.catalog import (
     OfferFilters,
@@ -222,7 +222,7 @@ PRODUCT_ALIASES: dict[str, str] = {
 for slug, _brand, name, _subtitle in PLAN_PRODUCTS:
     PRODUCT_ALIASES[slug] = slug
     PRODUCT_ALIASES[name] = slug
-PRODUCT_ALIASES = {_normalize_query_alias(alias): slug for alias, slug in PRODUCT_ALIASES.items()}
+PRODUCT_ALIASES = {_normalize_query_alias(alias): canonical_product_slug(slug) for alias, slug in PRODUCT_ALIASES.items()}
 
 
 def _get_current_snapshot(db: Session) -> CatalogSnapshot | None:

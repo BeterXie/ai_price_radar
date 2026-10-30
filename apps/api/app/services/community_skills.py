@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import cast, func, or_, select, update
 from sqlalchemy.orm import Session
 
+from .account_plans import canonical_product_slug
 from ..models import CommunitySkill, Product
 from ..schemas import (
     AdminCommunitySkillCreate,
@@ -173,7 +174,7 @@ def get_community_skill_by_slug(
 
     related_product = None
     if skill.related_product_slug:
-        product_stmt = select(Product).where(Product.slug == skill.related_product_slug)
+        product_stmt = select(Product).where(Product.slug == canonical_product_slug(skill.related_product_slug))
         if visible_only:
             product_stmt = product_stmt.where(Product.is_visible.is_(True))
         prod = db.scalar(product_stmt)
@@ -188,6 +189,8 @@ def get_community_skill_by_slug(
 
     data = CommunitySkillDetailOut.model_validate(skill, from_attributes=True)
     data.related_product = related_product
+    if related_product is not None:
+        data.related_product_slug = related_product.slug
     if visible_only and related_product is None:
         data.related_product_slug = None
     return data
@@ -227,7 +230,7 @@ def admin_create_community_skill(db: Session, data: AdminCommunitySkillCreate) -
         demo_type=data.demo_type.strip(),
         tags=data.tags or [],
         target_models=data.target_models or [],
-        related_product_slug=data.related_product_slug.strip() if data.related_product_slug else None,
+        related_product_slug=canonical_product_slug(data.related_product_slug) if data.related_product_slug else None,
         is_pinned=data.is_pinned,
         is_visible=data.is_visible,
         sort_order=data.sort_order,
@@ -246,6 +249,8 @@ def admin_update_community_skill(
         return None
 
     update_dict = data.model_dump(exclude_unset=True)
+    if update_dict.get("related_product_slug"):
+        update_dict["related_product_slug"] = canonical_product_slug(update_dict["related_product_slug"])
     for key, value in update_dict.items():
         if hasattr(skill, key):
             setattr(skill, key, value)

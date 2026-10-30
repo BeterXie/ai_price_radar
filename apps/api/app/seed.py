@@ -8,7 +8,7 @@ from sqlalchemy import select
 from .database import Base, SessionLocal, engine
 from .models import Offer, OfferHistory, Product, RawProduct, Shop
 from .services.classifier import classify_product
-from .services.account_plans import product_definitions
+from .services.account_plans import canonical_product_slug, merge_legacy_plan_offers, product_definitions
 
 
 PRODUCTS = [
@@ -75,7 +75,7 @@ def seed() -> None:
         legacy_team = products.get("chatgpt-team-business")
         if legacy_team is not None:
             legacy_team.is_visible = False
-        db.flush()
+        merge_legacy_plan_offers(db, products, Offer)
 
         from .services.community_skills import seed_default_community_skills
         seed_default_community_skills(db)
@@ -109,7 +109,7 @@ def seed() -> None:
             classification = classify_product(title)
             offer = Offer(
                 raw_product_id=raw.id,
-                product_id=products[slug].id,
+                product_id=products[canonical_product_slug(slug)].id,
                 shop_id=shop.id,
                 price=Decimal(price),
                 stock_count=stock,

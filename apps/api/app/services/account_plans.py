@@ -9,6 +9,18 @@ import re
 
 SUBSCRIPTION_MARKERS = ("会员", "订阅", "套餐", "代充", "直充", "月卡", "年卡", "日卡", "subscription")
 
+# Merchant titles keep their original spelling; catalog identifiers use one tier.
+LEGACY_PLAN_ALIASES = {
+    "chatgpt-pro-5x": "chatgpt-pro-100",
+    "chatgpt-pro-20x": "chatgpt-pro-200",
+}
+CATALOG_IMPORT_LOCK_KEY = 0x415052494D504F52
+
+
+def canonical_product_slug(slug: str) -> str:
+    value = slug.strip().casefold()
+    return LEGACY_PLAN_ALIASES.get(value, value)
+
 
 # Existing service products use stable slugs, but do not belong to the OpenAI brand filter.
 CHATGPT_ACCESS_SERVICE_PRODUCT = (
@@ -21,8 +33,8 @@ CHATGPT_ACCESS_SERVICE_PRODUCT = (
 # Existing public slugs remain identifiers; their labels describe the actual plan.
 PLAN_PRODUCTS = [
     ("chatgpt-pro", "OpenAI", "ChatGPT Pro（档位未注明）", "未注明 Pro 100 / 200 / 500；不猜测档位"),
-    ("chatgpt-pro-100", "OpenAI", "ChatGPT Pro 100", "官方 $100/月档位；实际用量以官方当前规则为准"),
-    ("chatgpt-pro-200", "OpenAI", "ChatGPT Pro 200", "官方 $200/月档位；不承诺旧版 20x 用量"),
+    ("chatgpt-pro-100", "OpenAI", "ChatGPT Pro 100", "合并 Pro 100 与旧称 Pro 5x 的订阅报价"),
+    ("chatgpt-pro-200", "OpenAI", "ChatGPT Pro 200", "合并 Pro 200 与旧称 Pro 20x 的订阅报价"),
     ("chatgpt-pro-500", "OpenAI", "ChatGPT Pro 500", "官方 $500/月档位"),
     ("chatgpt-pro-5x", "OpenAI", "ChatGPT Pro 5x（旧标记）", "仅有商家 5x 标记，尚不能确认当前官方档位"),
     ("chatgpt-pro-20x", "OpenAI", "ChatGPT Pro 20x（旧标记）", "仅有商家 20x 标记，尚不能确认当前官方档位"),
@@ -182,16 +194,97 @@ def account_plan(brand: str, title: str, category: str, description: str = "") -
     return None
 
 
+def merge_legacy_plan_offers(db, products: dict, offer_model) -> int:
+    """Rename catalog membership without reclassifying or refreshing an offer."""
+    from sqlalchemy import update
+
+    db.flush()
+    changed = 0
+    for legacy_slug, canonical_slug in LEGACY_PLAN_ALIASES.items():
+        legacy = products.get(legacy_slug)
+        canonical = products.get(canonical_slug)
+        if legacy is None or canonical is None:
+            continue
+        result = db.execute(
+            update(offer_model)
+            .where(offer_model.product_id == legacy.id)
+            .values(product_id=canonical.id, updated_at=offer_model.updated_at)
+        )
+        changed += result.rowcount
+        legacy.is_visible = False
+    db.flush()
+    return changed
+
+
+def _lock_pending_plan_merge(db) -> None:
+    """Use the publisher's transaction lock only while legacy data needs moving."""
+    from sqlalchemy import select, text
+    from ..models import Offer, Product, UserProductSubscription
+
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    legacy_ids = select(Product.id).where(Product.slug.in_(LEGACY_PLAN_ALIASES))
+    pending = db.scalar(select(Product.id).where(
+        Product.slug.in_(LEGACY_PLAN_ALIASES), Product.is_visible.is_(True),
+    ).limit(1)) or db.scalar(select(Offer.id).where(Offer.product_id.in_(legacy_ids)).limit(1))
+    pending = pending or db.scalar(select(UserProductSubscription.id).where(
+        UserProductSubscription.product_slug.in_(LEGACY_PLAN_ALIASES),
+    ).limit(1))
+    canonical_count = len(list(db.scalars(select(Product.id).where(
+        Product.slug.in_(LEGACY_PLAN_ALIASES.values()),
+    ))))
+    if pending or canonical_count < len(LEGACY_PLAN_ALIASES):
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CATALOG_IMPORT_LOCK_KEY})
+
+
+def _merge_legacy_plan_subscriptions(db) -> None:
+    from sqlalchemy import select, update
+    from sqlalchemy.exc import IntegrityError
+    from ..models import CommunitySkill, UserProductSubscription
+
+    for legacy_slug, canonical_slug in LEGACY_PLAN_ALIASES.items():
+        legacy_subscriptions = list(db.scalars(select(UserProductSubscription).where(
+            UserProductSubscription.product_slug == legacy_slug,
+        ).order_by(UserProductSubscription.id).with_for_update()))
+        for subscription in legacy_subscriptions:
+            canonical_query = select(UserProductSubscription).where(
+                UserProductSubscription.user_id == subscription.user_id,
+                UserProductSubscription.product_slug == canonical_slug,
+            ).with_for_update()
+            if db.scalar(canonical_query) is not None:
+                # An explicit follow of the new name keeps its settings unchanged.
+                db.delete(subscription)
+                continue
+            try:
+                with db.begin_nested():
+                    db.execute(update(UserProductSubscription).where(
+                        UserProductSubscription.id == subscription.id,
+                        UserProductSubscription.product_slug == legacy_slug,
+                    ).values(product_slug=canonical_slug, updated_at=UserProductSubscription.updated_at))
+            except IntegrityError:
+                # A concurrent POST may have inserted the canonical row after
+                # the lookup; its explicit preferences still take precedence.
+                if db.scalar(canonical_query) is None:
+                    raise
+                db.delete(subscription)
+        db.execute(update(CommunitySkill).where(
+            CommunitySkill.related_product_slug == legacy_slug,
+        ).values(related_product_slug=canonical_slug, updated_at=CommunitySkill.updated_at))
+    db.flush()
+
+
 def ensure_account_plans(db) -> None:
     from sqlalchemy import select
-    from ..models import Product
+    from ..models import Offer, Product
 
+    _lock_pending_plan_merge(db)
     existing = {row.slug: row for row in db.scalars(select(Product))}
     for slug, brand, name, subtitle, kind, description in product_definitions([]):
         product = existing.get(slug)
         if product is None:
             product = Product(slug=slug)
             db.add(product)
+            existing[slug] = product
         product.platform = brand
         product.display_name = name
         product.subtitle = subtitle
@@ -201,4 +294,7 @@ def ensure_account_plans(db) -> None:
         if slug == "chatgpt-pro":
             # Earlier seed/import code forcibly hid this category.
             product.is_visible = True
-    db.flush()
+    if merge_legacy_plan_offers(db, existing, Offer):
+        from .catalog import clear_price_trend_cache
+        clear_price_trend_cache()
+    _merge_legacy_plan_subscriptions(db)

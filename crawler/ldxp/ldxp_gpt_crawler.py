@@ -32,7 +32,7 @@ from ldxp_crawler.source_discovery.github import GitHubAdapter
 from ldxp_crawler.source_discovery.keywords import all_keywords
 from ldxp_crawler.source_discovery.platform_16688 import Platform16688Adapter
 from ldxp_crawler.source_discovery.seed import SeedAdapter
-from ldxp_crawler.utils import extract_shop_token, merge_unique
+from ldxp_crawler.utils import extract_shop_identity, merge_unique
 
 DEFAULT_KEYWORDS = [
     "gpt",
@@ -427,7 +427,7 @@ def intake_result_payload(result) -> tuple[str, int, str]:
 
 
 def intake_claim_token(source_url: str) -> str | None:
-    return extract_shop_token(source_url)
+    return extract_shop_identity(source_url)
 
 
 def run_scan(args: argparse.Namespace, db: StateDB, logger: logging.Logger) -> dict[str, Any]:

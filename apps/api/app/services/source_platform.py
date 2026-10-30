@@ -58,6 +58,7 @@ def is_source_platform_disabled(value: str) -> bool:
     return canonical_source_platform(value) in DISABLED_SOURCE_PLATFORMS
 
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
+LDXP_INDEPENDENT_HOSTS = {"catfk.com"}
 PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 PLATFORM_16688_GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
@@ -163,12 +164,21 @@ def public_https_url_or_empty(value: object) -> str:
 def _ldxp_detection(url: str) -> SourceDetection | None:
     parsed = urllib.parse.urlsplit(url)
     parts = [urllib.parse.unquote(part) for part in parsed.path.rstrip("/").split("/") if part]
-    if (parsed.hostname or "").casefold() not in LDXP_HOSTS or len(parts) != 2 or parts[0].casefold() != "shop":
+    host = (parsed.hostname or "").casefold()
+    if host not in LDXP_HOSTS | LDXP_INDEPENDENT_HOSTS or len(parts) != 2 or parts[0].casefold() != "shop":
+        return None
+    if host in LDXP_INDEPENDENT_HOSTS and parsed.port not in (None, 443):
         return None
     token = parts[1].strip()
     if not token or len(token) > 128 or any(character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-" for character in token):
         return None
-    host = (parsed.hostname or "").casefold()
+    if host in LDXP_INDEPENDENT_HOSTS:
+        source_url = f"https://{host}/shop/{urllib.parse.quote(token, safe='._~-')}"
+        # Compatible software does not imply a shared merchant namespace.
+        identity = f"catfk:{token}"
+        if len(identity) > 128:
+            identity = "catfk:sha256:" + hashlib.sha256(token.casefold().encode()).hexdigest()
+        return SourceDetection("ldxp", source_url, identity.casefold(), identity)
     canonical_host = "wzyp.cn" if host in {"wzyp.cn", "www.wzyp.cn"} else "pay.ldxp.cn"
     source_url = f"https://{canonical_host}/shop/{urllib.parse.quote(token, safe='._~-')}"
     return SourceDetection("ldxp", source_url, token.casefold(), token)

@@ -203,6 +203,87 @@ def test_structured_platform_submission_can_be_detected_and_reviewed(api_client,
         assert intake.source_url == source_url
 
 
+def test_catfk_submission_review_claim_and_publish_keep_separate_identity(api_client):
+    client, engine = api_client
+    source_url = "https://catfk.com/shop/I8WO6J9O"
+    source_key = "catfk:i8wo6j9o"
+    with Session(engine) as db:
+        db.add(Shop(token="I8WO6J9O", name="Official shop", source_url="https://wzyp.cn/shop/I8WO6J9O"))
+        db.commit()
+
+    created = client.post("/api/v1/shop-requests", json=_payload(shop_url=source_url))
+    assert created.status_code == 201
+    assert created.json()["shop_token"] == "catfk:I8WO6J9O"
+    intake_id = created.json()["request_id"]
+    duplicate = client.post("/api/v1/shop-requests", json=_payload(shop_url=source_url.lower()))
+    assert duplicate.status_code == 200
+    assert duplicate.json()["request_id"] == intake_id
+    detected = _detect(client, intake_id, source_url=source_url, source_key=source_key)
+    assert detected.json()["status"] == "pending_review"
+    with Session(engine) as db:
+        assert db.get(SourceIntake, intake_id).source_url == source_url
+
+    worker_headers = {"X-Intake-Worker-Key": "worker-test"}
+    claim_url = "/api/v1/internal/source-intakes/claim"
+    assert client.post(claim_url, headers=worker_headers, json={"limit": 1}).json() == []
+    approved = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/approve",
+        headers={"X-Admin-Key": "admin-test"},
+        json={"platform": "ldxp"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "queued"
+    assert approved.json()["source_url"] == source_url
+    assert approved.json()["source_key"] == source_key
+    claim = client.post(claim_url, headers=worker_headers, json={"limit": 1}).json()[0]
+    assert claim["source_url"] == source_url
+    assert claim["source_key"] == source_key
+    assert claim["source_type"] == "ldxp"
+    result_url = f"/api/v1/internal/source-intakes/{intake_id}/result"
+    payload = {"attempt_count": claim["attempt_count"], "product_count": 2}
+    validated = client.post(result_url, headers=worker_headers, json={**payload, "status": "validated"})
+    assert validated.status_code == 200
+    assert validated.json()["status"] == "validated"
+    assert client.post(result_url, headers=worker_headers, json={**payload, "status": "onboarded"}).status_code == 409
+    with Session(engine) as db:
+        db.add(Shop(token="catfk:I8WO6J9O", name="Catfk shop", source_url=source_url))
+        db.commit()
+    published = client.post(
+        result_url, headers=worker_headers, json={**payload, "status": "onboarded", "published": True},
+    )
+    assert published.status_code == 200
+    assert published.json()["workflow_status"] == "published"
+    with Session(engine) as db:
+        assert len(list(db.scalars(select(Shop)))) == 2
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.source_url == source_url
+        assert intake.source_key == source_key
+        mail = db.scalar(select(NotificationOutbox).where(NotificationOutbox.event_type == "shop_intake.onboarded"))
+        assert source_url in mail.text_body
+        assert "/shops/catfk:I8WO6J9O" in mail.text_body
+
+
+def test_catfk_legacy_other_can_be_redetected_without_official_host_rewrite(api_client):
+    client, engine = api_client
+    source_url = "https://catfk.com/shop/I8WO6J9O"
+    created = client.post("/api/v1/shop-requests", json=_payload(shop_url=source_url))
+    intake_id = created.json()["request_id"]
+    _detect(client, intake_id, platform="other", source_url=source_url, source_key=source_url)
+    redetected = client.post(
+        f"/api/v1/admin/source-intakes/{intake_id}/redetect", headers={"X-Admin-Key": "admin-test"},
+    )
+    assert redetected.status_code == 200
+    assert redetected.json()["status"] == "submitted"
+    assert redetected.json()["source_url"] == source_url
+    _detect(client, intake_id, source_url=source_url, source_key="catfk:i8wo6j9o")
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, intake_id)
+        assert intake.source_type == "ldxp"
+        assert intake.source_key == "catfk:i8wo6j9o"
+        assert intake.source_url == source_url
+        assert intake.status == "pending_review"
+
+
 def test_16688_submission_uses_platform_scoped_alias_token(api_client):
     client, _ = api_client
     response = client.post(

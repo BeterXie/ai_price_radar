@@ -1,3 +1,4 @@
+import { canonicalProductSlug } from "@/lib/catalog";
 import { brandGuideEntries } from "@/content/guides/brands";
 import { deliveryGuideEntries } from "@/content/guides/delivery";
 import { generalGuideEntries } from "@/content/guides/general";
@@ -53,7 +54,7 @@ export function getBrandGuide(slug?: string | null): BrandGuide | undefined {
 }
 
 export function getProductGuide(slug?: string | null): ProductGuide | undefined {
-  return lookup(productGuides, slug);
+  return lookup(productGuides, slug ? canonicalProductSlug(slug) : slug);
 }
 
 export function getDeliveryGuide(type?: string | null): DeliveryGuide | undefined {

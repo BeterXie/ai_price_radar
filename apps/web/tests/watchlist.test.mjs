@@ -10,10 +10,12 @@ import {
   readWatchlist,
   userWatchlistKey,
   WATCHLIST_KEY,
+  watchItemsToMigrate,
   writeAnonymousWatchlist,
   writeUserWatchlist,
 } from "../components/watch-button.tsx";
 import { isValidPublicSourceUrl } from "../lib/source-intake.mjs";
+import { fetchUserSubscriptions, saveUserSubscription, updateUserSubscription, deleteUserSubscription } from "../lib/auth-client.ts";
 
 function withFakeWindow(store, run) {
   const originalWindow = globalThis.window;
@@ -106,4 +108,81 @@ test("legacy shared key is absorbed once into the anonymous list", () => {
     // The legacy key is consumed, so a different account cannot inherit it.
     assert.equal(store.has(WATCHLIST_KEY), false);
   });
+});
+
+function watchItem(slug, threshold = "10.00") {
+  return { slug, name: slug, threshold, added_at: new Date(0).toISOString() };
+}
+
+test("legacy Pro slugs in every browser cache resolve to canonical products", () => {
+  const legacy = [watchItem("chatgpt-pro-5x", "25.00"), watchItem("chatgpt-pro-20x", "45.00")];
+  for (const key of [WATCHLIST_KEY, ANONYMOUS_WATCHLIST_KEY, userWatchlistKey(7)]) {
+    withFakeWindow(new Map([[key, JSON.stringify(legacy)]]), () => {
+      const items = key === userWatchlistKey(7) ? readUserWatchlist(7) : readAnonymousWatchlist();
+      assert.deepEqual(items.map(({ slug, threshold }) => [slug, threshold]), [
+        ["chatgpt-pro-100", "25.00"], ["chatgpt-pro-200", "45.00"],
+      ]);
+    });
+  }
+});
+
+test("canonical local configuration wins over an alias regardless of entry order", () => {
+  const legacy = watchItem("chatgpt-pro-5x", "5.00");
+  const canonical = watchItem("chatgpt-pro-100", "30.00");
+  for (const values of [[legacy, canonical], [canonical, legacy]]) {
+    const store = new Map([[ANONYMOUS_WATCHLIST_KEY, JSON.stringify(values)]]);
+    withFakeWindow(store, () => {
+      assert.equal(readAnonymousWatchlist().length, 1);
+      assert.equal(readAnonymousWatchlist()[0].threshold, "30.00");
+      assert.ok(writeAnonymousWatchlist(values));
+      assert.ok(writeUserWatchlist(7, values));
+      for (const key of [ANONYMOUS_WATCHLIST_KEY, userWatchlistKey(7)]) {
+        const persisted = JSON.parse(store.get(key));
+        assert.equal(persisted.length, 1);
+        assert.equal(persisted[0].slug, "chatgpt-pro-100");
+        assert.equal(persisted[0].threshold, "30.00");
+      }
+    });
+  }
+});
+
+test("subscription API normalizes aliases while keeping canonical thresholds and channels", async (context) => {
+  const legacy = { id: 1, product_slug: "chatgpt-pro-5x", target_price: "5.00", notify_email: true, notify_bot: true };
+  const canonical = { id: 2, product_slug: "chatgpt-pro-100", target_price: "50.00", notify_email: false, notify_bot: false };
+  let cloud = [legacy, canonical];
+  const requests = [];
+  context.mock.method(globalThis, "fetch", async (url, options) => {
+    requests.push({ url: String(url), options });
+    return new Response(JSON.stringify({ items: cloud, count: cloud.length, email_bound: true, bot_bound: true }), { status: 200 });
+  });
+  for (const items of [[legacy, canonical], [canonical, legacy]]) {
+    cloud = items;
+    const result = await fetchUserSubscriptions();
+    assert.deepEqual(result.items, [canonical]);
+    assert.equal(result.count, 1);
+  }
+  cloud = [{ ...legacy, product_slug: "chatgpt-pro-20x" }];
+  assert.equal((await fetchUserSubscriptions()).items[0].product_slug, "chatgpt-pro-200");
+
+  const settings = { target_price: "60.00", notify_email: false, notify_bot: true };
+  await saveUserSubscription({ product_slug: "chatgpt-pro-5x", ...settings });
+  assert.deepEqual(JSON.parse(requests.at(-1).options.body), { product_slug: "chatgpt-pro-100", ...settings });
+  await updateUserSubscription("chatgpt-pro-20x", { notify_bot: false });
+  assert.ok(requests.at(-1).url.endsWith("/subscriptions/chatgpt-pro-200"));
+  assert.equal(requests.at(-1).options.method, "PATCH");
+  assert.deepEqual(JSON.parse(requests.at(-1).options.body), { notify_bot: false });
+  await deleteUserSubscription("chatgpt-pro-5x");
+  assert.ok(requests.at(-1).url.endsWith("/subscriptions/chatgpt-pro-100"));
+  assert.equal(requests.at(-1).options.method, "DELETE");
+});
+
+test("login migration skips matching cloud aliases and preserves cloud settings", () => {
+  for (const cloudSlug of ["chatgpt-pro-100", "chatgpt-pro-5x"]) {
+    const cloud = [{ product_slug: cloudSlug, target_price: "80.00", notify_email: false, notify_bot: false }];
+    const before = structuredClone(cloud);
+    const local = [watchItem("chatgpt-pro-5x", "10.00"), watchItem("chatgpt-pro-100", "20.00"), watchItem("chatgpt-pro-20x", "40.00")];
+    const pending = watchItemsToMigrate(local, cloud);
+    assert.deepEqual(pending.map(({ slug, threshold }) => [slug, threshold]), [["chatgpt-pro-200", "40.00"]]);
+    assert.deepEqual(cloud, before);
+  }
 });

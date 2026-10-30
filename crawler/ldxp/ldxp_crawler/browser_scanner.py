@@ -16,8 +16,10 @@ from .utils import (
     CHALLENGE_RE,
     CLOSED_RE,
     GlobalRateLimiter,
+    INDEPENDENT_HOSTS,
     JAVASCRIPT_CHALLENGE_RE,
     clean_text,
+    extract_shop_token,
     merge_unique,
     normalize_shop_url,
     safe_float,
@@ -221,9 +223,13 @@ class BrowserShopScanner:
         page = self.context.new_page()
         capture = CaptureState()
 
+        def same_shop_origin(url: str) -> bool:
+            page_host = urllib.parse.urlparse(page.url).hostname
+            return page_host not in INDEPENDENT_HOSTS or urllib.parse.urlparse(url).hostname == page_host
+
         def on_request(request: Request) -> None:
             endpoint = self._endpoint_name(request.url)
-            if not endpoint or request.method.upper() != "POST":
+            if not endpoint or request.method.upper() != "POST" or not same_shop_origin(request.url):
                 return
             try:
                 payload = request.post_data_json if isinstance(request.post_data_json, dict) else {}
@@ -240,7 +246,7 @@ class BrowserShopScanner:
 
         def on_response(response: Response) -> None:
             endpoint = self._endpoint_name(response.url)
-            if not endpoint:
+            if not endpoint or not same_shop_origin(response.url):
                 return
             capture.response_statuses.append((endpoint, response.status))
             try:
@@ -257,6 +263,8 @@ class BrowserShopScanner:
     def scan_shop(self, candidate: Any, keywords: Sequence[str]) -> ShopScanResult:
         token = candidate["token"]
         shop_url = normalize_shop_url(candidate["url"]) or candidate["url"]
+        request_token = extract_shop_token(shop_url) or token
+        independent_host = urllib.parse.urlparse(shop_url).hostname in INDEPENDENT_HOSTS
         page, capture = self._new_page_with_capture()
         challenge_seen = False
         try:
@@ -288,13 +296,16 @@ class BrowserShopScanner:
                 self.save_state()
                 page.wait_for_timeout(1200)
 
+            if independent_host and urllib.parse.urlparse(page.url).hostname != urllib.parse.urlparse(shop_url).hostname:
+                raise BrowserScanError("独立店铺跳转到了其他来源域名", "api_changed", nav_status)
+
             info_payload = self._latest_valid(capture.responses.get(INFO_ENDPOINT, []))
             if not info_payload:
                 info_payload = self._fetch_api(
                     page,
                     capture,
                     INFO_ENDPOINT,
-                    {"token": token, "category_key": ""},
+                    {"token": request_token, "category_key": ""},
                 )
 
             info = self._extract_data_dict(info_payload)
@@ -312,7 +323,7 @@ class BrowserShopScanner:
                 or self._page_title(page)
                 or token
             )
-            canonical_url = normalize_shop_url(info.get("link") or page.url) or shop_url
+            canonical_url = shop_url if independent_host else normalize_shop_url(info.get("link") or page.url) or shop_url
             api_host = urllib.parse.urlparse(page.url or shop_url).hostname or ""
             closed = bool(CLOSED_RE.search(page_text + " " + json.dumps(info, ensure_ascii=False)))
 
@@ -325,9 +336,9 @@ class BrowserShopScanner:
             try:
                 if self.fetch_mode == "keyword":
                     for keyword in keywords:
-                        products.extend(self._fetch_goods_pages(page, capture, token, keyword, 0))
+                        products.extend(self._fetch_goods_pages(page, capture, request_token, keyword, 0))
                 else:
-                    products.extend(self._fetch_goods_pages(page, capture, token, "", 0))
+                    products.extend(self._fetch_goods_pages(page, capture, request_token, "", 0))
                     if not products:
                         category_payload = self._latest_valid(capture.responses.get(CATEGORY_ENDPOINT, []))
                         if not category_payload:
@@ -335,10 +346,10 @@ class BrowserShopScanner:
                                 page,
                                 capture,
                                 CATEGORY_ENDPOINT,
-                                {"token": token, "goods_type": "card", "category_key": ""},
+                                {"token": request_token, "goods_type": "card", "category_key": ""},
                             )
                         for category_id in self._extract_category_ids(category_payload):
-                            products.extend(self._fetch_goods_pages(page, capture, token, "", category_id))
+                            products.extend(self._fetch_goods_pages(page, capture, request_token, "", category_id))
             except BrowserScanError as exc:
                 if products:
                     partial_error = str(exc)
@@ -458,6 +469,9 @@ class BrowserShopScanner:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         template = capture.templates.get(endpoint)
+        page_host = urllib.parse.urlparse(page.url).hostname
+        if template and page_host in INDEPENDENT_HOSTS and urllib.parse.urlparse(template.url).hostname != page_host:
+            template = None
         url = template.url if template else urllib.parse.urljoin(page.url, endpoint)
         headers = self._safe_replay_headers(template.headers if template else {})
         merged_payload = dict(template.payload) if template else {}
@@ -739,6 +753,12 @@ class BrowserShopScanner:
             if not product_url and product_key:
                 product_url = urllib.parse.urljoin(base_url, f"/item/{urllib.parse.quote(product_key, safe='._~-')}")
             product_url = safe_http_url(product_url)
+            base_host = urllib.parse.urlparse(base_url).hostname
+            if product_url and base_host in INDEPENDENT_HOSTS:
+                parsed_product = urllib.parse.urlsplit(product_url)
+                product_url = urllib.parse.urlunsplit((
+                    "https", base_host, parsed_product.path, parsed_product.query, "",
+                ))
 
             send_order = safe_int(extend.get("send_order") if extend else item.get("send_order"))
             auto_delivery = "是" if send_order == 0 else "否" if send_order is not None else "未知"

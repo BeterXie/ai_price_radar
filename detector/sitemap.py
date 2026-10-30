@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 import urllib.parse
 from collections import deque
+from html.parser import HTMLParser
 
 from defusedxml import ElementTree
 
@@ -11,6 +13,51 @@ from price_radar_http import PinnedHTTPSClient
 DEFAULT_MAX_DEPTH = 3
 DEFAULT_MAX_SITEMAPS = 32
 DEFAULT_MAX_PAGES = 8
+_PRODUCT_PATH = re.compile(r"/(?:products?|goods|item)/[^/]+/?$", re.IGNORECASE)
+
+
+def _product_path_priority(value: str) -> int:
+    try:
+        path = urllib.parse.urlsplit(value).path
+    except ValueError:
+        return 2
+    if not _PRODUCT_PATH.search(path):
+        return 2
+    return 0 if _PRODUCT_PATH.fullmatch(path) else 1
+
+
+def product_links(
+    body: bytes,
+    base_url: str,
+    origin: str,
+    client: PinnedHTTPSClient,
+    *,
+    max_pages: int = DEFAULT_MAX_PAGES,
+) -> list[str]:
+    """Read explicit product anchors, never scripts, forms or cross-origin links."""
+    links: list[str] = []
+    seen: set[str] = set()
+
+    class Parser(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag.casefold() != "a" or len(seen) >= 2_000:
+                return
+            href = dict(attrs).get("href") or ""
+            if not href or "#" in href:
+                return
+            try:
+                absolute = urllib.parse.urljoin(base_url, href)
+            except ValueError:
+                return
+            candidate = _same_origin_url(absolute, origin, client)
+            if candidate is None or candidate in seen or _product_path_priority(candidate) == 2:
+                return
+            seen.add(candidate)
+            links.append(candidate)
+
+    Parser().feed(body.decode("utf-8", errors="replace"))
+    links.sort(key=_product_path_priority)
+    return links[:max_pages]
 
 
 def sitemap_locations(body: bytes) -> tuple[str, list[str]]:
@@ -83,7 +130,7 @@ def product_page_urls(
             continue
         if kind != "urlset":
             raise ValueError("sitemap child is not a urlset")
-        for raw_location in locations:
+        for raw_location in sorted(locations, key=_product_path_priority):
             page = _same_origin_url(raw_location, origin, client)
             if page is None or page in seen_pages:
                 continue
