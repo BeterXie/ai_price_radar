@@ -523,7 +523,7 @@ test("parses JSON text and reports invalid syntax", () => {
 
 test("converter UI invalidates stale reads and disables analytics on the credential route", async () => {
   const converterSource = await readFile(new URL("../components/guides/cockpit-json-converter.tsx", import.meta.url), "utf8");
-  const analyticsSource = await readFile(new URL("../components/google-analytics.tsx", import.meta.url), "utf8");
+  const analyticsSource = await readFile(new URL("../components/site-analytics.tsx", import.meta.url), "utf8");
 
   assert.match(converterSource, /const generation = \+\+readGenerationRef\.current/);
   assert.match(converterSource, /generation !== readGenerationRef\.current/);

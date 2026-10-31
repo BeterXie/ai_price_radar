@@ -6,16 +6,22 @@ import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 type Gtag = (...args: unknown[]) => void;
+type BaiduCommand = [string, ...unknown[]];
 
 declare global {
   interface Window {
     dataLayer: unknown[];
     gtag?: Gtag;
+    _hmt?: { push: (command: BaiduCommand) => unknown };
   }
 }
 
 const MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const CONSENT_KEY = "apr:analytics-consent:v1";
+const BAIDU_CONSENT_KEY = `apr:analytics-consent:v2:baidu${MEASUREMENT_ID ? ":google" : ""}`;
+const BAIDU_SITE_ID = "0abf0f3c54963dc5874f6a4ebcbfaf37";
+const BAIDU_SCRIPT_ID = "baidu-tongji";
+let lastBaiduPage: string | null = null;
 type AnalyticsConsent = "unknown" | "granted" | "denied";
 const ANALYTICS_QUERY_KEYS = new Set([
   "auto_delivery",
@@ -40,7 +46,7 @@ const ANALYTICS_QUERY_KEYS = new Set([
 ]);
 
 export function isAnalyticsPathAllowed(pathname: string | null): boolean {
-  if (!pathname) return true;
+  if (!pathname) return false;
   return !["/account", "/admin", "/auth", "/tools/json-to-cockpit"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
@@ -93,24 +99,61 @@ export function buildAnalyticsPath(pathname: string | null, rawSearch: string): 
   return `${pathname || "/"}${safeSearch ? `?${safeSearch}` : ""}`;
 }
 
+export function isBaiduAnalyticsEnabled(): boolean {
+  return typeof window !== "undefined" && window.location.hostname === "ai.pricememo.cn";
+}
+
+export function trackBaiduPageview(pathname: string | null, rawSearch: string, consentGranted: boolean): void {
+  if (!isBaiduAnalyticsEnabled() || !consentGranted || !isAnalyticsPathAllowed(pathname)) {
+    lastBaiduPage = null;
+    return;
+  }
+
+  const path = buildAnalyticsPath(pathname, rawSearch);
+  const existingScript = document.getElementById(BAIDU_SCRIPT_ID);
+  const queue = window._hmt || (window._hmt = [] as BaiduCommand[]);
+  if (!existingScript) {
+    // Configure before loading hm.js: the router sends the initial PV and later navigations.
+    queue.push(["_setAutoPageview", false]);
+    lastBaiduPage = null;
+  }
+  if (lastBaiduPage === path) return;
+  queue.push(["_trackPageview", path]);
+  lastBaiduPage = path;
+
+  if (!existingScript) {
+    const script = document.createElement("script");
+    script.id = BAIDU_SCRIPT_ID;
+    script.async = true;
+    script.src = `https://hm.baidu.com/hm.js?${BAIDU_SITE_ID}`;
+    document.head.appendChild(script);
+  }
+}
+
 function sendGtag(...args: unknown[]) {
   window.dataLayer = window.dataLayer || [];
   if (window.gtag) window.gtag(...args);
   else window.dataLayer.push(args);
 }
 
-function GoogleAnalyticsInner() {
+function SiteAnalyticsInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const referralChecked = useRef(false);
   const [consent, setConsent] = useState<AnalyticsConsent | null>(null);
+  const [baiduEnabled, setBaiduEnabled] = useState(false);
+  const consentKey = baiduEnabled ? BAIDU_CONSENT_KEY : CONSENT_KEY;
   const pathAllowed = isAnalyticsPathAllowed(pathname);
-  const analyticsPath = buildAnalyticsPath(pathname, searchParams.toString());
+  const rawSearch = searchParams.toString();
+  const analyticsPath = buildAnalyticsPath(pathname, rawSearch);
 
   useEffect(() => {
-    if (!MEASUREMENT_ID) return;
+    const enableBaidu = isBaiduAnalyticsEnabled();
+    setBaiduEnabled(enableBaidu);
+    if (!MEASUREMENT_ID && !enableBaidu) return;
     try {
-      const stored = window.localStorage.getItem(CONSENT_KEY);
+      // A previous Google-only choice does not grant permission for a different service.
+      const stored = window.localStorage.getItem(enableBaidu ? BAIDU_CONSENT_KEY : CONSENT_KEY);
       setConsent(stored === "granted" || stored === "denied" ? stored : "unknown");
     } catch {
       setConsent("unknown");
@@ -119,12 +162,16 @@ function GoogleAnalyticsInner() {
 
   const updateConsent = (value: Exclude<AnalyticsConsent, "unknown">) => {
     try {
-      window.localStorage.setItem(CONSENT_KEY, value);
+      window.localStorage.setItem(consentKey, value);
     } catch {
       // Keep the in-memory choice for this page even when storage is blocked.
     }
     setConsent(value);
   };
+
+  useEffect(() => {
+    trackBaiduPageview(pathname, rawSearch, consent === "granted");
+  }, [pathname, rawSearch, consent]);
 
   useEffect(() => {
     if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) return;
@@ -145,7 +192,7 @@ function GoogleAnalyticsInner() {
     }
   }, [analyticsPath, consent, pathAllowed]);
 
-  if (!MEASUREMENT_ID) return null;
+  if (!MEASUREMENT_ID && !baiduEnabled) return null;
   if (!pathAllowed) return null;
   if (consent === null) return null;
   if (consent === "denied") return null;
@@ -153,7 +200,7 @@ function GoogleAnalyticsInner() {
     return (
       <aside className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-4 shadow-[0_18px_55px_rgba(18,19,15,.2)]" aria-label="分析服务选择">
         <p className="text-sm leading-6 text-[color:var(--ink)]">
-          是否允许加载 Google Analytics，用于统计页面访问和 AI 引荐来源？拒绝不影响任何功能。详见
+          是否允许加载{baiduEnabled ? "百度统计" : "Google Analytics"}{baiduEnabled && MEASUREMENT_ID ? "和 Google Analytics" : ""}，用于统计页面访问和流量来源？拒绝不影响任何功能。详见
           <Link href="/privacy" className="ml-1 underline">隐私政策</Link>。
         </p>
         <div className="mt-3 flex justify-end gap-2">
@@ -167,6 +214,7 @@ function GoogleAnalyticsInner() {
       </aside>
     );
   }
+  if (!MEASUREMENT_ID) return null;
   const measurementId = JSON.stringify(MEASUREMENT_ID).replace(/</g, "\\u003c");
   return (
     <>
@@ -184,10 +232,10 @@ function GoogleAnalyticsInner() {
   );
 }
 
-export function GoogleAnalytics() {
+export function SiteAnalytics() {
   return (
     <Suspense fallback={null}>
-      <GoogleAnalyticsInner />
+      <SiteAnalyticsInner />
     </Suspense>
   );
 }

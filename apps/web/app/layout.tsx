@@ -10,7 +10,7 @@ import { NewFeatureModal } from "@/components/new-feature-modal";
 import { LuckyCouponDrop } from "@/components/lucky-coupon-drop";
 import { SiteNoticePrompt } from "@/components/site-notice";
 import { SiteStructuredData } from "@/components/structured-data";
-import { GoogleAnalytics } from "@/components/google-analytics";
+import { SiteAnalytics } from "@/components/site-analytics";
 import { getMeta } from "@/lib/api";
 import { getSearchEngineVerificationMetadata } from "@/lib/search-engine-verification";
 import { SITE_URL } from "@/lib/site";
@@ -59,7 +59,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SiteStructuredData />
-        <GoogleAnalytics />
+        <SiteAnalytics />
         <a href="#page-content" className="skip-link">跳到主要内容</a>
         <SiteNoticePrompt notice={meta?.site_notice} />
         <SiteHeader advertiseEnabled={advertiseEnabled} relayHubEnabled={relayHubEnabled} />

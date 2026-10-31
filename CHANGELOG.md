@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.45] - 2026-11-01
+
+- Load Baidu Analytics on ai.pricememo.cn after the visitor allows analytics, using the site's existing Baidu property.
+- Record the initial public page and client navigation without duplicate pageviews; exclude private routes and filter query parameters from manually reported paths.
+- Update the analytics consent notice and privacy policy. Google Analytics remains inactive without a configured measurement ID.
+- No database migration or pipeline change. Rebuild API, Web and importer from this release.
+
 ## [3.9.44] - 2026-11-01
 
 - Restore search between the filter control and stock toggle across brand catalogs and product pages, with a responsive layout for mobile.
