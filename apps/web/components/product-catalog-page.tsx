@@ -10,6 +10,7 @@ import { ReportForm } from "@/components/report-form";
 import { RelayCatalogPage } from "@/components/relay-catalog-page";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
+import { normalizeSearchQuery } from "@/lib/search";
 import type { Meta } from "@/lib/types";
 import { BRAND_TABS, type BrandName, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
 
@@ -24,7 +25,7 @@ const NARROWING_KEYS = ["source_platform", "delivery_type", "period", "warranty"
 
 /** True when the URL narrows the offer scope beyond the default comparable filter. */
 export function hasNarrowingFilters(rawParams: RawSearchParams) {
-  return NARROWING_KEYS.some((key) => Boolean(single(rawParams, key)));
+  return Boolean(normalizeSearchQuery(single(rawParams, "q"))) || NARROWING_KEYS.some((key) => Boolean(single(rawParams, key)));
 }
 
 export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
@@ -36,7 +37,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
     if (service) productSlug = service.slug;
   }
   let detailQuery = offerQuery(rawParams);
-  const searchQuery = single(rawParams, "q").trim();
+  const searchQuery = normalizeSearchQuery(single(rawParams, "q"));
   const [initialProduct, metaResult] = await Promise.all([
     productSlug ? getProduct(productSlug, detailQuery.toString()) : Promise.resolve(null),
     getMeta().catch(() => null),
@@ -210,7 +211,10 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
                       <div className="catalog-empty">
                         <h3>{hasActiveFilters ? "没有匹配的报价" : "暂无可比报价"}</h3>
                         <p>{hasActiveFilters ? "试试减少筛选条件，或更换关键词。" : "可以稍后再来，或查看其他商品。"}</p>
-                        <Link href={hasActiveFilters ? clearFiltersHref : relatedHref} className="button-secondary">{hasActiveFilters ? "清除筛选" : "查看相关报价"}<ArrowRight size={16} aria-hidden="true" /></Link>
+                        <div className="flex flex-wrap justify-center gap-3">
+                          {searchQuery && activeBrand ? <Link href={catalogHref()} className="button-primary">搜索全部品牌<ArrowRight size={16} aria-hidden="true" /></Link> : null}
+                          <Link href={hasActiveFilters ? clearFiltersHref : relatedHref} className="button-secondary">{hasActiveFilters ? "清除筛选" : "查看相关报价"}<ArrowRight size={16} aria-hidden="true" /></Link>
+                        </div>
                       </div>
                     )}
                     {!catalog.items.length && productTabs.length > 0 ? (

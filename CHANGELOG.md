@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.44] - 2026-11-01
+
+- Restore search between the filter control and stock toggle across brand catalogs and product pages, with a responsive layout for mobile.
+- Preserve brand, product and offer filters when searching or clearing a query; normalize pasted text, support IME input and show pending feedback.
+- Match common brand aliases and compact plan names while retaining literal wildcard handling and intersecting all search terms.
+- Keep empty searches within the chosen scope and provide an explicit option to search all brands.
+- No database migration or pipeline change. Rebuild API, Web and importer from this release.
+
 ## [3.9.43] - 2026-10-31
 
 - Replay PostgreSQL offer and price-history changes in transaction-local temporary tables before one final merge, keeping live offer rows available for clicks throughout source processing.

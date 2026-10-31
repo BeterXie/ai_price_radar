@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import re
 from collections import OrderedDict, defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -209,15 +210,36 @@ def _apply_search(stmt, query: str):
         "gpt": ("chatgpt", "gpt"),
         "克劳德": ("claude",),
         "谷歌": ("gemini", "google ai", "google one ai"),
-        "gemini": ("gemini", "google ai", "google one ai"),
+        "谷歌ai": ("gemini", "google ai", "google one ai"),
+        "google": ("gemini", "google ai", "google one ai"),
+        "gemini": ("gemini", "google ai", "google one ai", "谷歌 ai", "谷歌ai"),
     }
-    terms = unicodedata.normalize("NFKC", query).casefold().split()
+    brand_aliases = {"推特": "X", "twitter": "X", "xai": "Grok", "x.ai": "Grok"}
+    normalized = unicodedata.normalize("NFKC", query).casefold()
+    normalized = re.sub(r"[\u200b-\u200d\ufeff]", "", normalized)
+    # Treat a multiword brand name as one term, rather than requiring a
+    # standalone "ai" match on a product whose canonical name is Gemini.
+    normalized = re.sub(r"(?<!\w)(?:谷歌\s+ai|google\s+(?:one\s+)?ai)(?!\w)", "gemini", normalized)
+    terms = normalized.split()
     for term in dict.fromkeys(terms):
-        variants = aliases.get(term, (term,))
-        matching_products = select(Product.id).where(or_(*(
+        # Keep the original spelling too: an alias may also be part of a shop name.
+        variants = tuple(dict.fromkeys((term, *aliases.get(term, ()))))
+        product_matches = [
             field.ilike(_literal_pattern(variant), escape="\\")
             for variant in variants for field in (Product.display_name, Product.slug, Product.platform)
-        ))).correlate(None)
+        ]
+        for variant in variants:
+            # Match chatgptplus / max5x against canonical names and slugs, without
+            # relaxing word order or turning %, _ and backslashes into wildcards.
+            compact = variant.replace(" ", "").replace("-", "")
+            if len(compact) >= 3 and re.fullmatch(r"[a-z0-9.]+", compact):
+                product_matches.extend(
+                    func.replace(func.replace(field, " ", ""), "-", "").ilike(_literal_pattern(compact), escape="\\")
+                    for field in (Product.display_name, Product.slug, Product.platform)
+                )
+        if term in brand_aliases:
+            product_matches.append(Product.platform == brand_aliases[term])
+        matching_products = select(Product.id).where(or_(*product_matches)).correlate(None)
         stmt = stmt.where(or_(Offer.product_id.in_(matching_products), *(
             field.ilike(_literal_pattern(variant), escape="\\")
             for variant in variants for field in (RawProduct.original_name, Shop.name)

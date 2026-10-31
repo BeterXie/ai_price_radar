@@ -11,6 +11,7 @@ import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
 import { exactTime, relativeTime } from "@/lib/format";
 import { getProductGuide } from "@/lib/guides/registry";
 import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
+import { normalizeSearchQuery } from "@/lib/search";
 import type { ProductDetail } from "@/lib/types";
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -35,7 +36,7 @@ export function offerQuery(params: RawSearchParams) {
   if (single(params, "comparable") !== "false") query.set("comparable", "true");
   if (single(params, "in_stock") === "true") query.set("in_stock", "true");
   for (const key of FILTER_KEYS) {
-    const value = single(params, key);
+    const value = key === "q" ? normalizeSearchQuery(single(params, key)) : single(params, key);
     if (value) query.set(key, value);
   }
   return query;
