@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.46] - 2026-11-01
+
+- Start Baidu Analytics automatically on public production pages without a confirmation banner.
+- Preserve explicit Baidu opt-outs and provide a browser-specific toggle on the privacy page; reload after a change to unload the running SDK.
+- Keep private-page exclusions, filtered manual pageviews and navigation deduplication. Google Analytics remains separately opt-in and unconfigured.
+- No database migration or pipeline change. Rebuild API, Web and importer from this release.
+
 ## [3.9.45] - 2026-11-01
 
 - Load Baidu Analytics on ai.pricememo.cn after the visitor allows analytics, using the site's existing Baidu property.

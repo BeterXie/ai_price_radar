@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { isBaiduTrackingAllowed } from "@/lib/analytics-preferences";
 
 type Gtag = (...args: unknown[]) => void;
 type BaiduCommand = [string, ...unknown[]];
@@ -18,7 +19,6 @@ declare global {
 
 const MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const CONSENT_KEY = "apr:analytics-consent:v1";
-const BAIDU_CONSENT_KEY = `apr:analytics-consent:v2:baidu${MEASUREMENT_ID ? ":google" : ""}`;
 const BAIDU_SITE_ID = "0abf0f3c54963dc5874f6a4ebcbfaf37";
 const BAIDU_SCRIPT_ID = "baidu-tongji";
 let lastBaiduPage: string | null = null;
@@ -99,12 +99,8 @@ export function buildAnalyticsPath(pathname: string | null, rawSearch: string): 
   return `${pathname || "/"}${safeSearch ? `?${safeSearch}` : ""}`;
 }
 
-export function isBaiduAnalyticsEnabled(): boolean {
-  return typeof window !== "undefined" && window.location.hostname === "ai.pricememo.cn";
-}
-
-export function trackBaiduPageview(pathname: string | null, rawSearch: string, consentGranted: boolean): void {
-  if (!isBaiduAnalyticsEnabled() || !consentGranted || !isAnalyticsPathAllowed(pathname)) {
+export function trackBaiduPageview(pathname: string | null, rawSearch: string): void {
+  if (!isBaiduTrackingAllowed() || !isAnalyticsPathAllowed(pathname)) {
     lastBaiduPage = null;
     return;
   }
@@ -141,19 +137,15 @@ function SiteAnalyticsInner() {
   const searchParams = useSearchParams();
   const referralChecked = useRef(false);
   const [consent, setConsent] = useState<AnalyticsConsent | null>(null);
-  const [baiduEnabled, setBaiduEnabled] = useState(false);
-  const consentKey = baiduEnabled ? BAIDU_CONSENT_KEY : CONSENT_KEY;
   const pathAllowed = isAnalyticsPathAllowed(pathname);
   const rawSearch = searchParams.toString();
   const analyticsPath = buildAnalyticsPath(pathname, rawSearch);
 
   useEffect(() => {
-    const enableBaidu = isBaiduAnalyticsEnabled();
-    setBaiduEnabled(enableBaidu);
-    if (!MEASUREMENT_ID && !enableBaidu) return;
+    if (!MEASUREMENT_ID) return;
     try {
-      // A previous Google-only choice does not grant permission for a different service.
-      const stored = window.localStorage.getItem(enableBaidu ? BAIDU_CONSENT_KEY : CONSENT_KEY);
+      const stored = window.localStorage.getItem(CONSENT_KEY)
+        ?? window.localStorage.getItem("apr:analytics-consent:v2:baidu:google");
       setConsent(stored === "granted" || stored === "denied" ? stored : "unknown");
     } catch {
       setConsent("unknown");
@@ -162,7 +154,7 @@ function SiteAnalyticsInner() {
 
   const updateConsent = (value: Exclude<AnalyticsConsent, "unknown">) => {
     try {
-      window.localStorage.setItem(consentKey, value);
+      window.localStorage.setItem(CONSENT_KEY, value);
     } catch {
       // Keep the in-memory choice for this page even when storage is blocked.
     }
@@ -170,8 +162,8 @@ function SiteAnalyticsInner() {
   };
 
   useEffect(() => {
-    trackBaiduPageview(pathname, rawSearch, consent === "granted");
-  }, [pathname, rawSearch, consent]);
+    trackBaiduPageview(pathname, rawSearch);
+  }, [pathname, rawSearch]);
 
   useEffect(() => {
     if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) return;
@@ -192,7 +184,7 @@ function SiteAnalyticsInner() {
     }
   }, [analyticsPath, consent, pathAllowed]);
 
-  if (!MEASUREMENT_ID && !baiduEnabled) return null;
+  if (!MEASUREMENT_ID) return null;
   if (!pathAllowed) return null;
   if (consent === null) return null;
   if (consent === "denied") return null;
@@ -200,7 +192,7 @@ function SiteAnalyticsInner() {
     return (
       <aside className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-4 shadow-[0_18px_55px_rgba(18,19,15,.2)]" aria-label="分析服务选择">
         <p className="text-sm leading-6 text-[color:var(--ink)]">
-          是否允许加载{baiduEnabled ? "百度统计" : "Google Analytics"}{baiduEnabled && MEASUREMENT_ID ? "和 Google Analytics" : ""}，用于统计页面访问和流量来源？拒绝不影响任何功能。详见
+          是否允许加载 Google Analytics，用于统计页面访问和 AI 引荐来源？拒绝不影响任何功能。详见
           <Link href="/privacy" className="ml-1 underline">隐私政策</Link>。
         </p>
         <div className="mt-3 flex justify-end gap-2">
@@ -214,7 +206,6 @@ function SiteAnalyticsInner() {
       </aside>
     );
   }
-  if (!MEASUREMENT_ID) return null;
   const measurementId = JSON.stringify(MEASUREMENT_ID).replace(/</g, "\\u003c");
   return (
     <>

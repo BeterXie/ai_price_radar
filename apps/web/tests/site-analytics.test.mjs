@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { trackBaiduPageview } from "../components/site-analytics.tsx";
+import { BAIDU_PREFERENCE_KEY } from "../lib/analytics-preferences.ts";
 
 function browser(t, hostname = "ai.pricememo.cn") {
   const scripts = [];
-  const window = { location: { hostname } };
+  const choices = new Map();
+  const window = {
+    location: { hostname },
+    localStorage: {
+      getItem: (key) => choices.get(key) ?? null,
+      setItem: (key, value) => choices.set(key, value),
+    },
+  };
   const document = {
     getElementById: (id) => scripts.find((script) => script.id === id) || null,
     createElement: (tag) => {
@@ -34,28 +42,62 @@ function browser(t, hostname = "ai.pricememo.cn") {
   return { window, scripts, pageviews: () => (window._hmt || []).filter(([command]) => command === "_trackPageview") };
 }
 
-test("Baidu does not load or queue data before consent", (t) => {
+test("Baidu automatically records a new visitor without a saved consent choice", (t) => {
   const page = browser(t);
-  trackBaiduPageview("/", "", false);
+  trackBaiduPageview("/", "");
+  assert.deepEqual(page.pageviews(), [["_trackPageview", "/"]]);
+  assert.equal(page.scripts.length, 1);
+});
+
+for (const key of [BAIDU_PREFERENCE_KEY, `${BAIDU_PREFERENCE_KEY}:google`]) {
+  test(`Baidu respects an existing refusal stored under ${key}`, (t) => {
+    const page = browser(t);
+    page.window.localStorage.setItem(key, "denied");
+    trackBaiduPageview("/", "");
+    trackBaiduPageview("/products", "");
+    assert.equal(page.window._hmt, undefined);
+    assert.deepEqual(page.scripts, []);
+  });
+}
+
+test("a new explicit enable choice overrides a previous combined refusal", (t) => {
+  const page = browser(t);
+  page.window.localStorage.setItem(`${BAIDU_PREFERENCE_KEY}:google`, "denied");
+  page.window.localStorage.setItem(BAIDU_PREFERENCE_KEY, "granted");
+  trackBaiduPageview("/products", "");
+  assert.deepEqual(page.pageviews(), [["_trackPageview", "/products"]]);
+});
+
+test("Google-only consent does not control Baidu tracking", (t) => {
+  const page = browser(t);
+  page.window.localStorage.setItem("apr:analytics-consent:v1", "denied");
+  trackBaiduPageview("/", "");
+  assert.equal(page.scripts.length, 1);
+});
+
+test("unreadable preferences do not bypass a saved refusal", (t) => {
+  const page = browser(t);
+  page.window.localStorage.getItem = () => { throw new Error("Storage blocked"); };
+  trackBaiduPageview("/", "");
   assert.equal(page.window._hmt, undefined);
   assert.deepEqual(page.scripts, []);
 });
 
 test("local and preview visits cannot pollute production Baidu reports", (t) => {
   const page = browser(t, "localhost");
-  trackBaiduPageview("/products", "", true);
+  trackBaiduPageview("/products", "");
   page.window.location.hostname = "preview.pricememo.cn";
-  trackBaiduPageview("/products", "", true);
+  trackBaiduPageview("/products", "");
   assert.equal(page.window._hmt, undefined);
   assert.deepEqual(page.scripts, []);
 });
 
 test("Baidu loads once and counts the initial route and each distinct navigation once", (t) => {
   const page = browser(t);
-  trackBaiduPageview("/products", "brand=OpenAI&page=2", true);
-  trackBaiduPageview("/products", "page=2&brand=OpenAI", true);
-  trackBaiduPageview("/products/chatgpt", "", true);
-  trackBaiduPageview("/products", "brand=OpenAI&page=2", true);
+  trackBaiduPageview("/products", "brand=OpenAI&page=2");
+  trackBaiduPageview("/products", "page=2&brand=OpenAI");
+  trackBaiduPageview("/products/chatgpt", "");
+  trackBaiduPageview("/products", "brand=OpenAI&page=2");
   assert.deepEqual(page.pageviews(), [
     ["_trackPageview", "/products?brand=OpenAI&page=2"],
     ["_trackPageview", "/products/chatgpt"],
@@ -69,18 +111,18 @@ test("Baidu loads once and counts the initial route and each distinct navigation
 test("private routes never load the SDK or queue a pageview", (t) => {
   const page = browser(t);
   for (const path of [null, "/account", "/account/watchlist", "/admin", "/admin/users", "/auth/callback", "/tools/json-to-cockpit"]) {
-    trackBaiduPageview(path, "token=secret", true);
+    trackBaiduPageview(path, "token=secret");
   }
   assert.equal(page.window._hmt, undefined);
   assert.deepEqual(page.scripts, []);
-  trackBaiduPageview("/", "", true);
-  trackBaiduPageview("/account", "", true);
-  trackBaiduPageview("/", "", true);
+  trackBaiduPageview("/", "");
+  trackBaiduPageview("/account", "");
+  trackBaiduPageview("/", "");
   assert.deepEqual(page.pageviews(), [["_trackPageview", "/"], ["_trackPageview", "/"]]);
 });
 
 test("Baidu pageviews use filtered paths without raw searches or private query parameters", (t) => {
   const page = browser(t);
-  trackBaiduPageview("/products", "q=person%40example.com&token=secret&brand=OpenAI&targets=private", true);
+  trackBaiduPageview("/products", "q=person%40example.com&token=secret&brand=OpenAI&targets=private");
   assert.deepEqual(page.pageviews(), [["_trackPageview", "/products?brand=OpenAI&q=present"]]);
 });
