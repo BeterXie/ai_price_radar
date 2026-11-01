@@ -33,7 +33,7 @@ BRAND_MARKERS = {
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai", "google ai", "谷歌ai", "谷歌 ai"],
     "grok": ["supergrok", "super grok", "grok", "x.ai", "x ai", "xai", "super gro"],
-    "x": ["x premium", "xpremium", "twitter", "推特", "x subscription", "x 统一订阅", "x统一订阅", "x plus", "x super", "x ultra", "x teams", "x enterprise"],
+    "x": ["x premium", "xpremium", "twitter", "推特", "x账号", "x 账号", "x帐号", "x 帐号", "x account", "x subscription", "x 统一订阅", "x统一订阅", "x plus", "x super", "x ultra", "x teams", "x enterprise"],
     "cursor": ["cursor", "cursor ai", "cursor pro", "cursor business"],
     "muse": ["muse.ai", "muse ai", "muse"],
     "jev": ["jev"],
@@ -729,6 +729,8 @@ def _classify_identity_raw(
             return "x-premium-basic", True
         if _contains(identity_text, ["premium", "twitter blue", "推特会员", "蓝v", "蓝标"]):
             return "x-premium", True
+        if _contains(identity_text, ["账号", "帐号", "成品号", "普号", "白号", "老号"]) or re.search(r"\baccounts?\b", identity_text):
+            return "x-account", True
         return None, False
 
     if brand == "cursor":

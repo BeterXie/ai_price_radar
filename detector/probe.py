@@ -83,6 +83,28 @@ def _localized(value: Any) -> str:
     return ""
 
 
+def schema_service_products(value: dict[str, Any]) -> list[dict[str, Any]]:
+    def has_type(node: dict[str, Any], expected: str) -> bool:
+        types = node.get("@type")
+        types = types if isinstance(types, list) else [types]
+        return any(str(item).rstrip("/").rsplit("/", 1)[-1].casefold() == expected for item in types)
+
+    if not has_type(value, "service"):
+        return []
+    entries = value.get("offers") or value.get("hasOfferCatalog")
+    entries = entries if isinstance(entries, list) else [entries]
+    products: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        offers = entry.get("itemListElement") if has_type(entry, "offercatalog") else [entry]
+        offers = offers if isinstance(offers, list) else [offers]
+        for offer in offers:
+            if isinstance(offer, dict) and has_type(offer, "offer") and isinstance(offer.get("name"), str) and offer["name"].strip():
+                products.append({**value, "name": offer["name"], "url": offer.get("url") or value.get("url"), "offers": offer})
+    return products
+
+
 def _schema_product_count(body: bytes) -> int:
     parser = _JsonLdParser()
     parser.feed(body.decode("utf-8", errors="replace"))
@@ -96,6 +118,7 @@ def _schema_product_count(body: bytes) -> int:
             types = raw_types if isinstance(raw_types, list) else [raw_types]
             if any(str(item).casefold() == "product" for item in types):
                 yield value
+            yield from schema_service_products(value)
             for child in value.values():
                 if isinstance(child, (dict, list)):
                     yield from walk(child)

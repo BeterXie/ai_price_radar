@@ -1,6 +1,8 @@
 import copy
 import json
 
+import pytest
+
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 from connectors import schema_org
 
@@ -169,3 +171,53 @@ def test_named_plan_title_wins_over_parent_marketing_description(monkeypatch):
         "chatgpt-go", "chatgpt-plus", "chatgpt-pro-100", "chatgpt-pro", "chatgpt-pro",
     ]
     assert [r["raw_json"]["schema_org_offer"]["name"] for r in records] == ["Go", "Plus", "Pro 5x", "Pro 10x", "Pro 25x"]
+
+
+@pytest.mark.parametrize("catalog_field", ["offers", "hasOfferCatalog"])
+def test_service_catalog_imports_separate_plans_with_stable_identity(monkeypatch, catalog_field):
+    from common import classify
+
+    root = "https://shop.example/"
+    offers = [
+        {"@type": "Offer", "name": name, "price": price, "priceCurrency": "CNY", "url": root,
+         "availability": "https://schema.org/InStock"}
+        for name, price in [("ChatGPT Plus 代充值", "148"),
+                            ("ChatGPT Pro $100/月 代充值", "800"),
+                            ("ChatGPT Pro $200/月 代充值", "1380")]
+    ]
+    service = {"@type": "Service", "name": "ChatGPT Plus / Pro 代充值服务", "url": root,
+               "description": "ChatGPT Plus、ChatGPT Pro 代充值与续费服务",
+               catalog_field: {"@type": "OfferCatalog", "itemListElement": offers}}
+    responses = {root: html(service)}
+    calls = install(monkeypatch, responses)
+    records = list(schema_org.load_records(root))
+    assert calls == [root]
+    assert [(r["product_name"], r["listed_price"]) for r in records] == [(o["name"], o["price"]) for o in offers]
+    assert [classify(r["product_name"], r["category_name"], r["raw_json"], source_platform="schema_org").slug for r in records] == [
+        "chatgpt-plus", "chatgpt-pro-100", "chatgpt-pro-200",
+    ]
+    keys = {r["product_name"]: r["product_key"] for r in records}
+    assert len(set(keys.values())) == 3
+    offers.reverse()
+    for offer in offers:
+        offer["price"] = "999"
+        offer["availability"] = "https://schema.org/OutOfStock"
+    responses[root] = html(service)
+    rerun = list(schema_org.load_records(root))
+    assert {r["product_name"]: r["product_key"] for r in rerun} == keys
+    assert all(r["stock_count"] == 0 for r in rerun)
+
+
+def test_service_ignores_invalid_offers_and_resolves_named_offer_references(monkeypatch):
+    page = "https://shop.example/service"
+    service = {"@type": "https://schema.org/Service", "name": "ChatGPT Plus / Pro", "offers": {"@id": "#catalog"}}
+    catalog = {"@id": "#catalog", "@type": "OfferCatalog", "itemListElement": [
+        {"@type": "Offer", "name": "Missing price", "priceCurrency": "CNY"},
+        {"@type": "Offer", "name": "Invalid", "price": "NaN", "priceCurrency": "CNY"},
+        {"@type": "Offer", "price": "1", "priceCurrency": "CNY"},
+        {"@id": "#valid"},
+    ]}
+    offer = {"@id": "#valid", "@type": "Offer", "name": "ChatGPT Plus", "price": "148", "priceCurrency": "CNY"}
+    install(monkeypatch, {page: html({"@graph": [service, catalog, offer]})})
+    record, = schema_org.load_records(page)
+    assert (record["product_name"], record["listed_price"]) == ("ChatGPT Plus", "148")

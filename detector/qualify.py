@@ -11,7 +11,7 @@ from typing import Any
 from currencies import normalize_currency
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
-from probe import probe_source
+from probe import probe_source, schema_service_products
 from sitemap import product_page_urls, sitemap_locations
 
 try:
@@ -401,6 +401,7 @@ def _jsonld_product_nodes(body: bytes) -> list[dict[str, Any]]:
             types = raw_types if isinstance(raw_types, list) else [raw_types]
             if any(str(item).rsplit("/", 1)[-1].rstrip("#").casefold() == "product" for item in types):
                 nodes.append(value)
+            nodes.extend(schema_service_products(value))
             stack.extend(reversed(list(value.values())))
     return nodes
 

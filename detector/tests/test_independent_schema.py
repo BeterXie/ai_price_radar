@@ -102,3 +102,17 @@ def test_root_uses_one_client_with_existing_task_limits(monkeypatch):
     assert clients[0].limits["max_response_bytes"] == 1024 * 1024
     assert clients[0].limits["max_task_bytes"] == 2 * 1024 * 1024
     assert clients[0].calls == [root, detail]
+
+
+def test_service_catalog_is_detected_as_schema_org_without_api_probes():
+    root = "https://shop.example/"
+    service = {"@type": "Service", "name": "ChatGPT Plus / Pro", "offers": {
+        "@type": "OfferCatalog", "itemListElement": [
+            {"@type": "Offer", "name": name, "price": price, "priceCurrency": "CNY"}
+            for name, price in [("ChatGPT Plus", "148"), ("ChatGPT Pro $100/月", "800"), ("ChatGPT Pro $200/月", "1380")]
+        ]}}
+    client = MappingClient({root: html('<script type="application/ld+json">' + json.dumps(service) + '</script>')})
+    result = probe.probe_source(root, client=client)
+    assert result.detected_platform == "schema_org"
+    assert result.product_count == 3
+    assert client.calls == [root]

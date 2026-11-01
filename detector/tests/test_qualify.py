@@ -725,3 +725,22 @@ def test_private_or_invalid_source_is_validation_failed():
     result = qualify_candidate("https://127.0.0.1/", "unknown", client=FakeClient({}))
     assert result.status == "validation_failed"
     assert result.ai_product_count == 0
+
+
+def test_service_catalog_qualifies_only_named_priced_same_origin_plans():
+    root = "https://service.example/"
+    offers = [
+        {"@type": "Offer", "name": name, "price": price, "priceCurrency": "CNY", "url": root}
+        for name, price in [("ChatGPT Plus", "148"), ("ChatGPT Pro $100/月", "800"), ("ChatGPT Pro $200/月", "1380")]
+    ]
+    offers.extend([
+        {"@type": "Offer", "name": "ChatGPT Plus", "priceCurrency": "CNY"},
+        {"@type": "Offer", "name": "ChatGPT Plus", "price": "NaN", "priceCurrency": "CNY"},
+        {"@type": "Offer", "name": "ChatGPT Plus", "price": "1", "priceCurrency": "CNY", "url": "https://other.example/"},
+        {"@type": "Offer", "name": "Website hosting", "price": "1", "priceCurrency": "CNY"},
+    ])
+    service = {"@type": "Service", "name": "ChatGPT Plus / Pro", "hasOfferCatalog": {"@type": "OfferCatalog", "itemListElement": offers}}
+    body = ('<html><script type="application/ld+json">' + json.dumps(service) + '</script></html>').encode()
+    result = qualify_candidate(root, "schema_org", client=FakeClient({root: _html_route(body)}))
+    assert result.status == "detected"
+    assert result.ai_product_count == 3

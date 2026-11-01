@@ -96,6 +96,10 @@ Root shop URLs may expose their products through same-origin `/product/`, `/prod
 
 When a Product contains named Offers, each named package is imported separately with its own stable identity, price, currency and availability. The original Product and Offer names are retained together, so Go, Plus and Pro packages do not collapse into the cheapest package. Single or unnamed Offer data retains the existing behavior. Identification still follows the existing intake approval settings; this change does not approve sources by itself.
 
+Priced Service data is also supported when it contains named Offers, directly or in a single OfferCatalog under `offers` or `hasOfferCatalog`. Each offer's own name determines its package classification; a parent name such as “ChatGPT Plus / Pro” does not merge the tiers. Prices retain the source currency and meaning, including reference prices disclosed by the merchant. Unnamed or unpriced service offers are not imported. The same source approval and bounded HTTPS fetching rules apply.
+
+Ordinary X / Twitter accounts use `x-account`, separate from X Premium and unified subscriptions. This does not extend the catalog to unrelated social accounts such as Instagram, Gmail, Threads or Discord.
+
 ## Public source intake
 
 `POST /api/v1/shop-requests` is deliberately syntax-only: it normalizes an HTTPS URL and creates a `submitted` record without opening the URL. The separate detector validates a resolved public IP and connects directly to that IP while retaining the submitted hostname for TLS SNI and certificate checks. It permits only port 443, does not follow redirects, and enforces response-size and processing-time limits.

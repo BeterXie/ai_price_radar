@@ -121,6 +121,7 @@ export const PRODUCT_TABS: Record<ProductCategory, { label: string; slug: string
     { label: "订阅等级待确认", slug: "grok-subscription", other: true },
   ],
   X: [
+    { label: "基础账号", slug: "x-account", other: true },
     { label: "Plus", slug: "x-subscription-plus" },
     { label: "Premium 统一订阅", slug: "x-subscription-premium" },
     { label: "Super", slug: "x-subscription-super" },

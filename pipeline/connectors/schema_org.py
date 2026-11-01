@@ -294,7 +294,8 @@ def _entry_pages(
         _sitemap_locations(response.body)
     except ValueError:
         nodes = _jsonld_nodes(response.body)
-        if any(_has_type(node, "Product") for node in nodes):
+        references = _reference_map(nodes)
+        if any(_catalog_item(node, references) for node in nodes):
             return [entry_url], {entry_url: response}
         if _looks_like_sitemap_url(entry_url):
             raise
@@ -304,7 +305,9 @@ def _entry_pages(
             for page_url in links:
                 page = budget.get(page_url, accept="text/html,application/xhtml+xml;q=0.9,*/*;q=0.1")
                 preloaded[page_url] = page
-                if any(_has_type(node, "Product") for node in _jsonld_nodes(page.body)):
+                page_nodes = _jsonld_nodes(page.body)
+                page_references = _reference_map(page_nodes)
+                if any(_catalog_item(node, page_references) for node in page_nodes):
                     return links, preloaded
             return _discover_product_pages(
                 f"{origin}/sitemap.xml",
@@ -312,7 +315,7 @@ def _entry_pages(
                 budget,
             ), preloaded
         raise ValueError(
-            "Schema.org source is not a sitemap or a page with Product JSON-LD"
+            "Schema.org source is not a sitemap or a page with Product or priced Service JSON-LD"
         ) from None
     return _discover_product_pages(
         entry_url,
@@ -394,6 +397,21 @@ def _resolved_values(value: object, references: dict[str, dict[str, Any]]) -> li
         if isinstance(item, dict):
             resolved.append(item)
     return resolved
+
+
+def _service_offers(service: dict[str, Any], references: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    offers: list[dict[str, Any]] = []
+    for entry in _resolved_values(service.get("offers") or service.get("hasOfferCatalog"), references):
+        values = _resolved_values(entry.get("itemListElement"), references) if _has_type(entry, "OfferCatalog") else [entry]
+        offers.extend(offer for offer in values if _has_type(offer, "Offer") and _text(offer.get("name")))
+    return offers
+
+
+def _catalog_item(node: dict[str, Any], references: dict[str, dict[str, Any]]) -> bool:
+    return _has_type(node, "Product") or (
+        _has_type(node, "Service")
+        and any(_select_price({**node, "offers": [offer]}, references) for offer in _service_offers(node, references))
+    )
 
 
 def _amount(value: object) -> tuple[Decimal, str] | None:
@@ -574,7 +592,7 @@ def _record(
     product_key, sku = _product_key(product, product_url)
     if offer is not None:
         offer_name = _text(offer.get("name"))
-        product_name = f"{product_name} {offer_name}"
+        product_name = offer_name if _has_type(product, "Service") else f"{product_name} {offer_name}"
         identity = _offer_identity(offer, product_url=product_url, origin=origin, currency=price.currency)
         variant_key = f"offer:{identity}"
         if len(product_key) + len(variant_key) + 1 > 300:
@@ -618,6 +636,11 @@ def _product_records(
     token: str,
     references: dict[str, dict[str, Any]],
 ) -> Iterator[dict[str, Any]]:
+    if _has_type(product, "Service"):
+        for offer in _service_offers(product, references):
+            if record := _record(product, offer=offer, page_url=page_url, origin=origin, token=token, references=references):
+                yield record
+        return
     offers = _resolved_values(product.get("offers"), references)
     named = [offer for offer in offers if _text(offer.get("name")) and not _has_type(offer, "AggregateOffer")]
     arguments = {"page_url": page_url, "origin": origin, "token": token, "references": references}
@@ -658,7 +681,7 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         nodes = _jsonld_nodes(response.body)
         references = _reference_map(nodes)
         for product in nodes:
-            if not _has_type(product, "Product"):
+            if not _catalog_item(product, references):
                 continue
             for record in _product_records(
                 product,

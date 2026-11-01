@@ -230,7 +230,6 @@ def test_openai_description_can_refine_an_already_identified_product():
         ("Codex/Claude 官方中转API 50美元", "ChatGPT"),
         ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free"),
         ("谷歌邮箱成品老号，带2FA", "Gemini"),
-        ("Twitter 普通账号", "社交账号"),
         ("X Premium Business 企业认证", "企业服务"),
     ],
 )
@@ -303,6 +302,10 @@ def test_chatgpt_accounts_that_are_already_phone_verified_are_not_service_offers
         ("X Premium Basic 一个月官方直充", "AI会员", "x-premium-basic"),
         ("X Premium+ 12个月官方直充", "Grok 充值", "x-premium-plus"),
         ("Twitter Blue 月卡", "社交会员", "x-premium"),
+        ("X账号 成品号｜邮箱已验证｜附2FA｜首登保障", "Twiiter X 账号", "x-account"),
+        ("Twitter 普通账号", "社交账号", "x-account"),
+        ("X Account", "", "x-account"),
+        ("X Premium 成品号", "X账号", "x-premium"),
         ("X Premium 12个月，包含同时长 SuperGrok", "Grok 充值", "x-premium"),
         ("SuperGrok 年卡，附赠 X Premium+", "Grok", "grok-super"),
         ("高级会员直充一个月", "Claude", "claude-subscription"),

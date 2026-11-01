@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.47] - 2026-11-01
+
+- Add ordinary X / Twitter accounts as a separate catalog product, preserving Premium and unified subscription categories.
+- Detect and import named, priced Schema.org Service Offers and OfferCatalog packages independently, preserving each price, currency, availability and stable identity.
+- Enable the approved scope for Aixuvo and the public ChatGPT packages on gpt-plus.ai through the existing intake and atomic publication workflow.
+- No database migration. Rebuild API, Web, source-detector and importer, and complete one full multi-source publication before restoring timers.
+
 ## [3.9.46] - 2026-11-01
 
 - Start Baidu Analytics automatically on public production pages without a confirmation banner.

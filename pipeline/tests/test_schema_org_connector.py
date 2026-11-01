@@ -525,5 +525,5 @@ def test_schema_org_connector_rejects_entry_that_is_neither_sitemap_nor_product_
         page: _response(_html(visible="<h1>About</h1>")),
     })
 
-    with pytest.raises(ValueError, match="not a sitemap or a page with Product JSON-LD"):
+    with pytest.raises(ValueError, match="not a sitemap or a page with Product or priced Service JSON-LD"):
         list(schema_org.load_records(page))
