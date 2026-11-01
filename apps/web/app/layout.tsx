@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(SITE_URL),
     other: { "application-version": version },
-    title: { default: "AI Price Memory (AI Price Radar) · PriceMemo", template: "%s · AI Price Memory · AI Price Radar · PriceMemo" },
+    title: { default: "AI 订阅比价 · PriceMemo", template: "%s · PriceMemo" },
     description: "聚合公开 AI 订阅商品报价，比较价格、库存、来源和更新时间。",
     openGraph: { siteName: "AI Price Memory / AI Price Radar", locale: "zh_CN", type: "website" },
     robots: {

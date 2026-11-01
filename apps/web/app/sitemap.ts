@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { getMeta, getProducts, getShopTokens, getSkills } from "@/lib/api";
 import type { CatalogResponse, CommunitySkillPage, ProductCard } from "@/lib/types";
 import { SITE_URL } from "@/lib/site";
+import { BRAND_TABS, brandCatalogPath } from "@/lib/catalog";
 
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
 
@@ -119,6 +120,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
 
   const snapshotAt = validDate(catalog?.snapshot_at);
+  const brandPages: MetadataRoute.Sitemap = BRAND_TABS
+    .filter((brand) => catalog.items.some((product) => product.brand === brand && product.offer_count > 0))
+    .map((brand) => ({ url: `${SITE_URL}${brandCatalogPath(brand)}`, lastModified: snapshotAt }));
+  staticPages.push({ url: `${SITE_URL}/compare`, lastModified: snapshotAt });
   if (snapshotAt) {
     staticPages[0].lastModified = snapshotAt;
     staticPages[1].lastModified = snapshotAt;
@@ -178,6 +183,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [
     ...staticPages,
     ...guidePages,
+    ...brandPages,
     ...sourcePlatformPages,
     ...shopPages,
     ...productPages,

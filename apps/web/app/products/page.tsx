@@ -3,7 +3,7 @@ import { permanentRedirect } from "next/navigation";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
 import { getProductSeoContent } from "@/lib/product-seo";
-import { canonicalProductSlug, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { BRAND_TABS, type BrandName, brandCatalogPath, canonicalProductSlug, STANDALONE_PRODUCTS } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
     };
   }
   return {
-    title: "全部 AI 商品报价",
+    title: "AI 订阅比价｜全部商品报价",
     description: "浏览 ChatGPT、Claude、Gemini、Grok 与 X Premium 公开报价，比较库存、交付方式、更新时间和来源。",
     alternates: { canonical: "https://ai.pricememo.cn/products" },
     robots: Object.keys(params).length ? { index: false, follow: true } : { index: true, follow: true },
@@ -74,6 +74,16 @@ export default async function ProductsPage({ searchParams }: { searchParams: Sea
     }
     const suffix = query.toString();
     permanentRedirect(`/products/${encodeURIComponent(slug)}${suffix ? `?${suffix}` : ""}`);
+  }
+  const brand = lastValue(params.brand) || lastValue(params.platform);
+  if (BRAND_TABS.includes(brand as BrandName)) {
+    const query = new URLSearchParams();
+    for (const [key, rawValue] of Object.entries(params)) {
+      if (["brand", "platform"].includes(key)) continue;
+      for (const value of Array.isArray(rawValue) ? rawValue : rawValue === undefined ? [] : [rawValue]) query.append(key, value);
+    }
+    const suffix = query.toString();
+    permanentRedirect(`${brandCatalogPath(brand)}${suffix ? `?${suffix}` : ""}`);
   }
   return <ProductCatalogPage rawParams={params} />;
 }

@@ -219,7 +219,8 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   const shownStock = group?.in_stock_count ?? (offer.stock_status === "in_stock" ? 1 : 0);
   const productPageQuery = new URLSearchParams(filterQuery);
   productPageQuery.delete("brand");
-  if (!productPageQuery.has("comparable")) productPageQuery.set("comparable", "false");
+  if (productPageQuery.get("comparable") === "true") productPageQuery.delete("comparable");
+  else if (!productPageQuery.has("comparable")) productPageQuery.set("comparable", "false");
   const initialClickCount = (group ? group.click_count : offer.click_count) || 0;
   const [clickCount, setClickCount] = useState(initialClickCount);
 
@@ -242,7 +243,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           <div className="catalog-offer-product">
             <h3>{offer.original_name}</h3>
             <div className="catalog-offer-meta">
-              {productName && productSlug ? <Link href={`/products/${encodeURIComponent(productSlug)}?${productPageQuery}`}>{productName}</Link> : null}
+              {productName && productSlug ? <Link href={`/products/${encodeURIComponent(productSlug)}${productPageQuery.size ? `?${productPageQuery}` : ""}`}>{productName}</Link> : null}
               <span>{group ? `${group.shop_count} 家店铺` : offer.shop_name}</span>
               <time dateTime={group?.latest_observed_at || offer.observed_at} title={exactTime(group?.latest_observed_at || offer.observed_at)} suppressHydrationWarning>{relativeTime(group?.latest_observed_at || offer.observed_at)}更新</time>
             </div>

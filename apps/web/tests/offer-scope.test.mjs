@@ -88,6 +88,8 @@ test("every brand has a scoped search in the filter toolbar", async (context) =>
     assert.ok(search, `${brand || "all brands"} must have a search field`);
     assert.equal(search.props.filters.brand || "", brand);
     assert.equal(search.props.action, "/products");
+    const brandLink = catalogLink(catalogDescendants(page), (url) => url.pathname === "/brands/claude");
+    assert.equal(new URL(brandLink.props.href, "https://example.test").search, "");
   }
 });
 
@@ -178,8 +180,9 @@ test("brand, source and product navigation retain the widened scope and intersec
   ), { status: 200 }));
 
   const nodes = catalogDescendants(await ProductCatalogPage({ rawParams: widenedCatalogScope }));
-  const brandLink = catalogLink(nodes, (url) => url.pathname === "/products" && url.searchParams.get("brand") === "Gemini");
-  assertCatalogScope(brandLink, { ...widenedCatalogScope, brand: "Gemini" });
+  const brandLink = catalogLink(nodes, (url) => url.pathname === "/brands/gemini");
+  const { brand: currentBrand, ...brandScope } = widenedCatalogScope;
+  assertCatalogScope(brandLink, brandScope);
 
   const sourceLink = catalogLink(nodes, (url) => url.pathname === "/products" && url.searchParams.get("source_platform") === "16688");
   assertCatalogScope(sourceLink, { ...widenedCatalogScope, source_platform: "16688" });
@@ -198,8 +201,9 @@ test("catalog failure retry retains the complete current scope", async (context)
   const nodes = catalogDescendants(await ProductCatalogPage({ rawParams: widenedCatalogScope }));
   const alert = nodes.find((node) => node.props?.role === "alert");
   assert.ok(alert, "catalog failure must expose an error state");
-  const retryLink = catalogLink(catalogDescendants(alert), (url) => url.pathname === "/products");
-  assertCatalogScope(retryLink, widenedCatalogScope);
+  const retryLink = catalogLink(catalogDescendants(alert), (url) => url.pathname === "/brands/claude");
+  const { brand, ...scope } = widenedCatalogScope;
+  assertCatalogScope(retryLink, scope);
 });
 
 test("empty brand catalog keeps its brand when opening related offers", async (context) => {
@@ -212,6 +216,28 @@ test("empty brand catalog keeps its brand when opening related offers", async (c
   const nodes = catalogDescendants(await ProductCatalogPage({ rawParams: { brand: "Claude" } }));
   const empty = nodes.find((node) => node.props?.className === "catalog-empty");
   assert.ok(empty, "an empty brand catalog must expose its related-offers action");
-  const relatedLink = catalogLink(catalogDescendants(empty), (url) => url.pathname === "/products");
-  assertCatalogScope(relatedLink, { brand: "Claude", comparable: "false" });
+  const relatedLink = catalogLink(catalogDescendants(empty), (url) => url.pathname === "/brands/claude");
+  assertCatalogScope(relatedLink, { comparable: "false" });
+});
+
+test("canonical brand pages keep search, source and stock filters on the brand path", async (context) => {
+  const calls = [];
+  context.mock.method(globalThis, "fetch", async (url) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify(String(url).includes("/meta") ? mockCatalogMetadata() : { items: [], total: 0 }), { status: 200 });
+  });
+  const nodes = catalogDescendants(await ProductCatalogPage({ catalogBrand: "Claude", rawParams: { ...widenedCatalogScope, brand: "OpenAI" } }));
+  const filters = nodes.find((node) => node.type?.name === "OfferScopeControls");
+  assert.equal(filters.props.action, "/brands/claude");
+  assert.equal(filters.props.hiddenFields.brand, undefined);
+  assert.equal(new URL(calls.find((url) => url.includes("/catalog/groups"))).searchParams.get("brand"), "Claude");
+  const sourceLink = catalogLink(nodes, (url) => url.pathname === "/brands/claude" && url.searchParams.get("source_platform") === "16688");
+  const { brand, ...scope } = widenedCatalogScope;
+  assertCatalogScope(sourceLink, { ...scope, source_platform: "16688" });
+  const search = catalogDescendants(OfferScopeControls(filters.props)).find((node) => node.type?.name === "SearchBox");
+  const cleared = new URL(buildSearchHref(search.props.action, "", search.props.filters), "https://example.test");
+  assert.equal(cleared.pathname, "/brands/claude");
+  assert.equal(cleared.searchParams.has("brand"), false);
+  assert.equal(cleared.searchParams.has("q"), false);
+  assert.equal(cleared.searchParams.get("in_stock"), "true");
 });

@@ -9,18 +9,18 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { HomeRelays, HomeRelayPreview } from "@/components/home-relays";
 import { getMeta, getProducts } from "@/lib/api";
 import { productDisplayName } from "@/lib/product-identity";
-import { BRAND_TABS, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { BRAND_TABS, brandCatalogPath, STANDALONE_PRODUCTS } from "@/lib/catalog";
 import { exactTime, relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "AI 订阅比价｜查价格、库存和交付方式",
+  title: "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比",
   description: "汇总 ChatGPT、Claude、Gemini、Grok 等 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "AI 订阅比价｜查价格、库存和交付方式",
+    title: "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比",
     description: "汇总主流 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
     url: SITE_URL,
     siteName: "AI Price Memory / AI Price Radar",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI 订阅比价｜查价格、库存和交付方式",
+    title: "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比",
     description: "查看主流 AI 产品的公开价格、库存、交付方式和更新时间。",
   },
 };
@@ -57,7 +57,7 @@ export default async function HomePage() {
 
       <nav className="home-brands shell" aria-label="按品牌或商品查看报价">
         {BRAND_TABS.map((brand) => (
-          <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`}>
+          <Link key={brand} href={brandCatalogPath(brand)}>
             <PlatformIcon platform={brand} size={26} />
             <span>{brand}</span>
           </Link>
@@ -99,6 +99,7 @@ export default async function HomePage() {
 
       <nav className="home-resources shell" aria-label="更多工具与指南">
         {[
+          { href: "/compare", title: "AI 模型与订阅对比" },
           { href: "/skills", title: "技能与实验室" },
           { href: "/skills/pelican-bicycle-benchmark", title: "模型评测" },
           { href: "/guides/buying-checklist", title: "购买前检查" },

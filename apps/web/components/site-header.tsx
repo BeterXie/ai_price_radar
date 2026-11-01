@@ -10,6 +10,7 @@ import { fetchAuthMe, AUTH_CHANGE_EVENT } from "@/lib/auth-client";
 import type { AuthSessionState } from "@/lib/types";
 import { initUserHeartbeat } from "@/lib/analytics";
 import { LoginModal } from "@/components/login-modal";
+import { brandCatalogPath } from "@/lib/catalog";
 
 const brandLinks = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 
@@ -29,6 +30,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
     { href: "/skills", label: "技能与实验室" },
   ];
   const helpLinks = [
+    { href: "/compare", label: "模型对比" },
     { href: "/guides", label: "购买指南" },
     { href: "/methodology", label: "数据方法" },
   ];
@@ -176,7 +178,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
                 <p className="px-2 text-[11px] font-semibold tracking-[.06em] text-[color:var(--muted)]">按品牌查看报价</p>
                 <div className="mt-2 grid grid-cols-2 gap-1">
                   {brandLinks.map((brand) => (
-                    <Link key={brand} href={`/products?platform=${encodeURIComponent(brand)}`} onClick={closeMenu} className="nav-link flex min-h-11">
+                    <Link key={brand} href={brandCatalogPath(brand)} onClick={closeMenu} className="nav-link flex min-h-11">
                       <PlatformIcon platform={brand} size={15} />{brand}
                     </Link>
                   ))}

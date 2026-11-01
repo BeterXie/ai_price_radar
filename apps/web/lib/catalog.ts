@@ -54,6 +54,15 @@ export const SCENARIO_LABELS: Record<string, string> = {
 
 export const BRAND_TABS = ["OpenAI", "Claude", "Gemini", "Grok", "X", "Cursor", "MUSE", "JEV"] as const;
 export type BrandName = (typeof BRAND_TABS)[number];
+export function brandCatalogPath(brand: string): string {
+  return BRAND_TABS.includes(brand as BrandName)
+    ? `/brands/${brand.toLowerCase()}`
+    : brand ? `/products?brand=${encodeURIComponent(brand)}` : "/products";
+}
+
+export function brandFromSlug(slug: string): BrandName | undefined {
+  return BRAND_TABS.find((brand) => brand.toLowerCase() === slug);
+}
 export const STANDALONE_PRODUCTS = [{ label: "手机接码", slug: "chatgpt-access-service" }] as const;
 export const PRODUCT_CATEGORIES = [...BRAND_TABS, "手机接码"] as const;
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];

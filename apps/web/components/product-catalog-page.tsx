@@ -11,14 +11,17 @@ import { RelayCatalogPage } from "@/components/relay-catalog-page";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
 import { exactTime, relativeTime } from "@/lib/format";
 import { normalizeSearchQuery } from "@/lib/search";
+import { getBrandSeoContent } from "@/lib/brand-seo";
+import { getProductSeoContent } from "@/lib/product-seo";
+import { breadcrumbJsonLd, JsonLd } from "@/components/structured-data";
 import type { Meta } from "@/lib/types";
-import { BRAND_TABS, type BrandName, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { BRAND_TABS, type BrandName, brandCatalogPath, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
 
 const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
 function withQuery(path: string, query: URLSearchParams) {
   const value = query.toString();
-  return value ? `${path}?${value}` : path;
+  return value ? `${path}${path.includes("?") ? "&" : "?"}${value}` : path;
 }
 
 const NARROWING_KEYS = ["source_platform", "delivery_type", "period", "warranty", "auto_delivery", "updated_within_hours", "min_price", "max_price", "in_stock"] as const;
@@ -28,7 +31,9 @@ export function hasNarrowingFilters(rawParams: RawSearchParams) {
   return Boolean(normalizeSearchQuery(single(rawParams, "q"))) || NARROWING_KEYS.some((key) => Boolean(single(rawParams, key)));
 }
 
-export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawParams: RawSearchParams; productSlug?: string }) {
+export async function ProductCatalogPage({ rawParams, productSlug = "", catalogBrand = "" }: { rawParams: RawSearchParams; productSlug?: string; catalogBrand?: BrandName | "" }) {
+  if (catalogBrand) rawParams = { ...rawParams, brand: catalogBrand, platform: catalogBrand };
+  const basePath = catalogBrand ? brandCatalogPath(catalogBrand) : "/products";
   if (!productSlug && (single(rawParams, "brand") || single(rawParams, "platform")) === "中转站") {
     return <RelayCatalogPage rawParams={rawParams} basePath="/products" />;
   }
@@ -88,46 +93,47 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
   // Page URLs retain comparable=false; the API intentionally omits it when
   // including related offers. Reusing the API query here would lose that choice.
   const scopeQuery = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  // Default scope must link to indexable canonical pages, not noindex variants.
+  if (scopeQuery.get("comparable") === "true") scopeQuery.delete("comparable");
   if (activeSourcePlatform) scopeQuery.set("source_platform", activeSourcePlatform);
   if (searchQuery) scopeQuery.set("q", searchQuery);
   const hasActiveFilters = Boolean(searchQuery || activeSourcePlatform || hasNarrowingFilters(rawParams) || filters.comparable === "false");
   const catalogHref = (brand = "") => {
-    const next = new URLSearchParams(scopeQuery);
-    if (brand) next.set("brand", brand);
-    return withQuery("/products", next);
+    return withQuery(brandCatalogPath(brand), scopeQuery);
   };
   const productHref = (slug: string) => withQuery(`/products/${encodeURIComponent(slug)}`, scopeQuery);
   const sourceHref = (sourcePlatform = "") => {
     const next = new URLSearchParams(scopeQuery);
     if (sourcePlatform) next.set("source_platform", sourcePlatform);
     else next.delete("source_platform");
-    if (!product && activeBrand) next.set("brand", activeBrand);
-    return withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", next);
+    if (!product && activeBrand && !catalogBrand) next.set("brand", activeBrand);
+    return withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : basePath, next);
   };
   const navigationQuery = new URLSearchParams();
-  if (!product && activeBrand) navigationQuery.set("brand", activeBrand);
+  if (!product && activeBrand && !catalogBrand) navigationQuery.set("brand", activeBrand);
   if (activeSourcePlatform) navigationQuery.set("source_platform", activeSourcePlatform);
   if (searchQuery) navigationQuery.set("q", searchQuery);
-  const navigationHref = withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : "/products", navigationQuery);
-  const clearFiltersHref = activeBrand ? `/products?brand=${encodeURIComponent(activeBrand)}` : "/products";
+  const navigationHref = withQuery(product ? `/products/${encodeURIComponent(product.slug)}` : basePath, navigationQuery);
+  const clearFiltersHref = brandCatalogPath(activeBrand);
   const relatedQuery = new URLSearchParams(scopeQuery);
   relatedQuery.set("comparable", "false");
-  if (activeBrand) relatedQuery.set("brand", activeBrand);
-  const relatedHref = withQuery("/products", relatedQuery);
+  const relatedHref = withQuery(brandCatalogPath(activeBrand), relatedQuery);
   const stockQuery = new URLSearchParams(scopeQuery);
-  if (activeBrand) stockQuery.set("brand", activeBrand);
+  if (activeBrand && !catalogBrand) stockQuery.set("brand", activeBrand);
   if (filters.in_stock === "true") stockQuery.delete("in_stock");
   else stockQuery.set("in_stock", "true");
   const hiddenFields = {
-    ...(!product && activeBrand ? { brand: activeBrand } : {}),
+    ...(!product && activeBrand && !catalogBrand ? { brand: activeBrand } : {}),
     ...(activeSourcePlatform ? { source_platform: activeSourcePlatform } : {}),
     ...(searchQuery ? { q: searchQuery } : {}),
   };
-  const headingTitle = product ? `${product.display_name} 报价` : searchQuery ? `“${searchQuery}”的报价` : activeBrand ? `${activeBrand} 报价` : "报价目录";
+  const headingTitle = product ? `${product.display_name} 比价` : searchQuery ? `“${searchQuery}”的报价` : activeBrand ? `${activeBrand} 比价` : "AI 订阅比价";
+  const intro = product ? getProductSeoContent(product.slug, product.display_name, product.description).intro
+    : productTabBrand ? getBrandSeoContent(productTabBrand).description : "比较公开商品的价格、库存、交付方式和更新时间。";
 
   return (
     <main id="main-content" className="catalog-page shell">
-      <h1 className="sr-only">{headingTitle}</h1>
+      {catalogBrand ? <JsonLd data={breadcrumbJsonLd([{ name: "首页", path: "/" }, { name: `${catalogBrand} 比价`, path: basePath }])} /> : null}
 
       <div className="catalog-layout">
         <aside className="catalog-sidebar">
@@ -150,6 +156,11 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
         </aside>
 
         <div className="catalog-content">
+          <header className="mb-5 border-b border-[color:var(--line)] pb-4">
+            <h1 className="text-2xl font-semibold tracking-tight">{headingTitle}</h1>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
+            <Link href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
+          </header>
           {productTabs.length > 0 ? (
             <div className="catalog-plans">
               <nav aria-label="商品类型筛选" className="catalog-plan-row">
@@ -190,12 +201,12 @@ export async function ProductCatalogPage({ rawParams, productSlug = "" }: { rawP
           ) : (
             <>
               <OfferScopeControls
-                action="/products"
+                action={basePath}
                 values={filters}
                 hiddenFields={hiddenFields}
                 resetHref={navigationHref}
                 compact
-                quickFilter={<Link href={withQuery("/products", stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}
+                quickFilter={<Link href={withQuery(basePath, stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}
               />
               {catalog ? (
                 <>

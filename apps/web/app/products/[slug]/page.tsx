@@ -17,19 +17,19 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
   const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
   const indexable = product.offer_count > 0 && Object.keys(rawParams).length === 0;
   return {
-    title: `${product.display_name}价格对比`,
+    title: `${product.display_name} 比价｜价格、库存与店铺`,
     description: seo.metaDescription,
     alternates: { canonical },
     robots: { index: indexable, follow: true },
     openGraph: {
-      title: `${product.display_name}价格对比`,
+      title: `${product.display_name} 比价｜价格、库存与店铺`,
       description: seo.metaDescription,
       url: canonical,
       type: "website",
     },
     twitter: {
       card: "summary_large_image",
-      title: `${product.display_name}价格对比`,
+      title: `${product.display_name} 比价｜价格、库存与店铺`,
       description: seo.metaDescription,
     },
   };
