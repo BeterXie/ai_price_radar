@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session, contains_eager
 from app.database import SessionLocal
 from app.models import CatalogSnapshot, Offer, OfferHistory, Product, UserBotBinding
 from app.schemas import OfferGroupPublic, OfferPublic
-from app.services.account_plans import PLAN_PRODUCTS, canonical_product_slug
+from app.services.catalog_vocabulary import (
+    BRAND_ALIASES, BRAND_GROUPS, PRODUCT_ALIASES, DELIVERY_LABELS,
+    PERIOD_LABELS, WARRANTY_LABELS, _normalize_query_alias,
+)
 from app.services.bot_binding import complete_qq_binding
 from app.services.catalog import (
     OfferFilters,
@@ -31,198 +34,6 @@ logger = logging.getLogger(__name__)
 
 SITE_BASE_URL = os.getenv("NEXT_PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
 
-DELIVERY_LABELS: dict[str, str] = {
-    "subscription_recharge": "官方直充 / 代充",
-    "finished_account": "成品账号",
-    "semi_finished_account": "半成品 / 首登号",
-    "team_seat": "团队席位",
-    "card_code": "卡密 / 兑换码",
-    "trial_account": "日抛 / 体验号",
-    "shared_pool": "共享号池",
-    "relay_api": "中转 / 反代",
-    "api_credit": "API 额度",
-    "verification_service": "验证 / 接码服务",
-    "unknown": "形态待确认",
-}
-
-PERIOD_LABELS: dict[str, str] = {
-    "one_day": "1 天 / 日抛",
-    "one_week": "1 周",
-    "one_month": "1 个月",
-    "three_months": "3 个月",
-    "six_months": "6 个月",
-    "one_year": "1 年",
-    "unknown": "期限未注明",
-}
-
-WARRANTY_LABELS: dict[str, str] = {
-    "none": "无质保",
-    "first_login": "仅首登质保",
-    "one_hour": "1 小时质保",
-    "one_day": "24 小时质保",
-    "three_days": "3 天质保",
-    "seven_days": "7 天质保",
-    "subscription_term": "订阅期全保",
-    "unknown": "质保未注明",
-}
-
-def _normalize_query_alias(value: str) -> str:
-    return "".join(value.split()).casefold()
-
-
-BRAND_GROUPS: dict[str, dict[str, Any]] = {
-    "Claude": {
-        "title": "Claude 全系列最低报价一览",
-        "aliases": ["claude", "anthropic", "克劳德"],
-        "hint": "发送具体套餐（如「claude pro」、「claude max 5x」、「claude max 20x」、「claude team」）可查看最低价与店铺详情。",
-    },
-    "OpenAI": {
-        "title": "OpenAI / ChatGPT 全系列最低报价一览",
-        "aliases": ["openai", "chatgpt", "gpt"],
-        "hint": "发送具体型号（如「chatgpt plus」、「chatgpt 5x」、「chatgpt 20x」、「chatgpt go」）可查看最低价与店铺详情。",
-    },
-    "Gemini": {
-        "title": "Gemini 全系列最低报价一览",
-        "aliases": ["gemini", "google", "双子座", "谷歌ai"],
-        "hint": "发送具体套餐（如「gemini pro」、「gemini ultra」、「gemini账号」）可查看最低价与店铺详情。",
-    },
-    "Grok": {
-        "title": "Grok 全系列最低报价一览",
-        "aliases": ["grok", "xai", "x.ai"],
-        "hint": "发送具体型号（如「supergrok」、「grok api」）可查看最低价与店铺详情。",
-    },
-    "X": {
-        "title": "X (Twitter) Premium 全系列最低报价一览",
-        "aliases": ["x", "twitter", "推特", "x会员"],
-        "hint": "发送具体型号（如「premium」、「premium+」）可查看最低价与店铺详情。",
-    },
-    "Cursor": {
-        "title": "Cursor 全系列最低报价一览",
-        "aliases": ["cursor", "cursor会员"],
-        "hint": "发送具体型号（如「cursor pro」、「cursor账号」）可查看最低价与店铺详情。",
-    },
-}
-
-BRAND_ALIASES: dict[str, str] = {}
-for brand_key, cfg in BRAND_GROUPS.items():
-    for alias in cfg["aliases"]:
-        BRAND_ALIASES[_normalize_query_alias(alias)] = brand_key
-
-# Aliases mapped to canonical product slugs for single-product deep dive
-PRODUCT_ALIASES: dict[str, str] = {
-    # ChatGPT / OpenAI models
-    "plus": "chatgpt-plus",
-    "chatgpt plus": "chatgpt-plus",
-    "gpt plus": "chatgpt-plus",
-    "chatgpt-plus": "chatgpt-plus",
-    "gpt 5x": "chatgpt-pro-5x",
-    "chatgpt 5x": "chatgpt-pro-5x",
-    "chatgpt pro 5x": "chatgpt-pro-5x",
-    "chatgpt-pro-5x": "chatgpt-pro-5x",
-    "gpt 20x": "chatgpt-pro-20x",
-    "chatgpt 20x": "chatgpt-pro-20x",
-    "chatgpt pro 20x": "chatgpt-pro-20x",
-    "chatgpt-pro-20x": "chatgpt-pro-20x",
-    "chatgpt pro": "chatgpt-pro",
-    "gpt pro": "chatgpt-pro",
-    "chatgpt-pro": "chatgpt-pro",
-    "go": "chatgpt-go",
-    "chatgpt go": "chatgpt-go",
-    "gpt go": "chatgpt-go",
-    "codex go": "chatgpt-go",
-    "chatgpt-go": "chatgpt-go",
-    "team": "chatgpt-business",
-    "gpt team": "chatgpt-business",
-    "chatgpt team": "chatgpt-business",
-    "k12": "chatgpt-k12",
-    "团队": "chatgpt-business",
-    "车位": "chatgpt-business",
-    "chatgpt-k12": "chatgpt-k12",
-    "gpt 账号": "chatgpt-account",
-    "chatgpt 账号": "chatgpt-account",
-    "chatgpt free": "chatgpt-account",
-    "free": "chatgpt-account",
-    "chatgpt-account": "chatgpt-account",
-    "chatgpt 接码": "chatgpt-access-service",
-    "chatgpt 手机接码": "chatgpt-access-service",
-    "openai 接码": "chatgpt-access-service",
-    "手机接码": "chatgpt-access-service",
-    "chatgpt-access-service": "chatgpt-access-service",
-    "openai api": "openai-api-credit",
-    "openai-api-credit": "openai-api-credit",
-    # Claude models
-    "pro": "claude-pro",
-    "claude pro": "claude-pro",
-    "claude-pro": "claude-pro",
-    "5x": "claude-max-5x",
-    "claude 5x": "claude-max-5x",
-    "claude max": "claude-max",
-    "20x": "claude-pro-20x",
-    "claude 20x": "claude-pro-20x",
-    "claude pro 20x": "claude-pro-20x",
-    "claude max 20x": "claude-pro-20x",
-    "claude-pro-20x": "claude-pro-20x",
-    "claude team": "claude-team",
-    "claude-team": "claude-team",
-    "claude 车位": "claude-team",
-    "claude 团队": "claude-team",
-    "claude 账号": "claude-account",
-    "claude-account": "claude-account",
-    "claude api": "claude-api-access",
-    "claude-api-access": "claude-api-access",
-    # Gemini models
-    "gemini advanced": "gemini-advanced",
-    "gemini pro": "gemini-pro",
-    "gemini plus": "gemini-plus",
-    "gemini ultra": "gemini-ultra",
-    "gemini ultra 5x": "gemini-ultra-5x",
-    "gemini ultra 20x": "gemini-ultra-20x",
-    "gemini-advanced": "gemini-advanced",
-    "advanced": "gemini-advanced",
-    "gemini 账号": "gemini-account",
-    "gemini-account": "gemini-account",
-    "gemini api": "gemini-api-access",
-    "gemini-api-access": "gemini-api-access",
-    # Grok models
-    "grok super": "grok-plan-super",
-    "grok-super": "grok-super",
-    "supergrok": "grok-super",
-    "grok 账号": "grok-account",
-    "grok-account": "grok-account",
-    "grok api": "grok-api-access",
-    "grok-api-access": "grok-api-access",
-    # X Premium models
-    "premium basic": "x-premium-basic",
-    "x premium basic": "x-premium-basic",
-    "x-premium-basic": "x-premium-basic",
-    "premium": "x-premium",
-    "x premium": "x-premium",
-    "x-premium": "x-premium",
-    "premium+": "x-premium-plus",
-    "premium plus": "x-premium-plus",
-    "x premium+": "x-premium-plus",
-    "x premium plus": "x-premium-plus",
-    "x-premium-plus": "x-premium-plus",
-    # Others
-    "deepseek": "deepseek-r1",
-    "codex": "chatgpt-plus",
-    "codex plus": "chatgpt-plus",
-    "api": "openai-api-credit",
-    # Cursor models
-    "cursor": "cursor-pro",
-    "cursor pro": "cursor-pro",
-    "cursor-pro": "cursor-pro",
-    "cursor pro plus": "cursor-pro-plus",
-    "cursor teams": "cursor-business",
-    "cursor business": "cursor-business",
-    "cursor-business": "cursor-business",
-    "cursor 账号": "cursor-account",
-    "cursor-account": "cursor-account",
-}
-for slug, _brand, name, _subtitle in PLAN_PRODUCTS:
-    PRODUCT_ALIASES[slug] = slug
-    PRODUCT_ALIASES[name] = slug
-PRODUCT_ALIASES = {_normalize_query_alias(alias): canonical_product_slug(slug) for alias, slug in PRODUCT_ALIASES.items()}
 
 
 def _get_current_snapshot(db: Session) -> CatalogSnapshot | None:
@@ -763,6 +574,9 @@ def help_menu() -> str:
         "  • api / openai api — 查询 OpenAI API 额度商品",
         "  • 中转 / 中转站 — 查看跨品牌中转、反代商品报价",
         "  • 查 <关键词> — 搜索任意商品或服务最低价",
+        "  • Claude Pro 月付，100元以内 — 组合条件搜索",
+        "  • 只看独享 / 有质保 / 下一页 / 第二家 — 连续筛选和查看详情",
+        "  • 清除筛选 / 重新搜索 — 清空条件或开始新查询",
         "",
         "📊 大盘行情与发现:",
         "  • 行情 / 大盘 — 查看主流 AI 服务价格看板",
@@ -787,10 +601,14 @@ def handle_chat_command(
     sender_id: str = "",
     channel: str = "qq",
     db: Session | None = None,
+    *,
+    account_id: str = "",
+    conversation_id: str = "c2c",
 ) -> str:
     """Main router for inbound chat messages from QQ Bot and Telegram Bot.
 
-    Can be invoked with an existing DB session or will open a standalone one.
+    Price searches use the published local snapshot. Account and history commands
+    use the supplied DB session or open a standalone one.
     """
     text = (raw_text or "").strip()
     if not text:
@@ -823,10 +641,8 @@ def handle_chat_command(
 
     # 3. Market Overview / Ticker
     if low in ("行情", "大盘", "概况", "市场", "价格", "汇总"):
-        if db is not None:
-            return query_market_overview(db)
-        with SessionLocal() as session:
-            return query_market_overview(session)
+        from .snapshot_chat import snapshot_chat
+        return snapshot_chat.reply(text, sender_id=sender_id, channel=channel, account_id=account_id, conversation_id=conversation_id)
 
     # 4. Recent Drops
     if low in ("降价", "今日降价", "特价", "捡漏", "打折", "便宜", "特惠", "cheap"):
@@ -862,22 +678,8 @@ def handle_chat_command(
         with SessionLocal() as session:
             return toggle_user_preference(session, sender_id, text, channel)
 
-    # 7. Search prefix (e.g. 查 plus, 搜 claude, 价格 gpt)
-    # Longer prefixes must come first, otherwise "查询 plus" would match "查"
-    # and leave the query term as "询 plus".
-    search_match = re.match(r"^(?:查询|搜索|价格|比价|查|搜|找)\s*(.+)$", text, re.IGNORECASE)
-    query_term = search_match.group(1).strip() if search_match else text
-
-    # 8. Check brand queries first (e.g. claude, openai, chatgpt, gemini, grok)
-    matched_brand = BRAND_ALIASES.get(_normalize_query_alias(query_term))
-    if matched_brand:
-        if db is not None:
-            return query_brand_lowest_prices(db, matched_brand)
-        with SessionLocal() as session:
-            return query_brand_lowest_prices(session, matched_brand)
-
-    # 9. Product Lowest Price Query (e.g. plus, pro, 20x, team, etc.)
-    if db is not None:
-        return query_lowest_price(db, query_term)
-    with SessionLocal() as session:
-        return query_lowest_price(session, query_term)
+    from .snapshot_chat import snapshot_chat
+    return snapshot_chat.reply(
+        text, sender_id=sender_id, channel=channel,
+        account_id=account_id, conversation_id=conversation_id,
+    )

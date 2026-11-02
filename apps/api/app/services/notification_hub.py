@@ -155,7 +155,7 @@ def handle_inbound_chat_message(
         module = importlib.import_module(module_name)
         handler_fn = getattr(module, "handle_chat_command", None)
         if callable(handler_fn):
-            return handler_fn(text, sender_id=sender_id, channel=channel, db=db_session)
+            return handler_fn(text, sender_id=sender_id, channel=channel, db=db_session, conversation_id="web")
     except ModuleNotFoundError as exc:
         if _is_missing_extension_module(exc, module_name):
             logger.info("Private bot extensions not installed; cannot handle chat command")

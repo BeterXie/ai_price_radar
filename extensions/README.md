@@ -80,6 +80,8 @@ QQ_BOT_BRIDGE_TOKEN="your-32-chars-secret-token"
 
 ## 常用指令与测试
 
+报价查询已接入全量快照、本地搜索、模板回复和连续筛选。数据格式、对话示例、会话范围及启用条件见 [机器人快照搜索](../docs/SNAPSHOT_BOT_SEARCH.md)。
+
 ### 比价与查询指令
 机器人接收到消息后会自动路由至 `chat_commands.py` 进行模糊匹配：
 - `plus` / `chatgpt plus`：查询当前各店铺 ChatGPT Plus 的最低价、现货与店铺排名。

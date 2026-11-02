@@ -34,6 +34,7 @@ def db(tmp_path: Path):
 def test_export_public_snapshot(db, tmp_path: Path, source_platform):
     products = ensure_products(db)
     plus_product = products["chatgpt-plus"]
+    plus_product.search_keywords = ["OpenAI", "subscription"]
 
     shop = Shop(
         token="test-shop-1",
@@ -102,6 +103,50 @@ def test_export_public_snapshot(db, tmp_path: Path, source_platform):
     assert len(plus_snap["top_5_offers"]) == 1
     assert plus_snap["top_5_offers"][0]["shop_token"] == "test-shop-1"
     assert plus_snap["top_5_offers"][0]["price"] == 120.0
+    assert snapshot_data["search_schema_version"] == 1
+    assert snapshot_data["stale_offer_hours"] == 72
+    assert plus_snap["offers"][0]["account_access"] == "exclusive"
+    assert "plus" in plus_snap["search_aliases"]
+    assert "OpenAI" not in plus_snap["search_aliases"]
+    assert plus_snap["search_keywords"] == ["OpenAI", "subscription"]
+    assert plus_snap["offers"][0]["observed_at"]
+
+
+def test_export_contains_every_public_quote_and_filters_hidden_stale_rows(db, tmp_path, monkeypatch):
+    from datetime import timedelta
+    products = ensure_products(db)
+    shop = Shop(token="all-quotes", name="报价店", source_url="https://example.com")
+    snapshot = CatalogSnapshot(source="test", published_at=utcnow())
+    db.add_all([shop, snapshot])
+    db.flush()
+    for index in range(12):
+        raw = RawProduct(shop_id=shop.id, source_product_key=str(index), original_name=f"Plus 月付 {'独享' if index == 6 else '成品号'}")
+        db.add(raw)
+        db.flush()
+        db.add(Offer(
+            raw_product_id=raw.id, product_id=products["chatgpt-plus"].id, shop_id=shop.id,
+            snapshot_id=snapshot.id, price=Decimal(100 + index), stock_status="in_stock",
+            delivery_type="finished_account", service_period="one_month", is_comparable=True,
+            active=index != 7, approved=index != 8, hidden_reason="hidden" if index == 9 else "",
+            observed_at=utcnow() - timedelta(hours=80 if index == 10 else 0),
+        ))
+    products["claude-pro"].is_visible = False
+    db.commit()
+    export_public_snapshot(db, output_dir=tmp_path)
+    data = json.loads((tmp_path / "v1" / "snapshots" / f"{snapshot.id}.json").read_text(encoding="utf-8"))
+    plus = next(p for p in data["products"] if p["slug"] == "chatgpt-plus")
+    assert len(plus["offers"]) == plus["offer_count"] == 8
+    assert len(plus["top_5_offers"]) == 5
+    assert any(o["price"] == 106 and o["account_access"] == "exclusive" for o in plus["offers"])
+    assert all(o["account_access"] == "unknown" for o in plus["offers"] if o["price"] != 106)
+    assert not any(p["slug"] == "claude-pro" for p in data["products"])
+    assert data["offer_count"] == sum(len(p["offers"]) for p in data["products"])
+    # Exercise the actual published file through the bot, with the database closed.
+    db.close()
+    monkeypatch.setenv("PUBLIC_DATA_DIR", str(tmp_path))
+    from extensions.bots.chat_commands import handle_chat_command
+    reply = handle_chat_command("plus 独享 月付 110元以内", sender_id="snapshot-e2e")
+    assert "¥106.00" in reply and "¥100.00" not in reply
 
 
 def test_historical_export_never_rewrites_latest_pointer(db, tmp_path: Path):

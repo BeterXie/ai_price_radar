@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import statistics
 from collections import defaultdict
@@ -14,6 +15,9 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for
+from app.services.catalog_vocabulary import (
+    BRAND_GROUPS, account_access, normalize_search, product_search_aliases,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,8 @@ def _fresh_cutoff(reference_time: datetime) -> datetime:
     try:
         parsed_hours = float(hours)
     except ValueError:
+        parsed_hours = float(DEFAULT_STALE_OFFER_HOURS)
+    if not math.isfinite(parsed_hours) or not 1 <= parsed_hours <= 24 * 30:
         parsed_hours = float(DEFAULT_STALE_OFFER_HOURS)
     return reference_time - timedelta(hours=parsed_hours)
 
@@ -192,6 +198,7 @@ def export_public_snapshot(
 
     now_utc = datetime.now(timezone.utc)
     published_dt = _as_utc(snapshot.published_at or snapshot.created_at) or now_utc
+    fresh_cutoff = _fresh_cutoff(published_dt)
     age_hours = (now_utc - published_dt).total_seconds() / 3600.0
     is_stale = age_hours > 2.0
 
@@ -225,11 +232,8 @@ def export_public_snapshot(
             stmt = stmt.where(
                 or_(Shop.platform.is_(None), Shop.platform.notin_(DISABLED_SOURCE_PLATFORMS))
         )
-        stmt = stmt.where(Offer.observed_at >= _fresh_cutoff(published_dt))
+        stmt = stmt.where(Offer.observed_at >= fresh_cutoff)
         rows = db.execute(stmt).all()
-        if not rows:
-            continue
-
         offer_count = len(rows)
         total_offers_count += offer_count
 
@@ -304,17 +308,18 @@ def export_public_snapshot(
             is_stock = 0 if offer.stock_status == "in_stock" else 1
             is_comp = 0 if offer.is_comparable else 1
             price_val = float(offer.price) if offer.price is not None else 999999.0
-            return (is_stock, is_comp, price_val)
+            currency = (offer.currency or "CNY").upper()
+            observed = _as_utc(offer.observed_at) or published_dt
+            return (is_stock, is_comp, currency != "CNY", currency, offer.price is None,
+                    price_val < 1, price_val, -observed.timestamp(), offer.id)
 
         sorted_rows = sorted(rows, key=offer_sort_key)
-        top_5_rows = sorted_rows[:5]
-
-        top_5_offers = []
-        for offer, shop, raw in top_5_rows:
+        public_offers = []
+        for offer, shop, raw in sorted_rows:
             # Reuse the same trusted set the aggregate metrics were computed from
             # so summary and detail can never disagree.
             is_trusted = offer.id in trusted_offer_ids
-            top_5_offers.append({
+            public_offers.append({
                 "id": offer.id,
                 "shop_token": shop.token,
                 "shop_name": shop.name or shop.token,
@@ -322,7 +327,7 @@ def export_public_snapshot(
                 "source_url": offer.source_url or raw.source_url or shop.source_url,
                 "original_name": raw.original_name,
                 "price": float(offer.price) if offer.price is not None else None,
-                "currency": (offer.currency or "CNY"),
+                "currency": (offer.currency or "CNY").upper(),
                 "stock_status": offer.stock_status,
                 "stock_count": offer.stock_count,
                 "delivery_type": offer.delivery_type,
@@ -330,6 +335,17 @@ def export_public_snapshot(
                 "warranty": offer.warranty,
                 "is_comparable": bool(offer.is_comparable),
                 "is_trusted_price": is_trusted,
+                "account_access": account_access(raw.original_name, offer.delivery_type),
+                "tags": offer.tags or [],
+                "risk_flags": offer.risk_flags or [],
+                "use_scenarios": offer.use_scenarios or [],
+                "classification_confidence": offer.classification_confidence,
+                "item_fingerprint": offer.item_fingerprint,
+                "observed_at": (_as_utc(offer.observed_at) or published_dt).isoformat(),
+                "search_text": normalize_search(" ".join([
+                    raw.original_name, raw.original_category or "", shop.name or "", shop.token,
+                    *(offer.tags or []),
+                ])),
             })
 
         product_snapshots.append({
@@ -356,11 +372,17 @@ def export_public_snapshot(
             "official_reference": official_ref,
             "last_updated_at": latest_obs.isoformat() if latest_obs else None,
             "tags": all_tags,
-            "top_5_offers": top_5_offers,
+            "search_aliases": product_search_aliases(product.slug, product.display_name),
+            "search_keywords": product.search_keywords or [],
+            "brand_aliases": BRAND_GROUPS.get(product.platform, {}).get("aliases", [product.platform]),
+            "offers": public_offers,
+            "top_5_offers": public_offers[:5],
         })
 
     snapshot_data = {
         "schema_version": "price-radar.v1",
+        "search_schema_version": 1,
+        "stale_offer_hours": (published_dt - fresh_cutoff).total_seconds() / 3600,
         "snapshot_id": str(snapshot_id),
         "generated_at": (_as_utc(snapshot.created_at) or now_utc).isoformat(),
         "published_at": published_dt.isoformat(),

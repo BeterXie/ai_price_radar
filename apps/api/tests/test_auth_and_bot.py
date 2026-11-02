@@ -369,7 +369,25 @@ def test_qq_qr_binding_and_bind_current_flow(client: TestClient, test_db, mock_a
 
 
 @pytest.fixture
-def bot_product_catalog(test_db):
+def publish_bot_snapshot(test_db, tmp_path, monkeypatch):
+    from itertools import count
+    pipeline = str(REPO_ROOT / "pipeline")
+    if pipeline not in sys.path:
+        sys.path.insert(0, pipeline)
+    from export_snapshot import export_public_snapshot
+    from extensions.bots.snapshot_chat import snapshot_chat
+    snapshot_chat.sessions.clear()
+    sequence = count()
+
+    def publish():
+        directory = tmp_path / f"feed-{next(sequence)}"
+        export_public_snapshot(test_db, output_dir=directory)
+        monkeypatch.setenv("PUBLIC_DATA_DIR", str(directory))
+    return publish
+
+
+@pytest.fixture
+def bot_product_catalog(test_db, publish_bot_snapshot):
     from datetime import datetime, timezone
 
     from app.seed import PRODUCTS
@@ -381,6 +399,7 @@ def bot_product_catalog(test_db):
     }
     test_db.add_all(products.values())
     test_db.commit()
+    publish_bot_snapshot()
     return test_db, products
 
 
@@ -454,13 +473,14 @@ def test_bot_brand_recommended_queries_resolve_within_brand(bot_product_catalog,
             assert reply.startswith(expected_prefixes), f"{brand}: {text}: {reply}"
 
 
-def test_bot_product_name_search_preserves_word_boundaries(bot_product_catalog):
+def test_bot_product_name_search_preserves_word_boundaries(bot_product_catalog, publish_bot_snapshot):
     from extensions.bots.chat_commands import handle_chat_command
 
     db, _ = bot_product_catalog
     name = "Gemini 基础注册服务"
     db.add(Product(slug="gemini-registration-service", platform="Gemini", display_name=name, is_visible=True))
     db.commit()
+    publish_bot_snapshot()
     reply = handle_chat_command(f"查询 {name}", db=db)
     assert reply.startswith(f"📦【{name}】"), reply
 
@@ -496,7 +516,7 @@ def bot_quote(bot_product_catalog):
 
 
 @pytest.mark.parametrize("stock_count", [1, None, 0])
-def test_bot_prices_match_product_page_and_watchlist(bot_product_catalog, bot_quote, stock_count):
+def test_bot_prices_match_product_page_and_watchlist(bot_product_catalog, bot_quote, stock_count, publish_bot_snapshot):
     from app.services.catalog import get_product_detail, list_product_cards
     from extensions.bots.chat_commands import handle_chat_command
 
@@ -515,6 +535,7 @@ def test_bot_prices_match_product_page_and_watchlist(bot_product_catalog, bot_qu
     detail = get_product_detail(db, "chatgpt-plus")
     card = list_product_cards(db, product_slug="chatgpt-plus")[0]
     assert detail.lowest_price == card.lowest_price == Decimal("295")
+    publish_bot_snapshot()
     for command, expected in [
         ("plus", "最低在售: ¥295.00"),
         ("openai", "最低: ¥295.00"),
@@ -530,7 +551,7 @@ def test_bot_prices_match_product_page_and_watchlist(bot_product_catalog, bot_qu
     assert "已达标" in handle_chat_command("关注", sender_id="price-user", db=db)
 
 
-def test_bot_brand_reads_visible_categories_from_catalog(bot_product_catalog, bot_quote):
+def test_bot_brand_reads_visible_categories_from_catalog(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from app.services.catalog import list_product_cards
     from extensions.bots.chat_commands import handle_chat_command
 
@@ -543,6 +564,7 @@ def test_bot_brand_reads_visible_categories_from_catalog(bot_product_catalog, bo
     bot_quote("chatgpt-go", "34.65")
     bot_quote("chatgpt-access-service", "1.00", delivery_type="verification_service")
     bot_quote(new_product.slug, "40.00")
+    publish_bot_snapshot()
     reply = handle_chat_command("openai", db=db)
     cards = list_product_cards(db, platform="OpenAI")
     for card in cards:
@@ -552,11 +574,11 @@ def test_bot_brand_reads_visible_categories_from_catalog(bot_product_catalog, bo
     assert "34.65" in reply and "New OpenAI Plan" in reply
     assert "1.00" not in reply
     phone_reply = handle_chat_command("chatgpt接码", db=db)
-    assert phone_reply.startswith(f"🎯【{products['chatgpt-access-service'].display_name}】全网比价推荐"), phone_reply
+    assert phone_reply.startswith(f"📦【{products['chatgpt-access-service'].display_name}】"), phone_reply
     assert "¥1.00" in phone_reply
 
 
-def test_bot_ranking_merges_same_items_and_uses_site_order(bot_product_catalog, bot_quote):
+def test_bot_ranking_merges_same_items_and_uses_site_order(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from datetime import datetime, timedelta, timezone
 
     from app.services.catalog import get_product_detail, get_product_recommendations
@@ -573,13 +595,14 @@ def test_bot_ranking_merges_same_items_and_uses_site_order(bot_product_catalog, 
     assert len({offer.item_fingerprint for offer in recommendations}) == 5
     assert recommendations[0].id == newer.id
     assert [offer.id for offer in recommendations] == [group.representative.id for group in detail.offer_groups[:5]]
+    publish_bot_snapshot()
     reply = handle_chat_command("plus", db=db)
     assert "同款合并" in reply
     assert "5. ¥14.00" in reply and "¥15.00" not in reply
-    assert "服务期限: 1 个月" in reply
+    assert "1 个月" in reply
 
 
-def test_bot_hidden_categories_stay_hidden_in_all_commands(bot_product_catalog, bot_quote):
+def test_bot_hidden_categories_stay_hidden_in_all_commands(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from app.services.catalog import get_product_detail, get_product_recommendations
     from extensions.bots.chat_commands import handle_chat_command
 
@@ -601,6 +624,7 @@ def test_bot_hidden_categories_stay_hidden_in_all_commands(bot_product_catalog, 
     db.commit()
     assert get_product_detail(db, "chatgpt-plus") is None
     assert get_product_recommendations(db, "chatgpt-plus") == []
+    publish_bot_snapshot()
     for command in ("plus", "chatgpt-plus", "openai", "行情", "关注", "降价"):
         reply = handle_chat_command(command, sender_id="hidden-user", db=db)
         assert "¥100.00" not in reply
@@ -613,7 +637,7 @@ def test_bot_hidden_categories_stay_hidden_in_all_commands(bot_product_catalog, 
     assert "未找到" in handle_chat_command("plus", db=db)
 
 
-def test_bot_related_only_category_matches_site_expanded_scope(bot_product_catalog, bot_quote):
+def test_bot_related_only_category_matches_site_expanded_scope(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from app.services.catalog import OfferFilters, get_product_detail
     from extensions.bots.chat_commands import handle_chat_command
 
@@ -622,6 +646,7 @@ def test_bot_related_only_category_matches_site_expanded_scope(bot_product_catal
     bot_quote("gemini-advanced", "10", is_comparable=False, delivery_type="trial_account", stock_status="out_of_stock", stock_count=0)
     assert get_product_detail(db, "gemini-advanced").offer_group_count == 0
     assert get_product_detail(db, "gemini-advanced", filters=OfferFilters()).offer_group_count == 2
+    publish_bot_snapshot()
     reply = handle_chat_command("gemini advanced", db=db)
     assert "相关商品报价" in reply
     assert "¥20.00" in reply and "共享号池" in reply
@@ -630,7 +655,7 @@ def test_bot_related_only_category_matches_site_expanded_scope(bot_product_catal
     assert "/products/gemini-advanced?comparable=false" in reply
 
 
-def test_bot_relay_command_matches_site_cross_brand_scope(bot_product_catalog, bot_quote):
+def test_bot_relay_command_matches_site_cross_brand_scope(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from app.services.catalog import OfferFilters, get_catalog_group_page
     from extensions.bots.chat_commands import handle_chat_command
 
@@ -643,9 +668,10 @@ def test_bot_relay_command_matches_site_cross_brand_scope(bot_product_catalog, b
     db.commit()
     groups, total, *_ = get_catalog_group_page(db, offset=0, limit=5, filters=OfferFilters(delivery_type="relay_api"))
     assert total == 2
+    publish_bot_snapshot()
     for command in ("中转", "查询中转站", "relay"):
         reply = handle_chat_command(command, db=db)
-        assert "跨品牌，共 2 组" in reply
+        assert "共 2 组" in reply
         for group in groups:
             assert group.product_name in reply
         assert "USD 3.00" in reply
@@ -653,19 +679,20 @@ def test_bot_relay_command_matches_site_cross_brand_scope(bot_product_catalog, b
         assert "最低在售" not in reply
 
 
-def test_bot_rejects_suspicious_price_without_claiming_insufficient_stock(bot_product_catalog, bot_quote):
+def test_bot_rejects_suspicious_price_without_claiming_insufficient_stock(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from app.services.catalog import get_product_detail
     from extensions.bots.chat_commands import handle_chat_command
 
     db, _ = bot_product_catalog
     bot_quote("chatgpt-plus", "0.20", stock_count=5)
     assert get_product_detail(db, "chatgpt-plus").lowest_price is None
+    publish_bot_snapshot()
     reply = handle_chat_command("plus", db=db)
     assert "暂无通过价格校验的可比现货报价" in reply
     assert "最低在售" not in reply and "仅剩1件" not in reply
 
 
-def test_bot_price_trust_matches_site_delivery_type_median(bot_product_catalog, bot_quote):
+def test_bot_price_trust_matches_site_delivery_type_median(bot_product_catalog, bot_quote, publish_bot_snapshot):
     from app.services.catalog import get_product_detail, get_product_recommendations
     from extensions.bots.chat_commands import handle_chat_command
 
@@ -676,11 +703,12 @@ def test_bot_price_trust_matches_site_delivery_type_median(bot_product_catalog, 
     recommendations = get_product_recommendations(db, "chatgpt-plus")
     assert detail.lowest_price == recommendations[0].price == Decimal("10")
     assert all(offer.is_trusted_price for offer in recommendations)
+    publish_bot_snapshot()
     reply = handle_chat_command("plus", db=db)
     assert "最低在售: ¥10.00" in reply and "¥3.00" not in reply
 
 
-def test_bot_chat_commands(client: TestClient, test_db):
+def test_bot_chat_commands(client: TestClient, test_db, publish_bot_snapshot):
     try:
         import extensions.bots.chat_commands  # noqa: F401  (availability probe)
     except ImportError:
@@ -811,6 +839,7 @@ def test_bot_chat_commands(client: TestClient, test_db):
     )
     test_db.add_all([shop_hidden, raw4, raw5, raw6, off1, off2, off3, off4, off5, off6])
     test_db.commit()
+    publish_bot_snapshot()
 
     # A. The bot must agree with the website, including single-stock quotes.
     resp = client.post("/api/v1/user/notifications/bot/command", json={"text": "plus"})

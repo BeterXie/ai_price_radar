@@ -237,7 +237,7 @@ class QQBotClient:
         """Process inbound chat command, query lowest price or setting, and reply."""
         from .chat_commands import handle_chat_command
 
-        reply = handle_chat_command(text, sender_id=sender_id, channel="qq", db=db_session)
+        reply = handle_chat_command(text, sender_id=sender_id, channel="qq", db=db_session, account_id=self.app_id)
         if sender_id and self.is_configured:
             try:
                 self.send_c2c_message(sender_id, reply)

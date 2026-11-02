@@ -308,6 +308,8 @@ class QQGatewayService:
                                     raw_text=raw_content,
                                     sender_id=user_openid,
                                     channel="qq",
+                                    account_id=app_id,
+                                    conversation_id="c2c",
                                 )
                                 ok = await asyncio.to_thread(
                                     self.bot_client.send_c2c_message,
@@ -351,6 +353,8 @@ class QQGatewayService:
                                     raw_text=cleaned_content,
                                     sender_id=member_openid or "",
                                     channel="qq",
+                                    account_id=app_id,
+                                    conversation_id=f"group:{group_openid}",
                                 )
                                 ok = await asyncio.to_thread(
                                     self.bot_client.send_group_message,
