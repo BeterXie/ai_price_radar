@@ -10,6 +10,7 @@ from typing import Any
 
 from price_radar_http import PinnedHTTPSClient, PinnedResponse as ProbeResponse
 from sitemap import product_links, product_page_urls, sitemap_locations
+from storefront_catalog import is_storefront_catalog, normalize_storefront_catalog, storefront_name
 
 
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -321,14 +322,24 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
                     return ProbeResult("schema_org", origin, origin, host, count)
         try:
             document = _json(page)
-            items = document if isinstance(document, list) else document.get("items") if isinstance(document, dict) else None
-            if isinstance(items, list) and all(isinstance(item, dict) for item in items):
-                name = ""
-                if isinstance(document, dict) and isinstance(document.get("shop"), dict):
-                    name = str(document["shop"].get("name") or "").strip()
-                return ProbeResult("merchant_json", normalized, normalized, name, len(items))
         except (ValueError, json.JSONDecodeError):
-            pass
+            document = None
+        if is_storefront_catalog(document):
+            feed = normalize_storefront_catalog(document, normalized)
+            return ProbeResult("merchant_json", normalized, normalized, feed["shop"]["name"], len(feed["items"]))
+        items = document if isinstance(document, list) else document.get("items") if isinstance(document, dict) else None
+        if isinstance(items, list) and all(isinstance(item, dict) for item in items):
+            name = ""
+            if isinstance(document, dict) and isinstance(document.get("shop"), dict):
+                name = str(document["shop"].get("name") or "").strip()
+            return ProbeResult("merchant_json", normalized, normalized, name, len(items))
+        # Only request this custom endpoint when the storefront exposes its
+        # catalog UI, rather than probing it on every unrelated website.
+        if b'id="catalog-sync-time"' in page.body and b'id="product-grid"' in page.body:
+            catalog_url = f"{origin}/api/products"
+            document = _json(client.get(catalog_url, accept="application/json"))
+            feed = normalize_storefront_catalog(document, catalog_url, shop_name=storefront_name(page.body, host))
+            return ProbeResult("merchant_json", catalog_url, catalog_url, feed["shop"]["name"], len(feed["items"]))
     try:
         config = _json(client.get(f"{origin}/api/v1/public/config", accept="application/json"))
         products = _json(client.get(

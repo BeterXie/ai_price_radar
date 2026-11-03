@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir /tmp/shared_http -r requirements.txt \
     && rm -rf /tmp/shared_http
 COPY detector/probe.py detector/qualify.py detector/sitemap.py detector/worker.py ./
 COPY pipeline/currencies.py ./currencies.py
+COPY pipeline/storefront_catalog.py ./storefront_catalog.py
 COPY apps/api/app/services/classifier.py ./classifier.py
 COPY apps/api/app/services/account_plans.py ./account_plans.py
 USER detector

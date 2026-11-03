@@ -13,6 +13,7 @@ from price_radar_http import PinnedHTTPSClient, PinnedResponse
 
 from probe import probe_source, schema_service_products
 from sitemap import product_page_urls, sitemap_locations
+from storefront_catalog import is_storefront_catalog, normalize_storefront_catalog
 
 try:
     from classifier import classify_product
@@ -606,6 +607,8 @@ def _schema_failure(entry: str, reason: str) -> QualificationResult:
 
 def _merchant_qualify(entry: str, client: PinnedHTTPSClient) -> QualificationResult:
     document = _json(client.get(entry, accept="application/json"))
+    if is_storefront_catalog(document):
+        document = normalize_storefront_catalog(document, entry)
     items = document if isinstance(document, list) else document.get("items") if isinstance(document, dict) else None
     if not isinstance(items, list):
         raise ValueError("merchant feed must contain an items list")

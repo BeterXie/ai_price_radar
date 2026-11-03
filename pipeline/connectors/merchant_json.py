@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import re
+import ssl
 import urllib.parse
 from collections.abc import Iterable
 from pathlib import Path
@@ -11,8 +13,11 @@ from typing import Any
 from price_radar_http import PinnedHTTPSClient
 
 from currencies import normalize_currency
+from storefront_catalog import (
+    StaleStorefrontCatalog, is_storefront_catalog, normalize_storefront_catalog, storefront_name,
+)
 
-from .base import validate_record
+from .base import SourceFetchError, validate_record
 
 
 name = "merchant-json"
@@ -71,17 +76,36 @@ def _read_source(source: str | Path) -> tuple[bytes, str]:
         normalized = _validate_remote_url(value).geturl()
         client = PinnedHTTPSClient(
             max_response_bytes=MAX_BYTES,
-            max_task_bytes=MAX_BYTES,
+            max_task_bytes=MAX_BYTES * 2,
             max_task_seconds=30,
             request_timeout=20,
             user_agent="AI-Price-Radar-Importer/3.4",
         )
-        response = client.get(normalized, accept="application/json")
+        try:
+            response = client.get(normalized, accept="application/json")
+        except ssl.SSLCertVerificationError:
+            raise
+        except (OSError, http.client.HTTPException) as exc:
+            raise SourceFetchError("merchant feed request failed") from exc
         if response.status != 200:
-            raise ValueError(f"merchant feed returned HTTP {response.status}")
+            raise SourceFetchError(f"merchant feed returned HTTP {response.status}")
         content_type = response.headers.get("content-type", "").casefold()
         if content_type and "json" not in content_type:
             raise ValueError("merchant feed must return JSON content")
+        document = json.loads(response.body.decode("utf-8"))
+        if is_storefront_catalog(document):
+            try:
+                document = normalize_storefront_catalog(document, normalized)
+            except StaleStorefrontCatalog as exc:
+                raise SourceFetchError(str(exc)) from exc
+            # The public catalog has no store name; read the same-origin title.
+            try:
+                home = client.get(document["shop"]["url"], accept="text/html,application/xhtml+xml")
+                if home.status == 200:
+                    document["shop"]["name"] = storefront_name(home.body, document["shop"]["name"])
+            except (OSError, ValueError, http.client.HTTPException):
+                pass
+            return json.dumps(document, ensure_ascii=False).encode("utf-8"), normalized
         return response.body, normalized
     payload = path.read_bytes()
     if len(payload) > MAX_BYTES:

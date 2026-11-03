@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.50] - 2026-11-03
+
+- Detect public storefront catalogs at `/api/products` and import them through the existing merchant feed intake and snapshot workflow.
+- Use the storefront's displayed CNY price, preserve stock and product identity, and exclude hidden, preview, unsupported-checkout and expired supplier quotes.
+- No database migration. Rebuild API, Web, source-detector and importer, and verify a full multi-source publication.
+
 ## [3.9.47] - 2026-11-01
 
 - Add ordinary X / Twitter accounts as a separate catalog product, preserving Premium and unified subscription categories.
