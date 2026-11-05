@@ -494,18 +494,25 @@ def reclassify_offer(offer_id: int, db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/reclassify")
-def reclassify(db: Session = Depends(get_db)) -> dict:
+def reclassify(db: Session = Depends(get_db), published_only: bool = False) -> dict:
     from ..services.account_plans import ensure_account_plans
     ensure_account_plans(db)
     products_by_slug = dict(db.execute(select(Product.slug, Product.id)).all())
     changed = 0
+    delivery_changed = 0
+    scanned = 0
+    manual_skipped = 0
     unclassified = 0
     last_offer_id = 0
+    if published_only:
+        from ..services.catalog import _base_public_offer_query
+        base_query = _base_public_offer_query(db).join(Product, Offer.product_id == Product.id).where(Product.is_visible.is_(True))
+    else:
+        base_query = select(Offer).options(joinedload(Offer.raw_product), joinedload(Offer.shop))
     while True:
         batch = list(
             db.scalars(
-                select(Offer)
-                .options(joinedload(Offer.raw_product), joinedload(Offer.shop))
+                base_query
                 .where(Offer.id > last_offer_id)
                 .order_by(Offer.id)
                 .limit(RECLASSIFY_BATCH_SIZE)
@@ -515,13 +522,17 @@ def reclassify(db: Session = Depends(get_db)) -> dict:
             break
         last_offer_id = batch[-1].id
         for offer in batch:
+            scanned += 1
             if "manual_override" in (offer.tags or []) or (offer.classification_confidence or 0) >= 100:
+                manual_skipped += 1
                 continue
             source_platform = str(offer.shop.platform or "")
             result = classify_offer(offer)
             offer.tags = result.tags
             offer.risk_flags = result.risk_flags
             offer.classification_confidence = result.confidence
+            if offer.delivery_type != result.delivery_type:
+                delivery_changed += 1
             offer.delivery_type = result.delivery_type
             offer.is_comparable = result.is_comparable
             offer.service_period = result.service_period
@@ -545,8 +556,13 @@ def reclassify(db: Session = Depends(get_db)) -> dict:
                 offer.approved = True
             if target_id is None:
                 unclassified += 1
+        if published_only:
+            db.flush()
+        else:
+            db.commit()
+    if published_only:
         db.commit()
-    return {"ok": True, "changed": changed, "unclassified": unclassified}
+    return {"ok": True, "changed": changed, "delivery_changed": delivery_changed, "scanned": scanned, "manual_skipped": manual_skipped, "unclassified": unclassified}
 
 
 @router.get("/reports", response_model=list[ReportOut])

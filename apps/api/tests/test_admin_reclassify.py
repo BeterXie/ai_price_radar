@@ -35,7 +35,7 @@ def test_reclassify_clears_an_invalid_previous_product():
 
         db.refresh(offer)
         assert offer.product_id is None
-        assert result == {"ok": True, "changed": 1, "unclassified": 1}
+        assert result == {"ok": True, "changed": 1, "delivery_changed": 1, "scanned": 1, "manual_skipped": 0, "unclassified": 1}
 
 
 @pytest.mark.parametrize("source", ["ldxp", "16688"])
@@ -91,6 +91,64 @@ def test_historical_plan_repair_is_previewable_and_preserves_manual_decisions(so
     engine.dispose()
 
 
+def test_published_delivery_repair_preserves_manual_hidden_and_previous_snapshot_offers(monkeypatch):
+    from datetime import timedelta
+    from pathlib import Path
+    from app.models import CatalogSnapshot, utcnow
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3]))
+    from scripts.reclassify_account_offers import preview
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        now = utcnow()
+        previous = CatalogSnapshot(source="test", published_at=now - timedelta(hours=1))
+        current = CatalogSnapshot(source="test", published_at=now)
+        product = Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus")
+        shop = Shop(token="DELIVERY", name="Test", platform="ldxp", source_url="https://example.invalid")
+        db.add_all([previous, current, product, shop])
+        db.flush()
+        cases = [
+            ("ChatGPT Plus 成品号，质保订阅30天", current.id, True, []),
+            ("ChatGPT Plus 成品号", current.id, True, ["manual_override"]),
+            ("ChatGPT Plus 成品号", previous.id, True, []),
+            ("ChatGPT Plus 成品号", current.id, False, []),
+            ("ChatGPT Plus 订阅一个月", current.id, True, []),
+        ]
+        offers = []
+        for index, (title, snapshot_id, approved, tags) in enumerate(cases):
+            raw = RawProduct(shop_id=shop.id, source_product_key=str(index), original_name=title)
+            db.add(raw)
+            db.flush()
+            offer = Offer(raw_product_id=raw.id, product_id=product.id, shop_id=shop.id, snapshot_id=snapshot_id,
+                          approved=approved, active=True, tags=tags, observed_at=now,
+                          delivery_type="subscription_recharge", is_comparable=True, item_fingerprint="old-group")
+            db.add(offer)
+            offers.append(offer)
+        db.commit()
+        report = preview(db, published_only=True)
+        assert (report["scanned"], report["manual_skipped"], report["delivery_changed"]) == (3, 1, 2)
+        assert not db.dirty
+        assert all(offer.delivery_type == "subscription_recharge" for offer in offers)
+
+        repaired = reclassify(db, published_only=True)
+        assert (repaired["scanned"], repaired["manual_skipped"], repaired["delivery_changed"]) == (3, 1, 2)
+        for offer in offers:
+            db.refresh(offer)
+        assert offers[0].delivery_type == "finished_account"
+        assert offers[0].item_fingerprint != "old-group"
+        assert offers[4].delivery_type == "unknown"
+        assert not offers[4].is_comparable
+        for index in (1, 2, 3):
+            assert offers[index].delivery_type == "subscription_recharge"
+            assert offers[index].item_fingerprint == "old-group"
+        assert not offers[3].approved
+        assert preview(db, published_only=True)["delivery_changed"] == 0
+        assert reclassify(db, published_only=True)["delivery_changed"] == 0
+    engine.dispose()
+
+
 def test_reclassify_uses_16688_detail_fields():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -125,7 +183,7 @@ def test_reclassify_uses_16688_detail_fields():
         db.refresh(offer)
         assert offer.product_id == product.id
         assert offer.approved is True
-        assert result == {"ok": True, "changed": 1, "unclassified": 0}
+        assert result == {"ok": True, "changed": 1, "delivery_changed": 1, "scanned": 1, "manual_skipped": 0, "unclassified": 0}
 
 
 def test_reclassify_does_not_restore_a_manually_hidden_16688_offer():

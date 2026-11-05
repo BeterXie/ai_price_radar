@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import re
 from dataclasses import dataclass
 
@@ -261,38 +262,86 @@ def _pro_multiplier(text: str) -> int | None:
     return None
 
 
-def _delivery_type(text: str) -> str:
+def _delivery_description(value: str) -> str:
+    # Usage warnings describe forbidden actions, not what the shop delivers.
+    # Preserve inline text and comma-separated warnings as one sentence.
+    plain = re.sub(r"</?(?:p|div|h[1-6]|li|br|tr)\b[^>]*>", "\n", html.unescape(value), flags=re.IGNORECASE)
+    plain = re.sub(r"<[^>]+>", "", plain)
+    clauses = re.split(r"[。！？；;\n\r]+", plain)
+    return " ".join(clause for clause in clauses if not re.search(
+        r"禁止|严禁|请勿|切勿|不要|不得|避免|不建议|不能|不允许|不支持|不可|"
+        r"风险|风控|封号原因|封号情况|违规|违反|不在质保|无法质保|不保|不质保|不售后|"
+        r"不(?:属于|在).{0,12}(?:质保|售后|保障)|❌|🈲|🚫|请选择|可选择其他|本店另有|可直接看|"
+        r"频繁|多\s*ip|异常使用|号池.{0,20}(?:订单|发货)|告别拼车|若是.{0,10}试用号|"
+        r"日抛.{0,20}(?:价格|退款|都不给)|反代教程|"
+        r"退出\s*team|切回个人",
+        clause,
+        re.IGNORECASE,
+    ))
+
+
+def _delivery_type(text: str, *, description: bool = False) -> str:
+    # A subscription describes the entitlement, not who supplies the account.
+    # Ignore explicit denials before looking for the actual delivery evidence.
+    text = re.sub(r"(?:无需|无须|不用|不需要)\s*(?:提供|提交|发送)?\s*(?:账号密码|邮箱密码|账密)", " ", text)
+    text = re.sub(
+        r"(?:不是|并非|非|不允许|不支持|不提供|不需要|不包含|不含|禁止|严禁|无需|无须|不|无)\s*"
+        r"(?:(?:0\s*[元刀]\s*(?:试用的)?|普通|家庭组|低质量)\s*)?"
+        r"(?:多人共享|共享账号|共享号|共享池|共享|号池|拼车|车位|中转|反代|代充|直充|充值|成品账号|成品号|成品|日抛|体验号|试用号|api\s*额度)",
+        " ",
+        text,
+    )
+    if description:
+        text = re.sub(r"(?<!只)(?:可|支持)反代|可以直接导入中转站", " ", text)
     account_markers = [
         "成品", "半成品", "账号", "首登", "已接码", "已接马", "已接🐎", "未接码", "免接码",
-        "账号密码", "独享", "重置号", "邮箱直登", "原生支付", "gmail", "outlook", "自用", "质保首登"
+        "账号密码", "密码", "账密", "独享", "重置号", "邮箱直登", "原生支付", "gmail", "outlook", "自用", "质保首登"
     ]
-    if _contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代", "仅反代"]):
+    if _contains(text, ["只能反代", "无账号和密码", "无账号密码", "没有账号密码", "没有邮箱账密", "只可反代", "反代专用", "json发货", "仅支持反代", "仅反代"]) or re.search(r"(?:sub2api|json).{0,8}(?:格式发货|发货)|只能.{0,5}反代", text):
         return "session_token"
     if _contains(text, RELAY_MARKERS) and _contains(text, NO_ACCOUNT_DELIVERY_MARKERS):
         return "relay_api"
-    if _contains(text, ["团队邀请", "team seat", "自动拉", "拉入团队", "子号", "team"]):
-        return "team_seat"
-    if any(w in text for w in ["拼车", "共享账号", "多人共享", "号池", "共享池", "共享号", "拼车池"]):
-        return "shared_pool"
-    if _contains(text, SHARED_POOL_MARKERS):
-        return "shared_pool"
-    if _is_chatgpt_service(text) and not _contains(text, ["成品", "账号密码", "账密", "发货格式", "邮箱直登", "无账号密码", "反代", "重置号"]):
+    if not description and _contains(text, ["kyc认证", "kyc 认证", "kyc 代认证", "手机号验证", "一次性验证", "接玛"]) and not _contains(text, ["免", "成品", "账号", "帐号", "会员", "已接", "普号", "白号", "老号"]):
         return "verification_service"
-    if _contains(text, RELAY_MARKERS) and not _contains(text, account_markers):
+    team_markers = ["团队邀请", "team seat", "自动拉", "拉入团队", "拉你加入空间", "子号", "席位"]
+    if not description:
+        team_markers.append("team")
+        # A workspace purchased on the buyer's account is still a recharge.
+        if _contains(text, ["代充", "直充", "直冲"]):
+            team_markers.remove("席位")
+    if _contains(text, team_markers) and not _contains(text, ["家庭组", "拼车"]):
+        return "team_seat"
+    shared_evidence = not description or len(text) < 200 or bool(re.search(
+        r"(?:[2-9二三四五六七八九十]\s*人(?:共享|车)|共享\s*\d+\s*天|随机分配|家庭组车位|共享账号这个生意|(?:商品|产品|提供|交付).{0,8}(?:共享|拼车))", text,
+    ))
+    if shared_evidence and (_contains(text, SHARED_POOL_MARKERS) or re.search(r"[2-9二三四五六七八九十]\s*人车", text)):
+        return "shared_pool"
+    if _is_chatgpt_service(text) and not _contains(text, ["成品", "账号密码", "密码", "账密", "发货格式", "格式说明", "邮箱直登", "无账号密码", "反代", "重置号", "未接码", "未接马", "未接🐎"]) and not (description and _contains(text, ["充值", "代充", "直充", "会员", "订阅"])):
+        return "verification_service"
+    relay_markers = ["中转", "反代"] if description else RELAY_MARKERS
+    if _contains(text, relay_markers) and not _contains(text, account_markers):
         return "relay_api"
-    if _contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度", "key额度", "key 额度"]):
+    recharge_markers = ["官方充值", "官方直充", "直充", "直冲", "代充", "充值", "卡充", "卡冲", "卡付", "官充", "代付", "充自己账号", "充到你号"]
+    if _contains(text, ["api额度", "api 额度", "api余额", "api 余额", "api key", "apikey", "token额度", "key额度", "key 额度"]) and not (description and _contains(text, recharge_markers)):
         return "api_credit"
-    if _contains(text, TRIAL_MARKERS):
+    trial_text = re.sub(r"(?:0\s*[元刀]\s*)?试用号可以支付", "", text)
+    if _contains(trial_text, TRIAL_MARKERS):
         return "trial_account"
-    if _contains(text, ["官方充值", "官方直充", "直充", "代充", "充值", "订阅", "卡充"]):
-        return "subscription_recharge"
-    if _contains(text, ["卡密", "cdk", "兑换码"]):
-        return "card_code"
-    if _contains(text, ["半成品", "首登号", "未接码", "未接马", "需自行接马", "需自行接码"]):
+    if re.search(r"免费(?:版)?账号\s*[+＋]\s*充值卡密", text):
         return "semi_finished_account"
-    if _contains(text, ["成品", "账号密码", "邮箱密码", "已接码", "已接马", "已接🐎", "独享账号", "账号", "重置号", "邮箱直登", "原生支付", "独享", "自用", "gmail", "outlook", "icloud", "保首登", "质保首登"]):
+    if _contains(text, ["半成品", "首登号", "资格号", "未接码", "未接马", "未接🐎", "需自行接马", "需自行接码", "需自行接🐎"]):
+        return "semi_finished_account"
+    if _contains(text, ["成品", "重置号", "邮箱直登", "订阅号"]):
         return "finished_account"
-    if _contains(text, RELAY_MARKERS):
+    if _contains(text, recharge_markers):
+        return "subscription_recharge"
+    if _contains(text, ["卡密", "cdk", "兑换码", "领取链接", "兑换链接", "激活链接"]):
+        return "card_code"
+    if re.search(r"(?:自有|自己(?:的)?|您(?:的)?|你(?:的)?|本人(?:的)?|自备|已有)\s*(?:[a-z]+\s*)?账号", text):
+        return "unknown"
+    if _contains(text, ["账密", "账号密码", "邮箱密码", "已接码", "已接马", "已接🐎", "普号", "白号", "独享账号", "账号", "原生支付", "独享", "自用", "gmail", "outlook", "icloud", "保首登", "质保首登"]) or ("邮箱" in text and "密码" in text):
+        return "finished_account"
+    if _contains(text, relay_markers):
         return "relay_api"
     return "unknown"
 
@@ -842,17 +891,32 @@ def classify_product(
         tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
     confidence = 88 if specific_match else 68 if slug else 0
     title_delivery_type = _delivery_type(normalize_title(title))
-    description_delivery_type = _delivery_type(normalize_title(description))
-    detail_delivery_type = _delivery_type(detail_text)
+    description_evidence = normalize_title(_delivery_description(description))
+    description_delivery_type = _delivery_type(description_evidence, description=True)
+    category_delivery_type = _delivery_type(normalize_title(category))
+    mixed_delivery_title = bool(re.search(
+        r"(?:代充|直充|充值)\s*[/／或]\s*成品|成品(?:账号|号)?\s*(?:[/／或]\s*(?:代充|直充|充值)|可代充)",
+        title,
+    ))
     # Restrictive semantics often live only in the description. They must win
     # over a generic title such as "成品号", otherwise shared/trial/relay offers
     # leak into comparable price statistics.
-    if description_delivery_type in {"shared_pool", "trial_account", "relay_api", "session_token"}:
+    if title_delivery_type in {"verification_service", "session_token"}:
+        delivery_type = title_delivery_type
+    elif title_delivery_type == "team_seat" and description_delivery_type == "shared_pool" and not re.search(r"[2-9二三四五六七八九十]\s*人共享|多人共享|共享账号", description_evidence):
+        delivery_type = title_delivery_type
+    elif description_delivery_type in {"shared_pool", "trial_account", "relay_api", "session_token"}:
         delivery_type = description_delivery_type
+    elif mixed_delivery_title:
+        delivery_type = "unknown"
+    elif re.search(r"免费(?:版)?账号\s*[+＋]\s*充值卡密", description_evidence):
+        delivery_type = "semi_finished_account"
     elif title_delivery_type != "unknown":
         delivery_type = title_delivery_type
+    elif description_delivery_type != "unknown":
+        delivery_type = description_delivery_type
     else:
-        delivery_type = detail_delivery_type
+        delivery_type = category_delivery_type
     period = _service_period(normalize_title(title))
     if period == "unknown":
         described_period = _service_period(detail_text)

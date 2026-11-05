@@ -29,6 +29,12 @@ const DELIVERY_OPTIONS = [
   ["unknown", "形态未知"],
 ];
 
+const QUICK_DELIVERY_OPTIONS = [
+  ["", "全部"],
+  ["finished_account", "成品账号"],
+  ["subscription_recharge", "代充"],
+] as const;
+
 const PERIOD_OPTIONS = [
   ["", "全部期限"], ["one_day", "1 天"], ["one_week", "1 周"], ["fifteen_days", "15 天"], ["one_month", "1 个月"],
   ["three_months", "3 个月"], ["six_months", "6 个月"], ["one_year", "1 年"], ["unknown", "期限未知"],
@@ -113,8 +119,22 @@ export function OfferScopeControls({
   const searchTerm = hiddenFields.q || "";
   const searchFilters = { ...hiddenFields, ...values };
   const searchPlaceholder = hiddenFields.brand ? `搜索 ${hiddenFields.brand} 的商品或店铺` : action === "/products" ? "搜索商品、品牌或店铺" : "搜索当前商品的报价或店铺";
+  const deliveryHref = (deliveryType: string) => {
+    const query = new URLSearchParams(Object.entries(searchFilters).filter(([, value]) => value));
+    if (deliveryType) query.set("delivery_type", deliveryType);
+    else query.delete("delivery_type");
+    const suffix = query.toString();
+    return suffix ? `${action}?${suffix}` : action;
+  };
   return (
     <section className={`offer-search-toolbar ${compact ? "catalog-filters" : "offer-filters py-5"}`} aria-label="报价筛选">
+      <nav className="offer-delivery-switch" aria-label="交付方式快捷切换">
+        {QUICK_DELIVERY_OPTIONS.map(([value, label]) => (
+          <Link key={value || "all"} href={deliveryHref(value)} scroll={false} aria-current={values.delivery_type === value ? "page" : undefined}>
+            {label}
+          </Link>
+        ))}
+      </nav>
       <details className="offer-filter-disclosure" open={defaultOpen}>
         <summary><SlidersHorizontal size={17} aria-hidden="true" />筛选 {activeFilterCount ? <span>{activeFilterCount}</span> : null}<CaretDown size={14} className="filter-disclosure-chevron" aria-hidden="true" /></summary>
         <div className="mt-3"><FilterForm key={JSON.stringify({ values, hiddenFields })} action={action} values={values} hiddenFields={hiddenFields} /></div>
