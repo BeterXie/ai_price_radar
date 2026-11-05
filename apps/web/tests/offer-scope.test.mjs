@@ -77,6 +77,29 @@ test("catalog and product search submission and clearing retain the current scop
   assert.equal(unfiltered.find((node) => node.type?.name === "SearchBox")?.props.defaultValue, "");
 });
 
+test("account and recharge switches retain scope and the detailed filter retains the account group", () => {
+  for (const action of ["/products", "/brands/claude", "/products/claude-pro"]) {
+    const values = filterValues({ delivery_type: "account", period: "one_month", in_stock: "true" });
+    const tree = OfferScopeControls({ action, values, hiddenFields: { q: "微风", source_platform: "16688" }, resetHref: action });
+    const nodes = catalogDescendants(tree);
+    const links = catalogDescendants(nodes.find((node) => node.props?.className === "offer-delivery-switch"))
+      .filter((node) => typeof node.props?.href === "string");
+    assert.deepEqual(links.map((link) => link.props.children), ["全部", "账号", "代充"]);
+    assert.equal(links[1].props["aria-current"], "page");
+    for (const [index, delivery] of ["", "account", "subscription_recharge"].entries()) {
+      const url = assertCatalogScope(links[index], { comparable: "true", period: "one_month", in_stock: "true", q: "微风", source_platform: "16688" });
+      assert.equal(url.pathname, action);
+      assert.equal(url.searchParams.get("delivery_type") || "", delivery);
+    }
+    const form = nodes.find((node) => node.type?.name === "FilterForm");
+    const select = catalogDescendants(form.type(form.props)).find((node) => node.type === "select" && node.props.name === "delivery_type");
+    assert.equal(select.props.defaultValue, "account");
+    const options = catalogDescendants(select).filter((node) => node.type === "option").map((node) => node.props.value);
+    for (const delivery of ["account", "finished_account", "semi_finished_account"]) assert.ok(options.includes(delivery));
+    assert.equal(offerQuery({ delivery_type: "account" }).get("delivery_type"), "account");
+  }
+});
+
 test("every brand has a scoped search in the filter toolbar", async (context) => {
   context.mock.method(globalThis, "fetch", async (url) => new Response(JSON.stringify(
     String(url).includes("/meta") ? mockCatalogMetadata() : { items: [], total: 0, page: 1, page_size: 30 }

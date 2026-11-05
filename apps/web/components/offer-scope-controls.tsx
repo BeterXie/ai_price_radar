@@ -16,6 +16,7 @@ export type OfferFilterValues = {
 
 const DELIVERY_OPTIONS = [
   ["", "全部交付形态"],
+  ["account", "账号（成品 / 半成品）"],
   ["subscription_recharge", "订阅 / 直充 / 代充"],
   ["finished_account", "成品账号"],
   ["semi_finished_account", "半成品账号"],
@@ -31,7 +32,7 @@ const DELIVERY_OPTIONS = [
 
 const QUICK_DELIVERY_OPTIONS = [
   ["", "全部"],
-  ["finished_account", "成品账号"],
+  ["account", "账号"],
   ["subscription_recharge", "代充"],
 ] as const;
 

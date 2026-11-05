@@ -93,6 +93,45 @@ def test_product_offers_are_returned_in_pages():
         assert next_page[0].price == Decimal("130.00")
 
 
+def test_account_scope_includes_finished_and_semi_finished_but_not_recharge():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        shop = Shop(token="account-scope", name="Account shop", source_url="https://example.com")
+        product = Product(slug="account-scope", platform="OpenAI", display_name="Account scope")
+        db.add_all([shop, product])
+        db.flush()
+        for index, delivery in enumerate(("finished_account", "semi_finished_account", "subscription_recharge", "shared_pool", "trial_account")):
+            raw = RawProduct(
+                shop_id=shop.id, source_product_key=delivery, original_name=delivery,
+                first_seen_at=now, last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id, product_id=product.id, shop_id=shop.id,
+                price=Decimal(100 + index), stock_status="in_stock",
+                delivery_type=delivery, is_comparable=True, service_period="one_month",
+                item_fingerprint=delivery, source_url=shop.source_url, observed_at=now,
+            ))
+        _publish_offers(db)
+
+        filters = OfferFilters(delivery_type="account", comparable=True, in_stock=True, service_period="one_month")
+        expected = {"finished_account", "semi_finished_account"}
+        detail = get_product_detail(db, product.slug, filters=filters)
+        assert detail is not None and detail.offer_count == 2
+        assert {group.representative.delivery_type for group in detail.offer_groups} == expected
+        groups, total, offer_total, *_ = get_catalog_group_page(db, offset=0, limit=30, filters=filters)
+        assert total == offer_total == 2
+        assert {group.representative.delivery_type for group in groups} == expected
+        offers = get_product_offer_page(db, product.slug, offset=0, limit=30, filters=filters)
+        assert offers is not None and {offer.delivery_type for offer in offers} == expected
+        for delivery in expected | {"subscription_recharge"}:
+            exact = get_product_offer_page(db, product.slug, offset=0, limit=30, filters=OfferFilters(delivery_type=delivery))
+            assert exact is not None and [offer.delivery_type for offer in exact] == [delivery]
+
+
 def test_public_shop_tokens_only_include_visible_fresh_approved_offers():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)

@@ -252,7 +252,9 @@ def _apply_offer_filters(stmt, filters: OfferFilters):
         stmt = _apply_search(stmt, filters.search)
     if filters.source_platform:
         stmt = stmt.where(Shop.platform.in_(source_platform_filter_values(filters.source_platform)))
-    if filters.delivery_type:
+    if filters.delivery_type == "account":
+        stmt = stmt.where(Offer.delivery_type.in_(("finished_account", "semi_finished_account")))
+    elif filters.delivery_type:
         stmt = stmt.where(Offer.delivery_type == filters.delivery_type)
     if filters.service_period:
         stmt = stmt.where(Offer.service_period == filters.service_period)
