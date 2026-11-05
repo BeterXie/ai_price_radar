@@ -23,6 +23,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 
 from currencies import normalize_currency
 from app.services.account_plans import merge_legacy_plan_offers, product_definitions
+from app.services.classifier import classify_product
 
 
 class Base(DeclarativeBase):
@@ -629,53 +630,26 @@ def classify(
             category_values.append(category_value.get("name", ""))
         elif category_value:
             category_values.append(str(category_value))
-    category_text = norm(" ".join(str(value or "") for value in category_values))
-    description_text = norm(" ".join(str(value or "") for value in description_values))
-    detail_text = norm(" ".join([title, category_text, description_text]))
-    # Use the same identity rules as the API's admin reclassification.
-    slug, specific_match = classify_identity(norm(title), category_text, description_text, source_platform)
-    tags = [label for label, words in TAG_RULES.items() if any(norm(x) in detail_text for x in words)]
-    risks = [label for label, words in RISK_RULES.items() if any(norm(x) in detail_text for x in words)]
-    if slug == "chatgpt-plus" and price is not None:
-        try:
-            p_val = float(price)
-            if 0 < p_val < 8.00:
-                if (
-                    contains(detail_text, CHATGPT_FREE_MARKERS)
-                    or contains(category_text, ["free", "普号", "白号"])
-                    or contains(detail_text, ["底号", "好底号", "未绑卡", "升级", "开plus", "开通plus", "邮箱"])
-                ):
-                    slug = "chatgpt-account"
-                elif is_chatgpt_service(detail_text) or contains(detail_text, ["接码", "接马", "提链", "支付链接"]):
-                    slug = "chatgpt-access-service"
-                else:
-                    risks.append("abnormal_low_price")
-        except (ValueError, TypeError):
-            pass
-    if slug not in {"chatgpt-k12", "chatgpt-business", "chatgpt-edu", "claude-team", "cursor-business"}:
-        tags = [tag for tag in tags if tag not in {"Team", "Business", "K12", "邀请", "母号", "子号"}]
-    delivery_type = delivery_form(norm(title))
-    if delivery_type == "unknown":
-        delivery_type = delivery_form(detail_text)
-    period = service_period(norm(title))
-    if period == "unknown":
-        described_period = service_period(detail_text)
-        if described_period not in {"one_day", "one_week"}:
-            period = described_period
-    warranty = warranty_type(norm(title))
-    if warranty == "unknown":
-        warranty = warranty_type(detail_text)
+    # Import and admin repair must use the same delivery evidence and precedence;
+    # otherwise the next refresh silently undoes reviewed classifications.
+    result = classify_product(
+        title,
+        " ".join(str(value or "") for value in category_values),
+        " ".join(str(value or "") for value in description_values),
+        source_platform=source_platform,
+        price=price,
+    )
     return Classification(
-        slug=slug,
-        tags=tags,
-        risks=risks,
-        confidence=88 if specific_match else 68 if slug else 0,
-        delivery_type=delivery_type,
-        is_comparable=bool(slug) and (delivery_type in COMPARABLE_DELIVERY_TYPES),
-        service_period=period,
-        warranty=warranty,
-        use_scenarios=usage_scenarios(detail_text),
-        item_fingerprint=item_fingerprint(title, description_text, slug, delivery_type, period, warranty),
+        slug=result.slug,
+        tags=result.tags,
+        risks=result.risk_flags,
+        confidence=result.confidence,
+        delivery_type=result.delivery_type,
+        is_comparable=result.is_comparable,
+        service_period=result.service_period,
+        warranty=result.warranty,
+        use_scenarios=result.use_scenarios,
+        item_fingerprint=result.item_fingerprint,
     )
 
 
