@@ -546,11 +546,25 @@ def query_user_subscriptions(db: Session, sender_id: str, channel: str = "qq") -
     return "\n".join(lines)
 
 
-def help_menu() -> str:
+def help_menu(channel: str = "qq") -> str:
     """Cheatsheet of all supported bot commands."""
+    from app.services import bot_ai_settings
+    try:
+        ai_enabled = channel == "qq" and bot_ai_settings.load_runtime_config().enabled
+    except bot_ai_settings.BotAIConfigurationError:
+        ai_enabled = False
+    ai_help = [
+        "🗣️ 自然语言价格助手:",
+        "  • 帮我找一百元以内的 Plus 账号，半成品也可以",
+        "  • 比较第一家和第二家 / 比较 Plus 月卡账号与代充",
+        "  • 成品、半成品和代充有什么区别？",
+        "  • 请勿发送账号密码、验证码或支付资料；查询内容会交给已配置的 AI 服务理解。",
+        "",
+    ] if ai_enabled else []
     return "\n".join([
         "🤖【PriceMemo 比价机器人常用指令指南】",
         "------------------------------------",
+        *ai_help,
         "🏷️ 品牌全系列比价:",
         "  • claude — Claude 全系列最低价一览 (Pro / Max 5x / Max 20x / Team)",
         "  • openai / gpt — OpenAI 全系列最低价一览",
@@ -612,7 +626,7 @@ def handle_chat_command(
     """
     text = (raw_text or "").strip()
     if not text:
-        return help_menu()
+        return help_menu(channel)
 
     # Normalize command
     low = text.casefold()
@@ -635,9 +649,12 @@ def handle_chat_command(
         with SessionLocal() as session:
             return _do_bind(session)
 
+    if re.match(r"^/?bind\b", text, re.IGNORECASE):
+        return "绑定格式：/bind 验证码。请使用官网个人中心生成的有效绑定码。"
+
     # 2. Help / Menu
     if low in ("help", "/help", "帮助", "菜单", "?", "？", "start", "/start"):
-        return help_menu()
+        return help_menu(channel)
 
     # 3. Market Overview / Ticker
     if low in ("行情", "大盘", "概况", "市场", "价格", "汇总"):
@@ -682,4 +699,5 @@ def handle_chat_command(
     return snapshot_chat.reply(
         text, sender_id=sender_id, channel=channel,
         account_id=account_id, conversation_id=conversation_id,
+        use_ai=channel == "qq",
     )

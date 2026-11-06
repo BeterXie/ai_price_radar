@@ -13,6 +13,7 @@ DELIVERY_LABELS: dict[str, str] = {
     "semi_finished_account": "半成品 / 首登号",
     "team_seat": "团队席位",
     "card_code": "卡密 / 兑换码",
+    "session_token": "授权凭证 / Session",
     "trial_account": "日抛 / 体验号",
     "shared_pool": "共享号池",
     "relay_api": "中转 / 反代",
@@ -24,6 +25,7 @@ DELIVERY_LABELS: dict[str, str] = {
 PERIOD_LABELS: dict[str, str] = {
     "one_day": "1 天 / 日抛",
     "one_week": "1 周",
+    "fifteen_days": "15 天",
     "one_month": "1 个月",
     "three_months": "3 个月",
     "six_months": "6 个月",

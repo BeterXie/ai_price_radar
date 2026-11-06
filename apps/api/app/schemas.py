@@ -719,6 +719,48 @@ class AdminStats(BaseModel):
     brand_counts: dict[str, int] = Field(default_factory=dict)
 
 
+class BotAISettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    base_url: str = Field(default="", max_length=500)
+    model: str = Field(default="", max_length=150)
+    api_style: Literal["chat_completions", "responses"] = "chat_completions"
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value:
+            return value
+        parsed = urllib.parse.urlsplit(value)
+        if re.search(r"[\x00-\x20\x7f\\\\]", value) or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("接口地址不能包含密钥、查询参数或空白字符")
+        if parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}):
+            raise ValueError("接口地址须使用 HTTPS；本地调试可使用 HTTP")
+        if parsed.path.endswith(("/chat/completions", "/responses")):
+            raise ValueError("请填写 API 基础地址，不包含 /chat/completions 或 /responses")
+        # Accessing port also rejects malformed or out-of-range port numbers.
+        parsed.port
+        return value
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str) -> str:
+        value = value.strip()
+        if re.search(r"[\x00-\x1f\x7f]", value):
+            raise ValueError("模型名不能包含控制字符")
+        return value
+
+
+class BotAISettingsUpdate(BotAISettings):
+    api_key: SecretStr | None = Field(default=None, max_length=4096)
+    clear_api_key: bool = False
+
+
+class BotAISettingsOut(BotAISettings):
+    api_key_configured: bool = False
+
+
 class AdminSettingsOut(BaseModel):
     advertise_enabled: bool = False
     ad_slots_enabled: bool = True

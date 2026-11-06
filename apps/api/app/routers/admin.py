@@ -64,6 +64,8 @@ from ..schemas import (
     AdminReportUpdate,
     AdminSettingsOut,
     AdminSettingsUpdate,
+    BotAISettingsOut,
+    BotAISettingsUpdate,
     AdminStats,
     AdminUserActionLogItem,
     AdminUserDetailOut,
@@ -94,6 +96,7 @@ from ..schemas import (
 )
 from ..security import require_admin
 from ..services.offer_classification import classify_offer
+from ..services import bot_ai_settings
 from ..services.promo import AD_SLOTS_ENABLED_KEY, RELAY_HUB_ENABLED_KEY
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
@@ -216,6 +219,58 @@ def update_admin_settings(
         set_setting_str(db, "community_btn_text", payload.community_btn_text.strip())
     db.commit()
     return get_admin_settings(db)
+
+
+@router.get("/bot-ai", response_model=BotAISettingsOut)
+def get_bot_ai_settings(response: Response, db: Session = Depends(get_db)) -> BotAISettingsOut:
+    response.headers["Cache-Control"] = "no-store"
+    return bot_ai_settings.public_config(bot_ai_settings.read_stored_config(db))
+
+
+@router.put("/bot-ai", response_model=BotAISettingsOut)
+def update_bot_ai_settings(payload: BotAISettingsUpdate, response: Response, db: Session = Depends(get_db)) -> BotAISettingsOut:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        config = bot_ai_settings.prepare_config(payload, bot_ai_settings.read_stored_config(db))
+        bot_ai_settings.save_config(db, config)
+    except ValueError:
+        # Validation of a request body is handled separately; never echo stored data.
+        raise HTTPException(status_code=400, detail="配置无效；请检查接口、模型和密钥。更换接口须填写新密钥，清除密钥须先关闭 AI。") from None
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="密钥无法安全读取或保存，请检查服务端凭据加密配置，或重新填写密钥。") from None
+    return bot_ai_settings.public_config(config)
+
+
+@router.post("/bot-ai/test")
+def test_bot_ai_settings(payload: BotAISettingsUpdate, response: Response, db: Session = Depends(get_db)) -> dict[str, str]:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        config = bot_ai_settings.prepare_config(payload, bot_ai_settings.read_stored_config(db))
+    except (ValueError, RuntimeError):
+        raise HTTPException(status_code=400, detail="请填写有效的接口地址、模型和密钥；更换接口时须填写对应的新密钥。") from None
+    if not (config.base_url and config.model and config.api_key.get_secret_value()):
+        raise HTTPException(status_code=400, detail="测试前请填写接口地址、模型和密钥。")
+    db.close()
+    try:
+        from extensions.bots.price_assistant import AIUnavailable, price_assistant
+        from ..services.snapshot_catalog import SnapshotCatalog
+    except ImportError:
+        raise HTTPException(status_code=503, detail="当前服务未安装 QQ 价格助手。") from None
+    now = datetime.now(timezone.utc).isoformat()
+    catalog = SnapshotCatalog({
+        "search_schema_version": 1, "snapshot_id": "ai-connection-test", "published_at": now,
+        "stale_offer_hours": 72, "products": [], "offer_count": 0,
+    })
+    try:
+        plan = price_assistant.plan(
+            "请解释成品账号和代充的区别", catalog, None, ("admin-connection-test",),
+            config=config.model_copy(update={"enabled": True}),
+        )
+    except AIUnavailable:
+        raise HTTPException(status_code=502, detail="测试失败，请检查密钥、模型权限、接口格式和服务额度，或稍后重试。") from None
+    if not plan or plan.action != "explain" or not {"account", "recharge"}.issubset(plan.topics):
+        raise HTTPException(status_code=502, detail="接口已响应，但模型未正确执行价格助手指令，请检查模型的函数调用能力。")
+    return {"message": "连接与函数调用测试通过。测试未保存配置。"}
 
 
 @router.get("/stats", response_model=AdminStats)

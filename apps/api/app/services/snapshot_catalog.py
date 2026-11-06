@@ -133,8 +133,13 @@ class SnapshotCatalog:
                 and offer.get("stock_status") == "in_stock" and offer.get("currency") == "CNY"
             ):
                 continue
+            if query.delivery == "account":
+                if offer["delivery_type"] not in {"finished_account", "semi_finished_account"}:
+                    continue
+            elif query.delivery and offer["delivery_type"] != query.delivery:
+                continue
             if any(wanted and offer.get(field) != wanted for field, wanted in (
-                ("delivery_type", query.delivery), ("account_access", query.access),
+                ("account_access", query.access),
                 ("service_period", query.period), ("stock_status", query.stock), ("currency", query.currency),
             )):
                 continue
