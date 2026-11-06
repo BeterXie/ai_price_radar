@@ -155,7 +155,61 @@ def test_snapshot_changed_during_model_call_refreshes_numbered_choices(chat, pro
     assert "https://example.com/1" not in reply
 
 
+def test_comparison_refresh_preserves_analysis_and_updates_numbered_choices(chat, provider):
+    _, data, publish, _ = chat
+    ask("Claude最高价")
+    provider["plan"] = {"action": "compare", "positions": [1, 2]}
+    def change():
+        data["products"][0]["offers"][8]["price"] = 115
+        publish("2")
+    provider["callback"] = change
+    reply = ask("对比前两项")
+    assert "报价已更新" in reply and "最高报价 ¥120.00" in reply
+    assert "商品比较" not in reply
+    assert "https://example.com/8" in ask("第一家")
+
+
+@pytest.mark.parametrize("api_style", ["chat_completions", "responses"])
+def test_ai_selects_snapshot_analysis_from_a_natural_question(chat, provider, monkeypatch, api_style):
+    monkeypatch.setattr(provider["config"], "api_style", api_style)
+    provider["plan"] = {"action": "analyze", "metric": "mean", "searches": [{"product": "claude-pro", "period": "one_month", "access": "exclusive"}]}
+    reply = ask("我想知道克劳德按月独享的市面开价大概是什么水平")
+    assert "平均报价 ¥110.00" in reply and "2 条价格样本 / 2 家店" in reply
+    assert "编造店铺" not in reply
+    provider["plan"] = {"action": "analyze", "metric": "maximum", "searches": [{"inherit": True, "max_price": 110}]}
+    reply = ask("这些里面不超过一百一的，给我看看顶价")
+    assert "最高报价 ¥100.00" in reply and "¥120.00" not in reply
+    context = provider["calls"][-1]["input" if api_style == "responses" else "messages"]
+    assert json.loads(context[1]["content"])["previous_analysis_metric"] == "mean"
+
+
+def test_ai_can_answer_global_popularity_without_requesting_a_brand(chat, provider):
+    _, data, publish, _ = chat
+    for offer in data["products"][0]["offers"]:
+        offer["click_count"] = 7
+    publish("2")
+    provider["plan"] = {"action": "analyze", "metric": "popularity", "searches": [{}]}
+    reply = ask("大家在这个网站更关注什么套餐啊")
+    assert "Claude Pro：63 次累计点击" in reply and "不是销量" in reply
+    assert "哪个品牌" not in reply and len(provider["calls"]) == 1
+    provider["plan"] = {"action": "analyze", "metric": "mean", "searches": [{"product": "claude-pro", "period": "one_month"}]}
+    reply = ask("排在第一的那个，按月付费的开价大概怎样")
+    assert "平均报价 ¥70.00" in reply
+    context = json.loads(provider["calls"][-1]["messages"][1]["content"])
+    assert context["displayed_products"] == [{"position": 1, "slug": "claude-pro", "name": "Claude Pro"}]
+
+
+def test_enabled_ai_interprets_analysis_conditions_before_rule_fallback(chat, provider):
+    provider["plan"] = {"action": "analyze", "metric": "mean", "searches": [{"product": "claude-pro", "period": "one_month"}]}
+    reply = ask("我想看每个月付费的Claude平均价格")
+    assert "平均报价 ¥70.00" in reply and "平均报价 ¥110.00" in reply
+    assert len(provider["calls"]) == 1
+
+
 @pytest.mark.parametrize("plan", [
+    {"action": "analyze", "metric": "execute_sql", "searches": [{}]},
+    {"action": "search", "metric": "maximum", "searches": [{"product": "claude-pro"}]},
+    {"action": "analyze", "metric": "mean", "searches": [], "positions": [1]},
     {"action": "search", "searches": [{"product": "nonexistent"}]},
     {"action": "search", "searches": [{"product": "claude-pro", "brand": "OpenAI"}]},
     {"action": "search", "searches": [{"product": "claude-pro", "min_price": 200, "max_price": 100}]},
@@ -169,7 +223,7 @@ def test_snapshot_changed_during_model_call_refreshes_numbered_choices(chat, pro
 def test_untrusted_plans_fail_to_local_search(chat, provider, plan):
     provider["plan"] = plan
     reply = ask("Claude Pro 月付")
-    assert "暂时无法理解复杂问法" in reply and "¥60.00" in reply
+    assert "AI 暂时不可用" in reply and "¥60.00" in reply
     assert "fake price" not in reply
 
 
@@ -182,7 +236,7 @@ def test_provider_errors_do_not_leak_or_break_rule_search(chat, provider, caplog
     else:
         provider["tool"] = "run_sql"
     reply = ask("Claude Pro 月付")
-    assert "¥60.00" in reply and "暂时无法理解" in reply
+    assert "¥60.00" in reply and "AI 暂时不可用" in reply
     assert "private provider" not in caplog.text and "with secret" not in caplog.text
 
 
@@ -242,7 +296,7 @@ def test_request_limit_falls_back_without_more_model_calls(chat, provider):
     provider["plan"] = {"action": "clarify"}
     for _ in range(6):
         ask("帮我推荐一下")
-    assert "暂时无法理解" in ask("Claude Pro 月付")
+    assert "AI 暂时不可用" in ask("Claude Pro 月付")
     assert len(provider["calls"]) == 6
 
 

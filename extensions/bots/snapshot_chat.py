@@ -17,6 +17,7 @@ from app.services.catalog_vocabulary import (
 )
 from app.services.snapshot_catalog import QuoteQuery, SnapshotCatalog, SnapshotUnavailable, snapshot_store, timestamp
 from .price_assistant import AIUnavailable, CLARIFICATIONS, EXPLANATIONS, price_assistant
+from .snapshot_analysis import analysis_request, render_analysis, unavailable_topic
 
 PAGE_SIZE = 5
 SESSION_TTL = 30 * 60
@@ -42,6 +43,8 @@ class SearchSession:
     page: int = 0
     shown_ids: tuple[int, ...] = ()
     touched: float = 0
+    analysis_metric: str = ""
+    shown_products: tuple[str, ...] = ()
 
 
 class QueryError(ValueError):
@@ -319,9 +322,13 @@ class SnapshotChat:
             return "搜索内容太长，请用 500 字以内的商品名称和筛选条件查询。"
         raw_text = text
         text = normalize_search(text)
+        topic = unavailable_topic(raw_text)
+        if topic:
+            return EXPLANATIONS[topic]
+        analysis = analysis_request(raw_text)
         plan = None
         fallback_note = ""
-        controls = {"重新搜索", "重置搜索", "结束查询", "行情", "大盘", "概况", "市场", "价格", "汇总", "下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的"}
+        controls = {"重新搜索", "重置搜索", "结束查询", "行情", "大盘", "概况", "市场", "价格", "汇总", "下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的", "查看报价", "报价列表"}
         detail_pattern = r"(?:看看|查看|看)?第?([1-5一二三四五])(?:家|个|条)(?:详情|怎么样|多少钱|呢)?"
         if use_ai and text not in controls and not re.fullmatch(detail_pattern, text) and text not in catalog.aliases and text not in catalog.brands:
             with self.lock:
@@ -340,7 +347,7 @@ class SnapshotChat:
             except SnapshotUnavailable as exc:
                 return str(exc)
             except (AIUnavailable, ValueError):
-                fallback_note = "暂时无法理解复杂问法，以下按关键词查找；也可发送“Claude Pro 月付 100元以内”这类条件。\n"
+                fallback_note = "AI 暂时不可用，以下根据已识别的条件查询快照；可直接指定商品、预算，或询问均价、热门和库存。\n"
                 plan = None
         with self.lock:
             now = time.monotonic()
@@ -364,18 +371,14 @@ class SnapshotChat:
                 self.sessions.pop(key, None)
                 return render_overview(catalog)
             detail = re.fullmatch(detail_pattern, text)
-            control = text in ("下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的") or detail is not None or bool(plan and plan.positions)
+            control = text in ("下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的", "查看报价", "报价列表") or detail is not None or bool(plan and plan.positions)
             if control and previous is None:
                 return "请先搜索商品，再继续筛选或查看报价。"
             changed_snapshot = previous is not None and previous.snapshot_id != catalog.id
-            session = SearchSession(replace(previous.query), catalog.id, previous.page, previous.shown_ids, now) if previous else SearchSession(QuoteQuery(), catalog.id, touched=now)
+            session = SearchSession(replace(previous.query), catalog.id, previous.page, previous.shown_ids, now, previous.analysis_metric, previous.shown_products) if previous else SearchSession(QuoteQuery(), catalog.id, touched=now)
             if changed_snapshot:
-                session.page, session.shown_ids = 0, ()
-            if plan and plan.action == "compare":
-                if changed_snapshot and plan.positions:
-                    reply = render_results(catalog, session)
-                    self._remember(key, session)
-                    return "报价已更新，已刷新列表，请按新列表选择。\n" + reply
+                session.page, session.shown_ids, session.shown_products = 0, (), ()
+            if plan and plan.action == "compare" and not (changed_snapshot and plan.positions):
                 if plan.positions:
                     if any(position > len(session.shown_ids) for position in plan.positions):
                         return "当前页没有这个序号，请按列表中的序号选择。"
@@ -392,6 +395,8 @@ class SnapshotChat:
                     session.query = queries[0]
                     session.page = 0
                 session.shown_ids = tuple(o["id"] for _, o in rows)
+                session.analysis_metric = ""
+                session.shown_products = ()
                 self._remember(key, session)
                 reply = render_comparison(rows)
                 for topic in dict.fromkeys(plan.topics):
@@ -400,8 +405,17 @@ class SnapshotChat:
                 return reply
             if detail and not changed_snapshot:
                 number = int(detail[1]) if detail[1].isdigit() else "一二三四五".index(detail[1]) + 1
+                if session.shown_products:
+                    if number > len(session.shown_products):
+                        return "当前页没有这个商品序号，请按列表中的序号选择。"
+                    slug = session.shown_products[number - 1]
+                    session.query = replace(session.query, product=slug, brand=catalog.products[slug]["brand"])
+                    session.analysis_metric, session.shown_products, session.page = "", (), 0
+                    reply = render_results(catalog, session)
+                    self._remember(key, session)
+                    return reply
                 if number > len(session.shown_ids):
-                    return "当前页没有这个序号，请按列表中的序号选择。"
+                    return "当前统计页没有报价序号，可先发送“查看报价”。" if session.analysis_metric else "当前页没有这个序号，请按列表中的序号选择。"
                 row = catalog.by_id.get(session.shown_ids[number - 1])
                 if row is None or datetime.now(timezone.utc) - timestamp(row[1]["observed_at"]) > catalog.max_age:
                     return "这条报价已不可用，请重新搜索。"
@@ -411,6 +425,9 @@ class SnapshotChat:
                 return "\n".join([f"{product['display_name']} · {offer['shop_name']}", offer["original_name"], f"{_price(offer)} · {_stock(offer)}", _terms(offer), offer.get("source_url") or f"{SITE_URL}/products/{product['slug']}", *explanations])
             if not changed_snapshot and text in ("下一页", "上一页"):
                 session.page += 1 if text == "下一页" else -1
+            elif text in ("查看报价", "报价列表"):
+                session.analysis_metric = ""
+                session.page = 0
             elif text in ("清除筛选", "取消筛选"):
                 session.query = QuoteQuery(product=session.query.product, brand=session.query.brand)
                 session.page = 0
@@ -426,14 +443,38 @@ class SnapshotChat:
                 return "当前优先展示可比现货中的低价；可以清除筛选，或更换周期和交付方式。"
             elif not control:
                 try:
-                    session.query = plan.searches[0].query(catalog, previous.query if previous else None) if plan and plan.action == "search" else parse_query(raw_text, catalog, previous.query if previous else None)
+                    if plan and plan.action in {"search", "analyze"}:
+                        session.query = plan.searches[0].query(catalog, previous.query if previous else None, allow_catalog=plan.action == "analyze")
+                        if plan.action == "analyze":
+                            session.analysis_metric = plan.metric
+                        elif not plan.searches[0].inherit:
+                            session.analysis_metric = ""
+                    else:
+                        context_query = previous.query if previous and not re.search(r"本网站|本站|全站|站内", raw_text) else None
+                        if analysis and not analysis[1] and context_query is None and analysis[0] in {"popularity", "catalog", "count", "stock", "shops", "freshness"}:
+                            session.query = QuoteQuery()
+                        else:
+                            session.query = parse_query(analysis[1] if analysis else raw_text, catalog, context_query)
+                        if analysis:
+                            session.analysis_metric = analysis[0]
+                        elif (text in catalog.aliases or text in catalog.brands or previous is None
+                              or (session.query.product, session.query.brand) != (previous.query.product, previous.query.brand)):
+                            session.analysis_metric = ""
                 except QueryError as exc:
                     return str(exc)
                 session.page = 0
-            if session.query.brand and not session.query.product and not _conditions(session.query) and not session.query.delivery:
+            if session.analysis_metric:
+                result = render_analysis(catalog, session.query, session.analysis_metric, session.page)
+                session.page, session.shown_ids, session.shown_products = result.page, result.shown_ids, result.shown_products
+                reply = result.text
+                if conditions := _conditions(session.query):
+                    reply = reply.replace("\n", f"\n筛选：{conditions}\n", 1)
+            elif session.query.brand and not session.query.product and not _conditions(session.query) and not session.query.delivery:
+                session.shown_products = ()
                 session.shown_ids = ()
                 reply = render_overview(catalog, session.query.brand)
             else:
+                session.shown_products = ()
                 reply = render_results(catalog, session)
             if changed_snapshot and control:
                 reply = "报价已更新，已刷新列表，请按新列表选择。\n" + reply

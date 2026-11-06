@@ -330,6 +330,7 @@ def export_public_snapshot(
                 "currency": (offer.currency or "CNY").upper(),
                 "stock_status": offer.stock_status,
                 "stock_count": offer.stock_count,
+                "click_count": int(offer.click_count or 0),
                 "delivery_type": offer.delivery_type,
                 "service_period": offer.service_period,
                 "warranty": offer.warranty,
