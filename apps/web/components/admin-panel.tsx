@@ -28,6 +28,7 @@ import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { CouponsAdminPanel } from "@/components/coupons-admin-panel";
 import { PromoAdminPanel } from "@/components/promo-admin-panel";
 import { UsersAdminPanel } from "@/components/users-admin-panel";
+import { BotAIAdminPanel } from "@/components/bot-ai-admin-panel";
 import { PRODUCT_CATEGORIES, type ProductCategory, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 
@@ -1046,6 +1047,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                 </div>
               </div>
             </div>
+            {verifiedKey && <BotAIAdminPanel key={verifiedKey} adminKey={verifiedKey} botEnabled={botEnabled} />}
           </section>
 
           {/* 页面顶部横条公告 (Site Notice) */}

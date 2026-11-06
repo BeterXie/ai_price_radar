@@ -8,6 +8,7 @@
    - 提供基于 Python 原生 WebSocket (`websockets`) 的持久长连接 Gateway 网关服务 (`qq_gateway.py`)，无需本地额外部署重型 Node.js 进程。
    - 兼容可选的本地 Node.js SDK Bridge (`extensions/qqbot_bridge/`)。
 3. **自然语言比价指令解析引擎 (`chat_commands.py`)**：
+   - 可配置 [QQ AI 价格助手](../docs/QQ_AI_PRICE_ASSISTANT.md)，理解自然语言筛选、比较商品和解释账号/代充；价格由已发布快照生成。
    - 响应群聊/私聊自然语言比价查询（如 `chatgpt plus`, `claude 20x`, `cursor` 等）。
    - 自动聚合最低价、各店铺现货分布、质保周期与交付形态，输出排版优雅的回复。
 4. **个性化变动调度中心 (`dispatcher.py`)**：

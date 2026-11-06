@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import os
 
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.config import Settings, get_settings
-from ..models import QQBindingSession, UserBotBinding
+from ..models import QQBindingSession, SystemSetting, UserBotBinding
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,15 @@ def migrate_bot_credentials(db: Session, settings: Settings | None = None) -> in
         migrated = encrypt_secret(pending.qq_key, settings)
         if migrated != pending.qq_key:
             pending.qq_key = migrated
+            changed += 1
+    from .bot_ai_settings import SETTING_KEY
+    ai_setting = db.get(SystemSetting, SETTING_KEY)
+    if ai_setting:
+        data = json.loads(ai_setting.value)
+        migrated = encrypt_secret(data.get("api_key", ""), settings)
+        if migrated != data.get("api_key", ""):
+            data["api_key"] = migrated
+            ai_setting.value = json.dumps(data, ensure_ascii=False)
             changed += 1
     if changed:
         db.commit()

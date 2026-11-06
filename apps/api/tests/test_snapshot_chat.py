@@ -13,12 +13,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.services.catalog_vocabulary import account_access
+from app.services import bot_ai_settings
 from app.services.snapshot_catalog import SnapshotStore
 from extensions.bots import chat_commands, snapshot_chat
 
 
 @pytest.fixture
 def chat(tmp_path, monkeypatch):
+    monkeypatch.setattr(bot_ai_settings, "load_runtime_config", lambda: bot_ai_settings.BotAIConfig())
     monkeypatch.setenv("PUBLIC_DATA_DIR", str(tmp_path))
     store = SnapshotStore()
     monkeypatch.setattr(snapshot_chat, "snapshot_store", store)

@@ -172,7 +172,12 @@ class QQGatewayService:
         while self.running:
             ws = None
             heartbeat_task = None
+            message_worker = None
             try:
+                # Keep message order while allowing the receive loop to process
+                # heartbeat ACKs during a slow model or outbound HTTP request.
+                message_queue = asyncio.Queue(maxsize=32)
+                message_worker = asyncio.create_task(self._reply_worker(message_queue, app_id, app_secret))
                 # 1. Fetch access token (blocking HTTP -> worker thread)
                 token = await asyncio.to_thread(
                     self.bot_client._get_access_token, app_id, app_secret
@@ -301,30 +306,7 @@ class QQGatewayService:
                                     msg_id,
                                     len(raw_content),
                                 )
-                                # Command routing hits the DB and the reply hits the
-                                # network: both must run off the event loop.
-                                reply_text = await asyncio.to_thread(
-                                    handle_chat_command,
-                                    raw_text=raw_content,
-                                    sender_id=user_openid,
-                                    channel="qq",
-                                    account_id=app_id,
-                                    conversation_id="c2c",
-                                )
-                                ok = await asyncio.to_thread(
-                                    self.bot_client.send_c2c_message,
-                                    target_openid=user_openid,
-                                    text=reply_text,
-                                    app_id=app_id,
-                                    app_secret=app_secret,
-                                    msg_id=msg_id,
-                                )
-                                logger.info(
-                                    "Sent QQ C2C reply [success=%s, message_id=%s, length=%d]",
-                                    ok,
-                                    msg_id,
-                                    len(reply_text),
-                                )
+                                self._enqueue_message(message_queue, raw_content, user_openid, "", msg_id)
 
                         elif t in ("GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"):
                             # Inbound group message (@机器人 in QQ group)
@@ -348,28 +330,7 @@ class QQGatewayService:
                                     msg_id,
                                     len(cleaned_content),
                                 )
-                                reply_text = await asyncio.to_thread(
-                                    handle_chat_command,
-                                    raw_text=cleaned_content,
-                                    sender_id=member_openid or "",
-                                    channel="qq",
-                                    account_id=app_id,
-                                    conversation_id=f"group:{group_openid}",
-                                )
-                                ok = await asyncio.to_thread(
-                                    self.bot_client.send_group_message,
-                                    group_openid=group_openid,
-                                    text=reply_text,
-                                    app_id=app_id,
-                                    app_secret=app_secret,
-                                    msg_id=msg_id,
-                                )
-                                logger.info(
-                                    "Sent QQ group reply [success=%s, message_id=%s, length=%d]",
-                                    ok,
-                                    msg_id,
-                                    len(reply_text),
-                                )
+                                self._enqueue_message(message_queue, cleaned_content, member_openid or "", group_openid, msg_id)
 
                         elif t == "FRIEND_ADD":
                             # User added robot as friend
@@ -419,6 +380,9 @@ class QQGatewayService:
             except Exception as exc:
                 logger.error("QQ Gateway exception [%s]: %s", app_id, exc)
             finally:
+                if message_worker:
+                    message_worker.cancel()
+                    await asyncio.gather(message_worker, return_exceptions=True)
                 if heartbeat_task:
                     heartbeat_task.cancel()
                 if ws:
@@ -430,6 +394,35 @@ class QQGatewayService:
             # Exponential backoff before reconnecting
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, 30.0)
+
+    @staticmethod
+    def _enqueue_message(queue: asyncio.Queue, text: str, sender: str, group: str, message_id: str) -> None:
+        try:
+            queue.put_nowait((text, sender, group, message_id, time.monotonic()))
+        except asyncio.QueueFull:
+            logger.warning("QQ reply queue full; message skipped [message_id=%s]", message_id)
+
+    async def _reply_worker(self, queue: asyncio.Queue, app_id: str, app_secret: str) -> None:
+        while True:
+            text, sender, group, message_id, received_at = await queue.get()
+            try:
+                if time.monotonic() - received_at > 60:
+                    reply = "当前查询较多，请稍后重新发送。"
+                else:
+                    reply = await asyncio.to_thread(
+                        handle_chat_command, raw_text=text, sender_id=sender, channel="qq",
+                        account_id=app_id, conversation_id=f"group:{group}" if group else "c2c",
+                    )
+                target = {"group_openid": group} if group else {"target_openid": sender}
+                send = self.bot_client.send_group_message if group else self.bot_client.send_c2c_message
+                ok = await asyncio.to_thread(send, **target, text=reply, app_id=app_id, app_secret=app_secret, msg_id=message_id)
+                logger.info("Sent QQ reply [success=%s, message_id=%s, length=%d]", ok, message_id, len(reply))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("QQ reply failed [message_id=%s, error=%s]", message_id, type(exc).__name__)
+            finally:
+                queue.task_done()
 
 
 # Global singleton instance

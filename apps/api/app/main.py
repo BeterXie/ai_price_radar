@@ -18,7 +18,7 @@ from .routers import admin, auth, discovery, internal, public, public_feed, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.9.54"
+VERSION = "3.9.55"
 PRIVACY_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ discovery.register_discovery_payload_guard(app)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError):
-    if request.url.path == "/api/v1/relay-requests" or request.url.path.startswith("/api/v1/admin/relays"):
+    if request.url.path == "/api/v1/relay-requests" or request.url.path.startswith(("/api/v1/admin/relays", "/api/v1/admin/bot-ai")):
         # Pydantic includes raw input in errors, including secrets on model-level errors.
         return JSONResponse(status_code=422, content={"detail": [
             {key: error[key] for key in ("loc", "msg", "type") if key in error}

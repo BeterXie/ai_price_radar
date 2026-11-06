@@ -61,13 +61,15 @@ def enable_test_auth_codes(monkeypatch, bot_encryption_key):
 
 
 @pytest.fixture
-def test_db():
+def test_db(monkeypatch):
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    from app.services import bot_ai_settings
+    monkeypatch.setattr(bot_ai_settings, "SessionLocal", TestingSessionLocal)
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:

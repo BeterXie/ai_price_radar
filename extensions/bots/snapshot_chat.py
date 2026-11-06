@@ -16,6 +16,7 @@ from app.services.catalog_vocabulary import (
     BRAND_GROUPS, DELIVERY_LABELS, PERIOD_LABELS, PRODUCT_ALIASES, WARRANTY_LABELS, normalize_search,
 )
 from app.services.snapshot_catalog import QuoteQuery, SnapshotCatalog, SnapshotUnavailable, snapshot_store, timestamp
+from .price_assistant import AIUnavailable, CLARIFICATIONS, EXPLANATIONS, price_assistant
 
 PAGE_SIZE = 5
 SESSION_TTL = 30 * 60
@@ -132,7 +133,7 @@ def parse_query(text: str, catalog: SnapshotCatalog, previous: QuoteQuery | None
         ("access", {"exclusive": r"不要共享|排除共享|非共享|不共享|独享|独立账号", "shared": r"共享|拼车|号池"}),
         ("warranty", {"none": r"无质保|不要质保", "subscription_term": r"全程质保|全保|订阅期质保", "first_login": r"首登质保", "seven_days": r"7天质保|七天质保", "three_days": r"3天质保|三天质保", "one_day": r"24小时质保|1天质保|一天质保", "one_hour": r"1小时质保|一小时质保", "covered": r"有质保|带质保|要质保"}),
         ("period", {"one_year": r"年付|年卡|一年|12个月|365天", "six_months": r"半年|6个月|六个月", "three_months": r"季付|季卡|3个月|三个月", "one_month": r"月付|月卡|包月|一个月|1个月|30天", "one_week": r"周付|周卡|一周|7天", "one_day": r"日付|日卡|一天|1天|日抛"}),
-        ("delivery", {"relay_api": r"中转站|中转|反代|relay", "semi_finished_account": r"半成品|首登号", "finished_account": r"成品账号|成品号|成品", "subscription_recharge": r"直充|代充", "team_seat": r"团队席位|车位", "card_code": r"卡密|兑换码|cdk", "session_token": r"session|会话令牌", "verification_service": r"接码服务|验证服务|接码", "api_credit": r"api额度"}),
+        ("delivery", {"relay_api": r"中转站|中转|反代|relay", "semi_finished_account": r"半成品|首登号", "finished_account": r"成品账号|成品号|成品", "subscription_recharge": r"直充|代充", "team_seat": r"团队席位|车位", "card_code": r"卡密|兑换码|cdk", "session_token": r"session|会话令牌", "verification_service": r"接码服务|验证服务|接码", "api_credit": r"api额度", "account": r"账号|账户"}),
         ("stock", {"out_of_stock": r"已售罄|缺货|无货", "in_stock": r"有货|现货"}),
     )
     for field, values in options:
@@ -189,7 +190,7 @@ def _terms(offer: dict) -> str:
 
 def _conditions(query: QuoteQuery) -> str:
     parts = [*query.terms]
-    for value, labels in ((query.access, {"exclusive": "独享", "shared": "共享"}), (query.delivery, DELIVERY_LABELS), (query.period, PERIOD_LABELS), (query.warranty, {**WARRANTY_LABELS, "covered": "有质保"}), (query.stock, {"in_stock": "有货", "out_of_stock": "已售罄"})):
+    for value, labels in ((query.access, {"exclusive": "独享", "shared": "共享"}), (query.delivery, {**DELIVERY_LABELS, "account": "账号（成品 / 半成品）"}), (query.period, PERIOD_LABELS), (query.warranty, {**WARRANTY_LABELS, "covered": "有质保"}), (query.stock, {"in_stock": "有货", "out_of_stock": "已售罄"})):
         if value:
             parts.append(labels.get(value, value))
     currency = query.currency or "CNY"
@@ -264,12 +265,49 @@ def render_overview(catalog: SnapshotCatalog, brand: str = "") -> str:
     return "\n".join(lines)
 
 
+def render_comparison(rows: list[tuple[dict, dict]]) -> str:
+    lines = ["商品比较（当前公开报价）"]
+    for index, (product, offer) in enumerate(rows, 1):
+        lines.extend([
+            f"{index}. {product['display_name']} · {offer['shop_name']}",
+            f"   {_price(offer)} · {_stock(offer)}", f"   {_terms(offer)}",
+            f"   {offer['original_name']}",
+            f"   {offer.get('source_url') or SITE_URL + '/products/' + product['slug']}",
+        ])
+    comparable = len(rows) >= 2 and all(
+        offer.get("is_trusted_price") and offer.get("is_comparable") and offer.get("price") is not None
+        and offer["stock_status"] == "in_stock" and offer["service_period"] != "unknown" for _, offer in rows
+    ) and len({(p["slug"], o["currency"], o["service_period"]) for p, o in rows}) == 1
+    if comparable:
+        cheapest = min(range(len(rows)), key=lambda i: Decimal(str(rows[i][1]["price"])))
+        price = Decimal(str(rows[cheapest][1]["price"]))
+        differences = [Decimal(str(o["price"])) - price for _, o in rows]
+        if any(differences):
+            lines.append(f"相同套餐、币种和使用期限下，第 {cheapest + 1} 项报价最低。")
+        else:
+            lines.append("这几项报价相同，可以继续比较交付方式和质保。")
+    elif len(rows) >= 2:
+        lines.append("套餐、币种或期限不同/未注明，或包含缺货、库存未知及非可比报价，不能直接按金额判断哪项更划算。")
+    for delivery, topic in (("semi_finished_account", "semi_finished"), ("subscription_recharge", "recharge"), ("trial_account", "trial"), ("session_token", "token")):
+        if any(o["delivery_type"] == delivery for _, o in rows):
+            lines.append(EXPLANATIONS[topic])
+    lines.append("价格与库存以店铺下单页为准；商品条款不代表平台保证商家信誉。")
+    return "\n".join(lines)
+
+
 class SnapshotChat:
     def __init__(self):
         self.sessions: OrderedDict[tuple, SearchSession] = OrderedDict()
         self.lock = threading.Lock()
 
-    def reply(self, text: str, *, sender_id: str = "", channel: str = "qq", account_id: str = "", conversation_id: str = "c2c") -> str:
+    def _remember(self, key, session: SearchSession) -> None:
+        if key:
+            self.sessions[key] = session
+            self.sessions.move_to_end(key)
+            while len(self.sessions) > MAX_SESSIONS:
+                self.sessions.popitem(last=False)
+
+    def reply(self, text: str, *, sender_id: str = "", channel: str = "qq", account_id: str = "", conversation_id: str = "c2c", use_ai: bool = False) -> str:
         try:
             catalog = snapshot_store.load()
         except SnapshotUnavailable as exc:
@@ -281,25 +319,85 @@ class SnapshotChat:
             return "搜索内容太长，请用 500 字以内的商品名称和筛选条件查询。"
         raw_text = text
         text = normalize_search(text)
+        plan = None
+        fallback_note = ""
+        controls = {"重新搜索", "重置搜索", "结束查询", "行情", "大盘", "概况", "市场", "价格", "汇总", "下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的"}
+        detail_pattern = r"(?:看看|查看|看)?第?([1-5一二三四五])(?:家|个|条)(?:详情|怎么样|多少钱|呢)?"
+        if use_ai and text not in controls and not re.fullmatch(detail_pattern, text) and text not in catalog.aliases and text not in catalog.brands:
+            with self.lock:
+                original = self.sessions.get(key) if key else None
+                if original and time.monotonic() - original.touched >= SESSION_TTL:
+                    original = None
+                context = replace(original, query=replace(original.query)) if original else None
+            # Release the global session lock before model I/O; quote lookup uses only the snapshot.
+            try:
+                plan = price_assistant.plan(raw_text, catalog, context, key)
+                if plan:
+                    catalog = snapshot_store.load()
+                    if datetime.now(timezone.utc) - catalog.published_at > catalog.max_age:
+                        return "当前报价快照已过期，请等待价格同步后再查询。"
+                    plan.validate_for(catalog, context.query if context else None)
+            except SnapshotUnavailable as exc:
+                return str(exc)
+            except (AIUnavailable, ValueError):
+                fallback_note = "暂时无法理解复杂问法，以下按关键词查找；也可发送“Claude Pro 月付 100元以内”这类条件。\n"
+                plan = None
         with self.lock:
             now = time.monotonic()
             for expired in [k for k, v in self.sessions.items() if now - v.touched >= SESSION_TTL]:
                 del self.sessions[expired]
             previous = self.sessions.get(key) if key else None
+            if plan and previous is not original:
+                return "本次搜索条件刚刚更新，请根据最新列表重新发送这句话。"
+            if plan:
+                if plan.action == "clarify":
+                    return CLARIFICATIONS[plan.clarification]
+                if plan.action == "explain":
+                    if previous:
+                        previous.touched = now
+                    return "\n".join(EXPLANATIONS[topic] for topic in dict.fromkeys(plan.topics))
+                text = {"detail": f"第{plan.positions[0]}家" if plan.positions else "", "next_page": "下一页", "previous_page": "上一页", "clear_filters": "清除筛选", "reset": "重新搜索"}.get(plan.action, text)
             if text in ("重新搜索", "重置搜索", "结束查询"):
                 self.sessions.pop(key, None)
                 return "已清除本次搜索，请输入新的商品或条件。"
             if text in ("行情", "大盘", "概况", "市场", "价格", "汇总"):
                 self.sessions.pop(key, None)
                 return render_overview(catalog)
-            detail = re.fullmatch(r"(?:看看|查看|看)?第?([1-5一二三四五])(?:家|个|条)(?:详情|怎么样|多少钱|呢)?", text)
-            control = text in ("下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的") or detail is not None
+            detail = re.fullmatch(detail_pattern, text)
+            control = text in ("下一页", "上一页", "清除筛选", "取消筛选", "再便宜点", "更便宜的") or detail is not None or bool(plan and plan.positions)
             if control and previous is None:
                 return "请先搜索商品，再继续筛选或查看报价。"
             changed_snapshot = previous is not None and previous.snapshot_id != catalog.id
             session = SearchSession(replace(previous.query), catalog.id, previous.page, previous.shown_ids, now) if previous else SearchSession(QuoteQuery(), catalog.id, touched=now)
             if changed_snapshot:
                 session.page, session.shown_ids = 0, ()
+            if plan and plan.action == "compare":
+                if changed_snapshot and plan.positions:
+                    reply = render_results(catalog, session)
+                    self._remember(key, session)
+                    return "报价已更新，已刷新列表，请按新列表选择。\n" + reply
+                if plan.positions:
+                    if any(position > len(session.shown_ids) for position in plan.positions):
+                        return "当前页没有这个序号，请按列表中的序号选择。"
+                    rows = [catalog.by_id[session.shown_ids[position - 1]] for position in plan.positions]
+                    if any(datetime.now(timezone.utc) - timestamp(o["observed_at"]) > catalog.max_age for _, o in rows):
+                        return "这条报价已不可用，请重新搜索。"
+                else:
+                    queries = [spec.query(catalog, previous.query if previous else None) for spec in plan.searches]
+                    candidates = [catalog.search(query) for query in queries]
+                    if any(not rows for rows in candidates):
+                        missing = [catalog.products.get(q.product, {}).get("display_name") or q.brand or "所选方案" for q, rows in zip(queries, candidates) if not rows]
+                        return "以下方案没有符合条件的报价，暂时无法比较：" + "、".join(missing) + "。可放宽条件后再试。"
+                    rows = [choices[0] for choices in candidates]
+                    session.query = queries[0]
+                    session.page = 0
+                session.shown_ids = tuple(o["id"] for _, o in rows)
+                self._remember(key, session)
+                reply = render_comparison(rows)
+                for topic in dict.fromkeys(plan.topics):
+                    if EXPLANATIONS[topic] not in reply:
+                        reply += "\n" + EXPLANATIONS[topic]
+                return reply
             if detail and not changed_snapshot:
                 number = int(detail[1]) if detail[1].isdigit() else "一二三四五".index(detail[1]) + 1
                 if number > len(session.shown_ids):
@@ -309,7 +407,8 @@ class SnapshotChat:
                     return "这条报价已不可用，请重新搜索。"
                 product, offer = row
                 previous.touched = now
-                return "\n".join([f"{product['display_name']} · {offer['shop_name']}", offer["original_name"], f"{_price(offer)} · {_stock(offer)}", _terms(offer), offer.get("source_url") or f"{SITE_URL}/products/{product['slug']}"])
+                explanations = [EXPLANATIONS[topic] for topic in dict.fromkeys(plan.topics)] if plan else []
+                return "\n".join([f"{product['display_name']} · {offer['shop_name']}", offer["original_name"], f"{_price(offer)} · {_stock(offer)}", _terms(offer), offer.get("source_url") or f"{SITE_URL}/products/{product['slug']}", *explanations])
             if not changed_snapshot and text in ("下一页", "上一页"):
                 session.page += 1 if text == "下一页" else -1
             elif text in ("清除筛选", "取消筛选"):
@@ -327,7 +426,7 @@ class SnapshotChat:
                 return "当前优先展示可比现货中的低价；可以清除筛选，或更换周期和交付方式。"
             elif not control:
                 try:
-                    session.query = parse_query(raw_text, catalog, previous.query if previous else None)
+                    session.query = plan.searches[0].query(catalog, previous.query if previous else None) if plan and plan.action == "search" else parse_query(raw_text, catalog, previous.query if previous else None)
                 except QueryError as exc:
                     return str(exc)
                 session.page = 0
@@ -338,12 +437,10 @@ class SnapshotChat:
                 reply = render_results(catalog, session)
             if changed_snapshot and control:
                 reply = "报价已更新，已刷新列表，请按新列表选择。\n" + reply
-            if key:
-                self.sessions[key] = session
-                self.sessions.move_to_end(key)
-                while len(self.sessions) > MAX_SESSIONS:
-                    self.sessions.popitem(last=False)
-            return reply
+            self._remember(key, session)
+            if plan:
+                reply += "".join("\n" + EXPLANATIONS[topic] for topic in dict.fromkeys(plan.topics))
+            return fallback_note + reply
 
 
 snapshot_chat = SnapshotChat()
