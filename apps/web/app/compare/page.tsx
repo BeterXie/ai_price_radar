@@ -5,6 +5,7 @@ import { brandCatalogPath, OFFICIAL_PLAN_SOURCES } from "@/lib/catalog";
 import { exactTime, money } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 import { breadcrumbJsonLd, JsonLd } from "@/components/structured-data";
+import { SharePageButton } from "@/components/share-page-button";
 
 export const dynamic = "force-dynamic";
 const title = "AI 模型对比｜ChatGPT、Claude、Gemini 订阅价格与选购";
@@ -29,6 +30,7 @@ export default async function ComparePage() {
       <header className="max-w-4xl">
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">AI 模型与订阅对比</h1>
         <p className="mt-4 text-[color:var(--muted)] leading-7">比较 ChatGPT、Claude、Gemini，先确定要买网页订阅、独立账号还是 API 额度，再比较相同期限和交付方式的价格。这里汇总本站实际收录的报价，并提供官方套餐与模型评测入口。</p>
+        <SharePageButton path="/compare" />
       </header>
 
       <section className="mt-10" aria-labelledby="compare-prices">
