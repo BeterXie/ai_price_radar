@@ -10,7 +10,6 @@ import {
   Eye,
   Fire,
   GithubLogo,
-  ShareNetwork,
   Sparkle,
   Star,
   Sword,
@@ -23,6 +22,7 @@ import { CrabArena } from "@/components/skills/crab-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
 import { DemoIframe } from "@/components/skills/demo-iframe";
 import { safeExternalHttpsUrl, safeInternalDemoPath } from "@/lib/safe-url";
+import { SharePageButton } from "@/components/share-page-button";
 
 const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: string }> = {
   benchmark: {
@@ -50,7 +50,6 @@ const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: 
 export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   const meta = KIND_META[skill.kind] || KIND_META.skill;
   const IconComponent = meta.icon;
@@ -78,16 +77,6 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
     } catch {}
   };
 
-  const handleShare = async () => {
-    try {
-      if (typeof window !== "undefined") {
-        await navigator.clipboard.writeText(window.location.href);
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2000);
-      }
-    } catch {}
-  };
-
   return (
     <article className="shell py-8">
       {/* Breadcrumb & Top Bar */}
@@ -100,14 +89,7 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
           <span>返回技能与实验室</span>
         </Link>
 
-        <button
-          type="button"
-          onClick={handleShare}
-          className="inline-flex items-center gap-1 text-[color:var(--muted)] hover:text-[color:var(--foreground)] transition"
-        >
-          {copiedLink ? <Check size={14} className="text-emerald-500" /> : <ShareNetwork size={14} />}
-          <span>{copiedLink ? "链接已复制" : "分享本页"}</span>
-        </button>
+        <SharePageButton path={`/skills/${encodeURIComponent(skill.slug)}`} />
       </div>
 
       {/* Main Header */}

@@ -5,6 +5,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { isBaiduTrackingAllowed } from "@/lib/analytics-preferences";
+import { CAMPAIGN_QUERY_KEYS } from "@/lib/share-url";
 
 type Gtag = (...args: unknown[]) => void;
 type BaiduCommand = [string, ...unknown[]];
@@ -75,10 +76,17 @@ function getAiReferral(referrer: string) {
   }
 }
 
-export function buildAnalyticsPath(pathname: string | null, rawSearch: string): string {
+export function buildAnalyticsPath(pathname: string | null, rawSearch: string, includeCampaign = true): string {
   const source = new URLSearchParams(rawSearch);
   const safeEntries: Array<[string, string]> = [];
   for (const [key, rawValue] of source.entries()) {
+    if ((CAMPAIGN_QUERY_KEYS as readonly string[]).includes(key)) {
+      // Accept compact public labels (including chatgpt.com), not email addresses or free text.
+      if (includeCampaign && source.getAll(key).length === 1 && /^[a-z][a-z0-9._-]{0,39}$/.test(rawValue)) {
+        safeEntries.push([key, rawValue]);
+      }
+      continue;
+    }
     if (!ANALYTICS_QUERY_KEYS.has(key)) continue;
     if (key === "q") {
       if (rawValue.trim()) safeEntries.push([key, "present"]);
@@ -106,6 +114,7 @@ export function trackBaiduPageview(pathname: string | null, rawSearch: string): 
   }
 
   const path = buildAnalyticsPath(pathname, rawSearch);
+  const navigationPath = buildAnalyticsPath(pathname, rawSearch, false);
   const existingScript = document.getElementById(BAIDU_SCRIPT_ID);
   const queue = window._hmt || (window._hmt = [] as BaiduCommand[]);
   if (!existingScript) {
@@ -113,9 +122,9 @@ export function trackBaiduPageview(pathname: string | null, rawSearch: string): 
     queue.push(["_setAutoPageview", false]);
     lastBaiduPage = null;
   }
-  if (lastBaiduPage === path) return;
+  if (lastBaiduPage === navigationPath) return;
   queue.push(["_trackPageview", path]);
-  lastBaiduPage = path;
+  lastBaiduPage = navigationPath;
 
   if (!existingScript) {
     const script = document.createElement("script");
@@ -136,10 +145,12 @@ function SiteAnalyticsInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const referralChecked = useRef(false);
+  const lastGooglePage = useRef<string | null>(null);
   const [consent, setConsent] = useState<AnalyticsConsent | null>(null);
   const pathAllowed = isAnalyticsPathAllowed(pathname);
   const rawSearch = searchParams.toString();
   const analyticsPath = buildAnalyticsPath(pathname, rawSearch);
+  const navigationPath = buildAnalyticsPath(pathname, rawSearch, false);
 
   useEffect(() => {
     if (!MEASUREMENT_ID) return;
@@ -166,7 +177,12 @@ function SiteAnalyticsInner() {
   }, [pathname, rawSearch]);
 
   useEffect(() => {
-    if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) return;
+    if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) {
+      lastGooglePage.current = null;
+      return;
+    }
+    if (lastGooglePage.current === navigationPath) return;
+    lastGooglePage.current = navigationPath;
     const referral = referralChecked.current ? null : getAiReferral(document.referrer);
     referralChecked.current = true;
     sendGtag("event", "page_view", {
@@ -182,7 +198,7 @@ function SiteAnalyticsInner() {
         referral_medium: "referral",
       });
     }
-  }, [analyticsPath, consent, pathAllowed]);
+  }, [analyticsPath, navigationPath, consent, pathAllowed]);
 
   if (!MEASUREMENT_ID) return null;
   if (!pathAllowed) return null;

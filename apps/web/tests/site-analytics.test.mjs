@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { trackBaiduPageview } from "../components/site-analytics.tsx";
+import { buildAnalyticsPath, trackBaiduPageview } from "../components/site-analytics.tsx";
 import { BAIDU_PREFERENCE_KEY } from "../lib/analytics-preferences.ts";
 
 function browser(t, hostname = "ai.pricememo.cn") {
@@ -125,4 +125,30 @@ test("Baidu pageviews use filtered paths without raw searches or private query p
   const page = browser(t);
   trackBaiduPageview("/products", "q=person%40example.com&token=secret&brand=OpenAI&targets=private");
   assert.deepEqual(page.pageviews(), [["_trackPageview", "/products?brand=OpenAI&q=present"]]);
+});
+
+test("public campaign labels survive page tracking while unsafe and duplicated labels do not", () => {
+  assert.equal(buildAnalyticsPath("/compare", "utm_source=chatgpt.com"), "/compare?utm_source=chatgpt.com");
+  assert.equal(
+    buildAnalyticsPath("/compare", "utm_source=qq&utm_medium=community&utm_campaign=launch_202611&utm_content=compare_01&token=secret"),
+    "/compare?utm_campaign=launch_202611&utm_content=compare_01&utm_medium=community&utm_source=qq",
+  );
+  for (const query of ["utm_source=person%40example.com", "utm_source=hello%20world", "utm_source=" + "a".repeat(41), "utm_source=qq&utm_source=other", "utm_term=private_search"]) {
+    assert.equal(buildAnalyticsPath("/compare", query), "/compare");
+  }
+});
+
+test("campaign changes do not manufacture additional pageviews", (t) => {
+  const page = browser(t);
+  trackBaiduPageview("/compare", "utm_source=qq&utm_medium=community");
+  trackBaiduPageview("/compare", "utm_medium=community&utm_source=qq");
+  trackBaiduPageview("/compare", "utm_source=wechat");
+  trackBaiduPageview("/compare", "");
+  trackBaiduPageview("/products/chatgpt-plus", "");
+  trackBaiduPageview("/compare", "utm_source=qq");
+  assert.deepEqual(page.pageviews(), [
+    ["_trackPageview", "/compare?utm_medium=community&utm_source=qq"],
+    ["_trackPageview", "/products/chatgpt-plus"],
+    ["_trackPageview", "/compare?utm_source=qq"],
+  ]);
 });
