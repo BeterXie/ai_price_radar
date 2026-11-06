@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.56] - 2026-11-07
+
+- Let the QQ assistant interpret questions about the site catalog, popular products, quote statistics, inventory and shops, and preserve product/filter context for follow-up questions.
+- Calculate price statistics from each shop's latest matching quote, grouped by product, currency, delivery, service period and account access; retain snapshot identity and sample counts in answers.
+- Publish existing cumulative offer click counts for popularity rankings. Missing clicks, historical windows and real transaction questions produce explicit data limitations.
+- No database migration. Rebuild API, Web and importer, then complete a full multi-source snapshot publication before restoring timers.
+
 ## [3.9.50] - 2026-11-03
 
 - Detect public storefront catalogs at `/api/products` and import them through the existing merchant feed intake and snapshot workflow.

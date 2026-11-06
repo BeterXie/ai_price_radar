@@ -99,6 +99,11 @@ export function GET() {
           "currency": { "type": "string" },
           "stock_status": { "type": "string" },
           "stock_count": { "type": ["integer", "null"] },
+          "click_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cumulative site clicks for this public offer as of snapshot publication; not completed sales or a time-window ranking."
+          },
           "delivery_type": { "type": "string" },
           "service_period": { "type": "string" },
           "warranty": { "type": "string" },

@@ -96,6 +96,8 @@ class SnapshotCatalog:
                 for field in ("is_comparable", "is_trusted_price"):
                     if not isinstance(offer[field], bool):
                         raise SnapshotUnavailable("报价快照包含无效价格标记，请等待下一次价格同步。")
+                if "click_count" in offer and (type(offer["click_count"]) is not int or offer["click_count"] < 0):
+                    raise SnapshotUnavailable("报价快照包含无效点击统计，请等待下一次价格同步。")
                 for field in ("item_fingerprint", "source_url"):
                     if offer.get(field) is not None and not isinstance(offer[field], str):
                         raise SnapshotUnavailable("报价快照包含无效商品详情，请等待下一次价格同步。")
@@ -107,6 +109,7 @@ class SnapshotCatalog:
                 offer["search_text"] = normalize_search(" ".join([
                     product["display_name"], product["slug"], offer.get("search_text", ""),
                     *product.get("search_keywords", []),
+                    *offer.get("use_scenarios", []), *offer.get("tags", []),
                     offer["original_name"], offer["shop_name"], offer["shop_token"],
                 ]))
                 self.rows.append((product, offer))
@@ -117,7 +120,8 @@ class SnapshotCatalog:
         for row in self.rows:
             self.by_product[row[0]["slug"]].append(row)
 
-    def search(self, query: QuoteQuery, *, now: datetime | None = None) -> list[tuple[dict, dict]]:
+    def matching_rows(self, query: QuoteQuery, *, now: datetime | None = None) -> list[tuple[dict, dict]]:
+        """Apply public quote filters before choosing representatives or computing statistics."""
         cutoff = (now or datetime.now(timezone.utc)) - self.max_age
         rows = self.by_product.get(query.product, []) if query.product else self.rows
         found = []
@@ -153,9 +157,12 @@ class SnapshotCatalog:
             if query.max_price is not None and (price is None or price > query.max_price):
                 continue
             found.append((product, offer))
+        return found
+
+    def search(self, query: QuoteQuery, *, now: datetime | None = None) -> list[tuple[dict, dict]]:
         # Keep every quote in the file, and group only after applying the user's filters.
         grouped = {}
-        for row in sorted(found, key=quote_order):
+        for row in sorted(self.matching_rows(query, now=now), key=quote_order):
             offer = row[1]
             key = (row[0]["slug"], offer.get("item_fingerprint") or str(offer["id"]), offer["currency"])
             grouped.setdefault(key, row)

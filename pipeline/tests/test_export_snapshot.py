@@ -68,6 +68,7 @@ def test_export_public_snapshot(db, tmp_path: Path, source_platform):
         currency="CNY",
         stock_status="in_stock",
         stock_count=5,
+        click_count=17,
         delivery_type="finished_account",
         is_comparable=True,
         service_period="one_month",
@@ -110,6 +111,7 @@ def test_export_public_snapshot(db, tmp_path: Path, source_platform):
     assert "OpenAI" not in plus_snap["search_aliases"]
     assert plus_snap["search_keywords"] == ["OpenAI", "subscription"]
     assert plus_snap["offers"][0]["observed_at"]
+    assert plus_snap["offers"][0]["click_count"] == 17
 
 
 def test_export_contains_every_public_quote_and_filters_hidden_stale_rows(db, tmp_path, monkeypatch):
