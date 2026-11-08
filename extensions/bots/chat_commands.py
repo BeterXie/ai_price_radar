@@ -630,6 +630,11 @@ def handle_chat_command(
     use the supplied DB session or open a standalone one.
     """
     text = (raw_text or "").strip()
+    if channel == "qq":
+        # QQ group mentions can contain numeric IDs or opaque OpenIDs, and may
+        # appear anywhere. Strip transport metadata before commands or AI see it.
+        text = re.sub(r"<@!?[A-Za-z0-9_-]+>", " ", text).strip()
+        text = re.sub(r"^@[^\s]+\s*", "", text).strip()
     if not text:
         return help_menu(channel)
 

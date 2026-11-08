@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.57] - 2026-11-08
+
+- Strip QQ group mention metadata, including opaque OpenIDs, before command parsing, local snapshot search and AI planning.
+- Keep mention-only messages on the normal help path and preserve literal mention text for non-QQ channels.
+- No database migration or pipeline change. Rebuild API, Web and importer from this release.
+
 ## [3.9.56] - 2026-11-07
 
 - Let the QQ assistant interpret questions about the site catalog, popular products, quote statistics, inventory and shops, and preserve product/filter context for follow-up questions.

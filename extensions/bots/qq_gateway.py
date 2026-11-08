@@ -13,7 +13,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import time
 
 from sqlalchemy import select
@@ -316,21 +315,15 @@ class QQGatewayService:
                             author = d.get("author", {})
                             member_openid = author.get("member_openid") or author.get("id")
 
-                            # Clean @bot mention prefix (<@!xxx> or @xxx)
-                            cleaned_content = re.sub(r"^<@!\d+>\s*", "", raw_content)
-                            cleaned_content = re.sub(r"^@[^\s]+\s*", "", cleaned_content).strip()
-                            if not cleaned_content:
-                                cleaned_content = "帮助"
-
                             if group_openid:
                                 logger.info(
                                     "Received QQ group message [group=%s, member=%s, message_id=%s, length=%d]",
                                     group_openid[:6] + "...",
                                     member_openid[:6] + "..." if member_openid else "unknown",
                                     msg_id,
-                                    len(cleaned_content),
+                                    len(raw_content),
                                 )
-                                self._enqueue_message(message_queue, cleaned_content, member_openid or "", group_openid, msg_id)
+                                self._enqueue_message(message_queue, raw_content, member_openid or "", group_openid, msg_id)
 
                         elif t == "FRIEND_ADD":
                             # User added robot as friend
