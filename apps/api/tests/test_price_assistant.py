@@ -260,6 +260,48 @@ def test_disabled_ai_shortcuts_and_sensitive_commands_never_call_model(chat, pro
     assert "¥60.00" in reply and not provider["calls"]
 
 
+@pytest.mark.parametrize("message", [
+    "<@123456> claude pro",
+    "<@!123456> claude pro",
+    "<@a1b2c3d4e5f60123456789abcdef01234> claude pro",
+    "claude pro <@!a1b2c3d4e5f60123456789abcdef01234>",
+    "<@bot_123-456> claude pro <@another_mention>",
+    "@价格助手 claude pro",
+])
+def test_qq_mentions_do_not_pollute_exact_search_or_call_ai(chat, provider, message):
+    reply = ask(message)
+    assert "Claude Pro" in reply and "¥60.00" in reply
+    assert "<@" not in reply and not provider["calls"]
+
+
+@pytest.mark.parametrize("failure", ["timeout", "invalid_plan"])
+def test_qq_mentions_are_removed_from_ai_and_fallback_search(chat, provider, failure):
+    if failure == "timeout":
+        provider["timeout"] = True
+    else:
+        provider["plan"] = {"action": "clarify", "searches": [{"brand": "Claude"}]}
+    reply = ask("<@a1b2c3d4e5f60123456789abcdef01234> Claude Pro 月付")
+    assert "AI 暂时不可用" in reply and "¥60.00" in reply
+    assert "a1b2c3d4e5f60123456789abcdef01234" not in reply
+    context = json.loads(provider["calls"][0]["messages"][1]["content"])
+    assert context["request"] == "Claude Pro 月付"
+    assert "a1b2c3d4e5f60123456789abcdef01234" not in json.dumps(provider["calls"])
+
+
+def test_qq_mention_only_and_prefixed_commands_bypass_ai(chat, provider):
+    assert "自然语言价格助手" in ask("<@bot_openid>")
+    assert "自然语言价格助手" in ask("<@!bot_openid> 帮助")
+    assert "绑定格式" in ask("<@bot_openid> /bind invalid code extra")
+    assert not provider["calls"]
+
+
+def test_other_channels_preserve_literal_mention_text(chat, monkeypatch):
+    calls = []
+    monkeypatch.setattr(snapshot_chat.snapshot_chat, "reply", lambda text, **kwargs: calls.append(text) or "ok")
+    assert ask("<@literal> Claude", channel="telegram") == "ok"
+    assert calls == ["<@literal> Claude"]
+
+
 def test_ai_session_context_does_not_cross_groups_or_users(chat, provider):
     provider["plan"] = {"action": "search", "searches": [{"product": "claude-pro", "max_price": 110}]}
     ask("帮我找克劳德预算110")
