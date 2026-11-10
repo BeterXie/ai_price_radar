@@ -3,6 +3,9 @@ node_modules
 dist
 .git
 .env*
+# Published snapshots are mounted from the host at runtime by production Compose.
+# Including their history here duplicates gigabytes into every Web image.
+public/data
 # The production Dockerfile.prebuilt copies only these build outputs.
 # Keep the rest of .next ignored so local caches do not enter the context.
 .next
