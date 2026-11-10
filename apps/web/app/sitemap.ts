@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
-import { getMeta, getProducts, getShopTokens, getSkills } from "@/lib/api";
+import { getMeta, getProducts, getRelayStations, getShopTokens, getSkills } from "@/lib/api";
 import type { CatalogResponse, CommunitySkillPage, ProductCard } from "@/lib/types";
 import { SITE_URL } from "@/lib/site";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
+import { getArticles } from "@/lib/site-content";
 import { BRAND_TABS, brandCatalogPath } from "@/lib/catalog";
 
 import { brandGuides, deliveryGuides, generalGuides, productGuides, workflowGuides } from "@/lib/guides/registry";
@@ -84,6 +86,15 @@ function validDate(value: string | null | undefined) {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const articlePages: MetadataRoute.Sitemap = [{ url: `${SITE_URL}/articles` }];
+  let articlePage = 1;
+  while (true) {
+    const result = await getArticles(articlePage, 100);
+    for (const article of result.items) articlePages.push({ url: `${SITE_URL}/articles/${article.slug}`, lastModified: validDate(article.updated_at) });
+    if (articlePage * result.page_size >= result.total) break;
+    if (!result.items.length || articlePages.length >= MAX_SITEMAP_URLS) throw new Error("Article sitemap exceeds supported size");
+    articlePage += 1;
+  }
   const staticPages: MetadataRoute.Sitemap = [
     { url: SITE_URL },
     { url: `${SITE_URL}/products` },
@@ -115,7 +126,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     getAllProducts(),
     getShopTokens(),
     getMeta(),
-    getAllSkills(),
+    IS_PRIMARY_SITE ? getAllSkills() : Promise.resolve({ items: [] } as unknown as CommunitySkillPage),
   ]);
 
 
@@ -132,7 +143,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (meta?.advertise_enabled) {
     staticPages.push({ url: `${SITE_URL}/advertise`, lastModified: snapshotAt });
   }
-  if (meta?.relay_hub_enabled !== false && (meta?.relay_station_count ?? 0) > 0) {
+  const relayCount = IS_PRIMARY_SITE ? meta.relay_station_count : (await getRelayStations()).total;
+  if (meta?.relay_hub_enabled !== false && (relayCount ?? 0) > 0) {
     staticPages.push({ url: `${SITE_URL}/relays`, lastModified: snapshotAt });
   }
 
@@ -181,8 +193,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   const entries: MetadataRoute.Sitemap = [
-    ...staticPages,
-    ...guidePages,
+    ...staticPages.filter(entry => IS_PRIMARY_SITE || !entry.url.endsWith("/skills")),
+    ...(IS_PRIMARY_SITE ? guidePages : []),
+    ...articlePages,
     ...brandPages,
     ...sourcePlatformPages,
     ...shopPages,

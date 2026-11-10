@@ -79,7 +79,7 @@ export default async function ShopPage({ params, searchParams }: ShopPageProps) 
       name: `${shop.name}｜${shop.source_platform_label} AI 商品报价`,
       description: `查看 ${shop.name} 在 ${shop.source_platform_label} 的 AI 商品公开报价、库存、交付方式、更新时间和原始来源。`,
       inLanguage: "zh-CN",
-      isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+      isPartOf: { "@id": `${SITE_URL}/#website` },
       about: {
         "@type": "Thing",
         name: `${shop.source_platform_label} 公开店铺来源`,

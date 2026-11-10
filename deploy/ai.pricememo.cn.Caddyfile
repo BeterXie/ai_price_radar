@@ -1,4 +1,4 @@
-ai.pricememo.cn {
+ai.pricememo.cn, pricememo.cn {
     encode zstd gzip
 
     @internal path /api/v1/internal/*

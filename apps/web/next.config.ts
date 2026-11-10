@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { IS_PRIMARY_SITE } from "./lib/brands";
 
 // Next.js resolves `rewrites()` at build time and bakes the destination into
 // routes-manifest.json, so this value must be correct when the image/standalone
@@ -16,13 +17,26 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: process.cwd(),
   poweredByHeader: false,
+  // Keep auth and browser requests on the visited domain, including the apex alias.
+  env: { NEXT_PUBLIC_API_BASE_URL: "" },
+  async redirects() {
+    return IS_PRIMARY_SITE ? [] : [
+      { source: "/guides/:path*", destination: "/articles", permanent: false },
+      { source: "/skills/:path*", destination: "/articles", permanent: false },
+    ];
+  },
   async rewrites() {
-    return [
+    return { beforeFiles: IS_PRIMARY_SITE ? [] : [
+      { source: "/favicon.ico", destination: "/brand-icon" },
+      { source: "/icon.png", destination: "/brand-icon" },
+      { source: "/apple-icon.png", destination: "/brand-icon" },
+      { source: "/icon.svg", destination: `/brands/${process.env.NEXT_PUBLIC_SITE_ID}.svg` },
+    ], afterFiles: [
       {
         source: "/api/:path*",
         destination: `${internalApiBaseUrl}/api/:path*`,
       },
-    ];
+    ], fallback: [] };
   },
   async headers() {
     return [

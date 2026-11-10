@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import { notFound } from "next/navigation";
 import { getSkillDetail } from "@/lib/api";
 import { SkillDetailView } from "@/components/skills/skill-detail-view";
@@ -19,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const canonical = `https://ai.pricememo.cn/skills/${encodeURIComponent(skill.slug)}`;
+  const canonical = `${SITE_URL}/skills/${encodeURIComponent(skill.slug)}`;
   return {
     title: `${skill.title} - AI 技能实验室`,
     description: skill.summary || skill.subtitle,

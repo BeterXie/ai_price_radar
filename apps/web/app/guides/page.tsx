@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { ArrowRight, BookOpenText, MagnifyingGlass } from "@phosphor-icons/react/ssr";
 import { GuideCard } from "@/components/guides/guide-card";
@@ -27,12 +28,12 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   return {
     title: "AI 商品购买与使用教程中心",
     description: "了解账号、代充、团队席位、卡密与 API 额度的区别，查看购买前检查、使用步骤、安全提示和售后材料准备指南。",
-    alternates: { canonical: "https://ai.pricememo.cn/guides" },
+    alternates: { canonical: `${SITE_URL}/guides` },
     robots: { index: !hasQuery, follow: true },
     openGraph: {
       title: "AI 商品购买与使用教程中心",
       description: "购买前看懂交付方式，购买后确认服务和账号状态。",
-      url: "https://ai.pricememo.cn/guides",
+      url: `${SITE_URL}/guides`,
       siteName: "AI Price Memory / AI Price Radar",
       locale: "zh_CN",
       type: "website",

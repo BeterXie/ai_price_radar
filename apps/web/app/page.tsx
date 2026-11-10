@@ -11,30 +11,34 @@ import { productDisplayName } from "@/lib/product-identity";
 import { BRAND_TABS, brandCatalogPath, STANDALONE_PRODUCTS } from "@/lib/catalog";
 import { exactTime, relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
+import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
+import { BrandHome } from "@/components/brand-home";
 
 export const dynamic = "force-dynamic";
+const homeTitle = IS_PRIMARY_SITE ? "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比" : BRAND.name + "｜" + BRAND.tagline;
 
 export const metadata: Metadata = {
-  title: "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比",
+  title: homeTitle,
   description: "汇总 ChatGPT、Claude、Gemini、Grok 等 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比",
+    title: homeTitle,
     description: "汇总主流 AI 产品的公开报价，比较价格、库存、交付方式和更新时间。",
     url: SITE_URL,
-    siteName: "AI Price Memory / AI Price Radar",
+    siteName: BRAND.name,
     locale: "zh_CN",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比",
+    title: homeTitle,
     description: "查看主流 AI 产品的公开价格、库存、交付方式和更新时间。",
   },
 };
 
 export default async function HomePage() {
   const data = await getProducts("sort=quality");
+  if (!IS_PRIMARY_SITE) return <BrandHome data={data} />;
   const products = data.items.slice(0, 6);
 
   return (

@@ -4,13 +4,14 @@ import { CheckCircle, Eye, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { ShopRequestForm } from "@/components/shop-request-form";
 import { BUSINESS_EMAIL } from "@/lib/community";
 import { getMeta } from "@/lib/api";
+import { BRAND } from "@/lib/brands";
 
 export const metadata: Metadata = {
   title: "提交商品来源",
-  description: "提交公开店铺、商品页面、商家 Feed 或 API 中转站，申请加入 AI Price Memory (AI Price Radar)。",
+  description: `提交公开店铺、商品页面、商家 Feed 或 API 中转站，申请加入 ${BRAND.name} 的公开来源目录。`,
   alternates: { canonical: "/shops/submit" },
   openGraph: {
-    title: "提交商品来源 · AI Price Memory / AI Price Radar",
+    title: `提交商品来源 · ${BRAND.name}`,
     description: "提交公开商品来源或 API 中转站，审核后展示报价或接口检测结果。",
     url: "/shops/submit",
   },

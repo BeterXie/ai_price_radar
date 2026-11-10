@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import type { BrandSlug, GuideFaq } from "@/lib/guides/types";
 
-const SITE_URL = "https://ai.pricememo.cn";
 
 const BRAND_NAMES: Record<BrandSlug, string> = {
   openai: "OpenAI",

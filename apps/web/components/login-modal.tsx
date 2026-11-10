@@ -1,4 +1,5 @@
 "use client";
+import { BRAND } from "@/lib/brands";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
@@ -347,7 +348,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                 <span>邮箱 + 密码快捷登录</span>
               </div>
               <h2 id="login-dialog-title" className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--ink)]">
-                登录 PriceMemo
+                登录 {BRAND.name}
               </h2>
               <p className="text-xs sm:text-sm text-[color:var(--muted)] mt-1.5 leading-relaxed">
                 使用您在个人中心设置的登录密码快捷登录；忘记密码时可随时切换到验证码登录。
@@ -360,7 +361,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                 <span>邮箱安全免密登录</span>
               </div>
               <h2 id="login-dialog-title" className="text-xl sm:text-2xl font-bold tracking-tight text-[color:var(--ink)]">
-                登录 PriceMemo
+                登录 {BRAND.name}
               </h2>
               <p className="text-xs sm:text-sm text-[color:var(--muted)] mt-1.5 leading-relaxed">
                 输入邮箱获取 6 位动态验证码；登录后可设置降价提醒并绑定机器人接收实时价格变动。

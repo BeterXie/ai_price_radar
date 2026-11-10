@@ -15,6 +15,8 @@ import type {
 
 
 import { cache } from "react";
+import { IS_PRIMARY_SITE, promoApiPath } from "@/lib/brands";
+import { getSiteSettings } from "@/lib/site-content";
 import { getSnapshotCatalog } from "@/lib/snapshot-catalog";
 import { normalizeProductIdentity } from "@/lib/product-identity";
 import { canonicalProductSlug } from "@/lib/catalog";
@@ -122,17 +124,23 @@ export async function getShopCards(query = ""): Promise<ShopListResponse> {
 }
 
 export const getMeta = cache(async function getMeta(): Promise<Meta> {
-  return apiFetch("/api/v1/meta", 0, {
+  const meta = await apiFetch<Meta>("/api/v1/meta", 0, {
     next: { revalidate: 300 },
     signal: AbortSignal.timeout(1200),
   });
+  if (IS_PRIMARY_SITE) return meta;
+  const settings = await getSiteSettings();
+  return { ...meta, advertise_enabled: settings.advertise_enabled, relay_hub_enabled: settings.relay_hub_enabled,
+    site_notice: { enabled: Boolean(settings.notice_title), badge: "公告", title: settings.notice_title, content: settings.notice_content, link_text: settings.notice_link ? "查看详情" : "", link_url: settings.notice_link },
+    community_notice: { title: "", desc: "", qq_group: "", btn_text: "", ...meta.community_notice, enabled: false },
+  };
 });
 
 /** Live ad slots for a placement. Never throws: a failed ad read must not break a page. */
 export async function getAdSlots(placement: string, limit = 3): Promise<AdSlotListOut> {
   try {
     return await apiFetch<AdSlotListOut>(
-      `/api/v1/ads?placement=${encodeURIComponent(placement)}&limit=${limit}`,
+      promoApiPath(`/ads?placement=${encodeURIComponent(placement)}&limit=${limit}`),
       0,
       { next: { revalidate: 60 }, signal: AbortSignal.timeout(1500) },
     );
@@ -142,7 +150,7 @@ export async function getAdSlots(placement: string, limit = 3): Promise<AdSlotLi
 }
 
 export async function getRelayStations(): Promise<RelayStationListOut> {
-  return apiFetch<RelayStationListOut>("/api/v1/relays", 2, { next: { revalidate: 60 } });
+  return apiFetch<RelayStationListOut>(promoApiPath("/relays"), 2, { cache: "no-store" });
 }
 
 export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {

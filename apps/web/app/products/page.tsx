@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import { permanentRedirect } from "next/navigation";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
@@ -21,7 +22,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
     const product = await getProduct(slug, "comparable=true");
     if (!product) return { title: "产品不存在", robots: { index: false, follow: true } };
     const seo = getProductSeoContent(product.slug, product.display_name, product.description);
-    const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
+    const canonical = `${SITE_URL}/products/${encodeURIComponent(product.slug)}`;
     return {
       title: `${product.display_name}价格对比`,
       description: seo.metaDescription,
@@ -34,19 +35,19 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
     return {
       title: "API 中转站目录",
       description: "查看已收录 API 中转站的模型、计费方式、可用性和接口检测结果。",
-      alternates: { canonical: "https://ai.pricememo.cn/relays" },
+      alternates: { canonical: `${SITE_URL}/relays` },
       robots: { index: false, follow: true },
     };
   }
   return {
     title: "AI 订阅比价｜全部商品报价",
     description: "浏览 ChatGPT、Claude、Gemini、Grok 与 X Premium 公开报价，比较库存、交付方式、更新时间和来源。",
-    alternates: { canonical: "https://ai.pricememo.cn/products" },
+    alternates: { canonical: `${SITE_URL}/products` },
     robots: Object.keys(params).length ? { index: false, follow: true } : { index: true, follow: true },
     openGraph: {
       title: "全部 AI 商品报价",
       description: "浏览主流 AI 账号、订阅、充值与 API 服务的公开报价和库存。",
-      url: "https://ai.pricememo.cn/products",
+      url: `${SITE_URL}/products`,
       type: "website",
     },
   };

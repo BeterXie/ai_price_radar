@@ -1,4 +1,5 @@
 import { canonicalProductSlug } from "@/lib/catalog";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
 import { PRODUCT_DELIVERY_TYPES } from "./product-delivery-map";
 import { KNOWN_DELIVERY_TYPES, PRODUCT_SLUGS, type DeliveryType, type KnownDeliveryType, type ProductSlug } from "./types";
 
@@ -31,6 +32,7 @@ export function resolveGuideHref(input: {
   productSlug?: string | null;
   deliveryType?: string | null;
 }): string {
+  if (!IS_PRIMARY_SITE) return "/articles";
   const canonicalSlug = canonicalProductSlug(input.productSlug || "");
   const productSlug = productSlugs.has(canonicalSlug) ? canonicalSlug as ProductSlug : null;
 
@@ -54,5 +56,6 @@ export function resolveGuideHref(input: {
 }
 
 export function getGuideLinkLabel(deliveryType?: string | null): string {
+  if (!IS_PRIMARY_SITE) return "查看本站文章";
   return isDeliveryType(deliveryType) ? GUIDE_LINK_LABELS[deliveryType] : GUIDE_LINK_LABELS.unknown;
 }

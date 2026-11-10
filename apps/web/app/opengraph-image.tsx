@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
+import { BRAND } from "@/lib/brands";
 
-export const alt = "AI Price Memory (AI Price Radar) public AI subscription price comparison";
+export const alt = `${BRAND.name} public AI subscription price comparison`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -24,7 +25,7 @@ export default function Image() {
           <div style={{ width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 14, background: "#0c4a45" }}>
             <div style={{ width: 36, height: 36, display: "flex", border: "4px solid #00bba9", borderRadius: 999 }} />
           </div>
-          AI Price Memory
+          {BRAND.name}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div style={{ maxWidth: 980, fontSize: 82, lineHeight: 0.98, letterSpacing: "-5px", fontWeight: 750 }}>
@@ -33,7 +34,7 @@ export default function Image() {
           <div style={{ fontSize: 28, color: "#686b61" }}>Price / Stock / Delivery / Update time</div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 23 }}>
-          <span>ai.pricememo.cn</span>
+          <span>{new URL(BRAND.url).hostname}</span>
           <span style={{ padding: "12px 18px", borderRadius: 10, background: "#00bba9", color: "#ffffff" }}>Verification over promotion</span>
         </div>
       </div>

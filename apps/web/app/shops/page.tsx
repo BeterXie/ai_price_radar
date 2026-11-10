@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
+import { BRAND } from "@/lib/brands";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getMeta, getShopCards } from "@/lib/api";
@@ -9,7 +11,6 @@ import { relativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-const SITE_URL = "https://ai.pricememo.cn";
 
 export async function generateMetadata({
   searchParams,
@@ -20,7 +21,7 @@ export async function generateMetadata({
   const canonical = `${SITE_URL}/shops`;
   return {
     title: "AI 来源店铺目录",
-    description: "查看 AI Price Memory (AI Price Radar) 收录的公开 AI 商品店铺，包含 16688、LDXP 等平台来源的报价数、库存和最近更新时间。",
+    description: `查看 ${BRAND.name} 收录的公开 AI 商品店铺，包含 16688、LDXP 等平台来源的报价数、库存和最近更新时间。`,
     alternates: { canonical },
     robots: { index: Object.keys(params).length === 0, follow: true },
     openGraph: {
@@ -70,7 +71,7 @@ export default async function ShopsPage({
       url: canonical,
       name: "AI 来源店铺目录",
       description: "查看公开 AI 商品店铺的报价数、库存和最近更新时间。",
-      isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+      isPartOf: { "@id": `${SITE_URL}/#website` },
       mainEntity: {
         "@type": "ItemList",
         numberOfItems: shops.length,

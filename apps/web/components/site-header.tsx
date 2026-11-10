@@ -11,6 +11,7 @@ import type { AuthSessionState } from "@/lib/types";
 import { initUserHeartbeat } from "@/lib/analytics";
 import { LoginModal } from "@/components/login-modal";
 import { brandCatalogPath } from "@/lib/catalog";
+import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
 
 const brandLinks = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 
@@ -27,11 +28,11 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
   const navLinks = [
     { href: "/products", label: "AI账号报价" },
     ...(relayHubEnabled ? [{ href: "/relays", label: "API中转站" }] : []),
-    { href: "/skills", label: "技能与实验室" },
+    ...(IS_PRIMARY_SITE ? [{ href: "/skills", label: "技能与实验室" }] : [{ href: "/articles", label: "文章" }]),
   ];
   const helpLinks = [
     { href: "/compare", label: "模型对比" },
-    { href: "/guides", label: "购买指南" },
+    ...(IS_PRIMARY_SITE ? [{ href: "/guides", label: "购买指南" }] : []),
     { href: "/methodology", label: "数据方法" },
   ];
 
@@ -85,7 +86,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
     <header className="app-header sticky top-0 z-50">
       <div className="shell header-layout">
         <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="group flex min-w-0 items-center gap-2.5">
-          <Image
+          {IS_PRIMARY_SITE ? <Image
             src="/brand/logo-icon.png"
             alt="AI Price Memory"
             width={36}
@@ -93,10 +94,10 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
             priority
             unoptimized
             className="h-9 w-9 shrink-0 object-contain transition-transform group-hover:scale-105"
-          />
+          /> : <span className="brand-monogram" aria-hidden="true">{BRAND.mark}</span>}
           <span className="min-w-0">
-            <span className="block truncate font-semibold tracking-[-0.035em]">AI Price Memory</span>
-            <span className="hidden text-[11px] font-medium text-[color:var(--muted)] sm:block">公开报价记录</span>
+            <span className="brand-wordmark block truncate font-semibold tracking-[-0.035em]">{BRAND.wordmark}</span>
+            {IS_PRIMARY_SITE && <span className="hidden text-[11px] font-medium text-[color:var(--muted)] sm:block">{BRAND.tagline}</span>}
           </span>
         </Link>
 

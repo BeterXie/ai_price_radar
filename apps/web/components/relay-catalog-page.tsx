@@ -8,13 +8,15 @@ import { BRAND_TABS, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catal
 import { RelayStationCard } from "@/components/relay-station-card";
 import { RelayRefresh } from "@/components/relay-refresh";
 import { single, type RawSearchParams } from "@/components/product-workspace";
+import { SITE_ID } from "@/lib/brands";
 
 export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: RawSearchParams; basePath: "/products" | "/relays" }) {
-  const view = single(rawParams, "view") === "card" ? "card" : "list";
+  const requestedView = single(rawParams, "view");
+  const view = requestedView === "card" || (!requestedView && ["aisi", "pricein"].includes(SITE_ID)) ? "card" : "list";
   const viewHref = (mode: "list" | "card") => {
     const query = new URLSearchParams();
     if (basePath === "/products") query.set("brand", "中转站");
-    if (mode === "card") query.set("view", "card");
+    query.set("view", mode);
     return `${basePath}${query.size ? `?${query}` : ""}`;
   };
   const [relays, meta] = await Promise.all([
@@ -26,7 +28,7 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
   const initialNow = Date.now();
 
   return (
-    <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="scope-rails directory-cards evidence-disclaimer">
+    <main id="main-content" className="shell brand-relay-page" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="scope-rails directory-cards evidence-disclaimer">
       <JsonLd data={breadcrumbJsonLd([
         { name: "首页", path: "/" },
         { name: "AI 商品报价", path: "/products" },

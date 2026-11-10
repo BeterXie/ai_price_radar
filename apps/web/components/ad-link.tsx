@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { promoApiPath } from "@/lib/brands";
 
 const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -29,7 +30,7 @@ export function AdLink({
   const internal = href.startsWith("/");
   const handleClick = () => {
     try {
-      fetch(`${publicApiBase}/api/v1/${kind}/${id}/click`, {
+      fetch(`${publicApiBase}${promoApiPath(`/${kind}/${id}/click`)}`, {
         method: "POST",
         credentials: "include",
         keepalive: true,

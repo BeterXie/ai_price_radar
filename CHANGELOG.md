@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.61] - 2026-11-11
+
+- Add four independently branded frontends (AIPrice, AISI Plus, PriceIn and OpenPrice) sharing the existing product catalog and immutable snapshots.
+- Add site-scoped articles, relay publication choices, advertisements, notices and search/analytics settings to the existing admin panel.
+- Keep ai.pricememo.cn as the primary canonical origin; add pricememo.cn as a directly served alias.
+- Migration v26 creates only site_articles, site_relays and site_ads. Rehearse twice on PostgreSQL 16 before switching API. Rebuild API, importer and all five frontends, then complete one full snapshot publication.
+- Follow docs/MULTI_BRAND_DEPLOY.md in addition to the standard deployment runbook.
+
 ## [3.9.60] - 2026-11-10
 
 - Move the catalog title, introduction and comparison link below the offers so filters and prices appear earlier on brand and product pages.

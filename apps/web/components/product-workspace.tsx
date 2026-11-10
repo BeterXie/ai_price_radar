@@ -13,6 +13,8 @@ import { getProductGuide } from "@/lib/guides/registry";
 import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
 import { normalizeSearchQuery } from "@/lib/search";
 import type { ContextualAds, ProductDetail } from "@/lib/types";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
+import { SITE_URL } from "@/lib/site";
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
@@ -76,7 +78,7 @@ export function ProductWorkspace({
   scopeExpanded?: boolean;
   contextAds?: ContextualAds;
 }) {
-  const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
+  const canonical = `${SITE_URL}/products/${encodeURIComponent(product.slug)}`;
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
   const productGuide = getProductGuide(product.slug);
   const evidenceSources = getProductEvidenceSources(product.brand, product.official_reference, productGuide?.officialSources);
@@ -89,7 +91,7 @@ export function ProductWorkspace({
     url: canonical,
     mainEntityOfPage: canonical,
     inLanguage: "zh-CN",
-    isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+    isPartOf: { "@id": `${SITE_URL}/#website` },
     image: `${canonical}/opengraph-image`,
     category: product.product_type,
     brand: { "@type": "Brand", name: product.brand },
@@ -159,7 +161,7 @@ export function ProductWorkspace({
         />
       </section>
 
-      {productGuide && (
+      {IS_PRIMARY_SITE && productGuide && (
         <section className="surface-subtle mb-12 p-5 md:p-7" aria-labelledby="buying-and-usage-guide">
           <div className="grid gap-7 lg:grid-cols-[1.05fr_.95fr]">
             <div>
