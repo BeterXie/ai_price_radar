@@ -54,7 +54,7 @@ def is_ad_live(slot: AdSlot, now: datetime | None = None) -> bool:
     ends_at = _as_utc(slot.ends_at)
     if starts_at is not None and starts_at > moment:
         return False
-    if ends_at is not None and ends_at < moment:
+    if ends_at is not None and ends_at <= moment:
         return False
     return True
 

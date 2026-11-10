@@ -51,7 +51,7 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
       </section>
 
       <div className="content-stage py-5 sm:py-6">
-        <AdSlot placement="relay_hub" limit={2} className="mb-8" />
+        <AdSlot placement="relay_hub" limit={2} variant="sponsor" className="mb-6" />
 
         {!enabled ? (
           <section className="empty-state" role="status">

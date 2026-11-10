@@ -145,6 +145,37 @@ def test_ad_slot_schedule_and_global_toggle(client, test_db):
     assert client.get("/api/v1/meta").json()["ad_slots_enabled"] is False
 
 
+def test_sponsor_campaign_preview_order_and_independent_expiry(client, monkeypatch):
+    from app.services import promo
+
+    moment = datetime(2026, 11, 10, 16, tzinfo=timezone.utc)
+    monkeypatch.setattr(promo, "_utcnow", lambda: moment)
+    for placement, end in [
+        ("home_hero", "2026-11-18T12:00:00+08:00"),
+        ("relay_hub", "2026-12-11T12:00:00+08:00"),
+        ("claude_feed", "2026-12-11T12:00:00+08:00"),
+        ("claude_detail", "2026-12-11T12:00:00+08:00"),
+    ]:
+        response = client.post("/api/v1/admin/ads", headers=ADMIN, json={
+            "placement": placement, "title": "Sidrune AI", "sort_order": 0,
+            "starts_at": None, "ends_at": datetime.fromisoformat(end).astimezone(timezone.utc).isoformat(),
+            "link_url": f"https://example.com/?position={placement}",
+        })
+        assert response.status_code == 201, response.text
+        public = client.get("/api/v1/ads", params={"placement": placement}).json()["items"]
+        assert len(public) == 1  # Preview is live before the billing start.
+        assert public[0]["link_url"].endswith(f"position={placement}")
+    assert client.post("/api/v1/admin/ads", headers=ADMIN, json={
+        "placement": "home_hero", "title": "Other sponsor", "sort_order": 10,
+    }).status_code == 201
+    assert [item["title"] for item in client.get("/api/v1/ads", params={"placement": "home_hero"}).json()["items"]] == ["Sidrune AI", "Other sponsor"]
+    moment = datetime(2026, 11, 18, 4, tzinfo=timezone.utc)
+    assert [item["title"] for item in client.get("/api/v1/ads", params={"placement": "home_hero"}).json()["items"]] == ["Other sponsor"]
+    assert len(client.get("/api/v1/ads", params={"placement": "relay_hub"}).json()["items"]) == 1
+    moment = datetime(2026, 12, 11, 4, tzinfo=timezone.utc)
+    assert client.get("/api/v1/ads", params={"placement": "claude_detail"}).json()["items"] == []
+
+
 def test_relay_station_admin_crud_and_public_list(client, test_db):
     assert client.get("/api/v1/admin/relays").status_code == 401
 

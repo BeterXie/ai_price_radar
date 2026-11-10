@@ -1,5 +1,6 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ssr";
 import { AdLink } from "@/components/ad-link";
+import { SponsorCard } from "@/components/sponsor-card";
 import { getAdSlots } from "@/lib/api";
 import type { AdPlacement, AdSlotPublic } from "@/lib/types";
 
@@ -18,15 +19,15 @@ export async function AdSlot({
 }: {
   placement: AdPlacement;
   limit?: number;
-  variant?: "banner" | "compact";
+  variant?: "banner" | "compact" | "sponsor";
   className?: string;
 }) {
   const { items } = await getAdSlots(placement, limit);
   if (items.length === 0) return null;
   return (
     <aside className={`ad-slot ad-slot-${variant} ${className}`.trim()} aria-label="赞助内容" data-placement={placement}>
-      {items.map((item) => (
-        <AdCard key={item.id} item={item} variant={variant} />
+      {items.map((item, index) => (
+        variant === "sponsor" ? <SponsorCard key={item.id} item={item} variant="banner" primary={index === 0} /> : <AdCard key={item.id} item={item} variant={variant} />
       ))}
     </aside>
   );

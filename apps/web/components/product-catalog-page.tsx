@@ -9,6 +9,7 @@ import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParam
 import { ReportForm } from "@/components/report-form";
 import { RelayCatalogPage } from "@/components/relay-catalog-page";
 import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
+import { getContextualAds } from "@/lib/contextual-ads";
 import { exactTime, relativeTime } from "@/lib/format";
 import { normalizeSearchQuery } from "@/lib/search";
 import { getBrandSeoContent } from "@/lib/brand-seo";
@@ -77,10 +78,13 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
   if (activeBrand) catalogQuery.set("brand", activeBrand);
   if (searchQuery) catalogQuery.set("q", searchQuery);
   let catalogLoadFailed = false;
-  const catalog = product ? null : await getCatalogGroups(catalogQuery.toString()).catch(() => {
-    catalogLoadFailed = true;
-    return null;
-  });
+  const [contextAds, catalog] = await Promise.all([
+    getContextualAds(activeBrand),
+    product ? Promise.resolve(null) : getCatalogGroups(catalogQuery.toString()).catch(() => {
+      catalogLoadFailed = true;
+      return null;
+    }),
+  ]);
   const productTabBrand = BRAND_TABS.includes(activeBrand as BrandName)
     ? activeBrand as BrandName
     : null;
@@ -197,7 +201,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
           </div>
 
           {product ? (
-            <ProductWorkspace product={product} rawParams={rawParams} query={detailQuery} filterAction={`/products/${encodeURIComponent(product.slug)}`} resetHref={navigationHref} hiddenFields={hiddenFields} scopeExpanded={scopeExpanded} />
+            <ProductWorkspace product={product} rawParams={rawParams} query={detailQuery} filterAction={`/products/${encodeURIComponent(product.slug)}`} resetHref={navigationHref} hiddenFields={hiddenFields} scopeExpanded={scopeExpanded} contextAds={contextAds} />
           ) : (
             <>
               <OfferScopeControls
@@ -217,7 +221,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                       <time dateTime={catalog.last_updated_at || undefined} title={exactTime(catalog.last_updated_at)}>{catalog.last_updated_at ? `${relativeTime(catalog.last_updated_at)}更新` : "暂无更新"}</time>
                     </div>
                     {catalog.items.length > 0 ? (
-                      <OfferGroupTable key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`} groups={catalog.items} totalCount={catalog.total} snapshotId={catalog.snapshot_id} filterQuery={catalogQuery.toString()} loadMorePath="/api/v1/catalog/groups" showProduct compact />
+                      <OfferGroupTable key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`} groups={catalog.items} totalCount={catalog.total} snapshotId={catalog.snapshot_id} filterQuery={catalogQuery.toString()} loadMorePath="/api/v1/catalog/groups" showProduct compact contextAds={contextAds} />
                     ) : (
                       <div className="catalog-empty">
                         <h3>{hasActiveFilters ? "没有匹配的报价" : "暂无可比报价"}</h3>

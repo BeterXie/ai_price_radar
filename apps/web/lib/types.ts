@@ -230,7 +230,7 @@ export type Meta = {
   community_notice?: CommunityNotice | null;
 };
 
-export const AD_PLACEMENTS = ["home_hero", "catalog_top", "product_offers", "relay_hub", "sidebar"] as const;
+export const AD_PLACEMENTS = ["home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "sidebar"] as const;
 export type AdPlacement = (typeof AD_PLACEMENTS)[number];
 
 export type AdSlotPublic = {
@@ -249,6 +249,8 @@ export type AdSlotListOut = {
   items: AdSlotPublic[];
   enabled: boolean;
 };
+
+export type ContextualAds = { feed?: AdSlotPublic; detail?: AdSlotPublic };
 
 export type AdSlotAdmin = AdSlotPublic & {
   sort_order: number;

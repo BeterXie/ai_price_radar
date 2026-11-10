@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react/ssr";
-import { AdSlot } from "@/components/ad-slot";
+import { SponsorShowcase } from "@/components/sponsor-showcase";
 import { SearchBox } from "@/components/search-box";
 import { ProductCard } from "@/components/product-card";
 import { PlatformIcon } from "@/components/platform-icon";
-import { HomeRelays, HomeRelayPreview } from "@/components/home-relays";
-import { getMeta, getProducts } from "@/lib/api";
+import { getProducts } from "@/lib/api";
 import { productDisplayName } from "@/lib/product-identity";
 import { BRAND_TABS, brandCatalogPath, STANDALONE_PRODUCTS } from "@/lib/catalog";
 import { exactTime, relativeTime } from "@/lib/format";
@@ -35,10 +34,7 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const [data, meta] = await Promise.all([
-    getProducts("sort=quality"),
-    getMeta().catch(() => null),
-  ]);
+  const data = await getProducts("sort=quality");
   const products = data.items.slice(0, 6);
 
   return (
@@ -88,14 +84,11 @@ export default async function HomePage() {
             <Link href="/products" className="button-secondary mt-5">查看报价目录</Link>
           </div>
         )}
-        <AdSlot placement="home_hero" limit={2} className="mt-6" />
       </section>
 
-      {meta?.relay_hub_enabled !== false ? (
-        <Suspense fallback={<HomeRelayPreview loading />}>
-          <HomeRelays />
-        </Suspense>
-      ) : null}
+      <Suspense fallback={null}>
+        <SponsorShowcase />
+      </Suspense>
 
       <nav className="home-resources shell" aria-label="更多工具与指南">
         {[
