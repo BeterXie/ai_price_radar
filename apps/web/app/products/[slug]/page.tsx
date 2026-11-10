@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import { permanentRedirect } from "next/navigation";
 import { canonicalProductSlug } from "@/lib/catalog";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
@@ -14,7 +15,7 @@ export async function generateMetadata({ params, searchParams }: { params: Promi
   const product = await getProduct(slug, "comparable=true");
   if (!product) return { title: "产品不存在", robots: { index: false, follow: true } };
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
-  const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
+  const canonical = `${SITE_URL}/products/${encodeURIComponent(product.slug)}`;
   const indexable = product.offer_count > 0 && Object.keys(rawParams).length === 0;
   return {
     title: `${product.display_name} 比价｜价格、库存与店铺`,

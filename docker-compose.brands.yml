@@ -1,0 +1,41 @@
+# Apply after docker-compose.yml and docker-compose.pricememo.yml.
+# Each frontend artifact is built from the same release with its own SITE_ID.
+x-brand-web: &brand-web
+  restart: unless-stopped
+  environment:
+    INTERNAL_API_BASE_URL: http://api:8000
+  volumes:
+    - ./apps/web/public/data:/app/public/data:ro
+  networks:
+    - default
+    - pricememo_frontend
+
+services:
+  web-aiprice:
+    <<: *brand-web
+    image: ai-price-radar-web-aiprice:${BRAND_RELEASE_TAG:?Set BRAND_RELEASE_TAG to the verified release tag}
+    networks:
+      default:
+      pricememo_frontend:
+        aliases: [ai-radar-aiprice]
+  web-aisi:
+    <<: *brand-web
+    image: ai-price-radar-web-aisi:${BRAND_RELEASE_TAG:?Set BRAND_RELEASE_TAG to the verified release tag}
+    networks:
+      default:
+      pricememo_frontend:
+        aliases: [ai-radar-aisi]
+  web-pricein:
+    <<: *brand-web
+    image: ai-price-radar-web-pricein:${BRAND_RELEASE_TAG:?Set BRAND_RELEASE_TAG to the verified release tag}
+    networks:
+      default:
+      pricememo_frontend:
+        aliases: [ai-radar-pricein]
+  web-openprice:
+    <<: *brand-web
+    image: ai-price-radar-web-openprice:${BRAND_RELEASE_TAG:?Set BRAND_RELEASE_TAG to the verified release tag}
+    networks:
+      default:
+      pricememo_frontend:
+        aliases: [ai-radar-openprice]

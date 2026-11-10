@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Clock, Fire, ListBullets, MagnifyingGlass, Sparkle, SquaresFour, Sword, TerminalWindow } from "@phosphor-icons/react/ssr";
@@ -11,11 +12,11 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "AI 技能实验室 - 降智体检、模型PK、实战 Skills 与前沿技巧分享",
   description: "全网大模型抗降智体检测试、模型实测PK对决、真实动效产物在线对比，以及来自社区顶尖开发者的实用 Agent Skills（taste-skill, victor-design, agent-browser）与前沿技巧分享。",
-  alternates: { canonical: "https://ai.pricememo.cn/skills" },
+  alternates: { canonical: `${SITE_URL}/skills` },
   openGraph: {
     title: "AI 技能实验室 - 降智体检、模型PK、实战 Skills 与前沿技巧分享",
     description: "全网大模型抗降智体检测试、模型实测PK对决、6大真实产物在线对比，以及实用 Agent Skills 库。",
-    url: "https://ai.pricememo.cn/skills",
+    url: `${SITE_URL}/skills`,
     type: "website",
   },
 };

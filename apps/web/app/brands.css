@@ -1,0 +1,152 @@
+/* Independent brand surfaces, inspired by the bundled Linear, Claude, Wise,
+   and Vercel analyses. Existing Geist fonts and comparison components remain. */
+html[data-brand="aiprice"] { --paper:#f5f7fb;--panel:#fff;--ink:#17243c;--muted:#526078;--line:#d9e0ed;--line-strong:#a3b2cc;--subtle:#ebeff8;--brand:#dce6ff;--brand-strong:#1b3e99;--brand-soft:#e7eeff;--accent:#c9d9ff;--accent-ink:#17243c;--focus:#1b4ec0;--foreground:#17243c;--card:#fff;--hover:#eef2fa; }
+html[data-brand="aisi"] { --paper:#f9f5ed;--panel:#fffdf8;--ink:#332b24;--muted:#716055;--line:#dcd2c3;--line-strong:#b0a08b;--subtle:#eee6d9;--brand:#f0c7b4;--brand-strong:#8c3d26;--brand-soft:#f6e2d6;--accent:#eac5b0;--accent-ink:#43261a;--focus:#8c3d26;--foreground:#332b24;--card:#fffdf8;--hover:#eee6d9; }
+html[data-brand="pricein"] { --paper:#f6f9f4;--panel:#fff;--ink:#18331e;--muted:#526652;--line:#d0dfca;--line-strong:#9ab18f;--subtle:#e9f1e3;--brand:#b5ea79;--brand-strong:#174b29;--brand-soft:#e7f5d7;--accent:#b5ea79;--accent-ink:#163300;--focus:#236a37;--foreground:#18331e;--card:#fff;--hover:#e9f1e3; }
+html[data-brand="openprice"] { --paper:#fff;--panel:#fff;--ink:#191919;--muted:#626262;--line:#dedede;--line-strong:#aaa;--subtle:#f4f4f4;--brand:#e9e9e9;--brand-strong:#191919;--brand-soft:#f1f1f1;--accent:#e5e5e5;--accent-ink:#111;--focus:#0055b8;--foreground:#191919;--card:#fff;--hover:#f4f4f4; }
+html:not([data-brand="pricememo"]) .app-header { background:var(--paper);backdrop-filter:none; }
+.brand-monogram { display:grid;place-items:center;width:36px;height:36px;background:var(--ink);color:var(--paper);font-weight:750;letter-spacing:-.08em;border-radius:8px; }
+.brand-wordmark { font-size:20px; }
+[data-brand="aisi"] .brand-wordmark { font-family:Georgia,"SimSun",serif;font-weight:400;font-size:25px; }
+[data-brand="openprice"] .brand-monogram { border-radius:0; }
+[data-brand="openprice"] .brand-wordmark { font-family:var(--font-geist-mono),monospace;font-size:18px; }
+.brand-hero { display:grid;grid-template-columns:1.1fr 1fr;gap:60px;align-items:center;padding-block:64px 48px; }
+.brand-hero>* { min-width:0; }
+.brand-hero h1 { font-size:clamp(30px,3.3vw,52px);font-weight:700;line-height:1.18;letter-spacing:-.05em;white-space:pre-line; }
+.brand-hero-copy>p { color:var(--muted);line-height:1.8;margin-top:22px;max-width:42ch; }
+.brand-snapshot { margin-top:16px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted); }
+.brand-directory { display:grid;grid-template-columns:210px minmax(0,1fr);gap:36px; }
+.brand-navigation h2 { font-size:12px;color:var(--muted);margin:0 0 14px;font-weight:500; }
+.brand-navigation a { display:flex;align-items:center;gap:12px;min-height:49px;border-bottom:1px solid var(--line);font-size:14px; }
+.brand-navigation a span { flex:1; }
+.brand-navigation a:hover { background:var(--subtle); }
+.brand-section-heading { display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px; }
+.brand-section-heading h2 { font-size:22px;font-weight:650;letter-spacing:-.04em; }
+.brand-section-heading>a { font-size:13px;color:var(--muted); }
+.brand-product-list { border-top:1px solid var(--line-strong); }
+.brand-product-list .home-product-row { grid-template-columns:minmax(190px,1fr) 75px 80px 115px 20px;gap:14px; }
+.brand-reading { margin-top:64px; }
+.brand-bottom-links { display:flex;border-top:1px solid var(--line);margin-top:56px;padding-top:24px;gap:32px; }
+.brand-bottom-links a { display:flex;align-items:center;gap:18px;font-size:14px;min-height:44px; }
+[data-brand="aisi"] .brand-hero { grid-template-columns:1fr;gap:30px;max-width:920px;padding-block:70px 54px; }
+[data-brand="aisi"] .brand-hero h1 { font-family:Georgia,"Songti SC","SimSun",serif;font-weight:400;line-height:1.4; }
+[data-brand="aisi"] .brand-search { max-width:630px; }
+[data-brand="aisi"] .brand-directory { grid-template-columns:1fr;gap:28px; }
+[data-brand="aisi"] .brand-navigation { display:flex;gap:26px;align-items:center;border-block:1px solid var(--line); }
+[data-brand="aisi"] .brand-navigation h2 { margin:0; }
+[data-brand="aisi"] .brand-navigation a { border:0; }
+[data-brand="aisi"] .brand-navigation a>svg:last-child { display:none; }
+[data-brand="aisi"] .brand-product-list { display:grid;grid-template-columns:1fr 1fr;column-gap:50px; }
+[data-brand="aisi"] .brand-product-list .home-product-row { grid-template-columns:1fr auto; }
+[data-brand="aisi"] .brand-product-list .home-product-updated,[data-brand="aisi"] .brand-product-list .home-product-arrow { display:none; }
+[data-brand="aisi"] .brand-product-list .home-product-stock { grid-column:1;grid-row:2;font-size:12px; }
+[data-brand="aisi"] .brand-product-list .home-product-price { grid-column:2;grid-row:1 / 3; }
+[data-brand="pricein"] .brand-hero { background:var(--brand);border-radius:22px;margin-top:30px;padding:44px;grid-template-columns:1fr 1.15fr; }
+[data-brand="pricein"] .brand-hero h1 { font-size:clamp(36px,4vw,60px);font-weight:800; }
+[data-brand="pricein"] .brand-directory { display:flex;flex-direction:column;margin-top:38px;gap:32px; }
+[data-brand="pricein"] .brand-navigation { display:flex;gap:12px;flex-wrap:wrap; }
+[data-brand="pricein"] .brand-navigation h2 { display:none; }
+[data-brand="pricein"] .brand-navigation a { border:1px solid var(--line);border-radius:30px;background:var(--panel);padding:8px 18px; }
+[data-brand="pricein"] .brand-navigation a>svg:last-child { display:none; }
+[data-brand="pricein"] .brand-product-list { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;border:0; }
+[data-brand="pricein"] .brand-product-list .home-product-row { display:flex;flex-direction:column;align-items:stretch;gap:16px;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:22px; }
+[data-brand="pricein"] .home-product-name { align-items:flex-start; }
+[data-brand="pricein"] .brand-product-list .home-product-price { font-size:26px;text-align:left;margin-top:auto; }
+[data-brand="pricein"] .brand-product-list .home-product-updated { font-size:11px; }
+[data-brand="pricein"] .brand-product-list .home-product-arrow { display:none; }
+[data-brand="openprice"] .brand-hero { border-bottom:2px solid var(--ink);margin-bottom:30px;padding-block:46px 32px; }
+[data-brand="openprice"] .brand-hero h1 { font-size:36px;font-weight:500; }
+[data-brand="openprice"] .brand-directory { grid-template-columns:minmax(0,1fr) 180px;gap:42px; }
+[data-brand="openprice"] .brand-navigation { grid-column:2;grid-row:1; }
+[data-brand="openprice"] .brand-quotes { grid-column:1;grid-row:1; }
+[data-brand="openprice"] .brand-product-list .home-product-row { min-height:78px; }
+[data-brand="openprice"] .brand-product-list .home-product-icon { background:none;border:0; }
+/* Theme-specific comparison surfaces extend beyond the home page. */
+[data-brand="aisi"] .catalog-layout { grid-template-columns:1fr;gap:24px; }
+[data-brand="aisi"] .catalog-sidebar { position:static;padding-top:0;border-bottom:1px solid var(--line);padding-bottom:12px; }
+[data-brand="aisi"] .catalog-brands { flex-direction:row;flex-wrap:wrap;gap:12px; }
+[data-brand="aisi"] .catalog-brands :is(.catalog-service-link,.catalog-relay-link) { margin:0;border:0;border-radius:0; }
+[data-brand="pricein"] .catalog-layout { grid-template-columns:210px minmax(0,1fr);gap:24px; }
+[data-brand="pricein"] .catalog-sidebar { background:var(--panel);padding:16px;border:1px solid var(--line);border-radius:18px; }
+[data-brand="pricein"] .catalog-content { background:var(--panel);padding:24px;border:1px solid var(--line);border-radius:18px; }
+[data-brand="openprice"] .catalog-layout { grid-template-columns:minmax(0,1fr) 176px; }
+[data-brand="openprice"] .catalog-sidebar { grid-column:2;grid-row:1;border-left:1px solid var(--line);padding-left:16px; }
+[data-brand="openprice"] .catalog-content { grid-column:1;grid-row:1; }
+[data-brand="openprice"] .catalog-brands a { border-radius:0; }
+[data-brand="aiprice"] .catalog-sidebar { border-right:1px solid var(--line);padding-right:12px; }
+html:not([data-brand="pricememo"]) .page-hero { background:var(--panel);border-color:var(--line);box-shadow:none; }
+[data-brand="aisi"] .page-hero h1,[data-brand="aisi"] .article-page h1,[data-brand="aisi"] .article-grid h2 { font-family:Georgia,"Songti SC","SimSun",serif;font-weight:400; }
+[data-brand="openprice"] :is(.surface,.surface-subtle,.page-hero,.offer-card,.catalog-card) { border-radius:0;box-shadow:none; }
+[data-brand="pricein"] :is(.surface,.page-hero) { border-radius:18px; }
+.article-index { padding-block:54px;min-height:55vh; }
+.article-index-heading { border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:30px; }
+.article-index-heading h1 { font-size:40px;letter-spacing:-.04em; }
+.article-index-heading p { margin-top:10px;color:var(--muted); }
+.article-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:34px; }
+.article-grid article { padding-block:20px;border-top:1px solid var(--line); }
+.article-grid :is(h2,h3) { font-size:22px;line-height:1.5;margin:12px 0; }
+.article-grid article>p:not(.article-meta) { color:var(--muted);line-height:1.8;margin-bottom:22px; }
+.article-meta { font-size:12px;color:var(--muted); }
+[data-brand="aisi"] .article-index { max-width:1040px; }
+[data-brand="aisi"] .article-grid { grid-template-columns:repeat(2,minmax(0,1fr));gap:48px; }
+[data-brand="pricein"] .article-grid article { border:1px solid var(--line);border-radius:18px;padding:26px;background:var(--panel); }
+[data-brand="openprice"] .article-grid { grid-template-columns:1fr;gap:0;max-width:1000px; }
+[data-brand="openprice"] .article-grid article { display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:8px 24px;align-items:baseline; }
+[data-brand="openprice"] .article-grid article>p:not(.article-meta) { grid-column:2; }
+[data-brand="openprice"] .article-grid article>.text-action { grid-column:3;grid-row:1; }
+[data-brand="aisi"] .brand-relay-page .relay-grid[data-view="card"] { grid-template-columns:repeat(2,minmax(0,1fr));gap:28px; }
+[data-brand="aisi"] .relay-card { border-radius:0;box-shadow:none;border-color:var(--line); }
+[data-brand="pricein"] .relay-card { border-radius:18px;border-top:4px solid var(--brand); }
+[data-brand="openprice"] .relay-card { border-radius:0;box-shadow:none; }
+[data-brand="aiprice"] .relay-card { box-shadow:0 2px 8px #17243c08; }
+[data-brand="aisi"] .data-table-frame { border-inline:0;border-radius:0; }
+[data-brand="aisi"] .catalog-offer-summary { padding-block:24px; }
+[data-brand="openprice"] .data-table-frame { border-radius:0; }
+[data-brand="openprice"] .catalog-offer-price { font-family:var(--font-geist-mono),monospace;font-size:18px; }
+[data-brand="pricein"] .catalog-offer-table { border:0;background:transparent; }
+[data-brand="pricein"] .catalog-offer-table>.divide-y { display:grid;gap:14px; }
+[data-brand="pricein"] .catalog-offer-table>.divide-y>details { border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden; }
+.article-pagination { display:flex;justify-content:center;gap:28px;padding-top:38px; }
+.article-pagination a { min-height:44px; }
+.article-page { max-width:850px;padding-block:44px; }
+.article-page header { padding-block:30px;border-bottom:1px solid var(--line); }
+.article-page h1 { font-size:clamp(28px,4vw,44px);line-height:1.35;margin:16px 0; }
+.article-summary { font-size:18px;line-height:1.8;color:var(--muted);margin-bottom:18px; }
+.article-body { padding-block:28px;overflow-wrap:anywhere; }
+.article-body p { font-size:16px;line-height:1.95; }
+.site-editor { display:grid;gap:18px; }
+.site-editor label { display:grid;gap:7px;font-size:13px; }
+.site-editor :is(input,textarea,select) { width:100%;padding:11px 12px;border:1px solid var(--line-strong);border-radius:7px;background:var(--panel); }
+.site-editor textarea { min-height:100px;resize:vertical; }
+.site-editor .markdown-input { min-height:380px;font-family:var(--font-geist-mono),monospace; }
+.site-editor-row { display:grid;grid-template-columns:1fr 1fr;gap:18px; }
+.site-publishing-toolbar { display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:24px; }
+.site-publishing-toolbar select { border:1px solid var(--line-strong);padding:10px;background:var(--panel); }
+.site-publishing-list { display:grid;gap:12px; }
+.site-publishing-item { padding:16px;border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:20px; }
+.site-editor-actions { display:flex;gap:12px;flex-wrap:wrap; }
+@media(max-width:1000px) {
+ .brand-hero { gap:24px; }.brand-directory { grid-template-columns:160px minmax(0,1fr);gap:22px; }
+ .brand-product-list .home-product-row { grid-template-columns:1fr 80px 100px; }.brand-product-list .home-product-updated,.brand-product-list .home-product-arrow { display:none; }
+ [data-brand="pricein"] .brand-product-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ [data-brand="aisi"] .brand-navigation { flex-wrap:wrap;gap:12px 22px;padding-block:10px; }
+ .article-grid { grid-template-columns:1fr 1fr; }
+}
+@media(max-width:700px) {
+ [data-brand="aisi"] .article-grid,[data-brand="aisi"] .brand-relay-page .relay-grid[data-view="card"] { grid-template-columns:1fr; }
+ [data-brand="openprice"] .article-grid article { display:block; }
+ html:not([data-brand="pricememo"]) .catalog-layout { display:flex;flex-direction:column;gap:18px; }
+ html:not([data-brand="pricememo"]) .catalog-sidebar { position:static;width:100%;border:0;padding:0; }
+ html:not([data-brand="pricememo"]) .catalog-content { width:100%;min-width:0; }
+ [data-brand="pricein"] .catalog-content { padding:12px; }
+ .brand-hero { grid-template-columns:minmax(0,1fr);padding-block:36px 28px;gap:25px; }.brand-hero h1 { font-size:32px; }
+ .brand-directory,[data-brand="openprice"] .brand-directory { display:flex;flex-direction:column;gap:26px; }
+ .brand-navigation { display:flex;overflow-x:auto;gap:18px; }.brand-navigation h2 { display:none; }.brand-navigation a { flex-shrink:0; }
+ [data-brand="aisi"] .brand-hero { padding-block:38px 30px; }.brand-product-list .home-product-row { grid-template-columns:minmax(0,1fr) auto;gap:10px; }
+ .brand-product-list .home-product-name { grid-column:1;grid-row:1; }.brand-product-list .home-product-stock { grid-column:1;grid-row:2; }.brand-product-list .home-product-price { grid-column:2;grid-row:1 / 3; }
+ [data-brand="aisi"] .brand-product-list { grid-template-columns:1fr; }
+ [data-brand="pricein"] .brand-hero { padding:26px 20px;grid-template-columns:1fr;border-radius:16px; }
+ [data-brand="pricein"] .brand-product-list { gap:10px; }[data-brand="pricein"] .brand-product-list .home-product-row { padding:15px; }[data-brand="pricein"] .home-product-name { flex-direction:column; }
+ .brand-bottom-links { flex-direction:column;gap:8px; }.article-grid,.site-editor-row { grid-template-columns:1fr; }.site-publishing-item { flex-wrap:wrap; }
+ .article-page { padding-block:28px; }.article-page h1 { font-size:30px; }
+}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { canonicalProductSlug } from "@/lib/catalog";
@@ -13,7 +14,6 @@ import { getProductGuide } from "@/lib/guides/registry";
 
 export const dynamic = "force-dynamic";
 
-const SITE_URL = "https://ai.pricememo.cn";
 const DISABLED_SOURCES = new Set(["dujiao_next"]);
 
 // Human-readable overrides per source+slug combination
@@ -131,7 +131,7 @@ export default async function SourceProductPage({
     url: canonical,
     mainEntityOfPage: canonical,
     inLanguage: "zh-CN",
-    isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+    isPartOf: { "@id": `${SITE_URL}/#website` },
     brand: { "@type": "Brand", name: product.brand },
     citation: evidenceSources.map((sourceItem) => ({
       "@type": "WebPage",

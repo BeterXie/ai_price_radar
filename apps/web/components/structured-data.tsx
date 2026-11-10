@@ -1,4 +1,5 @@
 type JsonLdObject = Record<string, unknown>;
+import { BRAND, IS_PRIMARY_SITE, SITE_ID } from "@/lib/brands";
 type JsonLdValue = JsonLdObject | readonly JsonLdObject[];
 
 function serializeJsonLd(value: JsonLdValue): string {
@@ -21,12 +22,12 @@ export function SiteStructuredData() {
           {
             "@type": "Organization",
             "@id": organizationId,
-            name: "AI Price Memory",
-            alternateName: ["AI Price Radar", "PriceMemo"],
+            name: BRAND.name,
+            alternateName: IS_PRIMARY_SITE ? ["AI Price Radar", "PriceMemo"] : [BRAND.wordmark],
             url: SITE_URL,
             logo: {
               "@type": "ImageObject",
-              url: `${SITE_URL}/brand/logo-icon.png`,
+              url: `${SITE_URL}${IS_PRIMARY_SITE ? "/brand/logo-icon.png" : `/brands/${SITE_ID}.svg`}`,
             },
             sameAs: ["https://github.com/BeterXie/ai_price_radar"],
             description: "整理公开 AI 商品报价、来源、库存和更新时间的价格信息项目。",
@@ -36,8 +37,8 @@ export function SiteStructuredData() {
             "@type": "WebSite",
             "@id": websiteId,
             url: SITE_URL,
-            name: "AI Price Memory",
-            alternateName: ["AI Price Radar", "PriceMemo"],
+            name: BRAND.name,
+            alternateName: IS_PRIMARY_SITE ? ["AI Price Radar", "PriceMemo"] : [BRAND.wordmark],
             inLanguage: "zh-CN",
             publisher: { "@id": organizationId },
             potentialAction: {

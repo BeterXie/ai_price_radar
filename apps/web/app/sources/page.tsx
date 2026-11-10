@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
+import { BRAND } from "@/lib/brands";
 import Link from "next/link";
 import { getMeta } from "@/lib/api";
 import { PageHero } from "@/components/page-shell";
@@ -6,12 +8,11 @@ import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 
 export const dynamic = "force-dynamic";
 
-const SITE_URL = "https://ai.pricememo.cn";
 const DISABLED_SOURCES = new Set(["dujiao_next"]);
 
 export const metadata: Metadata = {
   title: "来源平台",
-  description: "AI Price Memory (AI Price Radar) 收录的公开 AI 商品来源平台，包含 16688、LDXP 等平台的店铺与报价数据。",
+  description: `${BRAND.name} 收录的公开 AI 商品来源平台，包含 16688、LDXP 等平台的店铺与报价数据。`,
   alternates: { canonical: `${SITE_URL}/sources` },
   robots: { index: true, follow: true },
 };
@@ -31,8 +32,8 @@ export default async function SourcesPage() {
       "@id": canonical,
       url: canonical,
       name: "来源平台",
-      description: "AI Price Memory (AI Price Radar) 收录的公开 AI 商品来源平台。",
-      isPartOf: { "@id": "https://ai.pricememo.cn/#website" },
+      description: `${BRAND.name} 收录的公开 AI 商品来源平台。`,
+      isPartOf: { "@id": `${SITE_URL}/#website` },
       mainEntity: {
         "@type": "ItemList",
         numberOfItems: platforms.length,
@@ -52,7 +53,7 @@ export default async function SourcesPage() {
       <PageHero
         eyebrow="数据来源"
         title="来源平台"
-        description="AI Price Memory 从以下公开平台采集 AI 商品报价信息。"
+        description={`${BRAND.name} 展示以下公开平台的 AI 商品报价信息。`}
       />
 
       <section aria-labelledby="source-platforms-title" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
 import { ArrowSquareOut } from "@phosphor-icons/react/ssr";
 import { BUSINESS_EMAIL, GITHUB_REPOSITORY_URL, SUPPORT_AVAILABLE } from "@/lib/community";
 
@@ -6,7 +7,7 @@ export function SiteFooter({ advertiseEnabled = false }: { advertiseEnabled?: bo
   const linkGroups = [
     {
       title: "浏览",
-      links: [["/products", "报价目录"], ["/watchlist", "关注清单"], ["/guides", "购买指南"], ["/guides/buying-checklist", "购买前检查"]],
+      links: [["/products", "报价目录"], ["/watchlist", "关注清单"], ["/articles", "文章"], ...(IS_PRIMARY_SITE ? [["/guides", "购买指南"]] : [["/relays", "中转站目录"]])],
     },
     {
       title: "数据与反馈",
@@ -65,7 +66,7 @@ export function SiteFooter({ advertiseEnabled = false }: { advertiseEnabled?: bo
       </div>
       <div className="border-t border-[color:var(--line)]">
         <div className="shell flex flex-col gap-2 py-5 text-[11px] text-[color:var(--muted)] sm:flex-row sm:items-center sm:justify-between">
-          <p>AI Price Memory 开源项目</p>
+          <p>{BRAND.name}</p>
           <p>页面展示最近一次采集结果，购买前请在来源页面重新确认</p>
         </div>
       </div>

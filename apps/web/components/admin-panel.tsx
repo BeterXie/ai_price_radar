@@ -27,13 +27,14 @@ import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { CouponsAdminPanel } from "@/components/coupons-admin-panel";
 import { PromoAdminPanel } from "@/components/promo-admin-panel";
+import { SitePublishingPanel } from "@/components/site-publishing-panel";
 import { UsersAdminPanel } from "@/components/users-admin-panel";
 import { BotAIAdminPanel } from "@/components/bot-ai-admin-panel";
 import { PRODUCT_CATEGORIES, type ProductCategory, PRODUCT_TABS, ALL_PRODUCTS } from "@/lib/catalog";
 
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-export type AdminTab = "settings" | "promo" | "users" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
+export type AdminTab = "sites" | "settings" | "promo" | "users" | "coupons" | "intakes" | "skills" | "discovery" | "reports" | "offers";
 type CategoryMode = "all" | "restricted" | "unclassified" | ProductCategory;
 type StatusFilter = "all" | "active" | "pending";
 type StockFilter = "all" | "in_stock" | "out_of_stock";
@@ -194,7 +195,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       setActiveTab("intakes");
     }
     const tabParam = params.get("tab") as AdminTab | null;
-    const validTabs: AdminTab[] = ["settings", "promo", "users", "coupons", "intakes", "skills", "discovery", "reports", "offers"];
+    const validTabs: AdminTab[] = ["sites", "settings", "promo", "users", "coupons", "intakes", "skills", "discovery", "reports", "offers"];
     if (tabParam && validTabs.includes(tabParam)) {
       setActiveTab(tabParam);
     }
@@ -902,6 +903,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
           <nav className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="后台功能模块导航">
             {[
               { id: "settings" as const, label: "运营与配置", icon: Gear, count: 0 },
+              { id: "sites" as const, label: "品牌站点", icon: Globe, count: 0 },
               { id: "promo" as const, label: "广告与中转站", icon: Megaphone, count: 0 },
               { id: "users" as const, label: "用户管理", icon: UsersThree, count: stats.total_users || 0 },
               { id: "coupons" as const, label: "优惠券与营销", icon: Gift, count: 0 },
@@ -1442,6 +1444,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       )}
 
       {/* Tab: 广告栏位与中转站 */}
+      {verifiedKey && activeTab === "sites" && <SitePublishingPanel key={verifiedKey} apiBase={API} headers={verifiedHeaders} />}
       {verifiedKey && (
         <div style={{ display: activeTab === "promo" ? "block" : "none" }}>
           <PromoAdminPanel

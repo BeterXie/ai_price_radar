@@ -4,6 +4,10 @@
 
 ## 原则
 
+多品牌发布同时遵循 [MULTI_BRAND_DEPLOY.md](MULTI_BRAND_DEPLOY.md)。
+v3.9.61 的 v26 迁移须在临时 PostgreSQL 16 连续演练两次；
+切换 API 前运行 scripts/migrate_multi_brand_v26.py，部署后完成一次完整快照发布。
+
 - 只部署已发布且 CI 通过的 Tag，生产源码、API、Detector、Pipeline 和 Web 必须来自同一提交。
 - 先暂停定时器，再等待当前刷新锁一次；部署完成前不要恢复定时器。
 - 按改动范围重建服务：普通发布重建 `api`、`web` 和执行完整目录发布的 `importer`，来源检测或收录路由变更同时重建 `source-detector`，邮件代码变更同时重建 `notification-worker`，`crawler/` 或 Crawler Dockerfile 变更必须重建 `crawler`。`shared_http/` 变更必须同时重建 `source-detector`、`crawler` 和 `importer`。不重建 `db`，无迁移版本不得执行数据库结构操作。

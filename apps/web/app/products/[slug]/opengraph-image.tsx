@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BRAND } from "@/lib/brands";
 import { notFound } from "next/navigation";
 import { getProduct } from "@/lib/api";
 import { getProductOgTitle } from "@/lib/product-seo";
@@ -33,7 +34,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18, fontSize: 27, color: "#00bba9" }}>
           <div style={{ width: 18, height: 18, display: "flex", borderRadius: 999, background: "#00bba9" }} />
-          AI Price Memory
+          {BRAND.name}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <div style={{ fontSize: 35, color: "#aeb1a5" }}>PUBLIC PRICE COMPARISON</div>
@@ -41,7 +42,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
           <div style={{ fontSize: 29, color: "#d4d6ca" }}>Compare price, stock, delivery and source updates.</div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 23 }}>
-          <span>ai.pricememo.cn</span>
+          <span>{new URL(BRAND.url).hostname}</span>
           <span style={{ padding: "12px 18px", borderRadius: 10, background: "#00bba9", color: "#ffffff" }}>Check the source before buying</span>
         </div>
       </div>

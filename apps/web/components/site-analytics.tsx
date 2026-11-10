@@ -107,8 +107,8 @@ export function buildAnalyticsPath(pathname: string | null, rawSearch: string, i
   return `${pathname || "/"}${safeSearch ? `?${safeSearch}` : ""}`;
 }
 
-export function trackBaiduPageview(pathname: string | null, rawSearch: string): void {
-  if (!isBaiduTrackingAllowed() || !isAnalyticsPathAllowed(pathname)) {
+export function trackBaiduPageview(pathname: string | null, rawSearch: string, baiduId = BAIDU_SITE_ID): void {
+  if (!baiduId || !isBaiduTrackingAllowed() || !isAnalyticsPathAllowed(pathname)) {
     lastBaiduPage = null;
     return;
   }
@@ -130,7 +130,7 @@ export function trackBaiduPageview(pathname: string | null, rawSearch: string): 
     const script = document.createElement("script");
     script.id = BAIDU_SCRIPT_ID;
     script.async = true;
-    script.src = `https://hm.baidu.com/hm.js?${BAIDU_SITE_ID}`;
+    script.src = `https://hm.baidu.com/hm.js?${baiduId}`;
     document.head.appendChild(script);
   }
 }
@@ -141,7 +141,8 @@ function sendGtag(...args: unknown[]) {
   else window.dataLayer.push(args);
 }
 
-function SiteAnalyticsInner() {
+type AnalyticsProps = { measurementId?: string; baiduId?: string };
+function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: AnalyticsProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const referralChecked = useRef(false);
@@ -173,8 +174,8 @@ function SiteAnalyticsInner() {
   };
 
   useEffect(() => {
-    trackBaiduPageview(pathname, rawSearch);
-  }, [pathname, rawSearch]);
+    trackBaiduPageview(pathname, rawSearch, baiduId);
+  }, [pathname, rawSearch, baiduId]);
 
   useEffect(() => {
     if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) {
@@ -239,10 +240,10 @@ function SiteAnalyticsInner() {
   );
 }
 
-export function SiteAnalytics() {
+export function SiteAnalytics({ measurementId = MEASUREMENT_ID, baiduId = BAIDU_SITE_ID }: AnalyticsProps = {}) {
   return (
     <Suspense fallback={null}>
-      <SiteAnalyticsInner />
+      <SiteAnalyticsInner measurementId={measurementId} baiduId={baiduId} />
     </Suspense>
   );
 }

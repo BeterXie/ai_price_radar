@@ -1,4 +1,5 @@
-const DEFAULT_SITE_URL = "https://ai.pricememo.cn";
+import { BRAND, IS_PRIMARY_SITE } from "./brands";
+const DEFAULT_SITE_URL = BRAND.url;
 
 export function normalizeSiteUrl(value: string | undefined): string {
   const raw = value?.trim() || DEFAULT_SITE_URL;
@@ -14,4 +15,5 @@ export function normalizeSiteUrl(value: string | undefined): string {
   }
 }
 
-export const SITE_URL = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL);
+// Each build owns its canonical origin; Host headers cannot replace it.
+export const SITE_URL = IS_PRIMARY_SITE ? normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL) : BRAND.url;

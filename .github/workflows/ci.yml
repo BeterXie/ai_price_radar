@@ -16,6 +16,18 @@ jobs:
   api:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: site-migration-ci-only
+          POSTGRES_DB: brand_migration_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SITE_TEST_DATABASE_URL: postgresql+psycopg://postgres:site-migration-ci-only@127.0.0.1:5432/brand_migration_test
     defaults:
       run:
         working-directory: apps/api
@@ -184,5 +196,7 @@ jobs:
         run: docker compose --profile tools build api source-detector importer web
       - name: Validate crawler Compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile crawler config -q
+      - name: Validate brand Compose overlay
+        run: BRAND_RELEASE_TAG=ci docker compose -f docker-compose.yml -f docker-compose.pricememo.yml -f docker-compose.brands.yml config -q
       - name: Build crawler image
         run: docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile crawler build crawler

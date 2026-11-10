@@ -33,7 +33,7 @@ test("site icons: layout.tsx defines comprehensive icons metadata for browser ta
   const layoutPath = path.join(webRoot, "app/layout.tsx");
   const content = fs.readFileSync(layoutPath, "utf-8");
 
-  assert.match(content, /icons:\s*\{/, "layout.tsx must contain icons metadata");
+  assert.match(content, /icons:\s*(?:IS_PRIMARY_SITE\s*\?\s*)?\{/, "layout.tsx must contain icons metadata");
   assert.match(content, /url:\s*["']\/favicon\.ico["']/, "must include /favicon.ico");
   assert.match(content, /url:\s*["']\/icon\.svg["']/, "must include /icon.svg");
   assert.match(content, /url:\s*["']\/icon\.png["']/, "must include /icon.png");
