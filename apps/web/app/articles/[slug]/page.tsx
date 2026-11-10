@@ -6,6 +6,7 @@ import { BRAND } from "@/lib/brands";
 import { SITE_URL } from "@/lib/site";
 import { MarkdownView } from "@/components/skills/markdown-view";
 import { JsonLd } from "@/components/structured-data";
+import { BrandArticleFrame } from "@/components/brand-content";
 
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ slug: string }> };
@@ -20,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ArticlePage({ params }: Props) {
   const article = await getArticle((await params).slug);
   if (!article) notFound();
-  return <main className="shell article-page"><article>
+  return <BrandArticleFrame article={article}><article>
     <Link href="/articles" className="text-action">← 全部文章</Link>
     <header><p className="article-meta">{article.category}{article.published_at ? ` · ${article.published_at.slice(0, 10)}` : ""}</p><h1>{article.title}</h1>
       {article.summary && <p className="article-summary">{article.summary}</p>}{article.author && <p className="article-meta">{article.author}</p>}</header>
@@ -29,5 +30,5 @@ export default async function ArticlePage({ params }: Props) {
       mainEntityOfPage: `${SITE_URL}/articles/${article.slug}`, datePublished: article.published_at, dateModified: article.updated_at,
       ...(article.author ? { author: { "@type": "Person", name: article.author } } : {}),
       publisher: { "@type": "Organization", name: BRAND.name, url: SITE_URL } }} />
-  </article></main>;
+  </article></BrandArticleFrame>;
 }

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { BrandCatalogFrame } from "@/components/brand-catalog";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
 import { notFound } from "next/navigation";
 import { ArrowRight, ArrowUpRight, Check } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
@@ -139,8 +141,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
     <main id="main-content" className="catalog-page shell" aria-labelledby="catalog-page-title">
       {catalogBrand ? <JsonLd data={breadcrumbJsonLd([{ name: "首页", path: "/" }, { name: `${catalogBrand} 比价`, path: basePath }])} /> : null}
 
-      <div className="catalog-layout">
-        <aside className="catalog-sidebar">
+      <BrandCatalogFrame title={headingTitle} intro={intro} navigation={
           <nav className="catalog-brands" aria-label="品牌与商品筛选">
             <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部品牌</Link>
             {BRAND_TABS.map((brand) => (
@@ -157,7 +158,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
               <Link href={RELAY_CATALOG_HREF} className="catalog-relay-link"><PlatformIcon platform="中转站" size={19} />中转站<ArrowUpRight size={14} aria-hidden="true" /></Link>
             ) : null}
           </nav>
-        </aside>
+        }>
 
         <div className="catalog-content">
           {productTabs.length > 0 ? (
@@ -248,12 +249,12 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
             </>
           )}
           <section className="mt-8 border-t border-[color:var(--line)] pt-6" aria-labelledby="catalog-page-title">
-            <h1 id="catalog-page-title" className="text-2xl font-semibold tracking-tight">{headingTitle}</h1>
+            {IS_PRIMARY_SITE ? <h1 id="catalog-page-title" className="text-2xl font-semibold tracking-tight">{headingTitle}</h1> : <h2 className="text-xl font-semibold">关于这些报价</h2>}
             <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
             <Link href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
           </section>
         </div>
-      </div>
+      </BrandCatalogFrame>
     </main>
   );
 }

@@ -8,7 +8,8 @@ import { BRAND_TABS, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catal
 import { RelayStationCard } from "@/components/relay-station-card";
 import { RelayRefresh } from "@/components/relay-refresh";
 import { single, type RawSearchParams } from "@/components/product-workspace";
-import { SITE_ID } from "@/lib/brands";
+import { SITE_ID, IS_PRIMARY_SITE } from "@/lib/brands";
+import { BrandRelayFrame } from "./brand-content";
 
 export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: RawSearchParams; basePath: "/products" | "/relays" }) {
   const requestedView = single(rawParams, "view");
@@ -34,7 +35,8 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
         { name: "AI 商品报价", path: "/products" },
         { name: "中转站", path: "/relays" },
       ])} />
-      <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="平台切换">
+      <BrandRelayFrame count={relays ? stations.length : null}>
+      {IS_PRIMARY_SITE && <section className="border-b border-[color:var(--line-strong)] py-4" aria-label="平台切换">
         <nav className="filter-rail" aria-label="品牌与商品筛选">
           <span className="filter-label">品牌</span>
           <div className="filter-group">
@@ -50,20 +52,20 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
             </div>
           </div>
         </nav>
-      </section>
+      </section>}
 
       <div className="content-stage py-5 sm:py-6">
         <AdSlot placement="relay_hub" limit={2} variant="sponsor" className="mb-6" />
 
         {!enabled ? (
           <section className="empty-state" role="status">
-            <h1 className="text-2xl font-semibold text-[color:var(--ink)]">中转站专区暂未开放</h1>
+            {IS_PRIMARY_SITE ? <h1 className="text-2xl font-semibold text-[color:var(--ink)]">中转站专区暂未开放</h1> : <h2 className="text-2xl font-semibold text-[color:var(--ink)]">中转站专区暂未开放</h2>}
             <p className="mt-3 text-sm leading-6">运营者已暂时关闭该专区。可以先浏览报价目录中的“中转 / 反代”形态商品。</p>
             <Link href="/products?comparable=false&delivery_type=relay_api" className="button-primary mt-6">查看中转类报价</Link>
           </section>
         ) : stations.length === 0 ? (
           <section className="empty-state" role="status">
-            <h1 className="text-2xl font-semibold text-[color:var(--ink)]">{relays ? "还没有收录中转站" : "中转站目录暂时无法加载"}</h1>
+            {IS_PRIMARY_SITE ? <h1 className="text-2xl font-semibold text-[color:var(--ink)]">{relays ? "还没有收录中转站" : "中转站目录暂时无法加载"}</h1> : <h2 className="text-2xl font-semibold text-[color:var(--ink)]">{relays ? "还没有收录中转站" : "中转站目录暂时无法加载"}</h2>}
             <p className="mt-3 text-sm leading-6">
               {relays
                 ? "如果你运营一个公开的 API 中转站，可以提交官网、Base URL 和检测密钥申请收录。"
@@ -78,7 +80,7 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
         ) : (
           <>
             <div className="relay-directory-toolbar">
-              <h1>已收录中转站 <span>{stations.length}</span></h1>
+              {IS_PRIMARY_SITE ? <h1>已收录中转站 <span>{stations.length}</span></h1> : <h2>已收录中转站 <span>{stations.length}</span></h2>}
               <div className="relay-directory-actions">
                 <RelayRefresh />
                 <Link href="/shops/submit?type=relay" className="button-secondary relay-apply">申请录入中转站</Link>
@@ -118,6 +120,7 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
         )}
 
       </div>
+      </BrandRelayFrame>
     </main>
   );
 }

@@ -10,6 +10,8 @@ import { exactTime, money, relativeTime, stockLabel } from "@/lib/format";
 import { fetchGroupShopOffers } from "@/lib/group-offers";
 import { getGuideLinkLabel, resolveGuideHref } from "@/lib/guides/matcher";
 import { productDisplayName } from "@/lib/product-identity";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
+import { BrandOfferSummary } from "@/components/brand-offer-summary";
 
 const OFFER_BATCH_SIZE = 30;
 const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -239,7 +241,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 
   return (
     <details onToggle={(event) => { onOpenChange?.(event.currentTarget.open); if (event.currentTarget.open) void loadDetails(); }} className={`group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]${compact ? " catalog-offer" : ""}`}>
-      {compact ? (
+      {!IS_PRIMARY_SITE ? <BrandOfferSummary offer={offer} price={money(shownPrice, shownCurrency)} stock={shownStock} shops={group?.shop_count || 1} productName={productName} href={productSlug ? `/products/${encodeURIComponent(productSlug)}${productPageQuery.size ? `?${productPageQuery}` : ""}` : undefined} /> : compact ? (
         <summary className="catalog-offer-summary">
           <div className="catalog-offer-product">
             <h3>{offer.original_name}</h3>
@@ -408,7 +410,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 function TableFrame({ children, footer, compact = false }: { children: React.ReactNode; footer: React.ReactNode; compact?: boolean }) {
   return (
     <div className={`data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]${compact ? " catalog-offer-table" : ""}`}>
-      {compact ? (
+      {!IS_PRIMARY_SITE ? <div className="brand-offer-columns" aria-hidden="true"><span>商品与来源</span><span>库存</span><span>观测价 / 展开详情</span></div> : compact ? (
         <div className="catalog-offer-columns" aria-hidden="true"><span>商品</span><span>交付 / 期限</span><span>库存</span><span>观测价</span><span /></div>
       ) : (
         <div className="bg-[color:var(--subtle)] px-5 py-3 text-xs text-[color:var(--muted)]">
@@ -416,7 +418,7 @@ function TableFrame({ children, footer, compact = false }: { children: React.Rea
           <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>观测价</span><span>详情</span></div>
         </div>
       )}
-      <div className="divide-y divide-[color:var(--line)]">{children}</div>
+      <div className="offer-rows divide-y divide-[color:var(--line)]">{children}</div>
       {footer}
     </div>
   );

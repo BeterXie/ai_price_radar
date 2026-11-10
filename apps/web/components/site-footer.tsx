@@ -2,8 +2,10 @@ import Link from "next/link";
 import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
 import { ArrowSquareOut } from "@phosphor-icons/react/ssr";
 import { BUSINESS_EMAIL, GITHUB_REPOSITORY_URL, SUPPORT_AVAILABLE } from "@/lib/community";
+import { BrandFooter } from "./brand-footer";
 
 export function SiteFooter({ advertiseEnabled = false }: { advertiseEnabled?: boolean }) {
+  if (!IS_PRIMARY_SITE) return <BrandFooter advertiseEnabled={advertiseEnabled} />;
   const linkGroups = [
     {
       title: "浏览",

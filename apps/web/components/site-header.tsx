@@ -12,6 +12,7 @@ import { initUserHeartbeat } from "@/lib/analytics";
 import { LoginModal } from "@/components/login-modal";
 import { brandCatalogPath } from "@/lib/catalog";
 import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
+import { BrandHeader } from "@/components/brand-header";
 
 const brandLinks = ["OpenAI", "Claude", "Gemini", "Grok", "X"];
 
@@ -82,6 +83,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
   const closeMenu = () => {
     if (menuRef.current) menuRef.current.open = false;
   };
+  if (!IS_PRIMARY_SITE) return <BrandHeader relayHubEnabled={relayHubEnabled} advertiseEnabled={advertiseEnabled} account={session === null ? <span aria-label="正在读取账户状态">账户</span> : session.authenticated && session.user ? <Link href="/account"><User size={18} /><span>{session.user.nickname || "个人中心"}</span></Link> : <button type="button" onClick={() => setShowLoginModal(true)}><User size={18} />登录</button>}><LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} onSuccess={setSession} /></BrandHeader>;
   return (
     <header className="app-header sticky top-0 z-50">
       <div className="shell header-layout">

@@ -15,6 +15,7 @@ import { normalizeSearchQuery } from "@/lib/search";
 import type { ContextualAds, ProductDetail } from "@/lib/types";
 import { IS_PRIMARY_SITE } from "@/lib/brands";
 import { SITE_URL } from "@/lib/site";
+import { BrandProductOverview } from "@/components/brand-catalog";
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
@@ -126,12 +127,13 @@ export function ProductWorkspace({
   return (
     <>
       <JsonLd data={structuredData} />
-      <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
+      <BrandProductOverview product={product} />
+      {IS_PRIMARY_SITE && <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
         <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条纳入统计</p>
         <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
         <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
         <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
-      </section>
+      </section>}
 
       <ProductEvidence sources={evidenceSources} />
 
@@ -139,7 +141,7 @@ export function ProductWorkspace({
 
       <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />
 
-      <section className="pb-12">
+      <section className="product-offers-section pb-12" id="product-offers">
         <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
           <h2 className="text-3xl font-semibold tracking-[-.04em]">报价</h2>
           <p className="mt-2 text-sm text-[color:var(--muted)]">相同商品会合并显示。共 {product.offer_group_count} 组报价，展开后可查看店铺、交付方式和商品原文。</p>
@@ -200,7 +202,7 @@ export function ProductWorkspace({
         </section>
       )}
 
-      <section className="border-t border-[color:var(--line-strong)] py-12" aria-labelledby="product-comparison-guide">
+      <section className="product-buying-notes border-t border-[color:var(--line-strong)] py-12" aria-labelledby="product-comparison-guide">
         <div className="max-w-5xl">
           <h2 id="product-comparison-guide" className="text-3xl font-semibold tracking-[-.04em]">购买前检查</h2>
           <ul className="decision-list mt-6 grid text-sm leading-6 text-[color:var(--muted)] md:grid-cols-2">
@@ -224,7 +226,7 @@ export function ProductWorkspace({
         <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-[color:var(--muted)]">按天显示近期有货观测价、常见观测价和有货数量。</p><ProductHistoryPanel key={`${product.slug}:${single(rawParams, "source_platform")}`} slug={product.slug} sourcePlatform={single(rawParams, "source_platform")} /></div>
         <aside><ReportForm productSlug={product.slug} /></aside>
       </section>
-      <p className="border-t hairline py-5 text-xs text-black/40">数据更新于：{exactTime(product.snapshot_at)}</p>
+      <p className="border-t hairline py-5 text-xs text-[color:var(--muted)]">数据更新于：{exactTime(product.snapshot_at)}</p>
     </>
   );
 }
