@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { ArrowSquareOut, CaretDown, Clock, Fire, Package, Storefront, Tag, Warning } from "@phosphor-icons/react";
-import type { Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
+import type { AdSlotPublic, ContextualAds, Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
+import { SponsorCard } from "@/components/sponsor-card";
 import { DELIVERY_TYPE_LABELS, PERIOD_LABELS, SCENARIO_LABELS, WARRANTY_LABELS } from "@/lib/catalog";
 import { exactTime, money, relativeTime, stockLabel } from "@/lib/format";
 import { fetchGroupShopOffers } from "@/lib/group-offers";
@@ -162,7 +163,7 @@ function ContextualGuideLink({ productSlug, deliveryType }: { productSlug?: stri
   );
 }
 
-function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQuery = "", compact = false }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null; filterQuery?: string; compact?: boolean }) {
+function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQuery = "", compact = false, sponsor, onOpenChange }: { offer: Offer; group?: OfferGroup; productSlug?: string; productName?: string; snapshotId?: number | null; filterQuery?: string; compact?: boolean; sponsor?: AdSlotPublic; onOpenChange?: (open: boolean) => void }) {
   const [description, setDescription] = useState<string | null>(null);
   const [shopOffers, setShopOffers] = useState<Offer[] | null>(group && group.offer_count === 1 ? [offer] : null);
   const [shopOffersUpdated, setShopOffersUpdated] = useState(false);
@@ -237,7 +238,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   };
 
   return (
-    <details onToggle={(event) => { if (event.currentTarget.open) void loadDetails(); }} className={`group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]${compact ? " catalog-offer" : ""}`}>
+    <details onToggle={(event) => { onOpenChange?.(event.currentTarget.open); if (event.currentTarget.open) void loadDetails(); }} className={`group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]${compact ? " catalog-offer" : ""}`}>
       {compact ? (
         <summary className="catalog-offer-summary">
           <div className="catalog-offer-product">
@@ -363,6 +364,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           </section>
         )}
 
+        {sponsor ? <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement="claude_detail"><SponsorCard item={sponsor} variant="inline" /></aside> : null}
         <ContextualGuideLink productSlug={productSlug} deliveryType={offer.delivery_type} />
 
         {!group && (
@@ -429,6 +431,7 @@ export function OfferGroupTable({
   loadMorePath,
   showProduct = false,
   compact = false,
+  contextAds,
 }: {
   groups: OfferGroup[];
   productSlug?: string;
@@ -438,8 +441,12 @@ export function OfferGroupTable({
   loadMorePath?: string;
   showProduct?: boolean;
   compact?: boolean;
+  contextAds?: ContextualAds;
 }) {
   const [loadedGroups, setLoadedGroups] = useState(groups);
+  // Keep native details independent; move a single sponsor to the latest open row.
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
+  const detailKey = contextAds?.detail ? openGroups.at(-1) : undefined;
   const [loadError, setLoadError] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -472,7 +479,16 @@ export function OfferGroupTable({
   if (!groups.length) return <div className="empty-state">当前筛选条件下没有可展示的同款报价。请调整筛选条件后再试。</div>;
   return (
     <TableFrame compact={compact} footer={<div ref={loadMoreRef} className="border-t hairline px-5 py-4 text-center text-xs text-black/45" aria-live="polite">{loadError ? "后续报价加载失败，请刷新页面重试" : hasMore ? `继续滚动加载，已显示 ${loadedGroups.length} / ${totalCount} 组报价` : `已显示全部 ${totalCount} 组报价`}</div>}>
-      {loadedGroups.map((group) => <OfferRow key={`${group.product_slug}:${group.fingerprint}`} offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? productDisplayName(group.product_slug, group.product_name) : undefined} snapshotId={snapshotId} filterQuery={filterQuery} compact={compact} />)}
+      {loadedGroups.map((group, index) => {
+        const key = `${group.product_slug}:${group.fingerprint}`;
+        return <Fragment key={key}>
+          <OfferRow offer={group.representative} group={group} productSlug={group.product_slug || productSlug} productName={showProduct ? productDisplayName(group.product_slug, group.product_name) : undefined} snapshotId={snapshotId} filterQuery={filterQuery} compact={compact}
+            sponsor={detailKey === key ? contextAds?.detail : undefined}
+            onOpenChange={contextAds?.detail ? (open) => setOpenGroups((current) => open ? [...current.filter((item) => item !== key), key] : current.filter((item) => item !== key)) : undefined}
+          />
+          {!detailKey && contextAds?.feed && index === Math.min(4, loadedGroups.length - 1) ? <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement="claude_feed"><SponsorCard item={contextAds.feed} variant="inline" /></aside> : null}
+        </Fragment>;
+      })}
     </TableFrame>
   );
 }

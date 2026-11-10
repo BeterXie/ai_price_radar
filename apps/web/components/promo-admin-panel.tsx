@@ -26,10 +26,12 @@ import {
 } from "@/lib/types";
 
 export const AD_PLACEMENT_LABELS: Record<AdPlacement, { label: string; hint: string }> = {
-  home_hero: { label: "首页 · 概览下方", hint: "首页搜索区与统计栏之间，全站曝光最高。" },
+  home_hero: { label: "首页 · 赞助伙伴", hint: "当前报价下方，支持多个赞助；排序值越小越靠前，首位为主赞助卡。图片请使用方形品牌 Logo。" },
   catalog_top: { label: "报价目录 · 顶部", hint: "/products 品牌目录列表上方（不含单个商品页）。" },
   product_offers: { label: "商品页 · 报价列表上方", hint: "每个标准商品工作区的报价表格上方，紧凑样式。" },
-  relay_hub: { label: "中转站专区 · 顶部", hint: "/relays 中转站目录页顶部。" },
+  relay_hub: { label: "中转站专区 · 顶部", hint: "/relays 品牌导航下方的独立横幅；图片请使用方形品牌 Logo。" },
+  claude_feed: { label: "Claude · 报价列表内嵌", hint: "仅 Claude 分类及商品页，第 5 条报价后展示一次；不足 5 条时置于末尾。详情赞助展示时隐藏此位。图片使用 Logo，标题简短。" },
+  claude_detail: { label: "Claude · 店铺报价下方", hint: "仅在最近展开的 Claude 商品内展示，位于全部店铺报价之后、购买教程之前；每页最多一个内嵌赞助。图片使用 Logo，标题简短。" },
   sidebar: { label: "预留 · 侧栏", hint: "暂未接入页面，供后续版式使用。" },
 };
 

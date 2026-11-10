@@ -14,13 +14,14 @@ function station(id, overrides = {}) {
 }
 const render = (props) => renderToStaticMarkup(createElement(HomeRelayPreview, props));
 
-test("homepage relay section follows the current quotes section", async () => {
+test("homepage sponsor section follows current quotes without duplicating legacy ads", async () => {
   const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const quotesIndex = source.indexOf('className="home-quotes shell"');
   const quotesEnd = source.indexOf("\n      </section>", quotesIndex);
-  const relayIndex = source.indexOf("{meta?.relay_hub_enabled !== false ? (");
+  const relayIndex = source.indexOf("<SponsorShowcase />");
   assert.ok(quotesIndex >= 0, "home quotes section exists");
-  assert.ok(relayIndex > quotesEnd, "relay preview appears after the quotes section");
+  assert.ok(relayIndex > quotesEnd, "sponsors appear after the quotes section");
+  assert.doesNotMatch(source, /<HomeRelays|<AdSlot/);
 });
 
 test("homepage relays keep the public directory order and sponsorship disclosure", async (context) => {

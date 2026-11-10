@@ -12,7 +12,7 @@ import { exactTime, relativeTime } from "@/lib/format";
 import { getProductGuide } from "@/lib/guides/registry";
 import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
 import { normalizeSearchQuery } from "@/lib/search";
-import type { ProductDetail } from "@/lib/types";
+import type { ContextualAds, ProductDetail } from "@/lib/types";
 
 export type RawSearchParams = Record<string, string | string[] | undefined>;
 
@@ -64,6 +64,7 @@ export function ProductWorkspace({
   resetHref,
   hiddenFields = {},
   scopeExpanded = false,
+  contextAds,
 }: {
   product: ProductDetail;
   rawParams: RawSearchParams;
@@ -73,6 +74,7 @@ export function ProductWorkspace({
   hiddenFields?: Record<string, string>;
   /** True when the page widened the scope to all offers because no directly comparable offer existed. */
   scopeExpanded?: boolean;
+  contextAds?: ContextualAds;
 }) {
   const canonical = `https://ai.pricememo.cn/products/${encodeURIComponent(product.slug)}`;
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
@@ -153,6 +155,7 @@ export function ProductWorkspace({
           totalCount={product.offer_group_count}
           snapshotId={product.snapshot_id}
           filterQuery={query.toString()}
+          contextAds={contextAds}
         />
       </section>
 
