@@ -136,7 +136,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
     : productTabBrand ? getBrandSeoContent(productTabBrand).description : "比较公开商品的价格、库存、交付方式和更新时间。";
 
   return (
-    <main id="main-content" className="catalog-page shell">
+    <main id="main-content" className="catalog-page shell" aria-labelledby="catalog-page-title">
       {catalogBrand ? <JsonLd data={breadcrumbJsonLd([{ name: "首页", path: "/" }, { name: `${catalogBrand} 比价`, path: basePath }])} /> : null}
 
       <div className="catalog-layout">
@@ -160,11 +160,6 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
         </aside>
 
         <div className="catalog-content">
-          <header className="mb-5 border-b border-[color:var(--line)] pb-4">
-            <h1 className="text-2xl font-semibold tracking-tight">{headingTitle}</h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
-            <Link href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
-          </header>
           {productTabs.length > 0 ? (
             <div className="catalog-plans">
               <nav aria-label="商品类型筛选" className="catalog-plan-row">
@@ -252,6 +247,11 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
               ) : null}
             </>
           )}
+          <section className="mt-8 border-t border-[color:var(--line)] pt-6" aria-labelledby="catalog-page-title">
+            <h1 id="catalog-page-title" className="text-2xl font-semibold tracking-tight">{headingTitle}</h1>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
+            <Link href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
+          </section>
         </div>
       </div>
     </main>

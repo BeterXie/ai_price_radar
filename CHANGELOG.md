@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.60] - 2026-11-10
+
+- Move the catalog title, introduction and comparison link below the offers so filters and prices appear earlier on brand and product pages.
+- Keep the visible H1 and introduction in server-rendered HTML, with existing metadata, canonical URLs and structured data unchanged.
+- No database migration or pipeline change. Rebuild API, Web and importer from this release.
+
 ## [3.9.57] - 2026-11-08
 
 - Strip QQ group mention metadata, including opaque OpenIDs, before command parsing, local snapshot search and AI planning.
