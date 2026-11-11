@@ -837,13 +837,14 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-primary .sponsor-rate { color: #d4ef8c; }
 .sponsor-primary.sponsor-showcase .sponsor-rate { display: block; margin-top: 5px; font-size: clamp(36px, 3.6vw, 48px); letter-spacing: -.04em; }
 .sponsor-watermark { position: absolute; width: 160px; height: 160px; object-fit: contain; right: 24px; top: 100px; filter: invert(1); opacity: .12; pointer-events: none; }
-.sponsor-banner { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 2fr) auto; align-items: center; gap: 30px; padding: 28px 30px; min-height: 185px; }
+.ad-slot-sponsor { gap: 10px; }
+.sponsor-banner { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 2fr) auto; align-items: center; gap: 24px; padding: 16px 24px; min-height: 140px; }
 .sponsor-banner .sponsor-identity { flex-wrap: wrap; align-content: center; }
 .sponsor-banner .sponsor-disclosure { margin-left: 55px; }
-.sponsor-banner h3 { font-size: clamp(23px, 2.5vw, 32px); color: #fffef4; }
-.sponsor-banner .sponsor-copy p { margin-top: 8px; }
-.sponsor-banner:not(.sponsor-primary) { min-height: 126px; padding: 20px 26px; background: #eff2e5; border-color: #c7d2b9; }
-.sponsor-banner:not(.sponsor-primary) h3 { color: var(--ink); font-size: 20px; line-height: 1.5; }
+.sponsor-banner h3 { font-size: clamp(21px, 2.1vw, 27px); line-height: 1.35; color: #fffef4; }
+.sponsor-banner .sponsor-copy p { margin-top: 6px; line-height: 1.65; }
+.sponsor-banner:not(.sponsor-primary) { min-height: 110px; padding: 12px 22px; background: #eff2e5; border-color: #c7d2b9; }
+.sponsor-banner:not(.sponsor-primary) h3 { color: var(--ink); font-size: 18px; line-height: 1.4; }
 .sponsor-banner[data-sponsor="auto-code"] { background: #eff5fb; border-color: #bdd2e9; border-left: 3px solid #1676d2; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-disclosure { color: #416486; border-color: #adbed1; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-copy p::first-line { color: #2264aa; font-weight: 650; }
@@ -877,7 +878,8 @@ table { font-variant-numeric: tabular-nums; }
   .sponsor-showcase { padding: 23px 20px; }
   .sponsor-primary.sponsor-showcase .sponsor-copy { max-width: 100%; }
   .sponsor-watermark { width: 125px; height: 125px; right: 14px; }
-  .sponsor-banner { grid-template-columns: minmax(0, 1fr) auto; gap: 20px 12px; padding: 22px 20px; }
+  .sponsor-banner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; padding: 14px 16px; }
+  .sponsor-banner:not(.sponsor-primary) { padding: 12px 16px; }
   .sponsor-banner .sponsor-identity { grid-column: 1 / -1; flex-wrap: nowrap; }
   .sponsor-banner .sponsor-disclosure { margin-left: auto; }
   .sponsor-banner .sponsor-copy { grid-column: 1 / -1; }
