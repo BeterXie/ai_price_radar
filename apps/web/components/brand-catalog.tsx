@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight } from "@phosphor-icons/react/ssr";
 import { SITE_ID, IS_PRIMARY_SITE } from "@/lib/brands";
 import type { ProductDetail } from "@/lib/types";
 import { money, relativeTime } from "@/lib/format";
@@ -8,9 +7,9 @@ import { PlatformIcon } from "./platform-icon";
 
 export function BrandCatalogFrame({ navigation, title, intro, children }: { navigation: ReactNode; title: string; intro: string; children: ReactNode }) {
   if (IS_PRIMARY_SITE) return <div className="catalog-layout"><aside className="catalog-sidebar">{navigation}</aside>{children}</div>;
-  const heading = <header className="brand-catalog-heading"><p className="brand-eyebrow">{SITE_ID === "aiprice" ? "MARKET / QUOTES" : SITE_ID === "aisi" ? "订阅手册 / THE SELECTION" : SITE_ID === "pricein" ? "选订阅 · 比价格 · 看交付" : "01 / PRODUCT RECORDS"}</p><h1 id="catalog-page-title">{title}</h1><p>{intro}</p></header>;
+  const heading = <header className="brand-catalog-heading"><p className="brand-eyebrow">{SITE_ID === "aiprice" ? "AIPRICE / 报价行情" : SITE_ID === "aisi" ? "AISI PLUS / 品牌商品目录" : SITE_ID === "pricein" ? "PRICEIN / 账号与代充" : "OPENPRICE / 公开报价目录"}</p><h1 id="catalog-page-title">{title}</h1><p>查品牌、选账号或代充，直接看价格与库存。</p></header>;
   if (SITE_ID === "aiprice") return <>{heading}<div className="terminal-catalog"><aside className="catalog-sidebar"><p className="index-label">产品分区</p>{navigation}</aside>{children}</div></>;
-  if (SITE_ID === "aisi") return <><div className="editorial-catalog-opening">{heading}<aside><p>价格之外，<br />也看看交付方式。</p><Link href="/methodology">如何读懂一条报价 <ArrowUpRight size={16} /></Link></aside></div><div className="editorial-catalog-nav">{navigation}</div>{children}</>;
+  if (SITE_ID === "aisi") return <>{heading}<div className="editorial-catalog-nav">{navigation}</div>{children}</>;
   if (SITE_ID === "pricein") return <>{heading}<div className="shop-catalog-nav">{navigation}</div><div className="shop-catalog-body">{children}</div></>;
   return <div className="index-catalog"><aside className="catalog-sidebar"><Link href="/">← 返回索引</Link><p className="index-label">筛选 / BRANDS</p>{navigation}</aside><div>{heading}{children}</div></div>;
 }

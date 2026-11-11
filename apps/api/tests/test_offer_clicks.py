@@ -1,7 +1,7 @@
 import sys
 import hashlib
 import hmac
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -115,6 +115,36 @@ def _seed_catalog(db):
     return shop, product, offer
 
 
+def test_recent_product_activity_uses_event_window_not_lifetime(client, test_db, monkeypatch):
+    from app.routers import public
+
+    shop, product, offer = _seed_catalog(test_db)
+    now = datetime(2026, 11, 11, 8, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(public, "datetime", FrozenDateTime)
+    offer.click_count = 9876
+    hidden = Product(slug="private-product", platform="openai", display_name="隐藏", is_visible=False)
+    quiet = Product(slug="quiet-product", platform="openai", display_name="暂无访问", is_visible=True)
+    test_db.add_all([hidden, quiet])
+    for created_at in [now, now - timedelta(days=7), now - timedelta(days=7, microseconds=1), now + timedelta(seconds=1)]:
+        test_db.add(OfferClick(offer_id=offer.id, shop_id=shop.id, product_slug=product.slug, created_at=created_at))
+    test_db.add(OfferClick(shop_id=shop.id, product_slug=product.slug, created_at=now))
+    test_db.add(OfferClick(offer_id=offer.id, shop_id=shop.id, product_slug=hidden.slug, created_at=now))
+    test_db.commit()
+
+    response = client.get("/api/v1/catalog/activity")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["window_days"] == 7
+    assert datetime.fromisoformat(data["end_at"].replace("Z", "+00:00")) - datetime.fromisoformat(data["start_at"].replace("Z", "+00:00")) == timedelta(days=7)
+    assert {item["product_slug"]: item["click_count"] for item in data["items"]} == {product.slug: 2, quiet.slug: 0}
+
+
 def test_record_offer_click_and_debounce(client, test_db):
     shop, product, offer = _seed_catalog(test_db)
     assert offer.click_count == 0
@@ -202,6 +232,8 @@ def test_shop_detail_click_metrics(client, test_db):
     assert detail["total_clicks"] == 2
     assert len(detail["offers"]) == 1
     assert detail["offers"][0]["click_count"] == 1
+    assert detail["offers"][0]["product_slug"] == product.slug
+    assert detail["offers"][0]["product_name"] == product.display_name
 
 
 def test_product_offers_and_groups_contain_click_count(client, test_db):

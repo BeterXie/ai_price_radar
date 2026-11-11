@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Float, Text, and_, case, cast, false, func, literal, not_, or_, select
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from ..core.config import get_settings
 from ..models import CatalogSnapshot, Offer, OfferClick, OfferHistory, Product, RawProduct, Shop
@@ -329,6 +329,7 @@ def _offer_public(
     *,
     include_description: bool = False,
     median_price: Decimal | None = None,
+    product: Product | None = None,
 ) -> OfferPublic:
     raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
     raw_description = raw_json.get("description")
@@ -336,6 +337,8 @@ def _offer_public(
     warning = _low_price_warning(offer.price, median_price, offer.currency)
     return OfferPublic(
         id=offer.id,
+        product_slug=product.slug if product and product.is_visible else "",
+        product_name=product.display_name if product and product.is_visible else "",
         shop_token=offer.shop.token,
         shop_name=offer.shop.name or offer.shop.token,
         source_platform=offer.shop.platform,
@@ -1434,7 +1437,7 @@ def get_shop_detail(
     ) or 0)
     offers = list(db.scalars(
         offer_stmt
-        .options(contains_eager(Offer.shop), contains_eager(Offer.raw_product))
+        .options(contains_eager(Offer.shop), contains_eager(Offer.raw_product), selectinload(Offer.product))
         .order_by(*_offer_ordering())
         .offset(offer_offset)
         .limit(offer_limit)
@@ -1513,7 +1516,7 @@ def get_shop_detail(
         today_clicks=int(today_clicks),
         total_clicks=int(total_clicks),
         products=products,
-        offers=[_offer_public(x, median_price=medians.get(_median_key(x))) for x in offers],
+        offers=[_offer_public(x, median_price=medians.get(_median_key(x)), product=x.product) for x in offers],
     )
 
 

@@ -40,6 +40,8 @@ from ..schemas import (
     RelaySubmissionCreate,
     AdSlotListOut,
     CatalogOfferGroupPageResponse,
+    CatalogActivityResponse,
+    ProductActivityPublic,
     PromoClickResponse,
     RelayStationListOut,
     CatalogResponse,
@@ -334,6 +336,37 @@ def snapshot(db: Session = Depends(get_db)) -> CatalogSnapshotPublic:
     return CatalogSnapshotPublic(
         id=current.id if current else None,
         published_at=current.published_at if current else None,
+    )
+
+
+@router.get("/catalog/activity", response_model=CatalogActivityResponse)
+def catalog_activity(db: Session = Depends(get_db)) -> CatalogActivityResponse:
+    """Recent outbound interest per product, independent of quote snapshots.
+
+    Count recorded events, never lifetime counters. Shop-only visits and hidden
+    products are excluded; zero is returned for a visible product with no events.
+    """
+    end_at = datetime.now(timezone.utc)
+    start_at = end_at - timedelta(days=7)
+    counts = (
+        select(OfferClick.product_slug, func.count(OfferClick.id).label("clicks"))
+        .where(
+            OfferClick.created_at >= start_at,
+            OfferClick.created_at <= end_at,
+            OfferClick.offer_id.is_not(None),
+        )
+        .group_by(OfferClick.product_slug)
+        .subquery()
+    )
+    rows = db.execute(
+        select(Product.slug, func.coalesce(counts.c.clicks, 0))
+        .outerjoin(counts, counts.c.product_slug == Product.slug)
+        .where(Product.is_visible.is_(True))
+        .order_by(Product.slug)
+    ).all()
+    return CatalogActivityResponse(
+        window_days=7, start_at=start_at, end_at=end_at,
+        items=[ProductActivityPublic(product_slug=slug, click_count=count) for slug, count in rows],
     )
 
 

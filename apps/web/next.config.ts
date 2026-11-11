@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { IS_PRIMARY_SITE } from "./lib/brands";
+import { IS_PRIMARY_SITE, SITE_ID } from "./lib/brands";
 
 // Next.js resolves `rewrites()` at build time and bakes the destination into
 // routes-manifest.json, so this value must be correct when the image/standalone
@@ -14,6 +14,8 @@ const internalApiBaseUrl = (
 ).replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
+  // Separate development outputs let the four brand frontends be reviewed together.
+  distDir: process.env.NODE_ENV === "development" && !IS_PRIMARY_SITE ? `.next-${SITE_ID}` : ".next",
   output: "standalone",
   outputFileTracingRoot: process.cwd(),
   poweredByHeader: false,
@@ -27,10 +29,10 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return { beforeFiles: IS_PRIMARY_SITE ? [] : [
-      { source: "/favicon.ico", destination: "/brand-icon" },
-      { source: "/icon.png", destination: "/brand-icon" },
-      { source: "/apple-icon.png", destination: "/brand-icon" },
-      { source: "/icon.svg", destination: `/brands/${process.env.NEXT_PUBLIC_SITE_ID}.svg` },
+      { source: "/favicon.ico", destination: `/brands/${SITE_ID}-favicon.ico` },
+      { source: "/icon.png", destination: `/brands/${SITE_ID}-512.png` },
+      { source: "/apple-icon.png", destination: `/brands/${SITE_ID}-180.png` },
+      { source: "/icon.svg", destination: `/brands/${SITE_ID}-512.png` },
     ], afterFiles: [
       {
         source: "/api/:path*",

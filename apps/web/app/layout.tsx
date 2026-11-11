@@ -3,6 +3,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import "./brands.css";
+import "./brand-quotes.css";
 import { BRAND, IS_PRIMARY_SITE, SITE_ID } from "@/lib/brands";
 import { getSiteSettings } from "@/lib/site-content";
 import { BackToTop } from "@/components/back-to-top";
@@ -53,7 +54,11 @@ export async function generateMetadata(): Promise<Metadata> {
         { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
       ],
       shortcut: "/favicon.ico",
-    } : { icon: `/brands/${SITE_ID}.svg`, apple: { url: "/brand-icon", type: "image/png", sizes: "512x512" } },
+    } : {
+      icon: [{ url: `/brands/${SITE_ID}-favicon.ico`, sizes: "any" }, { url: `/brands/${SITE_ID}-32.png`, type: "image/png", sizes: "32x32" }],
+      apple: { url: `/brands/${SITE_ID}-180.png`, type: "image/png", sizes: "180x180" },
+      shortcut: `/brands/${SITE_ID}-favicon.ico`,
+    },
     ...(verification ? { verification } : {}),
   };
 }
