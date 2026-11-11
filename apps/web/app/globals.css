@@ -849,6 +849,17 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-copy p::first-line { color: #2264aa; font-weight: 650; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-cta { background: #1557c0; border-color: #1557c0; color: #fff; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-cta:hover { background: #13499d; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] { background: linear-gradient(108deg, #f1fbf6 0%, #e9f7f5 100%); border-color: #b7ded3; border-left: 3px solid #23a27f; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-identity { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 11px; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-logo { grid-row: 1 / 3; background: #fff; border-color: #b7ded3; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-logo img { width: 42px; height: 42px; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-name { font-size: 17px; line-height: 1.4; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-disclosure { justify-self: start; margin-left: 0; color: #287260; border-color: #a8d2c5; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] h3 { color: #124f43; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-copy p { color: #4f716b; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-copy p::first-line { color: #237963; font-weight: 650; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-cta { background: #168c70; border-color: #168c70; color: #fff; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-cta:hover { background: #0f7059; }
 .ad-slot-compact .ad-card { background: #eff2e5; border-color: #c7d2b9; border-left: 3px solid #6b835b; }
 .context-sponsor-detail { margin-top: 12px; }
 .context-sponsor-feed { padding: 7px 20px; }
