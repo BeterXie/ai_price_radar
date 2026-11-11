@@ -37,7 +37,7 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  if (!IS_PRIMARY_SITE) return <><ProductCatalogPage rawParams={{}} /><SponsorShowcase /></>;
+  if (!IS_PRIMARY_SITE) return <StandaloneBrandHome />;
   const data = await getProducts("sort=quality");
   const products = data.items.slice(0, 6);
 
@@ -107,4 +107,8 @@ export default async function HomePage() {
       </nav>
     </main>
   );
+}
+
+function StandaloneBrandHome() {
+  return <><ProductCatalogPage rawParams={{}} /><SponsorShowcase /></>;
 }
