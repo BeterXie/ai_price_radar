@@ -12,7 +12,7 @@ import { BRAND_TABS, brandCatalogPath, STANDALONE_PRODUCTS } from "@/lib/catalog
 import { exactTime, relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
-import { BrandHome } from "@/components/brand-home";
+import { ProductCatalogPage } from "@/components/product-catalog-page";
 
 export const dynamic = "force-dynamic";
 const homeTitle = IS_PRIMARY_SITE ? "AI 订阅比价｜ChatGPT、Claude、Gemini 价格对比" : BRAND.name + "｜" + BRAND.tagline;
@@ -37,8 +37,8 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
+  if (!IS_PRIMARY_SITE) return <StandaloneBrandHome />;
   const data = await getProducts("sort=quality");
-  if (!IS_PRIMARY_SITE) return <BrandHome data={data} />;
   const products = data.items.slice(0, 6);
 
   return (
@@ -107,4 +107,8 @@ export default async function HomePage() {
       </nav>
     </main>
   );
+}
+
+function StandaloneBrandHome() {
+  return <><ProductCatalogPage rawParams={{}} /><SponsorShowcase /></>;
 }

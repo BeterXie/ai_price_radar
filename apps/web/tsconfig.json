@@ -38,7 +38,15 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-pricein/types/**/*.ts",
+    ".next-pricein/dev/types/**/*.ts",
+    ".next-aiprice/types/**/*.ts",
+    ".next-aiprice/dev/types/**/*.ts",
+    ".next-aisi/types/**/*.ts",
+    ".next-aisi/dev/types/**/*.ts",
+    ".next-openprice/types/**/*.ts",
+    ".next-openprice/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

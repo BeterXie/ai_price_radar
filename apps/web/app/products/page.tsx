@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/site";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
 import { permanentRedirect } from "next/navigation";
 import { ProductCatalogPage } from "@/components/product-catalog-page";
 import { getProduct } from "@/lib/api";
@@ -42,7 +43,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   return {
     title: "AI 订阅比价｜全部商品报价",
     description: "浏览 ChatGPT、Claude、Gemini、Grok 与 X Premium 公开报价，比较库存、交付方式、更新时间和来源。",
-    alternates: { canonical: `${SITE_URL}/products` },
+    alternates: { canonical: IS_PRIMARY_SITE ? `${SITE_URL}/products` : SITE_URL },
     robots: Object.keys(params).length ? { index: false, follow: true } : { index: true, follow: true },
     openGraph: {
       title: "全部 AI 商品报价",

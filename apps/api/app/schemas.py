@@ -80,6 +80,8 @@ class PriceTrendPoint(BaseModel):
 
 class OfferPublic(BaseModel):
     id: int
+    product_slug: str = ""
+    product_name: str = ""
     shop_token: str
     shop_name: str
     source_platform: str
@@ -166,6 +168,18 @@ class OfferGroupPublic(BaseModel):
     highest_price: Decimal | None
     click_count: int = 0
     latest_observed_at: datetime | None
+
+
+class ProductActivityPublic(BaseModel):
+    product_slug: str
+    click_count: int
+
+
+class CatalogActivityResponse(BaseModel):
+    window_days: int
+    start_at: datetime
+    end_at: datetime
+    items: list[ProductActivityPublic]
 
 
 class ProductDetail(ProductCard):

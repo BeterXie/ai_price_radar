@@ -49,6 +49,8 @@ export type ProductCard = {
 
 export type Offer = {
   id: number;
+  product_slug?: string;
+  product_name?: string;
   shop_token: string;
   shop_name: string;
   source_platform: string;
