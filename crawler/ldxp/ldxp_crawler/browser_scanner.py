@@ -48,10 +48,12 @@ TARGET_BRAND_MARKERS = (
     "xpremium",
     "twitterblue",
     "cursor",
+    "muse",
 )
 IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登")
 NON_TARGET_PLUS_MARKERS = ("百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps")
 GENERIC_EMAIL_MARKERS = ("gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱")
+NON_TARGET_MEMBERSHIP_MARKERS = ("tgpremium", "telegrampremium", "电报会员")
 CATEGORY_COMMERCE_MARKERS = ("plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登")
 
 
@@ -79,6 +81,7 @@ def has_target_brand(title: str, category: str = "") -> bool:
     return (
         any(marker in category_identity for marker in TARGET_BRAND_MARKERS)
         and not any(marker in title_identity for marker in GENERIC_EMAIL_MARKERS)
+        and not any(marker in title_identity for marker in NON_TARGET_MEMBERSHIP_MARKERS)
         and any(marker in title_identity for marker in CATEGORY_COMMERCE_MARKERS)
     )
 
