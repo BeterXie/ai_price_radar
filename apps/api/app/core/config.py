@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     # snapshot publishes (cache keys include the current snapshot id), so the
     # TTL is a staleness backstop. 0 disables the cache entirely.
     price_trend_cache_ttl_seconds: int = Field(default=3600, ge=0, le=24 * 60 * 60)
+    # Current-snapshot lookup cache TTL. Every public request resolves the
+    # current snapshot, so the row is cached by id and invalidated whenever the
+    # publisher advances the pointer. 0 disables the cache entirely.
+    current_snapshot_cache_ttl_seconds: int = Field(default=30, ge=0, le=600)
+    # Connection pool. pool_timeout must stay well under the anyio worker
+    # budget: a thread waiting on a connection also holds a worker slot, so a
+    # long wait converts a slow query into a whole-process stall.
+    db_pool_size: int = Field(default=5, ge=1, le=100)
+    db_pool_max_overflow: int = Field(default=10, ge=0, le=100)
+    db_pool_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    db_pool_recycle_seconds: int = Field(default=1800, ge=60, le=86400)
     report_rate_limit_count: int = Field(default=5, ge=1, le=100)
     report_rate_limit_window_seconds: int = Field(default=3600, ge=60, le=24 * 60 * 60)
     trusted_proxy_cidrs: str = ""

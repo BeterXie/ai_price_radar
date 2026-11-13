@@ -141,13 +141,78 @@ def _snapshot_cutoff(db: Session, snapshot: CatalogSnapshot | None) -> datetime:
     return _fresh_cutoff()
 
 
-def get_current_snapshot(db: Session) -> CatalogSnapshot | None:
+class _CurrentSnapshotCache:
+    """Short-TTL process cache for the published-snapshot pointer.
+
+    Every public request resolves the current snapshot before doing any real
+    work, so this row is the single hottest read in the API. The cached value is
+    a detached copy: callers only read ``id`` and ``published_at``, and a
+    detached instance cannot keep a session or a connection alive.
+
+    Entries are keyed by the bound engine so separate databases in one process
+    (tests, or a replica read path) never share a pointer.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._entries: dict[int, tuple[float, CatalogSnapshot | None]] = {}
+
+    @staticmethod
+    def _engine_key(db: Session) -> int:
+        bind = db.get_bind()
+        return id(getattr(bind, "engine", bind))
+
+    def get(self, db: Session, ttl_seconds: float) -> CatalogSnapshot | None:
+        if ttl_seconds <= 0:
+            return _query_current_snapshot(db)
+        key = self._engine_key(db)
+        moment = time.monotonic()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is not None and moment - entry[0] <= ttl_seconds:
+                return entry[1]
+        # The query runs outside the lock: two requests may race here, but both
+        # issue the same bounded indexed read and store the same answer.
+        detached = _detached_snapshot(_query_current_snapshot(db))
+        with self._lock:
+            self._entries[key] = (moment, detached)
+        return detached
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+def _detached_snapshot(snapshot: CatalogSnapshot | None) -> CatalogSnapshot | None:
+    if snapshot is None:
+        return None
+    return CatalogSnapshot(
+        id=snapshot.id,
+        source=snapshot.source,
+        offer_count=snapshot.offer_count,
+        published_at=snapshot.published_at,
+    )
+
+
+def _query_current_snapshot(db: Session) -> CatalogSnapshot | None:
     return db.scalar(
         select(CatalogSnapshot)
         .where(CatalogSnapshot.published_at.is_not(None))
         .order_by(CatalogSnapshot.id.desc())
         .limit(1)
     )
+
+
+_current_snapshot_cache = _CurrentSnapshotCache()
+
+
+def clear_current_snapshot_cache() -> None:
+    """Drop the cached snapshot pointer (tests and publisher hooks)."""
+    _current_snapshot_cache.clear()
+
+
+def get_current_snapshot(db: Session) -> CatalogSnapshot | None:
+    return _current_snapshot_cache.get(db, get_settings().current_snapshot_cache_ttl_seconds)
 
 
 def _snapshot_for_query(db: Session, snapshot_id: int | None = None) -> CatalogSnapshot | None:
