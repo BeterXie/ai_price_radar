@@ -1480,8 +1480,8 @@ class UserHeartbeatResponse(BaseModel):
 # Ad slots (广告栏位) and relay stations (中转站)
 # ---------------------------------------------------------------------------
 
-AD_PLACEMENTS = ("home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "sidebar")
-AdPlacement = Literal["home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "sidebar"]
+AD_PLACEMENTS = ("home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "openai_feed", "openai_detail", "sidebar")
+AdPlacement = Literal["home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "openai_feed", "openai_detail", "sidebar"]
 
 
 def _clean_public_link(value: str | None, *, allow_internal: bool = True) -> str | None:

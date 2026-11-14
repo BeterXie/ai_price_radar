@@ -29,7 +29,13 @@ export function RelayStationCard({ station, view = "card", initialNow }: { stati
     </> : <span className="text-[color:var(--muted)]">分组倍率待补充</span>}
   </div>;
   let host = "";
-  try { host = station.url ? new URL(station.url).hostname : ""; } catch { /* The API omits unsafe public URLs. */ }
+  let promo = "";
+  try {
+    const url = station.url ? new URL(station.url) : null;
+    host = url?.hostname || "";
+    promo = url?.searchParams.get("promo") || "";
+  } catch { /* The API omits unsafe public URLs. */ }
+  const isLlmport = station.is_sponsored && (host === "llmp.org" || host === "www.llmp.org");
   const hasDetails = Boolean(host || station.updated_at || station.description || station.tagline || station.supported_models.length || station.model_catalog?.checked_at || groups.length || station.tags.length || station.price_note || station.billing_note);
   const pricing = (
     <section className="relay-pricing" aria-label="站点报价">
@@ -42,14 +48,15 @@ export function RelayStationCard({ station, view = "card", initialNow }: { stati
   const visit = station.url ? <AdLink kind="relays" id={station.id} href={station.url} className="button-secondary relay-visit" ariaLabel={`前往 ${station.name}（新窗口打开）`}>前往官网 <ArrowSquareOut size={14} /></AdLink> : null;
   const updated = <span className="relay-updated">资料更新 {station.updated_at ? <time dateTime={station.updated_at} title={exactTime(station.updated_at)}>{relativeTime(station.updated_at, now)}</time> : "待确认"}</span>;
   return (
-    <article id={`relay-${station.id}`} className={`relay-card${isList ? " relay-list-item" : ""}`} data-sponsored={station.is_sponsored ? "true" : "false"} aria-labelledby={`relay-${station.id}-title`}>
+    <article id={`relay-${station.id}`} className={`relay-card${isList ? " relay-list-item" : ""}`} data-sponsored={station.is_sponsored ? "true" : "false"} data-sponsor={isLlmport ? "llmport" : undefined} aria-labelledby={`relay-${station.id}-title`}>
       <div className={isList ? "relay-list-summary" : "relay-card-summary"}>
         <header className="relay-card-header">
-          <RelayStationIcon key={station.url} id={station.id} name={station.name} website={station.url} />
+          {isLlmport ? <span className="relay-card-mark" aria-hidden="true"><img src="/sponsors/llmport.png" width={30} height={30} alt="" loading="lazy" /></span> : <RelayStationIcon key={station.url} id={station.id} name={station.name} website={station.url} />}
           <div className="min-w-0 flex-1">
             <h3 id={`relay-${station.id}-title`} className="relay-card-title" title={station.name}>
               {station.url ? <AdLink kind="relays" id={station.id} href={station.url} className="hover:underline underline-offset-4">{station.name}</AdLink> : station.name}
             </h3>
+            {isLlmport ? <p className="relay-brand-note">Codex / Cursor{promo ? <> · 优惠码 <strong>{promo}</strong></> : " · OpenAI 兼容接口"}</p> : null}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <RelayProbeIdentity health={station.health} />
               {station.model_catalog?.synced_at ? <span className="text-xs text-[color:var(--muted)]">{station.model_catalog.models.length}{station.model_catalog.truncated ? "+" : ""} 个模型</span> : null}

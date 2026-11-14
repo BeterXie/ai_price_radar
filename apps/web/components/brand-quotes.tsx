@@ -78,7 +78,7 @@ function QuoteDetails({ quote, snapshotId, filterQuery, onClose, sponsor }: { qu
       <h3>商品原文</h3><p className="quote-description">{description || (descriptionFailed ? "原文暂时无法加载。" : quote.offer.description_available ? "正在读取原文…" : "来源未提供商品描述。")}</p>
       {descriptionFailed && <button className="quote-more" onClick={() => setAttempt((value) => value + 1)}>重试原文</button>}
       {quote.offer.risk_flags.length > 0 && <p className="quote-detail-warning">商品说明提到：{quote.offer.risk_flags.join("、")}</p>}
-      {sponsor && <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement="claude_detail"><SponsorCard item={sponsor} variant="inline" /></aside>}
+      {sponsor && <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement={sponsor.placement}><SponsorCard item={sponsor} variant="inline" /></aside>}
     </div>
   </dialog>;
 }
@@ -114,5 +114,5 @@ export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filt
   } else {
     body = <div className="quote-directory">{quotes.map((quote) => <article className="quote-directory-entry" key={quote.offer.id}><div className="quote-directory-product"><PlatformIcon platform={quoteBrand(quote.slug)} size={26} />{identity(quote)}</div><div className="quote-directory-meta">{shop(quote)}{stock(quote)}{heat(quote)}{updated(quote)}</div><aside>{price(quote)}<Visit offer={quote.offer} />{more(quote)}</aside></article>)}</div>;
   }
-  return <div className={`brand-quotes brand-quotes-${SITE_ID}`}><p className="quote-data-note">价格与库存对应展示店铺。热度为同一商品近 7 天原站访问次数，非销量。</p>{!(selected && contextAds?.detail) && contextAds?.feed && <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement="claude_feed"><SponsorCard item={contextAds.feed} variant="inline" /></aside>}{body}{footer}{selected && <QuoteDetails quote={selected} snapshotId={snapshotId} filterQuery={filterQuery} sponsor={contextAds?.detail} onClose={() => setSelected(null)} />}</div>;
+  return <div className={`brand-quotes brand-quotes-${SITE_ID}`}><p className="quote-data-note">价格与库存对应展示店铺。热度为同一商品近 7 天原站访问次数，非销量。</p>{!(selected && contextAds?.detail) && contextAds?.feed && <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement={contextAds.feed.placement}><SponsorCard item={contextAds.feed} variant="inline" /></aside>}{body}{footer}{selected && <QuoteDetails quote={selected} snapshotId={snapshotId} filterQuery={filterQuery} sponsor={contextAds?.detail} onClose={() => setSelected(null)} />}</div>;
 }

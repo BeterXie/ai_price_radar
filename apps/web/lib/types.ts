@@ -232,7 +232,7 @@ export type Meta = {
   community_notice?: CommunityNotice | null;
 };
 
-export const AD_PLACEMENTS = ["home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "sidebar"] as const;
+export const AD_PLACEMENTS = ["home_hero", "catalog_top", "product_offers", "relay_hub", "claude_feed", "claude_detail", "openai_feed", "openai_detail", "sidebar"] as const;
 export type AdPlacement = (typeof AD_PLACEMENTS)[number];
 
 export type AdSlotPublic = {
