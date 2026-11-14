@@ -1,21 +1,24 @@
 import pytest
 
 from app.core.config import get_settings
-from app.services.catalog import clear_price_trend_cache
+from app.services.catalog import clear_current_snapshot_cache, clear_price_trend_cache
 
 _TEST_BOT_ENCRYPTION_KEY = "test-bot-encryption-key-32-bytes-min"
 
 
 @pytest.fixture(autouse=True)
-def _isolated_price_trend_cache():
-    """Keep the process-wide trend cache from leaking between tests.
+def _isolated_catalog_caches():
+    """Keep process-wide catalog caches from leaking between test databases.
 
     Fresh per-test databases restart primary keys, so a cached trend from an
     earlier test would be served here for the same (product, snapshot) key.
+    Snapshot pointers also outlive temporary engines whose IDs can be reused.
     """
     clear_price_trend_cache()
+    clear_current_snapshot_cache()
     yield
     clear_price_trend_cache()
+    clear_current_snapshot_cache()
 
 
 @pytest.fixture(autouse=True)
