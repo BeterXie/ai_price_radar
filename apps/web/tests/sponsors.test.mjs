@@ -18,20 +18,27 @@ test("sponsor showcase preserves configured order and hides empty placements", a
   assert.equal(await SponsorShowcase(), null);
 });
 
-test("contextual slots target Claude only and keep independent placement URLs", async (context) => {
+test("contextual slots separate Claude and OpenAI targeting and preserve placement URLs", async (context) => {
   const calls = [];
   context.mock.method(globalThis, "fetch", async (url) => {
     const placement = new URL(url).searchParams.get("placement");
     calls.push(placement);
-    return Response.json({ enabled: true, items: [slot(placement === "claude_feed" ? 4 : 5, placement)] });
+    return Response.json({ enabled: true, items: [slot(placement.endsWith("_feed") ? 4 : 5, placement)] });
   });
-  for (const brand of ["", "OpenAI", "Google", "ChatGPT"]) assert.deepEqual(await getContextualAds(brand), {});
+  for (const brand of ["", "Google", "ChatGPT"]) assert.deepEqual(await getContextualAds(brand), {});
   assert.equal(calls.length, 0);
   const ads = await getContextualAds("Claude");
   assert.deepEqual(calls.sort(), ["claude_detail", "claude_feed"]);
   assert.equal(ads.feed.id, 4);
   assert.equal(ads.detail.id, 5);
   assert.notEqual(ads.feed.link_url, ads.detail.link_url);
+  calls.length = 0;
+  const openai = await getContextualAds("OpenAI");
+  assert.deepEqual(calls.sort(), ["openai_detail", "openai_feed"]);
+  assert.equal(openai.detail.placement, "openai_detail");
+  assert.notEqual(openai.feed.link_url, ads.feed.link_url);
+  context.mock.method(globalThis, "fetch", async () => Response.json({ enabled: false, items: [] }));
+  assert.deepEqual(await getContextualAds("OpenAI"), { feed: undefined, detail: undefined });
 });
 
 test("compact sponsor always discloses sponsorship and omits the full creative", () => {

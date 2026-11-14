@@ -32,6 +32,8 @@ export const AD_PLACEMENT_LABELS: Record<AdPlacement, { label: string; hint: str
   relay_hub: { label: "中转站专区 · 顶部", hint: "/relays 品牌导航下方的独立横幅；图片请使用方形品牌 Logo。" },
   claude_feed: { label: "Claude · 报价列表内嵌", hint: "仅 Claude 分类及商品页，第 5 条报价后展示一次；不足 5 条时置于末尾。详情赞助展示时隐藏此位。图片使用 Logo，标题简短。" },
   claude_detail: { label: "Claude · 店铺报价下方", hint: "仅在最近展开的 Claude 商品内展示，位于全部店铺报价之后、购买教程之前；每页最多一个内嵌赞助。图片使用 Logo，标题简短。" },
+  openai_feed: { label: "OpenAI · 报价列表内嵌", hint: "仅 OpenAI 分类及商品页，第 5 条报价后展示一次；不足 5 条时置于末尾。详情赞助展示时隐藏此位。图片使用 Logo，标题简短。" },
+  openai_detail: { label: "OpenAI · 店铺报价下方", hint: "仅在最近展开的 OpenAI 商品内展示，位于全部店铺报价之后、购买教程之前；每页最多一个内嵌赞助。图片使用 Logo，标题简短。" },
   sidebar: { label: "预留 · 侧栏", hint: "暂未接入页面，供后续版式使用。" },
 };
 

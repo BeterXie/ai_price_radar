@@ -367,7 +367,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           </section>
         )}
 
-        {sponsor ? <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement="claude_detail"><SponsorCard item={sponsor} variant="inline" /></aside> : null}
+        {sponsor ? <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement={sponsor.placement}><SponsorCard item={sponsor} variant="inline" /></aside> : null}
         <ContextualGuideLink productSlug={productSlug} deliveryType={offer.delivery_type} />
 
         {!group && (
@@ -490,7 +490,7 @@ export function OfferGroupTable({
             sponsor={detailKey === key ? contextAds?.detail : undefined}
             onOpenChange={contextAds?.detail ? (open) => setOpenGroups((current) => open ? [...current.filter((item) => item !== key), key] : current.filter((item) => item !== key)) : undefined}
           />
-          {!detailKey && contextAds?.feed && index === Math.min(4, loadedGroups.length - 1) ? <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement="claude_feed"><SponsorCard item={contextAds.feed} variant="inline" /></aside> : null}
+          {!detailKey && contextAds?.feed && index === Math.min(4, loadedGroups.length - 1) ? <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement={contextAds.feed.placement}><SponsorCard item={contextAds.feed} variant="inline" /></aside> : null}
         </Fragment>;
       })}
     </TableFrame>

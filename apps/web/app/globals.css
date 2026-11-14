@@ -837,23 +837,24 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-primary .sponsor-rate { color: #d4ef8c; }
 .sponsor-primary.sponsor-showcase .sponsor-rate { display: block; margin-top: 5px; font-size: clamp(36px, 3.6vw, 48px); letter-spacing: -.04em; }
 .sponsor-watermark { position: absolute; width: 160px; height: 160px; object-fit: contain; right: 24px; top: 100px; filter: invert(1); opacity: .12; pointer-events: none; }
-.ad-slot-sponsor { gap: 10px; }
-.sponsor-banner { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 2fr) auto; align-items: center; gap: 24px; padding: 16px 24px; min-height: 140px; }
-.sponsor-banner .sponsor-identity { flex-wrap: wrap; align-content: center; }
-.sponsor-banner .sponsor-disclosure { margin-left: 55px; }
-.sponsor-banner h3 { font-size: clamp(21px, 2.1vw, 27px); line-height: 1.35; color: #fffef4; }
-.sponsor-banner .sponsor-copy p { margin-top: 6px; line-height: 1.65; }
-.sponsor-banner:not(.sponsor-primary) { min-height: 110px; padding: 12px 22px; background: #eff2e5; border-color: #c7d2b9; }
-.sponsor-banner:not(.sponsor-primary) h3 { color: var(--ink); font-size: 18px; line-height: 1.4; }
+.ad-slot-sponsor { gap: 8px; }
+.sponsor-banner { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 2fr) auto; align-items: center; gap: 22px; padding: 12px 22px; min-height: 120px; }
+.sponsor-banner .sponsor-identity { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 10px; }
+.sponsor-banner .sponsor-logo { grid-row: 1 / 3; width: 40px; height: 40px; }
+.sponsor-banner .sponsor-name { font-size: 17px; line-height: 1.4; }
+.sponsor-banner .sponsor-disclosure { justify-self: start; margin-left: 0; }
+.sponsor-banner h3 { font-size: clamp(20px, 1.9vw, 24px); line-height: 1.3; color: #fffef4; }
+.sponsor-banner .sponsor-copy p { margin-top: 4px; line-height: 1.5; }
+.sponsor-banner:not(.sponsor-primary) { min-height: 96px; padding: 10px 20px; background: #eff2e5; border-color: #c7d2b9; }
+.sponsor-banner:not(.sponsor-primary) h3 { color: var(--ink); font-size: 17px; line-height: 1.35; }
 .sponsor-banner[data-sponsor="auto-code"] { background: #eff5fb; border-color: #bdd2e9; border-left: 3px solid #1676d2; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-disclosure { color: #416486; border-color: #adbed1; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-copy p::first-line { color: #2264aa; font-weight: 650; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-cta { background: #1557c0; border-color: #1557c0; color: #fff; }
 .sponsor-banner[data-sponsor="auto-code"] .sponsor-cta:hover { background: #13499d; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] { background: linear-gradient(108deg, #f1fbf6 0%, #e9f7f5 100%); border-color: #b7ded3; border-left: 3px solid #23a27f; }
-.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-identity { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 11px; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-logo { grid-row: 1 / 3; background: #fff; border-color: #b7ded3; }
-.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-logo img { width: 42px; height: 42px; }
+.sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-logo img { width: 38px; height: 38px; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-name { font-size: 17px; line-height: 1.4; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-disclosure { justify-self: start; margin-left: 0; color: #287260; border-color: #a8d2c5; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] h3 { color: #124f43; }
@@ -873,17 +874,26 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-inline .sponsor-copy { grid-column: 1; grid-row: 2; }
 .sponsor-inline .sponsor-copy p { margin: 0; font-size: 10px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #64715a; }
 .sponsor-inline .sponsor-cta { grid-column: 2; grid-row: 1 / 3; align-self: center; min-height: 34px; gap: 10px; padding: 6px 10px; font-size: 11px; border-color: #b3c3a1; background: #f8faef; }
+.sponsor-card[data-sponsor="llmport"] { background: #f0f7ff; border-color: #bdd8f5; border-left: 3px solid #1464db; color: #122a47; }
+.sponsor-card[data-sponsor="llmport"] .sponsor-logo { background: #fff; border-color: #c8def2; }
+.sponsor-card[data-sponsor="llmport"] .sponsor-disclosure { color: #3d6490; border-color: #afc9e6; }
+.sponsor-card[data-sponsor="llmport"] h3 { color: #174b85; }
+.sponsor-card[data-sponsor="llmport"] .sponsor-copy p { color: #426184; }
+.sponsor-card[data-sponsor="llmport"] .sponsor-cta { background: #1464db; border-color: #1464db; color: #fff; }
+.sponsor-card[data-sponsor="llmport"] .sponsor-cta:hover { background: #104ea9; }
 @media (max-width: 700px) {
   .sponsor-grid, .sponsor-grid:not([data-count="1"]):not([data-count="2"]) { grid-template-columns: minmax(0, 1fr); }
   .sponsor-showcase { padding: 23px 20px; }
   .sponsor-primary.sponsor-showcase .sponsor-copy { max-width: 100%; }
   .sponsor-watermark { width: 125px; height: 125px; right: 14px; }
-  .sponsor-banner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; padding: 14px 16px; }
-  .sponsor-banner:not(.sponsor-primary) { padding: 12px 16px; }
-  .sponsor-banner .sponsor-identity { grid-column: 1 / -1; flex-wrap: nowrap; }
-  .sponsor-banner .sponsor-disclosure { margin-left: auto; }
+  .sponsor-banner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; padding: 12px 14px; min-height: 0; }
+  .sponsor-banner:not(.sponsor-primary) { padding: 10px 14px; min-height: 0; }
+  .sponsor-banner .sponsor-identity { grid-column: 1; grid-row: 1; grid-template-columns: 34px minmax(0, 1fr); gap: 2px 8px; }
+  .sponsor-banner .sponsor-logo { width: 34px; height: 34px; }
+  .sponsor-banner .sponsor-logo img { width: 30px; height: 30px; }
+  .sponsor-banner .sponsor-name { font-size: 15px; }
   .sponsor-banner .sponsor-copy { grid-column: 1 / -1; }
-  .sponsor-banner .sponsor-cta { justify-self: start; }
+  .sponsor-banner .sponsor-cta { grid-column: 2; grid-row: 1; gap: 8px; padding: 8px 10px; font-size: 12px; }
   .context-sponsor-feed { padding: 7px 12px; }
   .sponsor-inline { padding-block: 12px; min-height: 60px; }
   .sponsor-inline .sponsor-cta { padding-inline: 8px; gap: 6px; }
@@ -978,6 +988,14 @@ table { font-variant-numeric: tabular-nums; }
 .relay-updated { color: var(--muted); font-size: 0.6875rem; }
 .relay-list-item { display: flex; flex-direction: column; padding: 10px 14px; border-radius: 10px; transition: border-color 0.15s; }
 .relay-list-item:hover { border-color: var(--line-strong); }
+.relay-card[data-sponsor="llmport"] { border-color: #b3d1f2; border-left: 3px solid #1464db; background: #f7fbff; }
+.relay-card[data-sponsor="llmport"] .relay-card-title { color: #174b85; }
+.relay-card[data-sponsor="llmport"] .relay-card-mark { background: #fff; border-color: #c8def2; }
+.relay-card[data-sponsor="llmport"] .ad-badge { color: #3d6490; border-color: #afc9e6; }
+.relay-card[data-sponsor="llmport"] .relay-visit { background: #1464db; border-color: #1464db; color: #fff; }
+.relay-card[data-sponsor="llmport"] .relay-visit:hover { background: #104ea9; }
+.relay-brand-note { margin: 3px 0; color: #426184; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.relay-brand-note strong { color: #174b85; font-weight: 650; }
 .relay-list-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; align-items: center; gap: 20px; }
 .relay-list-item .relay-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .relay-list-item .relay-card-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
