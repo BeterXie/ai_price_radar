@@ -105,6 +105,12 @@ export const getProduct = cache(async function getProduct(slug: string, query = 
 });
 
 export async function getShop(token: string, query = ""): Promise<ShopDetail | null> {
+  // Page params can retain URL escapes while metadata receives the decoded token.
+  try {
+    token = decodeURIComponent(token);
+  } catch {
+    return null;
+  }
   try {
     return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}${query ? `?${query}` : ""}`, 2, { next: { revalidate: 60 } });
   } catch (error) {
