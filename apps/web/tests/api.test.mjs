@@ -41,6 +41,28 @@ test("catalog bypasses old immutable snapshots that still split Pro aliases", as
   assert.ok(calls.includes("/api/v1/products"));
 });
 
+test("shop pages resolve raw and escaped native tokens with pagination", async (context) => {
+  const calls = [];
+  context.mock.method(globalThis, "fetch", async (url) => {
+    const request = new URL(String(url));
+    calls.push(request);
+    const token = decodeURIComponent(request.pathname.split("/").at(-1));
+    return token === "catfk:V6J6VKYC"
+      ? Response.json({ token, offer_count: 18 })
+      : Response.json({ detail: "shop not found" }, { status: 404 });
+  });
+
+  for (const token of ["catfk:V6J6VKYC", "catfk%3AV6J6VKYC"]) {
+    const shop = await getShop(token, "offer_limit=30&offer_offset=30");
+    assert.equal(shop?.token, "catfk:V6J6VKYC");
+    assert.equal(shop?.offer_count, 18);
+  }
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((url) => url.searchParams.get("offer_offset") === "30"));
+  assert.equal(await getShop("catfk%invalid"), null);
+  assert.equal(calls.length, 2);
+});
+
 test("API resource helpers only treat 404 as missing", async () => {
   const originalFetch = globalThis.fetch;
   try {
