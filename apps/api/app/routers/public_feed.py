@@ -110,7 +110,9 @@ def get_snapshot_feed(snapshot_id: str, if_none_match: str | None = Header(None)
 def get_catalog_feed(snapshot_id: str, if_none_match: str | None = Header(None)) -> Response:
     if re.fullmatch(r"[0-9]{1,20}", snapshot_id) is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid snapshot ID")
-    catalog_file = _find_data_dir() / "v1" / "catalogs" / f"{snapshot_id}.json"
+    # Convert the validated ID to an integer before constructing a filesystem
+    # path, so only a canonical decimal filename reaches the file server.
+    catalog_file = _find_data_dir() / "v1" / "catalogs" / f"{int(snapshot_id)}.json"
     if not catalog_file.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog summary not found")
     return _serve_feed_file(catalog_file, if_none_match, "public, max-age=31536000, immutable")
