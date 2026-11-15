@@ -128,9 +128,10 @@ export async function getShopCards(query = ""): Promise<ShopListResponse> {
 }
 
 export const getMeta = cache(async function getMeta(): Promise<Meta> {
-  const meta = await apiFetch<Meta>("/api/v1/meta", 0, {
+  // Metadata is required by pages and the sitemap. Use the shared bounded
+  // read budget so cold database/cache reads can finish during a release.
+  const meta = await apiFetch<Meta>("/api/v1/meta", 1, {
     next: { revalidate: 300 },
-    signal: AbortSignal.timeout(1200),
   });
   if (IS_PRIMARY_SITE) return meta;
   const settings = await getSiteSettings();

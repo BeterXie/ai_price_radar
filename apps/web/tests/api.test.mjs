@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
-import { apiFetch, ApiError, getProduct, getProducts, getShop, getSkillDetail } from "../lib/api.ts";
+import { apiFetch, ApiError, getMeta, getProduct, getProducts, getShop, getSkillDetail } from "../lib/api.ts";
 
 test("API helpers canonicalize legacy Pro requests without changing offer titles", async (context) => {
   const calls = [];
@@ -80,6 +81,19 @@ test("API reads share a time budget and never replay writes or retry too early",
   controller.abort(new Error("caller deadline"));
   await assert.rejects(pending, /caller deadline/);
   assert.equal(calls, 1);
+});
+
+test("required metadata tolerates a cold read and recovers from a transient failure", async (context) => {
+  let calls = 0;
+  const metadata = { source_platforms: [], relay_station_count: 0 };
+  context.mock.method(globalThis, "fetch", async (_url, { signal }) => {
+    calls += 1;
+    if (calls === 1) return Response.json({}, { status: 503 });
+    await delay(1400, undefined, { signal });
+    return Response.json(metadata);
+  });
+  assert.deepEqual(await getMeta(), metadata);
+  assert.equal(calls, 2);
 });
 
 test("shop pages resolve raw and escaped native tokens with pagination", async (context) => {
