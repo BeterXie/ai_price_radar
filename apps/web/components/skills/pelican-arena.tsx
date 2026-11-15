@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowSquareOut, Check, Copy, Eye, Sparkle, SquaresFour, Monitor } from "@phosphor-icons/react";
-import { recordSkillCopy } from "@/lib/api";
+import { recordSkillCopy } from "@/lib/skill-events";
 import { DemoIframe } from "./demo-iframe";
 
 export type ArenaModel = {

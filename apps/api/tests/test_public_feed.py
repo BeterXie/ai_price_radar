@@ -84,3 +84,18 @@ def test_configured_public_data_dir_never_falls_back(tmp_path: Path, monkeypatch
     monkeypatch.setenv(public_feed.PUBLIC_DATA_DIR_ENV, str(configured))
 
     assert public_feed._find_data_dir() == configured
+
+
+def test_catalog_summary_feed_is_versioned_and_conditional(client, tmp_path, monkeypatch):
+    monkeypatch.setenv(public_feed.PUBLIC_DATA_DIR_ENV, str(tmp_path))
+    directory = tmp_path / "v1" / "catalogs"
+    directory.mkdir(parents=True)
+    data = {"schema_version": "price-radar.catalog.v1", "snapshot_id": 42, "items": []}
+    (directory / "42.json").write_text(json.dumps(data), encoding="utf-8")
+    response = client.get("/data/v1/catalogs/42.json")
+    assert response.status_code == 200
+    assert response.json() == data
+    assert "immutable" in response.headers["cache-control"]
+    assert client.get("/data/v1/catalogs/42.json", headers={"If-None-Match": response.headers["etag"]}).status_code == 304
+    assert client.get("/data/v1/catalogs/43.json").status_code == 404
+    assert client.get("/data/v1/catalogs/4.2.json").status_code == 400

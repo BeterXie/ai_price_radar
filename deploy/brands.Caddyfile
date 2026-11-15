@@ -4,12 +4,12 @@
     handle @private {
         respond 404
     }
-    @api path /api/* /health
+    @api path /api/* /health /data/latest.json /data/v1/snapshots/* /data/v1/catalogs/*
     handle @api {
         request_body {
             max_size 1MB
         }
-        reverse_proxy ai-radar-api:8000
+        reverse_proxy 172.18.0.2:8000
     }
     handle {
         reverse_proxy {args[0]}:3000
@@ -26,14 +26,14 @@
 }
 
 aiprice.si {
-    import brand_site ai-radar-aiprice
+    import brand_site 172.18.0.8
 }
 aisi.plus {
-    import brand_site ai-radar-aisi
+    import brand_site 172.18.0.5
 }
 pricein.cc {
-    import brand_site ai-radar-pricein
+    import brand_site 172.18.0.7
 }
 openprice.in {
-    import brand_site ai-radar-openprice
+    import brand_site 172.18.0.6
 }

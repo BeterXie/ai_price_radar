@@ -34,6 +34,49 @@ DISABLED_SOURCE_PLATFORMS: set[str] = set()
 MIN_TRUSTED_PRICE_CNY = Decimal("1.00")
 DEFAULT_STALE_OFFER_HOURS = 72
 
+# ProductCard projection: websites do not need the full quote dataset.
+CATALOG_CARD_FIELDS = (
+    "slug", "platform", "brand", "display_name", "subtitle", "product_type",
+    "price_currency", "lowest_price", "related_lowest_price", "offer_count",
+    "in_stock_count", "comparable_offer_count", "trusted_offer_count",
+    "median_price", "source_count", "data_quality_score", "data_quality_label",
+    "official_reference", "last_updated_at", "tags",
+)
+
+
+def write_catalog_summary(snapshot_data: dict[str, Any], target_dir: Path) -> Path:
+    """Publish a small projection before latest.json can expose its version."""
+    snapshot_id = str(snapshot_data["snapshot_id"])
+    if not snapshot_id.isascii() or not snapshot_id.isdigit():
+        raise ValueError("Invalid catalog snapshot ID")
+    catalog_dir = target_dir / "v1" / "catalogs"
+    catalog_dir.mkdir(parents=True, exist_ok=True)
+    catalog_file = catalog_dir / f"{snapshot_id}.json"
+    if catalog_file.exists():
+        return catalog_file
+    items = [
+        {field: product.get(field) for field in CATALOG_CARD_FIELDS}
+        for product in snapshot_data["products"]
+    ]
+    catalog = {
+        "schema_version": "price-radar.catalog.v1",
+        "items": items,
+        "total": len(items),
+        "snapshot_id": int(snapshot_id),
+        "snapshot_at": snapshot_data["published_at"],
+        **{field: snapshot_data.get(field, 0) for field in (
+            "offer_count", "in_stock_count", "comparable_offer_count", "trusted_offer_count",
+        )},
+        "metrics_note": snapshot_data.get("metrics_note", ""),
+    }
+    temporary = catalog_dir / f".tmp_{snapshot_id}_{os.getpid()}.json"
+    try:
+        temporary.write_text(json.dumps(catalog, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        temporary.replace(catalog_file)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return catalog_file
+
 
 def _as_utc(value: datetime | None) -> datetime | None:
     """Normalize naive datetimes (SQLite returns naive even for tz-aware columns)."""
@@ -405,11 +448,15 @@ def export_public_snapshot(
     snapshot_file = snapshots_dir / f"{snapshot_id}.json"
     if snapshot_file.exists():
         logger.info("Snapshot file %s already exists; keeping existing immutable content", snapshot_file)
+        # Re-export summaries from the published bytes, not a changed database.
+        snapshot_data = json.loads(snapshot_file.read_text(encoding="utf-8"))
     else:
         temp_snapshot = snapshots_dir / f".tmp_{snapshot_id}_{os.getpid()}.json"
         with open(temp_snapshot, "w", encoding="utf-8") as f:
             json.dump(snapshot_data, f, ensure_ascii=False, indent=2)
         temp_snapshot.replace(snapshot_file)
+
+    write_catalog_summary(snapshot_data, target_dir)
 
     # Write latest.json pointer (only for the current published snapshot)
     latest_pointer = {
@@ -420,6 +467,7 @@ def export_public_snapshot(
         "stale": is_stale,
         "ranking_policy_version": "available-non-shared-first.v1",
         "snapshot_url": f"{base_url}/data/v1/snapshots/{snapshot_id}.json",
+        "catalog_url": f"{base_url}/data/v1/catalogs/{snapshot_id}.json",
         "product_count": len(product_snapshots),
     }
 

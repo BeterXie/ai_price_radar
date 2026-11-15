@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
-import { ApiError, getProduct, getProducts, getShop, getSkillDetail } from "../lib/api.ts";
+import { apiFetch, ApiError, getProduct, getProducts, getShop, getSkillDetail } from "../lib/api.ts";
 
 test("API helpers canonicalize legacy Pro requests without changing offer titles", async (context) => {
   const calls = [];
@@ -25,6 +27,14 @@ test("API helpers canonicalize legacy Pro requests without changing offer titles
 
 test("catalog bypasses old immutable snapshots that still split Pro aliases", async (context) => {
   const calls = [];
+  context.mock.method(fs, "stat", async () => ({ size: 100 }));
+  context.mock.method(fs, "readFile", async (filename) => Buffer.from(JSON.stringify(
+    path.basename(filename) === "latest.json" ? { snapshot_id: 42 } : {
+      schema_version: "price-radar.catalog.v1", snapshot_id: 42,
+      snapshot_at: "2026-11-15T00:00:00Z", total: 2,
+      items: [{ slug: "chatgpt-pro-5x", display_name: "Legacy" }, { slug: "chatgpt-pro-100", display_name: "Pro" }],
+    }
+  )));
   context.mock.method(globalThis, "fetch", async (url) => {
     const path = new URL(String(url)).pathname;
     calls.push(path);
@@ -37,8 +47,39 @@ test("catalog bypasses old immutable snapshots that still split Pro aliases", as
   });
   const catalog = await getProducts("sort=quality");
   assert.deepEqual(catalog.items.map((item) => item.slug), ["chatgpt-pro-100"]);
-  assert.ok(calls.includes("/data/v1/snapshots/42.json"));
+  assert.ok(!calls.some((path) => path.startsWith("/data/")));
   assert.ok(calls.includes("/api/v1/products"));
+});
+
+test("API reads share a time budget and never replay writes or retry too early", async (context) => {
+  let calls = 0;
+  context.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    return Response.json({}, { status: 503 });
+  });
+  await assert.rejects(() => apiFetch("/unavailable", 1), ApiError);
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(() => apiFetch("/write", 1, { method: "POST" }), ApiError);
+  assert.equal(calls, 1);
+  calls = 0;
+  context.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    return Response.json({}, { status: 429, headers: { "Retry-After": "60" } });
+  });
+  await assert.rejects(() => apiFetch("/limited", 1), (error) => error.status === 429);
+  assert.equal(calls, 1);
+
+  calls = 0;
+  context.mock.method(globalThis, "fetch", async (_url, { signal }) => {
+    calls += 1;
+    return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  });
+  const controller = new AbortController();
+  const pending = apiFetch("/slow", 1, { signal: controller.signal });
+  controller.abort(new Error("caller deadline"));
+  await assert.rejects(pending, /caller deadline/);
+  assert.equal(calls, 1);
 });
 
 test("shop pages resolve raw and escaped native tokens with pagination", async (context) => {

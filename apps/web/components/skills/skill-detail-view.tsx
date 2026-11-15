@@ -16,7 +16,7 @@ import {
   TerminalWindow,
 } from "@phosphor-icons/react";
 import type { CommunitySkillDetail } from "@/lib/types";
-import { recordSkillCopy } from "@/lib/api";
+import { recordSkillCopy } from "@/lib/skill-events";
 import { PelicanArena } from "@/components/skills/pelican-arena";
 import { CrabArena } from "@/components/skills/crab-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
