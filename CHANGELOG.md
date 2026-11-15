@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.74] - 2026-11-15
+
+- Capture abbreviated Plus, Pro multiplier and Go subscription listings with matching merchant category context, including Codex Team accounts delivered with Gmail credentials.
+- Keep implicit subscription matches through keyword filtering while excluding generic email accounts and unrelated memberships. Product approval and tier review remain separate.
+- No database migration. Rebuild the crawler, API, importer and five frontends; run a full refresh before completing deployment.
+
 ## [3.9.73] - 2026-11-15
 
 - Let each API read finish within the existing six-second total budget, avoiding an early three-second abort followed by duplicate database work.

@@ -50,7 +50,7 @@ TARGET_BRAND_MARKERS = (
     "cursor",
     "muse",
 )
-IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登")
+IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登", "独享", "直充", "代充", "订阅", "月卡", "已接马", "已接码")
 NON_TARGET_PLUS_MARKERS = ("百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps")
 GENERIC_EMAIL_MARKERS = ("gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱")
 NON_TARGET_MEMBERSHIP_MARKERS = ("tgpremium", "telegrampremium", "电报会员")
@@ -71,16 +71,36 @@ def has_target_brand(title: str, category: str = "") -> bool:
     )
     if x_premium or any(marker in title_identity for marker in TARGET_BRAND_MARKERS):
         return True
+    if any(marker in title_identity + category_identity for marker in NON_TARGET_PLUS_MARKERS):
+        return False
     implicit_chatgpt = (
         "plus" in title_identity
-        and any(marker in title_identity for marker in IMPLICIT_CHATGPT_MARKERS)
-        and not any(marker in title_identity for marker in NON_TARGET_PLUS_MARKERS)
+        and (
+            any(marker in title_identity for marker in IMPLICIT_CHATGPT_MARKERS)
+            or ("plus" in category_identity and any(marker in category_identity for marker in IMPLICIT_CHATGPT_MARKERS))
+        )
     )
     if implicit_chatgpt:
         return True
+    # Merchants abbreviate OpenAI plans in both SKU titles and categories.
+    # These are capture hints only; classification/review still decides the tier.
+    if (
+        re.search(r"(?<![a-z])pro\s*(?:5|10|20|50)\s*x(?![a-z0-9])", title.casefold())
+        and "pro" in category_identity
+        and any(marker in category_identity for marker in ("直充", "成品", "订阅"))
+    ) or (
+        re.search(r"(?<![a-z])go(?![a-z])", title_identity)
+        and "go" in category_identity and "plus" in category_identity
+        and any(marker in title_identity for marker in ("充值", "直充", "订阅"))
+    ):
+        return True
+    team_account = (
+        any(marker in category_identity for marker in ("chatgpt", "openai", "codex", "gpt"))
+        and bool(re.search(r"(?<![a-z])(?:team|business)(?![a-z])", title.casefold()))
+    )
     return (
         any(marker in category_identity for marker in TARGET_BRAND_MARKERS)
-        and not any(marker in title_identity for marker in GENERIC_EMAIL_MARKERS)
+        and (team_account or not any(marker in title_identity for marker in GENERIC_EMAIL_MARKERS))
         and not any(marker in title_identity for marker in NON_TARGET_MEMBERSHIP_MARKERS)
         and any(marker in title_identity for marker in CATEGORY_COMMERCE_MARKERS)
     )
@@ -719,7 +739,9 @@ class BrowserShopScanner:
                 if matched_brands:
                     hit = matched_brands
                 else:
-                    continue
+                    # has_target_brand already established an implicit plan or
+                    # Twitter membership. Do not drop it at a second keyword gate.
+                    hit = ["X Premium" if "twitter" in normalized_identity or "推特" in normalized_identity else "ChatGPT"]
 
             extend = item.get("extend") if isinstance(item.get("extend"), dict) else {}
             listed_price = safe_float(
