@@ -83,6 +83,28 @@ test("API reads share a time budget and never replay writes or retry too early",
   assert.equal(calls, 1);
 });
 
+test("a healthy cold query uses its full budget without being aborted and replayed", async (context) => {
+  let calls = 0;
+  context.mock.method(globalThis, "fetch", async (_url, { signal }) => {
+    calls += 1;
+    await delay(3200, undefined, { signal });
+    return Response.json({ ok: true });
+  });
+  assert.deepEqual(await apiFetch("/cold-catalog"), { ok: true });
+  assert.equal(calls, 1);
+});
+
+test("an exhausted total budget aborts a stalled read without replaying it", async (context) => {
+  let calls = 0;
+  context.mock.method(globalThis, "fetch", async (_url, { signal }) => {
+    calls += 1;
+    await delay(10000, undefined, { signal });
+    return Response.json({ ok: true });
+  });
+  await assert.rejects(() => apiFetch("/stalled-catalog"), (error) => error.name === "AbortError");
+  assert.equal(calls, 1);
+});
+
 test("required metadata tolerates a cold read and recovers from a transient failure", async (context) => {
   let calls = 0;
   const metadata = { source_platforms: [], relay_station_count: 0 };

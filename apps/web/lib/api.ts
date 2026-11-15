@@ -49,7 +49,9 @@ export async function apiFetch<T>(path: string, retries = 1, init?: RequestInit)
     try {
       const response = await fetch(internalBase + path, {
         ...options,
-        signal: AbortSignal.any([budget, AbortSignal.timeout(3000)]),
+        // A cold query can exceed three seconds while remaining within budget.
+        // Aborting it early and retrying repeats database work already in flight.
+        signal: budget,
       });
       if (response.ok) return (await response.json()) as T;
       const retryAfter = Number(response.headers?.get("retry-after"));

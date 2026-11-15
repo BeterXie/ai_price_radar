@@ -148,7 +148,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPages.push({ url: `${SITE_URL}/relays`, lastModified: snapshotAt });
   }
 
-  const sourceCatalogs = await mapWithConcurrency(meta.source_platforms, 4, async (platform) => {
+  // All brands share one API. Serialize source aggregates so simultaneous cold
+  // sitemap requests do not each fan out into four expensive database reads.
+  const sourceCatalogs = await mapWithConcurrency(meta.source_platforms, 1, async (platform) => {
     const query = new URLSearchParams({ source_platform: platform.id });
     const sourceCatalog = await getAllProducts(query, catalog.snapshot_id);
     return { platform, catalog: sourceCatalog };
