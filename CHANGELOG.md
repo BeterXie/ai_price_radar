@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.72] - 2026-11-15
+
+- Let required site metadata use the shared six-second API budget and one safe retry, preventing the previous 1.2-second deadline from breaking pages and sitemaps during cold reads.
+- Retain all v3.9.71 availability safeguards. No database migration or pipeline behavior change.
+
 ## [3.9.71] - 2026-11-15
 
 - Publish small immutable catalog summaries and load them directly from the shared volume with version reuse, concurrent-load coalescing and a bounded stale fallback.
