@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.73] - 2026-11-15
+
+- Let each API read finish within the existing six-second total budget, avoiding an early three-second abort followed by duplicate database work.
+- Serialize source catalog aggregation within each sitemap to reduce contention when multiple brands start cold together.
+- Retain cancellation, safe-read retries and all availability safeguards. No database migration or pipeline behavior change.
+
 ## [3.9.72] - 2026-11-15
 
 - Let required site metadata use the shared six-second API budget and one safe retry, preventing the previous 1.2-second deadline from breaking pages and sitemaps during cold reads.
