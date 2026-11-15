@@ -5,6 +5,7 @@
 ## 原则
 
 多品牌发布同时遵循 [MULTI_BRAND_DEPLOY.md](MULTI_BRAND_DEPLOY.md)。
+v3.9.71 可用性修复同时遵循 [PRODUCTION_AVAILABILITY.md](PRODUCTION_AVAILABILITY.md)，无数据库迁移。
 v3.9.61 的 v26 迁移须在临时 PostgreSQL 16 连续演练两次；
 切换 API 前运行 scripts/migrate_multi_brand_v26.py，部署后完成一次完整快照发布。
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check PriceMemo availability every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+Unit=ai-price-radar-availability.service
+
+[Install]
+WantedBy=timers.target

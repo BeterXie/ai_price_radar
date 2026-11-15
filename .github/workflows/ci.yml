@@ -194,6 +194,8 @@ jobs:
         run: docker compose --profile tools config -q
       - name: Build base production images
         run: docker compose --profile tools build api source-detector importer web
+      - name: Verify importer notification runtime dependencies
+        run: docker compose --profile tools run --rm --no-deps importer python -c "import common; import extensions.bots.dispatcher"
       - name: Validate crawler Compose overlay
         run: docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile crawler config -q
       - name: Validate brand Compose overlay

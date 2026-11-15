@@ -113,6 +113,27 @@ def test_export_public_snapshot(db, tmp_path: Path, source_platform):
     assert plus_snap["offers"][0]["observed_at"]
     assert plus_snap["offers"][0]["click_count"] == 17
 
+    catalog_file = output_dir / "v1" / "catalogs" / f"{snapshot.id}.json"
+    catalog = json.loads(catalog_file.read_text(encoding="utf-8"))
+    assert latest_data["catalog_url"].endswith(f"/catalogs/{snapshot.id}.json")
+    assert catalog["snapshot_id"] == snapshot.id
+    assert catalog["snapshot_at"] == snapshot_data["published_at"]
+    assert catalog["total"] == snapshot_data["product_count"]
+    assert catalog["offer_count"] == snapshot_data["offer_count"]
+    plus_card = next(p for p in catalog["items"] if p["slug"] == "chatgpt-plus")
+    assert plus_card["lowest_price"] == plus_snap["lowest_price"]
+    assert plus_card["related_lowest_price"] == plus_snap["related_lowest_price"]
+    assert not any("offers" in p or "top_5_offers" in p for p in catalog["items"])
+    assert catalog_file.stat().st_size < 256 * 1024
+
+    # Re-exporting a published version must derive a missing summary from the
+    # original immutable file, even if the database has changed in the meantime.
+    catalog_file.unlink()
+    offer.price = Decimal("999.00")
+    db.commit()
+    export_public_snapshot(db, snapshot_id=snapshot.id, output_dir=output_dir)
+    assert json.loads(catalog_file.read_text(encoding="utf-8")) == catalog
+
 
 def test_export_contains_every_public_quote_and_filters_hidden_stale_rows(db, tmp_path, monkeypatch):
     from datetime import timedelta
@@ -170,3 +191,24 @@ def test_historical_export_never_rewrites_latest_pointer(db, tmp_path: Path):
 
     assert (output_dir / "latest.json").read_text(encoding="utf-8") == before
     assert (output_dir / "v1" / "snapshots" / f"{older.id}.json").is_file()
+
+
+def test_summary_failure_cannot_advance_latest_pointer(db, tmp_path, monkeypatch):
+    import export_snapshot
+
+    older = CatalogSnapshot(source="old", published_at=utcnow())
+    db.add(older)
+    db.commit()
+    export_public_snapshot(db, output_dir=tmp_path)
+    before = (tmp_path / "latest.json").read_bytes()
+    newer = CatalogSnapshot(source="new", published_at=utcnow())
+    db.add(newer)
+    db.commit()
+
+    def fail_summary(*args):
+        raise OSError("disk write failed")
+
+    monkeypatch.setattr(export_snapshot, "write_catalog_summary", fail_summary)
+    with pytest.raises(OSError, match="disk write failed"):
+        export_public_snapshot(db, output_dir=tmp_path)
+    assert (tmp_path / "latest.json").read_bytes() == before

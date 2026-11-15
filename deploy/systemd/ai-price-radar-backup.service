@@ -1,0 +1,13 @@
+[Unit]
+Description=Back up PriceMemo PostgreSQL
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-price-radar-v3
+ExecStart=/usr/bin/bash /opt/ai-price-radar-v3/scripts/backup_postgres.sh
+TimeoutStartSec=15min
+Nice=10
+PrivateTmp=true
+NoNewPrivileges=true

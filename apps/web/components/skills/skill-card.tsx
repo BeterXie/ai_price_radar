@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Check, Copy, Fire, PushPin, Sparkle, Star, Sword, TerminalWindow } from "@phosphor-icons/react";
 import type { CommunitySkillSummary } from "@/lib/types";
-import { recordSkillCopy } from "@/lib/api";
+import { recordSkillCopy } from "@/lib/skill-events";
 
 const KIND_META: Record<string, { label: string; icon: typeof Fire; badgeClass: string }> = {
   benchmark: {

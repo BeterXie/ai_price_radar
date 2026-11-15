@@ -1,0 +1,12 @@
+[Unit]
+Description=Check PriceMemo public pages and production resource health
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-price-radar-v3
+ExecStart=/usr/bin/python3 scripts/check_availability.py --output /opt/ai-price-radar-v3/data/ops/health.json
+TimeoutStartSec=60
+Nice=10
+PrivateTmp=true
+NoNewPrivileges=true

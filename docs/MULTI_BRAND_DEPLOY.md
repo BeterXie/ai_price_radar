@@ -5,11 +5,14 @@ staging preflight 和回滚要求。v26 有数据库结构变更，部署后必�
 
 | 构建 SITE_ID | 对外域名 | Caddy 上游 |
 | --- | --- | --- |
-| pricememo | ai.pricememo.cn、pricememo.cn | ai-radar-web:3000 |
-| aiprice | aiprice.si | ai-radar-aiprice:3000 |
-| aisi | aisi.plus | ai-radar-aisi:3000 |
-| pricein | pricein.cc | ai-radar-pricein:3000 |
-| openprice | openprice.in | ai-radar-openprice:3000 |
+| pricememo | ai.pricememo.cn、pricememo.cn | 172.18.0.4:3000 |
+| aiprice | aiprice.si | 172.18.0.8:3000 |
+| aisi | aisi.plus | 172.18.0.5:3000 |
+| pricein | pricein.cc | 172.18.0.7:3000 |
+| openprice | openprice.in | 172.18.0.6:3000 |
+
+这些地址由生产 Compose 显式固定；发布时必须核对 IPAMConfig。
+API 固定在同一网络的 172.18.0.2:8000，详见 PRODUCTION_AVAILABILITY.md。
 
 主站 canonical 始终为 https://ai.pricememo.cn；根域名直接展示同一套页面。
 不要给主站构建设置 NEXT_PUBLIC_SITE_URL=https://pricememo.cn。

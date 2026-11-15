@@ -1,120 +1,90 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type { CatalogResponse, ProductCard } from "@/lib/types";
 
-type CachedSnapshot = {
-  data: any;
-  cachedAt: number;
-};
+const CHECK_INTERVAL_MS = 30_000;
+const STALE_GRACE_MS = 5 * 60_000;
+const MAX_CATALOG_BYTES = 512 * 1024;
 
-let memoryCache: CachedSnapshot | null = null;
-const CACHE_TTL_MS = 15_000; // 15 seconds memory cache
+let current: CatalogResponse | null = null;
+let currentDirectory = "";
+let nextCheckAt = 0;
+let confirmedAt = 0;
+let loading: Promise<CatalogResponse | null> | null = null;
 
-/**
- * Applies the same ordering the API uses for `sort=quality` (see
- * apps/api/app/services/catalog.py `list_product_cards`): data quality score,
- * then trusted offer count, then source count, then lowest price ascending.
- * Without this the snapshot path would fall back to the exporter's Product.id
- * order and disagree with the API fallback for the same request.
- */
+/** Same quality ordering as the API, including unknown prices sorting last. */
 export function sortByQuality(cards: ProductCard[]): ProductCard[] {
   const priceOf = (card: ProductCard): number => {
-    const value =
-      card.lowest_price !== null && card.lowest_price !== undefined
-        ? Number(card.lowest_price)
-        : Number.NaN;
+    const value = card.lowest_price == null ? Number.NaN : Number(card.lowest_price);
     return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
   };
-
-  return [...cards].sort((a, b) => {
-    if (b.data_quality_score !== a.data_quality_score) {
-      return b.data_quality_score - a.data_quality_score;
-    }
-    if (b.trusted_offer_count !== a.trusted_offer_count) {
-      return b.trusted_offer_count - a.trusted_offer_count;
-    }
-    if (b.source_count !== a.source_count) {
-      return b.source_count - a.source_count;
-    }
-    return priceOf(a) - priceOf(b);
-  });
+  return [...cards].sort((a, b) =>
+    b.data_quality_score - a.data_quality_score ||
+    b.trusted_offer_count - a.trusted_offer_count ||
+    b.source_count - a.source_count ||
+    priceOf(a) - priceOf(b)
+  );
 }
 
-async function loadLatestSnapshot(): Promise<any | null> {
-  const now = Date.now();
-  if (memoryCache && now - memoryCache.cachedAt < CACHE_TTL_MS) {
-    return memoryCache.data;
+async function readSmallJson(filename: string, maxBytes: number): Promise<unknown> {
+  if ((await fs.stat(filename)).size > maxBytes) throw new Error("Catalog file exceeds size limit");
+  const bytes = await fs.readFile(filename);
+  if (bytes.length > maxBytes) throw new Error("Catalog file exceeds size limit");
+  return JSON.parse(bytes.toString("utf8"));
+}
+
+function parseCatalog(value: unknown, id: number): CatalogResponse {
+  const data = value as CatalogResponse & { schema_version?: string };
+  if (!data || data.schema_version !== "price-radar.catalog.v1" ||
+      data.snapshot_id !== id || !Array.isArray(data.items) ||
+      data.total !== data.items.length || !data.snapshot_at ||
+      !Number.isFinite(Date.parse(data.snapshot_at)) ||
+      data.items.some((item) => !item || typeof item.slug !== "string" ||
+        typeof item.display_name !== "string" || "offers" in item || "top_5_offers" in item)) {
+    throw new Error("Invalid catalog summary");
   }
+  return { ...data, items: sortByQuality(data.items) };
+}
 
-  // Keep the fallback chain identical to lib/api.ts and next.config.ts.
-  const base =
-    process.env.INTERNAL_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://127.0.0.1:8000";
-
+async function refresh(directory: string): Promise<CatalogResponse | null> {
   try {
-    const latestRes = await fetch(`${base}/data/latest.json`, {
-      next: { revalidate: 30 },
-    });
-    if (!latestRes.ok) return null;
-    const latest = await latestRes.json();
-    if (!latest || !latest.snapshot_id) return null;
-
-    const snapRes = await fetch(`${base}/data/v1/snapshots/${latest.snapshot_id}.json`, {
-      next: { revalidate: 300 },
-    });
-    if (!snapRes.ok) return null;
-    const snapshot = await snapRes.json();
-    memoryCache = { data: snapshot, cachedAt: now };
-    return snapshot;
+    const pointer = await readSmallJson(path.join(directory, "latest.json"), 64 * 1024) as { snapshot_id?: unknown };
+    const rawId = String(pointer?.snapshot_id ?? "");
+    const id = Number(rawId);
+    if (!/^[0-9]+$/.test(rawId) || !Number.isSafeInteger(id) || id <= 0) {
+      throw new Error("Invalid snapshot ID");
+    }
+    if (current?.snapshot_id !== id) {
+      const data = await readSmallJson(path.join(directory, "v1", "catalogs", rawId + ".json"), MAX_CATALOG_BYTES);
+      current = parseCatalog(data, id);
+    }
+    confirmedAt = Date.now();
+    return current;
   } catch {
-    return null;
+    // Keep the last good catalog briefly. The caller uses the normal API after
+    // the grace period, rather than serving stale prices indefinitely.
+    return current && Date.now() - confirmedAt <= STALE_GRACE_MS ? current : null;
+  } finally {
+    nextCheckAt = Date.now() + CHECK_INTERVAL_MS;
   }
 }
 
-
-/**
- * Returns full CatalogResponse directly from the immutable snapshot.
- * Bypasses FastAPI and PostgreSQL queries completely.
- */
+/** Read shared card summaries without an API call or full-snapshot fetch. */
 export async function getSnapshotCatalog(): Promise<CatalogResponse | null> {
+  const directory = process.env.PUBLIC_DATA_DIR || path.join(process.cwd(), "public", "data");
+  if (directory !== currentDirectory) {
+    currentDirectory = directory;
+    current = null;
+    nextCheckAt = confirmedAt = 0;
+  }
+  if (loading) return loading;
+  if (Date.now() < nextCheckAt) {
+    return current && Date.now() - confirmedAt <= STALE_GRACE_MS ? current : null;
+  }
+  loading = refresh(directory);
   try {
-    const snapshot = await loadLatestSnapshot();
-    if (!snapshot || !Array.isArray(snapshot.products)) return null;
-
-    const items: ProductCard[] = snapshot.products.map((p: any) => ({
-      slug: p.slug,
-      platform: p.platform,
-      brand: p.brand || p.platform,
-      display_name: p.display_name,
-      subtitle: p.subtitle || "",
-      product_type: p.product_type || "other",
-      price_currency: p.price_currency || "CNY",
-      lowest_price: p.lowest_price || (p.min_price !== null && p.min_price !== undefined ? String(p.min_price) : null),
-      related_lowest_price: p.related_lowest_price || null,
-      offer_count: p.offer_count || 0,
-      in_stock_count: p.in_stock_count || 0,
-      comparable_offer_count: p.comparable_offer_count || 0,
-      trusted_offer_count: p.trusted_offer_count || 0,
-      median_price: p.median_price || null,
-      source_count: p.source_count || 0,
-      data_quality_score: p.data_quality_score || 0,
-      data_quality_label: p.data_quality_label || "数据不足",
-      official_reference: p.official_reference || null,
-      last_updated_at: p.last_updated_at || snapshot.published_at || null,
-      tags: Array.isArray(p.tags) ? p.tags : [],
-    }));
-
-    return {
-      items: sortByQuality(items),
-      total: snapshot.total || items.length,
-      offer_count: snapshot.offer_count || 0,
-      in_stock_count: snapshot.in_stock_count || 0,
-      comparable_offer_count: snapshot.comparable_offer_count || 0,
-      trusted_offer_count: snapshot.trusted_offer_count || 0,
-      metrics_note: snapshot.metrics_note || "",
-      snapshot_id: Number(snapshot.snapshot_id) || null,
-      snapshot_at: snapshot.published_at || null,
-    };
-  } catch {
-    return null;
+    return await loading;
+  } finally {
+    loading = null;
   }
 }

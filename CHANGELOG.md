@@ -2,6 +2,15 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.71] - 2026-11-15
+
+- Publish small immutable catalog summaries and load them directly from the shared volume with version reuse, concurrent-load coalescing and a bounded stale fallback.
+- Bound server API retries to a single retry within six seconds; keep client skill events separate from server filesystem access.
+- Pin frontend upstream addresses, route public feeds directly to the API, add Web health checks and container memory limits, and defer background work when memory headroom is insufficient.
+- Include the settings, crypto and bot runtime required by importer price notifications.
+- Add host and external availability checks plus daily PostgreSQL backups.
+- No database migration. Rebuild API, importer and all five Web images; seed the current summary and complete a full refresh. Follow docs/PRODUCTION_AVAILABILITY.md with the standard deployment runbooks.
+
 ## [3.9.61] - 2026-11-11
 
 - Add four independently branded frontends (AIPrice, AISI Plus, PriceIn and OpenPrice) sharing the existing product catalog and immutable snapshots.

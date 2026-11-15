@@ -44,6 +44,19 @@ if ! flock -n 9; then
   exit 0
 fi
 
+check_background_memory() {
+  local status
+  python3 scripts/check_memory_budget.py --required-mib "$1" && return 0
+  status=$?
+  if [[ "$status" -eq 75 ]]; then
+    exit 0
+  fi
+  return "$status"
+}
+
+# Keep headroom for foreground requests before allocating a browser container.
+check_background_memory 1100
+
 run_crawler() {
   cleanup_crawler_container
   "${COMPOSE[@]}" run --rm --name "$CRAWLER_CONTAINER_NAME" crawler "$@"
@@ -247,7 +260,11 @@ if [[ -f "$MERCHANT_SOURCES" ]]; then
   IMPORTER_MOUNTS+=(-v "$MERCHANT_SOURCES:/workspace/data/crawler/merchant_sources.json:ro")
 fi
 
+check_background_memory 900
+
 docker run --rm \
+  --cpu-shares 128 \
+  --oom-score-adj 500 \
   --user 10001:10001 \
   --cpus 1.0 \
   --memory 600m \

@@ -15,6 +15,7 @@ import type {
 
 
 import { cache } from "react";
+import { setTimeout as delay } from "node:timers/promises";
 import { IS_PRIMARY_SITE, promoApiPath } from "@/lib/brands";
 import { getSiteSettings } from "@/lib/site-content";
 import { getSnapshotCatalog } from "@/lib/snapshot-catalog";
@@ -32,39 +33,36 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, retries = 2, init?: RequestInit): Promise<T> {
-  let attempt = 0;
+export async function apiFetch<T>(path: string, retries = 1, init?: RequestInit): Promise<T> {
+  const deadline = AbortSignal.timeout(6000);
+  const budget = init?.signal ? AbortSignal.any([deadline, init.signal]) : deadline;
   const options: RequestInit = {
     ...(init?.next ? {} : { cache: "no-store" }),
     ...init,
   };
-  while (true) {
+  const safeToRetry = ["GET", "HEAD"].includes((options.method || "GET").toUpperCase());
+  const maxRetries = safeToRetry ? Math.min(Math.max(retries, 0), 1) : 0;
+  const expiresAt = Date.now() + 6000;
+  for (let attempt = 0; ; attempt += 1) {
+    budget.throwIfAborted();
+    let delayMs = 100;
     try {
-      const response = await fetch(`${internalBase}${path}`, {
+      const response = await fetch(internalBase + path, {
         ...options,
-        signal: options.signal || AbortSignal.timeout(6000),
+        signal: AbortSignal.any([budget, AbortSignal.timeout(3000)]),
       });
-      if (!response.ok) {
-        const retryable = response.status === 429 || response.status >= 500;
-        if (retryable && attempt < retries) {
-          attempt += 1;
-          const retryAfter = Number(response.headers.get("retry-after"));
-          const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
-            ? Math.min(retryAfter * 1000, 5000)
-            : 100 * attempt;
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-          continue;
-        }
+      if (response.ok) return (await response.json()) as T;
+      const retryAfter = Number(response.headers?.get("retry-after"));
+      if (Number.isFinite(retryAfter) && retryAfter > 0) delayMs = retryAfter * 1000;
+      await response.body?.cancel();
+      if (!(response.status === 429 || response.status >= 500) ||
+          attempt >= maxRetries || delayMs >= expiresAt - Date.now()) {
         throw new ApiError(response.status, path);
       }
-      return (await response.json()) as T;
     } catch (error) {
-      if (error instanceof ApiError || attempt >= retries) {
-        throw error;
-      }
-      attempt += 1;
-      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+      if (error instanceof ApiError || attempt >= maxRetries || budget.aborted) throw error;
     }
+    await delay(delayMs, undefined, { signal: budget });
   }
 }
 
@@ -84,17 +82,17 @@ export async function getProducts(query = ""): Promise<CatalogResponse> {
       return { ...snapshotData, items: snapshotData.items.map(normalizeProductIdentity) };
     }
   }
-  const data = await apiFetch<CatalogResponse>(`/api/v1/products${query ? `?${query}` : ""}`, 2, { next: { revalidate: 30 } });
+  const data = await apiFetch<CatalogResponse>(`/api/v1/products${query ? `?${query}` : ""}`, 1, { next: { revalidate: 30 } });
   return { ...data, items: data.items.map(normalizeProductIdentity) };
 }
 
 export async function getCatalogGroups(query = ""): Promise<CatalogOfferGroupPage> {
-  return apiFetch(`/api/v1/catalog/groups${query ? `?${query}` : ""}`, 2, { next: { revalidate: 30 } });
+  return apiFetch(`/api/v1/catalog/groups${query ? `?${query}` : ""}`, 1, { next: { revalidate: 30 } });
 }
 
 export const getProduct = cache(async function getProduct(slug: string, query = ""): Promise<ProductDetail | null> {
   try {
-    const product = await apiFetch<ProductDetail>(`/api/v1/products/${encodeURIComponent(canonicalProductSlug(slug))}${query ? `?${query}` : ""}`, 2, {
+    const product = await apiFetch<ProductDetail>(`/api/v1/products/${encodeURIComponent(canonicalProductSlug(slug))}${query ? `?${query}` : ""}`, 1, {
       next: { revalidate: 30 },
     });
     return normalizeProductIdentity(product);
@@ -112,7 +110,7 @@ export async function getShop(token: string, query = ""): Promise<ShopDetail | n
     return null;
   }
   try {
-    return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}${query ? `?${query}` : ""}`, 2, { next: { revalidate: 60 } });
+    return await apiFetch(`/api/v1/shops/${encodeURIComponent(token)}${query ? `?${query}` : ""}`, 1, { next: { revalidate: 60 } });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -121,12 +119,12 @@ export async function getShop(token: string, query = ""): Promise<ShopDetail | n
 
 /** Returns a flat list of shop tokens for callers that only need identifiers. */
 export async function getShopTokens(): Promise<string[]> {
-  return apiFetch<string[]>("/api/v1/shops", 2, { next: { revalidate: 120 } });
+  return apiFetch<string[]>("/api/v1/shops", 1, { next: { revalidate: 120 } });
 }
 
 /** Returns paginated ShopCard list for directory / source pages. */
 export async function getShopCards(query = ""): Promise<ShopListResponse> {
-  return apiFetch<ShopListResponse>(`/api/v1/shops/cards${query ? `?${query}` : ""}`, 2, { next: { revalidate: 60 } });
+  return apiFetch<ShopListResponse>(`/api/v1/shops/cards${query ? `?${query}` : ""}`, 1, { next: { revalidate: 60 } });
 }
 
 export const getMeta = cache(async function getMeta(): Promise<Meta> {
@@ -156,7 +154,7 @@ export async function getAdSlots(placement: string, limit = 3): Promise<AdSlotLi
 }
 
 export async function getRelayStations(): Promise<RelayStationListOut> {
-  return apiFetch<RelayStationListOut>(promoApiPath("/relays"), 2, { cache: "no-store" });
+  return apiFetch<RelayStationListOut>(promoApiPath("/relays"), 1, { cache: "no-store" });
 }
 
 export async function getCorrections(query = ""): Promise<PublicCorrectionPage> {
@@ -180,14 +178,3 @@ export const getSkillDetail = cache(async function getSkillDetail(slug: string):
     throw error;
   }
 });
-
-export async function recordSkillCopy(slug: string): Promise<boolean> {
-  try {
-    const response = await fetch(`/api/v1/skills/${encodeURIComponent(slug)}/copy`, {
-      method: "POST",
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}

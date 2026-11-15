@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily PriceMemo PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=ai-price-radar-backup.service
+
+[Install]
+WantedBy=timers.target
