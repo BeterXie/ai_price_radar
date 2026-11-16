@@ -31,7 +31,7 @@ export function JevRelayProduct({ data }: { data: RelayStationListOut | null }) 
           </header>
           <div className="jev-product-copy">
             <p className="jev-product-value">JEV 官方半价，毫秒级延迟</p>
-            <p className="jev-product-description">通过 LLMPort 接入 JEV API，享官方价格 5 折。注册即送 1 美元试用额度，先体验再使用。</p>
+            <p className="jev-product-description">通过 LLMPort 接入 JEV API，享官方价格 5 折。官key 6.2 Astra 抢先体验。注册即送 1 美元试用额度，先体验再使用。</p>
           </div>
           <footer className="jev-product-footer">
             <AdLink kind="relays" id={station.id} href={station.url} className="button-secondary relay-visit" ariaLabel="前往 LLMPort 注册试用（新窗口打开）">注册试用 <ArrowUpRight size={16} aria-hidden="true" /></AdLink>

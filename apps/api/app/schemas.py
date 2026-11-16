@@ -182,6 +182,18 @@ class CatalogActivityResponse(BaseModel):
     items: list[ProductActivityPublic]
 
 
+class QuoteActivityPublic(BaseModel):
+    offer_id: int
+    click_count: int
+
+
+class QuoteActivityResponse(BaseModel):
+    window_days: int
+    start_at: datetime
+    end_at: datetime
+    items: list[QuoteActivityPublic]
+
+
 class ProductDetail(ProductCard):
     description: str
     highest_price: Decimal | None

@@ -1,0 +1,11 @@
+# v3.9.77 — Reliable quote loading and compact merchant selection
+
+An older page could keep saying “已显示 30 / …” after the publisher moved offers to a new snapshot. Pagination now replaces the stale list from offset zero, carries the current snapshot and totals, and reports that quotes changed. Network failures and non-progressing pages expose retry; a load-more button also works without IntersectionObserver. Loading is bounded to 15 seconds and the observer is rearmed after each completed request.
+
+Quote rows no longer repeat the category-wide seven-day total. `/api/v1/offers/activity` accepts at most 100 visible offer IDs and counts recorded outbound events from the last seven days for each same-item group, or for individual offers on shop pages. Fingerprints are scoped by product, empty fingerprints stay distinct, and hidden/private offers, future events and lifetime counters are excluded. A real zero displays as zero; unavailable data is explicit. Existing category-level API consumers retain their original endpoint.
+
+Sponsor rows use neutral backgrounds and retain the interval of five products and ordinary row dimensions. Ordering uses a restrained outline. The merchant dialog uses compact rows with shop, inventory, platform and update time together, with price and merchant action aligned; mobile keeps actions beside the shop summary. Multiple-shop ordering still opens the same selection dialog as comparison; the independent details action remains available.
+
+The JEV card includes the owner's supplied “官key 6.2 Astra 抢先体验” copy. Relay taglines are shown in the directory and homepage preview. During release, back up and update the five existing LLMPort ad records and its relay tagline/description with this copy; preserve destinations, placements, enabled states and probe metrics.
+
+No schema, crawler or pipeline changes. Follow QUICK_DEPLOY.md and MULTI_BRAND_DEPLOY.md: full API tests, clean published tag, exact-commit CI, database/source/image rollback points, staging preflight, API/importer and five frontend builds. No full crawler refresh is a release gate. Verify desktop/mobile layout, old-snapshot recovery, retries, real event counts, all LLMPort surfaces, and all five sites before restoring schedules.

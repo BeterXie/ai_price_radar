@@ -68,22 +68,22 @@ html[data-brand="aisi"] { --brand:#56633e;--brand-strong:#485632;--brand-soft:#e
 .quote-market-table .quote-price { font-size:19px;color:var(--accent); }
 .quote-market-table .quote-heat { align-items:flex-start; }
 .quote-market-table .quote-heat b { display:block;margin-top:3px;font:14px var(--font-geist-mono),monospace; }
-.quote-market-table .quote-visit { min-height:38px;padding:0 10px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-weight:650; }
+.quote-market-table .quote-visit { min-height:34px;padding:0 10px;border:1px solid var(--line-strong);border-radius:5px;background:transparent;color:var(--ink);font-weight:500; }
 .brand-quotes-pricememo .quote-price { color:var(--info); }
-.brand-quotes-pricememo .quote-market-table .quote-visit { background:var(--info);color:#fff; }
-.quote-market-table .quote-visit:hover { filter:brightness(.92); }
+.brand-quotes-pricememo .quote-market-table .quote-visit { color:var(--info); }
+.quote-market-table .quote-visit:hover { background:var(--subtle);border-color:var(--muted); }
 .quote-market-table .quote-more { display:flex;justify-content:flex-start; }
 .quote-market-actions { display:flex;flex-wrap:wrap;align-items:center;gap:6px; }
 .quote-market-actions>.quote-visit,.quote-market-actions>.quote-no-link { flex-basis:100%; }
-.quote-market-actions .quote-compare { flex:1;justify-content:center;min-height:32px;padding:0 6px;border:1px solid var(--line-strong);border-radius:5px;color:var(--ink);font-weight:600;text-decoration:none;white-space:nowrap; }
-.quote-market-actions .quote-compare:hover { background:var(--brand-soft); }
+.quote-market-actions .quote-compare { flex:1;justify-content:center;min-height:32px;padding:0 6px;color:var(--ink);font-weight:500;white-space:nowrap; }
+.quote-market-actions .quote-compare:hover { color:var(--muted); }
 .quote-market-actions .quote-details { flex:1;justify-content:center;white-space:nowrap; }
-.quote-sponsored-row { background:var(--brand-soft); }
+.quote-sponsored-row { background:var(--paper); }
 .quote-sponsored-content { display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:85px; }
-.quote-sponsored-content>.quote-visit { flex-shrink:0; }
+.quote-sponsored-content>.quote-visit { flex-shrink:0;border-color:var(--line);font-weight:400; }
 .quote-sponsored-identity { display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;font-weight:600; }
 .quote-sponsored-identity img { object-fit:contain;border-radius:4px; }
-.quote-sponsored-badge { border:1px solid var(--line-strong);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:400; }
+.quote-sponsored-badge { border:1px solid var(--line);border-radius:3px;padding:1px 5px;font-size:10px;font-weight:400;color:var(--muted); }
 .quote-sponsored-description { display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:5px;font-size:12px;line-height:1.7;color:var(--muted); }
 .quote-inline-shop { display:none; }
 
@@ -141,10 +141,15 @@ html[data-brand="aisi"] { --brand:#56633e;--brand-strong:#485632;--brand-soft:#e
 .quote-detail-warning { color:var(--warning); }
 .quote-dialog [role="alert"],.quote-dialog [role="status"] { font-size:13px;line-height:1.7;color:var(--muted); }
 .quote-dialog [role="alert"] button { text-decoration:underline;margin-left:8px; }
-.quote-shop-list li { display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:20px;padding:14px 0;border-block-end:1px solid var(--line); }
+.quote-shop-list li { display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;min-height:60px;padding:8px 0;border-block-end:1px solid var(--line); }
+.quote-shop-summary { min-width:0; }
+.quote-shop-summary>a { display:block;overflow-wrap:anywhere;line-height:1.5; }
 .quote-shop-list a { font-size:13px; }
-.quote-shop-list small,.quote-shop-list time { display:block;font-size:11px;color:var(--muted);margin-top:4px; }
-.quote-shop-list strong { font:600 18px var(--font-geist-mono),monospace; }
+.quote-shop-meta { display:flex;flex-wrap:wrap;gap:2px 8px;margin-top:3px;font-size:11px;line-height:1.5;color:var(--muted); }
+.quote-shop-meta>* { white-space:nowrap; }
+.quote-shop-list strong { font:600 16px var(--font-geist-mono),monospace;white-space:nowrap; }
+.quote-shop-list .quote-visit { min-height:34px;padding:0 9px;border:1px solid var(--line);border-radius:5px;font-size:12px; }
+.quote-shop-list .quote-visit:hover { background:var(--subtle); }
 .brand-logo-img { width:36px;height:36px;object-fit:contain;flex-shrink:0; }
 
 @media (max-width:1100px) {
@@ -211,8 +216,10 @@ html[data-brand="aisi"] { --brand:#56633e;--brand-strong:#485632;--brand-soft:#e
   .quote-sponsored-content>.quote-visit { margin-left:auto;min-width:148px; }
   .quote-market-table .quote-heat b { display:inline;font-size:12px; }
   .quote-dialog-inner { padding:18px; }
-  .quote-shop-list li { gap:12px;grid-template-columns:minmax(0,1fr) auto; }
-  .quote-shop-list .quote-visit { grid-column:1 / -1;justify-content:flex-start; }
+  .quote-shop-list li { gap:4px 10px;grid-template-columns:minmax(0,1fr) auto; }
+  .quote-shop-summary { grid-row:1 / 3; }
+  .quote-shop-list strong { text-align:right;font-size:15px; }
+  .quote-shop-list .quote-visit,.quote-shop-list .quote-no-link { grid-column:2;grid-row:2; }
 }
 @media (max-width:480px) {
   .quote-shelf { grid-template-columns:1fr;gap:16px; }
