@@ -19,7 +19,7 @@ const BRAND_CONTENT: Partial<Record<BrandName, { title: string; description: str
 export function getBrandSeoContent(brand: BrandName) {
   if (IS_PRIMARY_SITE && brand === "JEV") return {
     title: "JEV API｜官方半价 · LLMPort",
-    description: "通过 LLMPort 接入 JEV API，享 JEV 官方半价与毫秒级延迟。注册即送 1 美元试用额度，先体验再使用。",
+    description: "通过 LLMPort 接入 JEV API，享 JEV 官方半价与毫秒级延迟。官key 6.2 Astra 抢先体验，注册即送 1 美元试用额度。",
   };
   return BRAND_CONTENT[brand] || {
     title: `${brand} 比价｜账号与订阅价格对比`,

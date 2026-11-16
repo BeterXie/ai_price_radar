@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.routing import APIRoute
-from sqlalchemy import false, func, select, text, update
+from sqlalchemy import Text, cast, false, func, literal, select, text, tuple_, update
 from sqlalchemy.orm import Session
 
 from ..core.config import get_settings
@@ -42,6 +42,8 @@ from ..schemas import (
     CatalogOfferGroupPageResponse,
     CatalogActivityResponse,
     ProductActivityPublic,
+    QuoteActivityPublic,
+    QuoteActivityResponse,
     PromoClickResponse,
     RelayStationListOut,
     CatalogResponse,
@@ -367,6 +369,42 @@ def catalog_activity(db: Session = Depends(get_db)) -> CatalogActivityResponse:
     return CatalogActivityResponse(
         window_days=7, start_at=start_at, end_at=end_at,
         items=[ProductActivityPublic(product_slug=slug, click_count=count) for slug, count in rows],
+    )
+
+
+@router.get("/offers/activity", response_model=QuoteActivityResponse)
+def quote_activity(
+    offer_id: list[int] = Query(min_length=1, max_length=100),
+    grouped: bool = True,
+    db: Session = Depends(get_db),
+) -> QuoteActivityResponse:
+    """Seven-day recorded outbound visits for the requested quotes or same-item groups."""
+    if any(value < 1 for value in offer_id):
+        raise HTTPException(status_code=422, detail="offer_id must be positive")
+    end_at = datetime.now(timezone.utc)
+    start_at = end_at - timedelta(days=7)
+    # Use the catalogue's fingerprint fallback; empty fingerprints are separate offers.
+    fingerprint = func.coalesce(func.nullif(Offer.item_fingerprint, ""), literal("offer-") + cast(Offer.id, Text))
+    group_key = fingerprint if grouped else Offer.id
+    base = _base_public_offer_query(db, include_details=False).join(Product, Offer.product_id == Product.id).where(Product.is_visible.is_(True))
+    targets = db.execute(base.where(Offer.id.in_(offer_id)).with_only_columns(Offer.id, Offer.product_id, group_key, maintain_column_froms=True)).all()
+    counts = {}
+    if targets:
+        rows = db.execute(
+            base.join(OfferClick, OfferClick.offer_id == Offer.id)
+            .where(
+                tuple_(Offer.product_id, group_key).in_({(product_id, key) for _, product_id, key in targets}),
+                OfferClick.product_slug == Product.slug,
+                OfferClick.created_at >= start_at,
+                OfferClick.created_at <= end_at,
+            )
+            .with_only_columns(Offer.product_id, group_key, func.count(OfferClick.id), maintain_column_froms=True)
+            .group_by(Offer.product_id, group_key)
+        ).all()
+        counts = {(product_id, key): count for product_id, key, count in rows}
+    return QuoteActivityResponse(
+        window_days=7, start_at=start_at, end_at=end_at,
+        items=[QuoteActivityPublic(offer_id=id, click_count=counts.get((product_id, key), 0)) for id, product_id, key in targets],
     )
 
 

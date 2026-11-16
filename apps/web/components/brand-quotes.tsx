@@ -14,7 +14,8 @@ import { SponsorCard } from "@/components/sponsor-card";
 import { AdLink } from "@/components/ad-link";
 
 type Quote = { offer: Offer; slug: string; name?: string; group?: OfferGroup };
-type Activity = { window_days: number; start_at: string; end_at: string; items: { product_slug: string; click_count: number }[] };
+type Activity = { window_days: number; end_at: string; items: { offer_id: number; click_count: number }[] };
+type QuoteActivity = { count: number; endAt: string } | null;
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const isMarketTable = SITE_ID === "pricememo" || SITE_ID === "aiprice";
 
@@ -30,9 +31,8 @@ function Caution({ offer }: { offer: Offer }) {
   return <span className="quote-caution">{!offer.is_comparable ? "相关商品 · 不直接比价" : "价格偏离同类报价"}</span>;
 }
 
-function Heat({ slug, activity, failed }: { slug: string; activity: Activity | null; failed: boolean }) {
-  const value = activity?.items.find((item) => item.product_slug === slug)?.click_count;
-  return <span className="quote-heat" title={activity ? `同一商品最近 7 天访问原站次数；所有店铺合计，非销量。统计截至 ${exactTime(activity.end_at)}` : "按商品汇总最近 7 天原站访问次数；非销量"}><Fire size={13} aria-hidden /><span>商品近7天 <b>{value !== undefined ? value.toLocaleString("zh-CN") : failed || activity ? "暂不可用" : "加载中"}</b></span></span>;
+function Heat({ activity, grouped, failed }: { activity?: QuoteActivity; grouped: boolean; failed: boolean }) {
+  return <span className="quote-heat" title={`${grouped ? "本组同款商品各店铺" : "这条店铺报价"}最近 7 天访问原站次数，非销量。${activity ? `统计截至 ${exactTime(activity.endAt)}` : ""}`}><Fire size={13} aria-hidden /><span>近7天访问 <b>{activity ? activity.count.toLocaleString("zh-CN") : failed || activity === null ? "暂不可用" : "加载中"}</b></span></span>;
 }
 
 function SponsoredQuoteRow({ item }: { item: AdSlotPublic }) {
@@ -84,7 +84,7 @@ function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor }
       <h3>店铺报价</h3>
       {refreshed && <p role="status">报价已更新，下方为最新店铺数据；页面上的报价仍为打开时记录。</p>}
       {failed && <p role="alert">其他店铺暂时无法加载，先显示当前店铺。<button onClick={() => setAttempt((value) => value + 1)}>重试</button></p>}
-      {shops ? shops.length ? <ul className="quote-shop-list">{shops.map((offer) => <li key={offer.id}><div><Link href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><small>{quoteInventory(offer)} · {offer.source_platform_label}</small><time dateTime={offer.observed_at}>{exactTime(offer.observed_at)}</time></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
+      {shops ? shops.length ? <ul className="quote-shop-list">{shops.map((offer) => <li key={offer.id}><div className="quote-shop-summary"><Link href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><div className="quote-shop-meta"><span>{quoteInventory(offer)}</span><span>{offer.source_platform_label}</span><time dateTime={offer.observed_at} title={exactTime(offer.observed_at)} suppressHydrationWarning>{relativeTime(offer.observed_at)}更新</time></div></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
   </section>;
   const descriptionSection = <section aria-label="商品详情">
       <h3>商品原文</h3><p className="quote-description">{description || (descriptionFailed ? "原文暂时无法加载。" : quote.offer.description_available ? "正在读取原文…" : "来源未提供商品描述。")}</p>
@@ -106,20 +106,40 @@ function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor }
 export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filterQuery = "", footer, contextAds }: { groups?: OfferGroup[]; offers?: Offer[]; productSlug?: string; snapshotId?: number | null; filterQuery?: string; footer: ReactNode; contextAds?: ContextualAds }) {
   const quotes: Quote[] = groups ? groups.map((group) => ({ offer: group.representative, slug: group.product_slug || productSlug, name: group.product_name, group })) : (offers || []).map((offer) => ({ offer, slug: offer.product_slug || productSlug, name: offer.product_name }));
   const [selected, setSelected] = useState<{ quote: Quote; view: "shops" | "description" } | null>(null);
-  const [activity, setActivity] = useState<Activity | null>(null);
+  const [activity, setActivity] = useState<Record<number, QuoteActivity>>({});
+  const activityCache = useRef<Record<number, QuoteActivity>>({});
   const [heatFailed, setHeatFailed] = useState(false);
+  const activityKey = quotes.map((quote) => quote.offer.id).join(",");
+  const grouped = Boolean(groups);
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(`${apiBase}/api/v1/catalog/activity`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("activity")))
-      .then((result: Activity) => { if (result.window_days !== 7 || !Array.isArray(result.items)) throw new Error("activity schema"); setActivity(result); })
-      .catch(() => { if (!controller.signal.aborted) setHeatFailed(true); });
-    return () => controller.abort();
-  }, []);
+    const missing = [...new Set(activityKey.split(",").filter(Boolean).map(Number))].filter((id) => !(id in activityCache.current));
+    if (!missing.length) return;
+    setHeatFailed(false);
+    const timeout = setTimeout(() => { controller.abort(); setHeatFailed(true); }, 15000);
+    void (async () => {
+      for (let offset = 0; offset < missing.length; offset += 100) {
+        const ids = missing.slice(offset, offset + 100);
+        const query = new URLSearchParams({ grouped: String(grouped) });
+        ids.forEach((id) => query.append("offer_id", String(id)));
+        const response = await fetch(`${apiBase}/api/v1/offers/activity?${query}`, { signal: controller.signal });
+        if (!response.ok) throw new Error("activity");
+        const result = await response.json() as Activity;
+        if (result.window_days !== 7 || !Array.isArray(result.items)) throw new Error("activity schema");
+        if (controller.signal.aborted) return;
+        const next = { ...activityCache.current };
+        ids.forEach((id) => { next[id] = null; });
+        result.items.forEach((item) => { next[item.offer_id] = { count: item.click_count, endAt: result.end_at }; });
+        activityCache.current = next;
+        setActivity(next);
+      }
+    })().catch(() => { if (!controller.signal.aborted) setHeatFailed(true); }).finally(() => clearTimeout(timeout));
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, [activityKey, grouped]);
   const identity = (quote: Quote) => <div className="quote-identity"><div className="quote-product-label">{quote.slug ? <Link href={quoteProductHref(quote.slug, filterQuery)}>{quote.name || quoteBrand(quote.slug)}</Link> : <span>商品报价</span>}<span>{quoteCategory(quote.offer)}</span></div><h3>{quote.offer.original_name}</h3><Caution offer={quote.offer} />{isMarketTable && <span className="quote-inline-shop">{shop(quote)}</span>}</div>;
   const shop = (quote: Quote) => <Link className="quote-shop" href={`/shops/${encodeURIComponent(quote.offer.shop_token)}`}>{quote.offer.shop_name}</Link>;
   const stock = (quote: Quote) => <span className={`quote-stock ${quote.offer.stock_status === "in_stock" ? "is-available" : ""}`}>{quoteInventory(quote.offer)}</span>;
-  const heat = (quote: Quote) => <Heat slug={quote.slug} activity={activity} failed={heatFailed} />;
+  const heat = (quote: Quote) => <Heat activity={activity[quote.offer.id]} grouped={grouped} failed={heatFailed} />;
   const price = (quote: Quote) => <strong className="quote-price">{money(quote.offer.price, quote.offer.currency)}</strong>;
   const purchase = (quote: Quote) => quote.group && quote.group.shop_count > 1
     ? <button type="button" className="quote-visit" onClick={() => setSelected({ quote, view: "shops" })} aria-haspopup="dialog" aria-label={`去原站下单：选择 ${quote.offer.original_name} 的店铺`}>去原站下单<Storefront size={14} aria-hidden /></button>
@@ -141,5 +161,5 @@ export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filt
   } else {
     body = <div className="quote-directory">{quotes.map((quote) => <article className="quote-directory-entry" key={quote.offer.id}><div className="quote-directory-product"><PlatformIcon platform={quoteBrand(quote.slug)} size={26} />{identity(quote)}</div><div className="quote-directory-meta">{shop(quote)}{stock(quote)}{heat(quote)}{updated(quote)}</div><aside>{price(quote)}{purchase(quote)}{more(quote)}</aside></article>)}</div>;
   }
-  return <div className={`brand-quotes brand-quotes-${SITE_ID}`}><p className="quote-data-note">价格与库存对应展示店铺。热度为同一商品近 7 天原站访问次数，非销量。</p>{!isMarketTable && !(selected && contextAds?.detail) && contextAds?.feed && <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement={contextAds.feed.placement}><SponsorCard item={contextAds.feed} variant="inline" /></aside>}{body}{footer}{selected && <QuoteDetails quote={selected.quote} view={selected.view} snapshotId={snapshotId} filterQuery={filterQuery} sponsor={contextAds?.detail} onClose={() => setSelected(null)} />}</div>;
+  return <div className={`brand-quotes brand-quotes-${SITE_ID}`}><p className="quote-data-note">价格与库存对应展示店铺。热度按{grouped ? "每组同款商品" : "每条店铺报价"}统计近 7 天原站访问次数，非销量。</p>{!isMarketTable && !(selected && contextAds?.detail) && contextAds?.feed && <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement={contextAds.feed.placement}><SponsorCard item={contextAds.feed} variant="inline" /></aside>}{body}{footer}{selected && <QuoteDetails quote={selected.quote} view={selected.view} snapshotId={snapshotId} filterQuery={filterQuery} sponsor={contextAds?.detail} onClose={() => setSelected(null)} />}</div>;
 }

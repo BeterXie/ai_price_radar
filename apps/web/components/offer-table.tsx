@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { ContextualAds, Offer, OfferGroup, OfferGroupPage } from "@/lib/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ContextualAds, Offer, OfferGroup } from "@/lib/types";
 import { BrandQuotes } from "@/components/brand-quotes";
-
-const OFFER_BATCH_SIZE = 30;
-const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+import { loadMoreGroups, OFFER_BATCH_SIZE, type GroupList } from "@/lib/offer-pagination";
 
 export function OfferGroupTable({
   groups,
@@ -24,38 +22,44 @@ export function OfferGroupTable({
   loadMorePath?: string;
   contextAds?: ContextualAds;
 }) {
-  const [loadedGroups, setLoadedGroups] = useState(groups);
-  const [loadError, setLoadError] = useState(false);
+  const [page, setPage] = useState<GroupList>({ items: groups, total: totalCount, snapshotId, refreshed: false });
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const loadingRef = useRef(false);
-  const hasMore = !loadError && loadedGroups.length < totalCount;
+  const requestRef = useRef<AbortController | null>(null);
+  const hasMore = page.items.length < page.total;
+  useEffect(() => () => requestRef.current?.abort(), []);
+
+  const loadMore = useCallback(async () => {
+    if (requestRef.current || !hasMore) return;
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setStatus("loading");
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const endpoint = loadMorePath || `/api/v1/products/${encodeURIComponent(productSlug)}/groups`;
+      const next = await loadMoreGroups(page, endpoint, filterQuery, controller.signal);
+      if (!controller.signal.aborted) setPage(next);
+      setStatus("idle");
+    } catch {
+      setStatus("error");
+    } finally {
+      clearTimeout(timeout);
+      requestRef.current = null;
+    }
+  }, [filterQuery, hasMore, loadMorePath, page, productSlug]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
-    if (!target || !hasMore) return;
+    if (!target || !hasMore || status !== "idle" || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || loadingRef.current) return;
-      loadingRef.current = true;
-      const query = new URLSearchParams(filterQuery);
-      query.set("offset", String(loadedGroups.length));
-      query.set("limit", String(OFFER_BATCH_SIZE));
-      if (snapshotId) query.set("snapshot", String(snapshotId));
-      const endpoint = loadMorePath || `/api/v1/products/${encodeURIComponent(productSlug)}/groups`;
-      fetch(`${publicApiBase}${endpoint}?${query}`)
-        .then((response) => response.ok ? response.json() as Promise<OfferGroupPage> : Promise.reject(new Error(`API ${response.status}`)))
-        .then((page) => setLoadedGroups((current) => {
-          const keys = new Set(current.map((group) => `${group.product_slug}:${group.fingerprint}`));
-          return [...current, ...page.items.filter((group) => !keys.has(`${group.product_slug}:${group.fingerprint}`))];
-        }))
-        .catch(() => setLoadError(true))
-        .finally(() => { loadingRef.current = false; });
+      if (entry.isIntersecting) void loadMore();
     }, { rootMargin: "600px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [filterQuery, hasMore, loadMorePath, loadedGroups.length, productSlug, snapshotId]);
+  }, [hasMore, loadMore, status]);
 
   if (!groups.length) return <div className="empty-state">当前筛选条件下没有可展示的同款报价。请调整筛选条件后再试。</div>;
-  return <BrandQuotes groups={loadedGroups} productSlug={productSlug} snapshotId={snapshotId} filterQuery={filterQuery} contextAds={contextAds} footer={<div ref={loadMoreRef} className="quote-list-footer" aria-live="polite">{loadError ? <><span>后续报价加载失败。</span><button type="button" onClick={() => setLoadError(false)}>重试加载</button></> : hasMore ? `已显示 ${loadedGroups.length} / ${totalCount} 组 · 继续滚动加载` : `全部 ${totalCount} 组报价`}</div>} />;
+  return <BrandQuotes groups={page.items} productSlug={productSlug} snapshotId={page.snapshotId} filterQuery={filterQuery} contextAds={contextAds} footer={<div ref={loadMoreRef} className="quote-list-footer" aria-live="polite" aria-busy={status === "loading"}>{page.refreshed && <p>报价已更新，已载入最新列表。</p>}<span>{hasMore ? `已显示 ${page.items.length} / ${page.total} 组` : `全部 ${page.items.length} 组报价`}</span>{hasMore && <>{status === "error" && <span> · 后续报价加载失败</span>}<button type="button" disabled={status === "loading"} onClick={() => void loadMore()}>{status === "loading" ? "正在加载…" : status === "error" ? "重试加载" : "加载更多"}</button></>}</div>} />;
 }
 
 export function OfferTable({ offers, productSlug }: { offers: Offer[]; productSlug?: string }) {
@@ -66,14 +70,14 @@ export function OfferTable({ offers, productSlug }: { offers: Offer[]; productSl
 
   useEffect(() => {
     const target = loadMoreRef.current;
-    if (!target || !hasMore) return;
+    if (!target || !hasMore || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) setVisibleCount((count) => Math.min(count + OFFER_BATCH_SIZE, offers.length));
     }, { rootMargin: "600px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, offers.length]);
+  }, [hasMore, offers.length, visibleCount]);
 
   if (!offers.length) return <div className="empty-state">当前没有报价。可稍后再查看，或浏览其他商品。</div>;
-  return <BrandQuotes offers={visibleOffers} productSlug={productSlug} footer={<div ref={loadMoreRef} className="quote-list-footer">{hasMore ? `已显示 ${visibleOffers.length} / ${offers.length} 条 · 继续滚动加载` : `全部 ${offers.length} 条报价`}</div>} />;
+  return <BrandQuotes offers={visibleOffers} productSlug={productSlug} footer={<div ref={loadMoreRef} className="quote-list-footer">{hasMore ? <><span>已显示 {visibleOffers.length} / {offers.length} 条</span><button type="button" onClick={() => setVisibleCount((count) => Math.min(count + OFFER_BATCH_SIZE, offers.length))}>加载更多</button></> : `全部 ${offers.length} 条报价`}</div>} />;
 }

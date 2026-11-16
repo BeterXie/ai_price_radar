@@ -39,6 +39,7 @@ export function HomeRelayPreview({ data = null, loading = false }: { data?: Rela
                     {station.is_sponsored ? <span className="ad-badge">赞助</span> : null}
                     <ArrowUpRight size={17} className="home-relay-arrow" aria-hidden="true" />
                   </div>
+                  {station.tagline ? <p className="home-relay-tagline">{station.tagline}</p> : null}
                   <dl className="home-relay-metrics">
                     <div><dt>可用率 · 7天</dt><dd>{availability}</dd></div>
                     <div title="近24小时重复输入缓存率，先排除零命中，再各去掉一个最高值和最低值后取平均；至少3个非零有效样本。"><dt>缓存率 · 24h</dt><dd>{cacheRate}</dd></div>

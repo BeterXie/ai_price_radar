@@ -419,6 +419,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 .home-relay-identity h3 { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 1rem; font-weight: 650; line-height: 1.45; letter-spacing: -.025em; }
 .home-relay-arrow { flex-shrink: 0; color: var(--muted); }
 .home-relay-identity .ad-badge { flex-shrink: 0; }
+.home-relay-tagline { margin-top: 10px; color: var(--muted); font-size: .75rem; line-height: 1.6; }
 .home-relay-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-block: 24px 20px; }
 .home-relay-metrics dt { color: var(--muted); font-size: .75rem; }
 .home-relay-metrics dd { margin-top: 6px; font-size: 1.5rem; font-weight: 600; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }

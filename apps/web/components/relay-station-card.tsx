@@ -56,7 +56,7 @@ export function RelayStationCard({ station, view = "card", initialNow }: { stati
             <h3 id={`relay-${station.id}-title`} className="relay-card-title" title={station.name}>
               {station.url ? <AdLink kind="relays" id={station.id} href={station.url} className="hover:underline underline-offset-4">{station.name}</AdLink> : station.name}
             </h3>
-            {isLlmport ? <p className="relay-brand-note">Codex / Cursor{promo ? <> · 优惠码 <strong>{promo}</strong></> : " · OpenAI 兼容接口"}</p> : null}
+            {isLlmport ? <p className="relay-brand-note">{station.tagline || "Codex / Cursor"}{promo ? <> · 优惠码 <strong>{promo}</strong></> : " · OpenAI 兼容接口"}</p> : null}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <RelayProbeIdentity health={station.health} />
               {station.model_catalog?.synced_at ? <span className="text-xs text-[color:var(--muted)]">{station.model_catalog.models.length}{station.model_catalog.truncated ? "+" : ""} 个模型</span> : null}

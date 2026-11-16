@@ -184,6 +184,78 @@ def test_record_offer_click_and_debounce(client, test_db):
     assert offer.click_count == 1
 
 
+def test_quote_activity_counts_each_group_and_offer_from_seven_day_events(client, test_db, monkeypatch):
+    from app.routers import public
+
+    shop, product, first = _seed_catalog(test_db)
+    now = first.observed_at.replace(tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(public, "datetime", FrozenDateTime)
+    first.item_fingerprint = "same-item"
+    first.click_count = 9876
+
+    def another(fingerprint, **overrides):
+        raw = RawProduct(shop_id=shop.id, source_product_key=f"item-{len(test_db.new)}-{fingerprint}-{overrides}", original_name="报价")
+        test_db.add(raw)
+        test_db.flush()
+        values = dict(raw_product_id=raw.id, product_id=product.id, shop_id=shop.id, snapshot_id=first.snapshot_id,
+                      observed_at=now, item_fingerprint=fingerprint, active=True, approved=True)
+        values.update(overrides)
+        offer = Offer(**values)
+        test_db.add(offer)
+        test_db.flush()
+        return offer
+
+    second = another("same-item")
+    different = another("different-item")
+    empty_a = another("")
+    empty_b = another("", price=Decimal("7"))
+    hidden = another("same-item", hidden_reason="moderated")
+    private_product = Product(slug="private", platform="openai", display_name="Hidden", is_visible=False)
+    test_db.add(private_product)
+    test_db.flush()
+    private = another("same-item", product_id=private_product.id)
+
+    def click(offer, when=now, slug=product.slug):
+        test_db.add(OfferClick(offer_id=offer.id, shop_id=shop.id, product_slug=slug, created_at=when))
+
+    click(first)
+    click(first, now - timedelta(days=7))
+    click(first, now - timedelta(days=7, microseconds=1))
+    click(first, now + timedelta(seconds=1))
+    click(first, slug="wrong-product")
+    click(second)
+    click(different)
+    click(empty_a)
+    click(hidden)
+    click(private, slug=private_product.slug)
+    test_db.add(OfferClick(shop_id=shop.id, product_slug=product.slug, created_at=now))
+    test_db.commit()
+    ids = [first.id, second.id, different.id, empty_a.id, empty_b.id, hidden.id, private.id, 999999]
+    params = [("offer_id", id) for id in ids]
+    response = client.get("/api/v1/offers/activity", params=params)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["window_days"] == 7
+    assert {item["offer_id"]: item["click_count"] for item in data["items"]} == {
+        first.id: 3, second.id: 3, different.id: 1, empty_a.id: 1, empty_b.id: 0,
+    }
+    response = client.get("/api/v1/offers/activity", params=params + [("grouped", "false")])
+    assert {item["offer_id"]: item["click_count"] for item in response.json()["items"]} == {
+        first.id: 2, second.id: 1, different.id: 1, empty_a.id: 1, empty_b.id: 0,
+    }
+
+
+@pytest.mark.parametrize("params", [[], [("offer_id", 0)], [("offer_id", 1)] * 101])
+def test_quote_activity_requires_a_bounded_list_of_valid_ids(client, params):
+    assert client.get("/api/v1/offers/activity", params=params).status_code == 422
+
+
 def test_record_offer_click_not_found(client, test_db):
     res = client.post("/api/v1/offers/99999/click")
     assert res.status_code == 404

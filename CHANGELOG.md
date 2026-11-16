@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.77] - 2026-11-16
+
+- Recover pagination when a published snapshot loses its live offers: restart from the current snapshot, update totals, and expose loading, retry and manual load controls.
+- Replace repeated product-category activity with bounded seven-day outbound event counts per same-item quote group (or individual shop quote), excluding hidden offers and lifetime counters.
+- Use neutral sponsor rows and outlined ordering buttons; condense shop selection into compact rows while preserving merchant prices, links and explicit details.
+- Add the supplied LLMPort “官key 6.2 Astra 抢先体验” copy to the JEV product and expose relay taglines in the directory and homepage. Update the existing LLMPort advertising and relay records during release.
+- No database migration or pipeline change. Rebuild API, importer and five frontends; no full crawler refresh is required.
+
 ## [3.9.76] - 2026-11-16
 
 - Use the AIPrice market table on the primary catalog, product and shop pages, showing the merchant, its price and stock, recent product activity and purchase link in each row.
