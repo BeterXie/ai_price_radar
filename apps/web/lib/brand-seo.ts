@@ -1,4 +1,5 @@
 import type { BrandName } from "@/lib/catalog";
+import { IS_PRIMARY_SITE } from "@/lib/brands";
 
 const BRAND_CONTENT: Partial<Record<BrandName, { title: string; description: string }>> = {
   OpenAI: {
@@ -16,6 +17,10 @@ const BRAND_CONTENT: Partial<Record<BrandName, { title: string; description: str
 };
 
 export function getBrandSeoContent(brand: BrandName) {
+  if (IS_PRIMARY_SITE && brand === "JEV") return {
+    title: "JEV API｜官方半价 · LLMPort",
+    description: "通过 LLMPort 接入 JEV API，享 JEV 官方半价与毫秒级延迟。注册即送 1 美元试用额度，先体验再使用。",
+  };
   return BRAND_CONTENT[brand] || {
     title: `${brand} 比价｜账号与订阅价格对比`,
     description: `查看 ${brand} 商品的公开价格、库存、店铺来源和更新时间，按商品类别、交付方式、期限与质保筛选报价。`,

@@ -102,24 +102,24 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
   }
 
   return (
-    <div className="mt-5 overflow-hidden rounded-[10px] border border-[color:var(--line-strong)] bg-[color:var(--panel)]">
+    <div className="offer-shop-list">
       {sortedOffers.map((offer) => {
         const currentCount = clickedMap[offer.id] ?? (offer.click_count || 0);
         return (
-          <div key={offer.id} className="grid gap-2 border-b hairline px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_110px_90px_auto] sm:items-center">
-            <div>
+          <div key={offer.id} className="offer-shop-row">
+            <div className="offer-shop-identity">
               <Link href={`/shops/${offer.shop_token}`} className="flex items-center gap-2 text-sm font-medium hover:opacity-60">
                 <Storefront size={15} />{offer.shop_name}
               </Link>
-              <p className="mt-1 text-[11px] text-black/40">
-                <span className="mono font-semibold text-black/60">#{offer.id}</span> · {offer.source_platform_label} · {offer.source_kind_label}
+              <p className="mt-1 text-xs text-black/55">
+                {DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type} · {PERIOD_LABELS[offer.service_period] || offer.service_period} · {WARRANTY_LABELS[offer.warranty] || offer.warranty}
               </p>
             </div>
-            <span className="text-xs text-black/50">
+            <span className="offer-shop-stock text-xs text-black/50">
               {stockLabel(offer.stock_status)}{offer.stock_count === null ? "" : ` · 库存 ${offer.stock_count}`}
             </span>
-            <span className="mono font-semibold">{money(offer.price, offer.currency)}</span>
-            <div className="flex items-center gap-2.5 sm:justify-end">
+            <span className="offer-shop-price mono font-semibold">{money(offer.price, offer.currency)}</span>
+            <div className="offer-shop-actions">
               <span
                 className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-1.5 py-0.5 text-[11px] font-medium text-black/60"
                 title={`已点击访问原站 ${currentCount} 次`}
@@ -137,12 +137,12 @@ function ShopOfferList({ offers }: { offers: Offer[] }) {
                   target="_blank"
                   rel="noreferrer nofollow"
                   onClick={() => handleTrackClick(offer.id, offer.click_count || 0)}
-                  aria-label={`前往 ${offer.shop_name} 查看报价`}
-                  className="inline-flex items-center gap-1 text-xs hover:opacity-60"
+                  aria-label={`前往 ${offer.shop_name} ${offer.stock_status === "in_stock" ? "下单" : "查看商品"}（新窗口打开）`}
+                  className="button-primary offer-order-link"
                 >
-                  查看原站 <ArrowSquareOut size={14} />
+                  {offer.stock_status === "in_stock" ? "去店铺下单" : "去店铺查看"} <ArrowSquareOut size={16} aria-hidden="true" />
                 </a>
-              ) : null}
+              ) : <span className="text-xs text-black/50">暂未提供购买链接</span>}
             </div>
           </div>
         );
@@ -241,7 +241,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
   };
 
   return (
-    <details onToggle={(event) => { onOpenChange?.(event.currentTarget.open); if (event.currentTarget.open) void loadDetails(); }} className={`group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]${compact ? " catalog-offer" : ""}`}>
+    <details onToggle={(event) => { onOpenChange?.(event.currentTarget.open); if (event.currentTarget.open) void loadDetails(); }} className={`offer-row group/offer bg-[color:var(--panel)] open:bg-[color:var(--subtle)]${compact ? " catalog-offer" : ""}`}>
       {!IS_PRIMARY_SITE ? <BrandOfferSummary offer={offer} price={money(shownPrice, shownCurrency)} stock={shownStock} shops={group?.shop_count || 1} productName={productName} href={productSlug ? `/products/${encodeURIComponent(productSlug)}${productPageQuery.size ? `?${productPageQuery}` : ""}` : undefined} /> : compact ? (
         <summary className="catalog-offer-summary">
           <div className="catalog-offer-product">
@@ -256,10 +256,10 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           <div className="catalog-offer-delivery"><span>{DELIVERY_TYPE_LABELS[offer.delivery_type] || offer.delivery_type}</span><span>{PERIOD_LABELS[offer.service_period] || offer.service_period}</span></div>
           <span className={`catalog-offer-stock ${shownStock > 0 ? "is-available" : ""}`}>{shownStock > 0 ? "有货" : stockLabel(offer.stock_status)}</span>
           <span className="catalog-offer-price">{money(shownPrice, shownCurrency)}</span>
-          <CaretDown className="catalog-offer-chevron" size={17} aria-hidden="true" />
+          <span className="offer-expand-action"><span className="offer-expand-label">查看店铺报价</span><span className="offer-collapse-label">收起报价</span><CaretDown className="catalog-offer-chevron" size={17} aria-hidden="true" /></span>
         </summary>
       ) : (
-      <summary className="grid min-h-[84px] cursor-pointer list-none gap-4 px-4 py-4 marker:hidden sm:px-5 lg:grid-cols-[minmax(0,1fr)_150px_150px_32px] lg:items-center [&::-webkit-details-marker]:hidden">
+      <summary className="grid min-h-[84px] cursor-pointer list-none gap-4 px-4 py-4 marker:hidden sm:px-5 lg:grid-cols-[minmax(0,1fr)_110px_120px_134px] lg:items-center [&::-webkit-details-marker]:hidden">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {productName && <span className="rounded-full border border-[color:var(--line-strong)] bg-[color:var(--panel)] px-2 py-1 text-[11px] font-medium">{productName}</span>}
@@ -317,7 +317,7 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           <p className="mt-1 text-xs text-black/45">{fulfillmentLabel(offer.auto_delivery)}</p>
         </div>
 
-        <CaretDown className="transition-transform duration-150 group-open/offer:rotate-180" size={20} aria-hidden="true" />
+        <span className="offer-expand-action"><span className="offer-expand-label">查看店铺报价</span><span className="offer-collapse-label">收起报价</span><CaretDown className="catalog-offer-chevron" size={17} aria-hidden="true" /></span>
       </summary>
       )}
 
@@ -325,24 +325,10 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
         {offer.low_price_warning && (
           <div className="mb-5 flex items-start gap-2 rounded-[10px] border border-[color:var(--warning)]/25 bg-[color:var(--warning-soft)] px-4 py-3 text-sm text-[color:var(--warning)]"><Warning className="mt-0.5 shrink-0" size={17} weight="fill" /><span><strong>价格明显偏低：</strong>{offer.low_price_warning}</span></div>
         )}
-        <DecisionFacts offer={offer} />
-        {(offer.tags.length > 0 || offer.risk_flags.length > 0) && (
-          <div className="mt-5 flex flex-wrap gap-2">
-            {offer.tags.map((tag) => <span key={tag} className="rounded-full border hairline px-2 py-1 text-[11px]">{tag}</span>)}
-            {offer.risk_flags.map((flag) => <span key={flag} className="rounded-full border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-2 py-1 text-[11px] text-[color:var(--danger)]">商品说明提到：{flag}</span>)}
-          </div>
-        )}
-
-        <section className="mt-6 border-t hairline pt-5">
-          <h4 className="text-sm font-semibold">商品原文</h4>
-          <p className="mt-3 max-w-[90ch] whitespace-pre-wrap text-sm leading-7 text-black/65">
-            {loading && description === null ? "正在加载…" : description === null ? "商品原文尚未加载。" : description || "当前来源未提供商品描述。"}
-          </p>
-        </section>
-
         {group && (
-          <section className="mt-6 border-t hairline pt-5">
-            <h4 className="text-sm font-semibold">全部店铺报价</h4>
+          <section aria-label="选择店铺下单">
+            <h4 className="text-sm font-semibold">选择店铺下单</h4>
+            <p className="mt-2 text-xs leading-6 text-black/55">点击「去店铺下单」打开商品原页，下单、付款与售后均在店铺网站完成。价格和库存以店铺为准。</p>
             {shopOffersUpdated && shopOffers && shopOffers.length > 0 && (
               <p className="mt-3 text-xs text-black/55" role="status">报价已更新，下方显示最新店铺价格；刷新页面可同步上方汇总。</p>
             )}
@@ -367,22 +353,22 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
           </section>
         )}
 
-        {sponsor ? <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement={sponsor.placement}><SponsorCard item={sponsor} variant="inline" /></aside> : null}
-        <ContextualGuideLink productSlug={productSlug} deliveryType={offer.delivery_type} />
-
         {!group && (
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <section aria-label="前往店铺下单">
+          <p className="mb-3 text-xs leading-6 text-black/55">下单、付款与售后均在店铺网站完成。价格和库存以店铺为准。</p>
+          <div className="flex flex-wrap items-center gap-3">
             {offer.source_url ? (
               <a
                 href={offer.source_url}
                 target="_blank"
                 rel="noreferrer nofollow"
                 onClick={() => handleTrackOfferClick(offer.id)}
+                aria-label={`前往 ${offer.shop_name} ${offer.stock_status === "in_stock" ? "下单" : "查看商品"}（新窗口打开）`}
                 className="button-primary tactile"
               >
-                去原站查看 <ArrowSquareOut size={16} />
+                {offer.stock_status === "in_stock" ? "去店铺下单" : "去店铺查看"} <ArrowSquareOut size={16} aria-hidden="true" />
               </a>
-            ) : null}
+            ) : <span className="text-xs text-black/50">暂未提供购买链接</span>}
             <span
               className="inline-flex items-center gap-1 rounded bg-black/[0.04] px-2 py-1 text-xs font-medium text-black/60"
               title={`该商品已点击访问原站 ${clickCount} 次`}
@@ -396,7 +382,27 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
             </span>
             <Link href={`/shops/${offer.shop_token}`} className="button-secondary tactile">查看店铺 <Storefront size={16} /></Link>
           </div>
+          </section>
         )}
+
+        <details className="offer-product-details mt-6 border-t hairline pt-4">
+          <summary className="cursor-pointer text-sm font-semibold">商品说明与交付详情</summary>
+          <div className="pt-5">
+            <DecisionFacts offer={offer} />
+            {(offer.tags.length > 0 || offer.risk_flags.length > 0) && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {offer.tags.map((tag) => <span key={tag} className="rounded-full border hairline px-2 py-1 text-[11px]">{tag}</span>)}
+                {offer.risk_flags.map((flag) => <span key={flag} className="rounded-full border border-[color:var(--danger)]/20 bg-[color:var(--danger-soft)] px-2 py-1 text-[11px] text-[color:var(--danger)]">商品说明提到：{flag}</span>)}
+              </div>
+            )}
+            <h4 className="mt-6 text-sm font-semibold">商品原文</h4>
+            <p className="mt-3 max-w-[90ch] whitespace-pre-wrap text-sm leading-7 text-black/65">
+              {loading && description === null ? "正在加载…" : description === null ? "商品原文尚未加载。" : description || "当前来源未提供商品描述。"}
+            </p>
+          </div>
+        </details>
+        {sponsor ? <aside className="context-sponsor-detail" aria-label="赞助内容" data-placement={sponsor.placement}><SponsorCard item={sponsor} variant="inline" /></aside> : null}
+        <ContextualGuideLink productSlug={productSlug} deliveryType={offer.delivery_type} />
       </div>
 
       <div className="flex flex-wrap gap-x-5 gap-y-2 border-t hairline px-5 py-3 text-xs text-black/45">
@@ -411,12 +417,13 @@ function OfferRow({ offer, group, productSlug, productName, snapshotId, filterQu
 function TableFrame({ children, footer, compact = false }: { children: React.ReactNode; footer: React.ReactNode; compact?: boolean }) {
   return (
     <div className={`data-table-frame overflow-hidden border border-[color:var(--line-strong)] bg-[color:var(--panel)]${compact ? " catalog-offer-table" : ""}`}>
+      {IS_PRIMARY_SITE ? <p className="offer-purchase-help"><Storefront size={16} aria-hidden="true" /><span>如何购买：查看店铺报价 → 选择店铺 → 去店铺下单</span></p> : null}
       {!IS_PRIMARY_SITE ? <div className="brand-offer-columns" aria-hidden="true"><span>商品与来源</span><span>库存</span><span>观测价 / 展开详情</span></div> : compact ? (
-        <div className="catalog-offer-columns" aria-hidden="true"><span>商品</span><span>交付 / 期限</span><span>库存</span><span>观测价</span><span /></div>
+        <div className="catalog-offer-columns" aria-hidden="true"><span>商品</span><span>交付 / 期限</span><span>库存</span><span>观测价</span><span>选店铺下单</span></div>
       ) : (
         <div className="bg-[color:var(--subtle)] px-5 py-3 text-xs text-[color:var(--muted)]">
-          <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看交付、售后和来源</div>
-          <div className="hidden grid-cols-[minmax(0,1fr)_150px_150px_32px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>观测价</span><span>详情</span></div>
+          <div className="flex items-center gap-2 lg:hidden"><Package size={15} />点开查看店铺报价与购买入口</div>
+          <div className="hidden grid-cols-[minmax(0,1fr)_110px_120px_134px] gap-4 lg:grid"><span>同款商品与交付形态</span><span>库存</span><span>观测价</span><span>选店铺下单</span></div>
         </div>
       )}
       <div className="offer-rows divide-y divide-[color:var(--line)]">{children}</div>
