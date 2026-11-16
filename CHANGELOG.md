@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.80] - 2026-11-16
+
+- Align the API health/OpenAPI version with the release and web package versions. Verify all version sources together in CI so a stale hardcoded API version cannot pass again.
+- Deliver the compact black product actions, pelican demo and catalog prefetch changes from v3.9.79. Its API switch failed version acceptance and was rolled back before any web container changed.
+
 ## [3.9.79] - 2026-11-16
 
 - Style the primary site's ordering, same-item comparison and product details as compact dark buttons: 32px purchase action and 28px secondary actions, with visible hover and focus states.
