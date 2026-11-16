@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.79] - 2026-11-16
+
+- Style the primary site's ordering, same-item comparison and product details as compact dark buttons: 32px purchase action and 28px secondary actions, with visible hover and focus states.
+- Include the v3.9.78 pelican demo and prefetch reduction in the production rollout; v3.9.78 was tagged but did not switch live containers.
+
 ## [3.9.78] - 2026-11-16
 
 - Disable speculative prefetch on catalog filters, product lists and merchant links to reduce unused database requests during browsing and cold starts. Clicking links retains client navigation.
