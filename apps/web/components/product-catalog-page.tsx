@@ -10,7 +10,7 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { filterValues, offerQuery, ProductWorkspace, single, type RawSearchParams } from "@/components/product-workspace";
 import { ReportForm } from "@/components/report-form";
 import { RelayCatalogPage } from "@/components/relay-catalog-page";
-import { getCatalogGroups, getMeta, getProduct } from "@/lib/api";
+import { getCatalogGroups, getMeta, getProduct, getRelayStations } from "@/lib/api";
 import { getContextualAds } from "@/lib/contextual-ads";
 import { exactTime, relativeTime } from "@/lib/format";
 import { normalizeSearchQuery } from "@/lib/search";
@@ -19,6 +19,7 @@ import { getProductSeoContent } from "@/lib/product-seo";
 import { breadcrumbJsonLd, JsonLd } from "@/components/structured-data";
 import type { Meta } from "@/lib/types";
 import { BRAND_TABS, type BrandName, brandCatalogPath, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { JevRelayProduct } from "@/components/jev-relay-product";
 
 const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
 
@@ -74,18 +75,20 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
   }
 
   const activeBrand = product?.brand || single(rawParams, "brand") || single(rawParams, "platform");
+  const isJevCatalog = IS_PRIMARY_SITE && catalogBrand === "JEV" && !product;
   const activeSourcePlatform = single(rawParams, "source_platform");
   const catalogQuery = new URLSearchParams(detailQuery);
   catalogQuery.delete("platform");
   if (activeBrand) catalogQuery.set("brand", activeBrand);
   if (searchQuery) catalogQuery.set("q", searchQuery);
   let catalogLoadFailed = false;
-  const [contextAds, catalog] = await Promise.all([
+  const [contextAds, catalog, jevRelays] = await Promise.all([
     getContextualAds(activeBrand),
-    product ? Promise.resolve(null) : getCatalogGroups(catalogQuery.toString()).catch(() => {
+    product || isJevCatalog ? Promise.resolve(null) : getCatalogGroups(catalogQuery.toString()).catch(() => {
       catalogLoadFailed = true;
       return null;
     }),
+    isJevCatalog ? getRelayStations().catch(() => null) : Promise.resolve(null),
   ]);
   const productTabBrand = BRAND_TABS.includes(activeBrand as BrandName)
     ? activeBrand as BrandName
@@ -161,6 +164,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
         }>
 
         <div className="catalog-content">
+          {isJevCatalog ? <JevRelayProduct data={jevRelays} /> : <>
           {productTabs.length > 0 ? (
             <div className="catalog-plans">
               <nav aria-label="商品类型筛选" className="catalog-plan-row">
@@ -253,6 +257,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
             <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
             <Link href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
           </section>
+          </>}
         </div>
       </BrandCatalogFrame>
     </main>

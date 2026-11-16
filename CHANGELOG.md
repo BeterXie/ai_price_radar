@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.75] - 2026-11-16
+
+- Make the primary site's purchase path visible: explicit shop-quote controls, merchant checkout buttons before long descriptions, and compact titles that expand in full.
+- Show each merchant's delivery, period and warranty beside its quote; retain stock status, source links, snapshot handling and click tracking.
+- Replace the primary JEV category's empty catalog and sponsor banner with a compact LLMPort product, using the approved relay link and the owner's half-price, millisecond-latency and USD 1 trial copy.
+- No database migration or pipeline change. Rebuild API, importer and five frontends; a full crawler refresh is not a release gate.
+
 ## [3.9.74] - 2026-11-15
 
 - Capture abbreviated Plus, Pro multiplier and Go subscription listings with matching merchant category context, including Codex Team accounts delivered with Gmail credentials.
