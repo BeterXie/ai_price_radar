@@ -139,12 +139,12 @@ export function ProductWorkspace({
 
       <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
 
-      <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />
+      {!IS_PRIMARY_SITE && <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />}
 
       <section className="product-offers-section pb-12" id="product-offers">
         <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
           <h2 className="text-3xl font-semibold tracking-[-.04em]">报价</h2>
-          <p className="mt-2 text-sm text-[color:var(--muted)]">{IS_PRIMARY_SITE ? `相同商品会合并显示。共 ${product.offer_group_count} 组报价，展开后可查看店铺、交付方式和商品原文。` : `共 ${product.offer_group_count} 组报价。直接查看店铺价格与库存，同款其他店铺可点开比较。`}</p>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">共 {product.offer_group_count} 组报价。直接查看店铺价格与库存，点击“去原站下单”前往店铺；同款其他店铺可点开比较。</p>
         </div>
         {scopeExpanded ? (
           <p role="status" className="mb-5 rounded-[9px] border border-[color:var(--warning)]/40 bg-[color:var(--warning-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--warning)]" data-vds-role="explanation">

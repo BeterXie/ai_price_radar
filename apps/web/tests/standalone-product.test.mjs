@@ -34,6 +34,7 @@ test("old product links and snapshots resolve to the standalone phone service id
   context.mock.method(globalThis, "fetch", async (url) => {
     const request = String(url);
     calls.push(request);
+    if (request.includes("/ads?")) return Response.json({ enabled: false, items: [] });
     const data = request.includes("/meta")
       ? { platforms: ["OpenAI", "手机接码"], brands: ["OpenAI", "手机接码"], source_platforms: [], product_types: [], tags: [] }
       : legacyProduct;

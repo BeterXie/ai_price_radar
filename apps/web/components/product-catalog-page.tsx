@@ -83,7 +83,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
   if (searchQuery) catalogQuery.set("q", searchQuery);
   let catalogLoadFailed = false;
   const [contextAds, catalog, jevRelays] = await Promise.all([
-    getContextualAds(activeBrand),
+    isJevCatalog ? Promise.resolve({}) : getContextualAds(activeBrand, IS_PRIMARY_SITE ? (product ? "product_offers" : "catalog_top") : undefined),
     product || isJevCatalog ? Promise.resolve(null) : getCatalogGroups(catalogQuery.toString()).catch(() => {
       catalogLoadFailed = true;
       return null;
@@ -214,14 +214,14 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
               />
               {catalog ? (
                 <>
-                  <AdSlot placement="catalog_top" limit={2} variant="compact" className="catalog-ad" />
+                  {!IS_PRIMARY_SITE && <AdSlot placement="catalog_top" limit={2} variant="compact" className="catalog-ad" />}
                   <section className="catalog-results" aria-labelledby="catalog-results-title">
                     <div className="catalog-results-heading">
                       <h2 id="catalog-results-title">{filters.comparable === "false" ? "全部报价" : "可比报价"}<span>{catalog.total.toLocaleString("zh-CN")} 组</span></h2>
                       <time dateTime={catalog.last_updated_at || undefined} title={exactTime(catalog.last_updated_at)}>{catalog.last_updated_at ? `${relativeTime(catalog.last_updated_at)}更新` : "暂无更新"}</time>
                     </div>
                     {catalog.items.length > 0 ? (
-                      <OfferGroupTable key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`} groups={catalog.items} totalCount={catalog.total} snapshotId={catalog.snapshot_id} filterQuery={catalogQuery.toString()} loadMorePath="/api/v1/catalog/groups" showProduct compact contextAds={contextAds} />
+                      <OfferGroupTable key={`${activeBrand || "all"}:${catalog.snapshot_id || "current"}:${catalogQuery.toString()}`} groups={catalog.items} totalCount={catalog.total} snapshotId={catalog.snapshot_id} filterQuery={catalogQuery.toString()} loadMorePath="/api/v1/catalog/groups" contextAds={contextAds} />
                     ) : (
                       <div className="catalog-empty">
                         <h3>{hasActiveFilters ? "没有匹配的报价" : "暂无可比报价"}</h3>
