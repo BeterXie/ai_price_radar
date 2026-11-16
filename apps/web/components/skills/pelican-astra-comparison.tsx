@@ -35,7 +35,7 @@ export function PelicanAstraComparison() {
                 href={sample.url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border border-[color:var(--line)] px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)] hover:bg-[color:var(--hover)]"
+                className="pelican-article-action"
                 aria-label={`单独打开 ${sample.name} 鹈鹕动画`}
               >
                 单独打开

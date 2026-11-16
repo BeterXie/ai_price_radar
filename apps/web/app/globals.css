@@ -274,6 +274,31 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 .button-danger { border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger); }
 .tactile:active { transform: translateY(1px) scale(0.99); }
 
+.pelican-article-action,
+.pelican-article-body .markdown-prose a {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid #171914;
+  border-radius: 6px;
+  background: #171914;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.pelican-article-action:hover,
+.pelican-article-body .markdown-prose a:hover {
+  background: #33372e;
+  color: #fff;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
