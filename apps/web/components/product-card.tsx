@@ -6,7 +6,7 @@ import { exactTime, money, relativeTime } from "@/lib/format";
 
 export function ProductCard({ product }: { product: ProductCardType }) {
   return (
-    <Link href={`/products/${encodeURIComponent(product.slug)}`} className="home-product-row">
+    <Link prefetch={false} href={`/products/${encodeURIComponent(product.slug)}`} className="home-product-row">
       <div className="home-product-name">
         <span className="home-product-icon"><PlatformIcon platform={product.brand} size={24} /></span>
         <div>

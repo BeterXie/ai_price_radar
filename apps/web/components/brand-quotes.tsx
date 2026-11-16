@@ -84,7 +84,7 @@ function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor }
       <h3>店铺报价</h3>
       {refreshed && <p role="status">报价已更新，下方为最新店铺数据；页面上的报价仍为打开时记录。</p>}
       {failed && <p role="alert">其他店铺暂时无法加载，先显示当前店铺。<button onClick={() => setAttempt((value) => value + 1)}>重试</button></p>}
-      {shops ? shops.length ? <ul className="quote-shop-list">{shops.map((offer) => <li key={offer.id}><div className="quote-shop-summary"><Link href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><div className="quote-shop-meta"><span>{quoteInventory(offer)}</span><span>{offer.source_platform_label}</span><time dateTime={offer.observed_at} title={exactTime(offer.observed_at)} suppressHydrationWarning>{relativeTime(offer.observed_at)}更新</time></div></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
+      {shops ? shops.length ? <ul className="quote-shop-list">{shops.map((offer) => <li key={offer.id}><div className="quote-shop-summary"><Link prefetch={false} href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><div className="quote-shop-meta"><span>{quoteInventory(offer)}</span><span>{offer.source_platform_label}</span><time dateTime={offer.observed_at} title={exactTime(offer.observed_at)} suppressHydrationWarning>{relativeTime(offer.observed_at)}更新</time></div></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
   </section>;
   const descriptionSection = <section aria-label="商品详情">
       <h3>商品原文</h3><p className="quote-description">{description || (descriptionFailed ? "原文暂时无法加载。" : quote.offer.description_available ? "正在读取原文…" : "来源未提供商品描述。")}</p>
@@ -136,8 +136,8 @@ export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filt
     })().catch(() => { if (!controller.signal.aborted) setHeatFailed(true); }).finally(() => clearTimeout(timeout));
     return () => { clearTimeout(timeout); controller.abort(); };
   }, [activityKey, grouped]);
-  const identity = (quote: Quote) => <div className="quote-identity"><div className="quote-product-label">{quote.slug ? <Link href={quoteProductHref(quote.slug, filterQuery)}>{quote.name || quoteBrand(quote.slug)}</Link> : <span>商品报价</span>}<span>{quoteCategory(quote.offer)}</span></div><h3>{quote.offer.original_name}</h3><Caution offer={quote.offer} />{isMarketTable && <span className="quote-inline-shop">{shop(quote)}</span>}</div>;
-  const shop = (quote: Quote) => <Link className="quote-shop" href={`/shops/${encodeURIComponent(quote.offer.shop_token)}`}>{quote.offer.shop_name}</Link>;
+  const identity = (quote: Quote) => <div className="quote-identity"><div className="quote-product-label">{quote.slug ? <Link prefetch={false} href={quoteProductHref(quote.slug, filterQuery)}>{quote.name || quoteBrand(quote.slug)}</Link> : <span>商品报价</span>}<span>{quoteCategory(quote.offer)}</span></div><h3>{quote.offer.original_name}</h3><Caution offer={quote.offer} />{isMarketTable && <span className="quote-inline-shop">{shop(quote)}</span>}</div>;
+  const shop = (quote: Quote) => <Link prefetch={false} className="quote-shop" href={`/shops/${encodeURIComponent(quote.offer.shop_token)}`}>{quote.offer.shop_name}</Link>;
   const stock = (quote: Quote) => <span className={`quote-stock ${quote.offer.stock_status === "in_stock" ? "is-available" : ""}`}>{quoteInventory(quote.offer)}</span>;
   const heat = (quote: Quote) => <Heat activity={activity[quote.offer.id]} grouped={grouped} failed={heatFailed} />;
   const price = (quote: Quote) => <strong className="quote-price">{money(quote.offer.price, quote.offer.currency)}</strong>;
