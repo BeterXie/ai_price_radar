@@ -15,30 +15,66 @@ const offer = {
 
 function markup(item, grouped) {
   return renderToStaticMarkup(createElement(grouped ? OfferGroupTable : OfferTable, grouped ? {
-    compact: true, totalCount: 1, snapshotId: 42,
+    totalCount: 1, snapshotId: 42,
     groups: [{ product_slug: "gemini-plus", product_name: "Google AI Plus", fingerprint: "one", representative: item, offer_count: 1, shop_count: 1, in_stock_count: item.stock_status === "in_stock" ? 1 : 0, lowest_price: item.price, price_currency: item.currency }],
   } : { offers: [item] }));
 }
 
-test("catalog and standalone offers expose merchant purchasing before long product details", () => {
+test("catalog and standalone offers expose purchasing directly in the market table", () => {
   for (const grouped of [true, false]) {
     const html = markup(offer, grouped);
     const purchase = html.indexOf('href="https://shop.example/products/42"');
-    assert.match(html, /查看店铺报价/);
-    assert.match(html, /下单、付款与售后均在店铺网站完成/);
-    assert.ok(purchase > 0 && purchase < html.indexOf("商品说明与交付详情"));
-    assert.match(html.slice(purchase, purchase + 500), /target="_blank".*去店铺下单/s);
-    assert.match(html, /前往 示例店铺 下单（新窗口打开）/);
+    assert.match(html, /quote-market-table/);
+    assert.match(html, /<th>店铺<\/th><th>报价<\/th><th>库存<\/th>/);
+    assert.ok(purchase > 0 && purchase < html.indexOf("商品详情</button>"));
+    assert.match(html.slice(purchase, purchase + 500), /target="_blank".*去原站下单/s);
+    assert.match(html, /去原站下单：示例店铺 · Gemini Plus 6 个月激活链接（新窗口打开）/);
+    assert.doesNotMatch(html, /<details|查看店铺报价/);
   }
 });
 
-test("out-of-stock and missing-link offers do not promise an available checkout", () => {
+test("unavailable stock is explicit and a missing source URL never becomes a purchase link", () => {
   for (const grouped of [true, false]) {
     const unavailable = markup({ ...offer, stock_status: "out_of_stock" }, grouped);
-    assert.match(unavailable, /去店铺查看/);
-    assert.doesNotMatch(unavailable, /前往 示例店铺 下单/);
+    assert.match(unavailable, /缺货/);
+    assert.doesNotMatch(unavailable, /有货 ·/);
     const noLink = markup({ ...offer, source_url: "" }, grouped);
-    assert.match(noLink, /暂未提供购买链接/);
+    assert.match(noLink, /暂无原站链接/);
+    assert.doesNotMatch(noLink, /去原站下单/);
     assert.doesNotMatch(noLink, /href="https:\/\/shop\.example/);
+  }
+});
+
+test("same-product ordering asks the user to choose a shop and keeps a separate details action", () => {
+  const html = renderToStaticMarkup(createElement(OfferGroupTable, {
+    totalCount: 1, snapshotId: 42,
+    groups: [{ product_slug: "gemini-plus", product_name: "Google AI Plus", fingerprint: "one", representative: offer, offer_count: 3, shop_count: 2 }],
+  }));
+  assert.match(html, /<button[^>]+class="quote-visit"[^>]+aria-haspopup="dialog"/);
+  assert.match(html, /去原站下单：选择 Gemini Plus 6 个月激活链接 的店铺/);
+  assert.match(html, />同款 2 家<\/button>/);
+  assert.match(html, />商品详情<\/button>/);
+  assert.doesNotMatch(html, /href="https:\/\/shop.example\/products\/42"/);
+});
+
+test("sponsorship occupies an ordinary table row after every five products, including later batches", () => {
+  const ad = { id: 7, placement: "claude_feed", title: "Sponsor offer", description: "Sponsor description", sponsor_name: "Sponsor", link_url: "https://sponsor.example/", image_url: "", cta_text: "了解详情" };
+  for (const count of [4, 5, 12, 35]) {
+    const groups = Array.from({ length: count }, (_, index) => ({ product_slug: "gemini-plus", fingerprint: String(index), representative: { ...offer, id: index + 1 }, shop_count: 1, offer_count: 1 }));
+    const render = (contextAds) => renderToStaticMarkup(createElement(OfferGroupTable, { groups, totalCount: 40, snapshotId: 42, contextAds }));
+    const html = render({ feed: ad });
+    const rows = [...html.matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g)].filter(([, , body]) => !body.includes("<th>"));
+    const sponsorPositions = rows.flatMap(([, attributes], index) => attributes.includes('data-ad-id="7"') ? [index + 1] : []);
+    assert.deepEqual(sponsorPositions, Array.from({ length: Math.floor(count / 5) }, (_, index) => (index + 1) * 6));
+    assert.equal(rows.length, count + Math.floor(count / 5));
+    assert.doesNotMatch(html, /context-sponsor-feed/);
+    for (const [, attributes, body] of rows) {
+      if (!attributes.includes('data-ad-id="7"')) continue;
+      assert.match(body, /colSpan="6"/);
+      assert.match(body, /赞助/);
+      assert.match(body, /nofollow sponsored/);
+      assert.doesNotMatch(body, /quote-price|quote-stock|quote-heat/);
+    }
+    assert.doesNotMatch(render({}), /data-ad-id/);
   }
 });

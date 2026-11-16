@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.76] - 2026-11-16
+
+- Use the AIPrice market table on the primary catalog, product and shop pages, showing the merchant, its price and stock, recent product activity and purchase link in each row.
+- Rename outbound purchase links to “去原站下单” across all five sites and same-product dialogs. Retain filtering, snapshot recovery, pagination, click tracking and the compact JEV product.
+- Emphasize ordering and comparison buttons, add a separate product-details action, and insert disclosed sponsorship as ordinary-sized table rows after every five products instead of primary catalog banners.
+- Open the same shop-selection dialog from ordering and comparison when multiple same-product shops exist; retain direct merchant links for single-shop offers.
+- No database migration or pipeline change. Rebuild API, importer and five frontends; a full crawler refresh is not a release gate.
+
 ## [3.9.75] - 2026-11-16
 
 - Make the primary site's purchase path visible: explicit shop-quote controls, merchant checkout buttons before long descriptions, and compact titles that expand in full.

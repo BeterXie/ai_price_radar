@@ -18,7 +18,7 @@ test("product navigation preserves offer filters without carrying pagination or 
   assert.equal(new URL(quoteProductHref("claude-pro", ""), "https://aisi.plus").searchParams.get("comparable"), "false");
 });
 
-for (const site of ["aiprice", "aisi", "pricein", "openprice"]) {
+for (const site of ["pricememo", "aiprice", "aisi", "pricein", "openprice"]) {
   test(`${site}: the visible price and inventory belong to the linked seller`, () => {
     const script = `
       import React from 'react';
@@ -34,8 +34,15 @@ for (const site of ["aiprice", "aisi", "pricein", "openprice"]) {
     assert.equal(result.status,0,result.stderr);
     assert.match(result.stdout,/88\.00/);
     assert.match(result.stdout,/有货 · 3/);
-    assert.match(result.stdout,/https:\/\/example.com\/item-5/);
+    assert.match(result.stdout,/aria-haspopup="dialog"/);
+    assert.doesNotMatch(result.stdout,/href="https:\/\/example.com\/item-5"/);
     assert.match(result.stdout,/Visible merchant/);
+    assert.match(result.stdout,/>去原站下单<svg/);
+    if (site === "pricememo" || site === "aiprice") {
+      assert.match(result.stdout,/quote-market-table/);
+      assert.match(result.stdout,/同款 2 家/);
+      assert.match(result.stdout,/>商品详情<\/button>/);
+    }
     assert.match(result.stdout,/官方直充 \/ 代充/);
     assert.doesNotMatch(result.stdout,/66\.00|有货 · 999|<details/);
   });

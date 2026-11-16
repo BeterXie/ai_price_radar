@@ -49,3 +49,22 @@ test("compact sponsor always discloses sponsorship and omits the full creative",
   assert.match(html, /placement=claude_detail/);
   assert.doesNotMatch(html, /Line details|sponsor-watermark/);
 });
+
+test("catalog sponsorship uses the existing placement only when a targeted feed is absent", async (context) => {
+  const calls = [];
+  context.mock.method(globalThis, "fetch", async (url) => {
+    const placement = new URL(url).searchParams.get("placement");
+    calls.push(placement);
+    return Response.json({ enabled: true, items: placement === "claude_feed" ? [] : [slot(8, placement)] });
+  });
+  assert.equal((await getContextualAds("Claude", "catalog_top")).feed.placement, "catalog_top");
+  assert.deepEqual(calls.sort(), ["catalog_top", "claude_detail", "claude_feed"]);
+  calls.length = 0;
+  assert.equal((await getContextualAds("OpenAI", "product_offers")).feed.placement, "openai_feed");
+  assert.deepEqual(calls.sort(), ["openai_detail", "openai_feed", "product_offers"]);
+  calls.length = 0;
+  assert.equal((await getContextualAds("", "catalog_top")).feed.placement, "catalog_top");
+  assert.deepEqual(calls, ["catalog_top"]);
+  context.mock.method(globalThis, "fetch", async () => Response.json({ enabled: false, items: [] }));
+  assert.equal((await getContextualAds("", "catalog_top")).feed, undefined);
+});
