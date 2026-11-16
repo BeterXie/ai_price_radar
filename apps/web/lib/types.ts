@@ -452,7 +452,7 @@ export type CommunitySkillSummary = {
   install_command: string;
   prompt_template: string;
   demo_url: string;
-  demo_type: "none" | "pelican_arena" | "iframe" | string;
+  demo_type: "none" | "pelican_arena" | "pelican_astra_comparison" | "iframe" | string;
 
   tags: string[];
   target_models: string[];

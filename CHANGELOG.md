@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.81] - 2026-11-17
+
+- Add a two-sample pelican comparison before article text: GPT-6.2 Astra and the original GPT-6 Astra animation, displayed side by side on desktop and stacked on mobile. Preserve the existing sandbox and independent playback controls.
+- Expose the comparison in the article editor. Update the published model PK article through the content API with shorter, direct observations and retain its title and registration link.
+
 ## [3.9.80] - 2026-11-16
 
 - Align the API health/OpenAPI version with the release and web package versions. Verify all version sources together in CI so a stale hardcoded API version cannot pass again.

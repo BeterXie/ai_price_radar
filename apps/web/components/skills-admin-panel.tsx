@@ -635,6 +635,7 @@ export function SkillsAdminPanel({
                   >
                     <option value="none">无演示</option>
                     <option value="pelican_arena">多模型对比竞技场 (Pelican Arena)</option>
+                    <option value="pelican_astra_comparison">GPT-6.2 Astra / GPT-6 Astra 鹈鹕对比</option>
                     <option value="iframe">单文件 Iframe 演示</option>
                   </select>
                 </div>

@@ -18,6 +18,7 @@ import {
 import type { CommunitySkillDetail } from "@/lib/types";
 import { recordSkillCopy } from "@/lib/skill-events";
 import { PelicanArena } from "@/components/skills/pelican-arena";
+import { PelicanAstraComparison } from "@/components/skills/pelican-astra-comparison";
 import { CrabArena } from "@/components/skills/crab-arena";
 import { MarkdownView } from "@/components/skills/markdown-view";
 import { DemoIframe } from "@/components/skills/demo-iframe";
@@ -217,6 +218,8 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
       {skill.demo_type === "pelican_arena" ? (
         <PelicanArena promptText={skill.prompt_template} skillSlug={skill.slug} />
       ) : null}
+
+      {skill.demo_type === "pelican_astra_comparison" ? <PelicanAstraComparison /> : null}
 
       {/* Interactive Crab Arena Viewer (Model PK) */}
       {skill.demo_type === "crab_arena" ? (
