@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.78] - 2026-11-16
+
+- Disable speculative prefetch on catalog filters, product lists and merchant links to reduce unused database requests during browsing and cold starts. Clicking links retains client navigation.
+- Add the supplied GPT-6.2 Astra pelican animation as a self-contained demo. Reuse the sandboxed article viewer before the body, with a taller mobile viewport.
+- No migration or crawler/pipeline changes. Rebuild API, importer and all five frontends; validate runtime logs before restoring the schedules paused for v3.9.77.
+
 ## [3.9.77] - 2026-11-16
 
 - Recover pagination when a published snapshot loses its live offers: restart from the current snapshot, update totals, and expose loading, retry and manual load controls.

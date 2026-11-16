@@ -146,19 +146,19 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
 
       <BrandCatalogFrame title={headingTitle} intro={intro} navigation={
           <nav className="catalog-brands" aria-label="品牌与商品筛选">
-            <Link href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部品牌</Link>
+            <Link prefetch={false} href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部品牌</Link>
             {BRAND_TABS.map((brand) => (
-              <Link key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined}>
+              <Link prefetch={false} key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined}>
                 <PlatformIcon platform={brand} size={19} />{brand}
               </Link>
             ))}
             {STANDALONE_PRODUCTS.map((service) => (
-              <Link key={service.slug} href={productHref(service.slug)} className="catalog-service-link" aria-current={product?.slug === service.slug ? "page" : undefined}>
+              <Link prefetch={false} key={service.slug} href={productHref(service.slug)} className="catalog-service-link" aria-current={product?.slug === service.slug ? "page" : undefined}>
                 <PlatformIcon platform={service.label} size={19} />{service.label}
               </Link>
             ))}
             {meta.relay_hub_enabled !== false ? (
-              <Link href={RELAY_CATALOG_HREF} className="catalog-relay-link"><PlatformIcon platform="中转站" size={19} />中转站<ArrowUpRight size={14} aria-hidden="true" /></Link>
+              <Link prefetch={false} href={RELAY_CATALOG_HREF} className="catalog-relay-link"><PlatformIcon platform="中转站" size={19} />中转站<ArrowUpRight size={14} aria-hidden="true" /></Link>
             ) : null}
           </nav>
         }>
@@ -170,9 +170,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
               <nav aria-label="商品类型筛选" className="catalog-plan-row">
                 <span className="catalog-plan-label">{officialTabs.length ? "官方套餐" : "商品类别"}</span>
                 <div className="catalog-plan-options">
-                  <Link href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">全部</Link>
+                  <Link prefetch={false} href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">全部</Link>
                   {(officialTabs.length ? officialTabs : otherTabs).map((tab) => (
-                    <Link key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
+                    <Link prefetch={false} key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
                   ))}
                 </div>
                 {officialSource ? <a href={officialSource} target="_blank" rel="noreferrer" className="catalog-official-link">官网套餐 <ArrowUpRight size={14} aria-hidden="true" /></a> : null}
@@ -182,7 +182,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                   <summary>其他商品</summary>
                   <nav aria-label="其他商品筛选" className="catalog-plan-options">
                     {otherTabs.map((tab) => (
-                      <Link key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
+                      <Link prefetch={false} key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
                     ))}
                   </nav>
                 </details>
@@ -192,9 +192,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
 
           <div className="catalog-source-row">
             <nav className="catalog-sources" aria-label="来源平台筛选">
-              <Link href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined}>全部来源</Link>
+              <Link prefetch={false} href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined}>全部来源</Link>
               {meta.source_platforms.map((source) => (
-                <Link key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined}>{source.label}</Link>
+                <Link prefetch={false} key={source.id} href={sourceHref(source.id)} aria-current={activeSourcePlatform === source.id ? "page" : undefined}>{source.label}</Link>
               ))}
             </nav>
             {!metaResult ? <span className="catalog-source-error" role="status">来源选项暂不可用</span> : null}
@@ -210,7 +210,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                 hiddenFields={hiddenFields}
                 resetHref={navigationHref}
                 compact
-                quickFilter={<Link href={withQuery(basePath, stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}
+                quickFilter={<Link prefetch={false} href={withQuery(basePath, stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}
               />
               {catalog ? (
                 <>
@@ -227,14 +227,14 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                         <h3>{hasActiveFilters ? "没有匹配的报价" : "暂无可比报价"}</h3>
                         <p>{hasActiveFilters ? "试试减少筛选条件，或更换关键词。" : "可以稍后再来，或查看其他商品。"}</p>
                         <div className="flex flex-wrap justify-center gap-3">
-                          {searchQuery && activeBrand ? <Link href={catalogHref()} className="button-primary">搜索全部品牌<ArrowRight size={16} aria-hidden="true" /></Link> : null}
-                          <Link href={hasActiveFilters ? clearFiltersHref : relatedHref} className="button-secondary">{hasActiveFilters ? "清除筛选" : "查看相关报价"}<ArrowRight size={16} aria-hidden="true" /></Link>
+                          {searchQuery && activeBrand ? <Link prefetch={false} href={catalogHref()} className="button-primary">搜索全部品牌<ArrowRight size={16} aria-hidden="true" /></Link> : null}
+                          <Link prefetch={false} href={hasActiveFilters ? clearFiltersHref : relatedHref} className="button-secondary">{hasActiveFilters ? "清除筛选" : "查看相关报价"}<ArrowRight size={16} aria-hidden="true" /></Link>
                         </div>
                       </div>
                     )}
                     {!catalog.items.length && productTabs.length > 0 ? (
                       <nav className="catalog-empty-products" aria-label={`${activeBrand} 商品`}>
-                        {productTabs.map((tab) => <Link key={tab.slug} href={productHref(tab.slug)}>{tab.label}<ArrowRight size={15} aria-hidden="true" /></Link>)}
+                        {productTabs.map((tab) => <Link prefetch={false} key={tab.slug} href={productHref(tab.slug)}>{tab.label}<ArrowRight size={15} aria-hidden="true" /></Link>)}
                       </nav>
                     ) : null}
                   </section>
@@ -247,7 +247,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                 <section className="catalog-empty" role="alert">
                   <h2>报价暂时无法加载</h2>
                   <p>筛选条件已保留，请稍后重试。</p>
-                  <Link href={catalogHref(activeBrand)} className="button-primary">重新读取报价</Link>
+                  <Link prefetch={false} href={catalogHref(activeBrand)} className="button-primary">重新读取报价</Link>
                 </section>
               ) : null}
             </>
@@ -255,7 +255,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
           <section className="mt-8 border-t border-[color:var(--line)] pt-6" aria-labelledby="catalog-page-title">
             {IS_PRIMARY_SITE ? <h1 id="catalog-page-title" className="text-2xl font-semibold tracking-tight">{headingTitle}</h1> : <h2 className="text-xl font-semibold">关于这些报价</h2>}
             <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
-            <Link href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
+            <Link prefetch={false} href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
           </section>
           </>}
         </div>

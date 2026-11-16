@@ -238,7 +238,7 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
               <ArrowSquareOut size={13} />
             </a>
           </div>
-          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 shadow-inner">
+          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl border border-[color:var(--line-strong)] bg-neutral-900 shadow-inner sm:aspect-[16/10]">
             <DemoIframe
               src={demoUrl}
               title={skill.title}
