@@ -252,7 +252,7 @@ export function SkillDetailView({ skill }: { skill: CommunitySkillDetail }) {
       ) : null}
 
       {/* Markdown Body Content */}
-      <div className="mt-8">
+      <div className={skill.demo_type === "pelican_astra_comparison" ? "mt-8 pelican-article-body" : "mt-8"}>
         <MarkdownView content={skill.content_markdown} />
       </div>
 

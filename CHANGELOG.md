@@ -2,6 +2,10 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.82] - 2026-11-17
+
+- Present the Astra comparison article's sample, previous-review and model-registration links as compact black buttons. Keep the treatment scoped to this comparison and allow the long registration label to wrap on mobile.
+
 ## [3.9.81] - 2026-11-17
 
 - Add a two-sample pelican comparison before article text: GPT-6.2 Astra and the original GPT-6 Astra animation, displayed side by side on desktop and stacked on mobile. Preserve the existing sandbox and independent playback controls.
