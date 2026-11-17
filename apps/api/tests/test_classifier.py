@@ -3,6 +3,24 @@ import pytest
 from app.services.classifier import classify_product, normalize_stock
 
 
+@pytest.mark.parametrize("title,category,description,slug", [
+    ("【10Xteam 首车账密2fa 18号8点30踢】质保1小时", "team", "Team 成品 JSON，只能反代", "chatgpt-business"),
+    ("Team 真头车｜不踢人｜500~1000刀10X额度", "team", "账户密码2fa登录", "chatgpt-business"),
+    ("Team 1x｜长效包月(含周限)｜拼车｜全程质保", "team", "Team 1x 标准席位", "chatgpt-business"),
+    ("【菲区正规卡充】GP t Plus菲区官充一个月", "G官方直充", "自助充值订阅", "chatgpt-plus"),
+    ("【菲区自动卡充】 Plus 质保30天 (卡密不可囤)", "G【质保专区】", "充值到自己的账号", "chatgpt-plus"),
+    ("【iCloud注册的接马free】可以邮箱收件，RT号，账号-密码-2fa", "free", "发货格式为账号----密码----2fa", "chatgpt-account"),
+    ("【高质量-已接马】free家宽gmail谷歌注册-账密2fa-可用5xteam车子号", "Gmail邮箱", "质保首登 <b>codex free</b> 无订阅，发货格式邮箱----AI密码----2fa", "chatgpt-account"),
+])
+def test_merchant_shorthand_preserves_the_actual_account_plan(title, category, description, slug):
+    result = classify_product(title, category, description, source_platform="ldxp")
+    assert result.slug == slug
+    assert result.confidence >= 80
+    if slug == "chatgpt-account":
+        assert result.delivery_type == "finished_account"
+        assert "Team" not in result.tags
+
+
 def test_team_classification():
     result = classify_product("GPT Business Team K12 自动拉 无质保")
     assert result.slug == "chatgpt-k12"

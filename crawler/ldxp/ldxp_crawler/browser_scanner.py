@@ -50,11 +50,11 @@ TARGET_BRAND_MARKERS = (
     "cursor",
     "muse",
 )
-IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登", "独享", "直充", "代充", "订阅", "月卡", "已接马", "已接码")
+IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登", "独享", "直充", "代充", "订阅", "月卡", "已接马", "已接码", "卡充", "官充", "质保")
 NON_TARGET_PLUS_MARKERS = ("百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps")
 GENERIC_EMAIL_MARKERS = ("gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱")
 NON_TARGET_MEMBERSHIP_MARKERS = ("tgpremium", "telegrampremium", "电报会员")
-CATEGORY_COMMERCE_MARKERS = ("plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "api", "key", "token", "额度", "成品", "账号", "首登")
+CATEGORY_COMMERCE_MARKERS = ("plus", "pro", "team", "business", "max", "advanced", "ultra", "super", "heavy", "会员", "订阅", "代充", "直充", "充值", "接码", "接马", "api", "key", "token", "额度", "成品", "账号", "首登")
 
 
 def normalize_identity(value: str) -> str:
@@ -81,6 +81,20 @@ def has_target_brand(title: str, category: str = "") -> bool:
         )
     )
     if implicit_chatgpt:
+        return True
+    # Capture merchant shorthand for review without requiring the literal brand.
+    # Account status and delivery terms distinguish these from ordinary email.
+    if (
+        re.search(r"(?<![a-z])free(?![a-z])", title.casefold())
+        and any(marker in title_identity for marker in ("已接马", "已接码", "接马free", "接码free"))
+        and any(marker in title_identity for marker in ("2fa", "账密", "rt号", "家宽"))
+    ):
+        return True
+    if (
+        re.search(r"(?<![a-z])(?:\d+x\s*)?team(?![a-z])", title.casefold())
+        and "team" in category_identity
+        and any(marker in title_identity for marker in ("2fa", "账密", "席位", "拼车", "头车", "首车", "首登", "轮", "踢"))
+    ):
         return True
     # Merchants abbreviate OpenAI plans in both SKU titles and categories.
     # These are capture hints only; classification/review still decides the tier.
