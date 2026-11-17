@@ -52,7 +52,7 @@ test("same-product ordering asks the user to choose a shop and keeps a separate 
   }));
   assert.match(html, /<button[^>]+class="quote-visit"[^>]+aria-haspopup="dialog"/);
   assert.match(html, /去原站下单：选择 Gemini Plus 6 个月激活链接 的店铺/);
-  assert.match(html.replace(/<[^>]+>/g, ""), /同款 2 家/);
+  assert.match(html, /同款 <b\b[^>]*>2<\/b> 家/);
   assert.match(html, />商品详情<\/button>/);
   assert.doesNotMatch(html, /href="https:\/\/shop.example\/products\/42"/);
 });

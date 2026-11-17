@@ -32,16 +32,15 @@ for (const site of ["pricememo", "aiprice", "aisi", "pricein", "openprice"]) {
     `;
     const result=spawnSync(process.execPath,["--import","tsx","--input-type=module","-e",script],{cwd:new URL("..",import.meta.url),encoding:"utf8",env:{...process.env,NEXT_PUBLIC_SITE_ID:site}});
     assert.equal(result.status,0,result.stderr);
-    const text = result.stdout.replace(/<[^>]+>/g, "");
     assert.match(result.stdout,/88\.00/);
-    assert.match(text,/有货 · 3/);
+    assert.match(result.stdout,/有货 · <b\b[^>]*>3<\/b>/);
     assert.match(result.stdout,/aria-haspopup="dialog"/);
     assert.doesNotMatch(result.stdout,/href="https:\/\/example.com\/item-5"/);
     assert.match(result.stdout,/Visible merchant/);
     assert.match(result.stdout,/>去原站下单<svg/);
     if (site === "pricememo" || site === "aiprice") {
       assert.match(result.stdout,/quote-market-table/);
-      assert.match(text,/同款 2 家/);
+      assert.match(result.stdout,/同款 <b\b[^>]*>2<\/b> 家/);
       assert.match(result.stdout,/>商品详情<\/button>/);
     }
     assert.match(result.stdout,/官方直充 \/ 代充/);
