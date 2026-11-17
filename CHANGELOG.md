@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.86] - 2026-11-18
+
+- Resolve the current published snapshot in the same query as live offer descriptions and shop quotes. A catalog publication no longer produces temporary description 404s and empty shop lists while the API pointer cache is stale; explicit historical queries and moderation filters remain enforced.
+- Capture merchant Team, Free, Plus recharge and phone-verification shorthand that previously dropped products from LDXP shops. Identify Team accounts even when titles include quota amounts, and keep explicitly described Free accounts out of Team subscription categories.
+- Reconcile the public catalog for 蛋的AI (M5WLYYQV) against its 27 source products, preserving original titles, descriptions, prices, stock and existing review decisions. Ambiguous Gemini duration requires a shop-specific reviewed value instead of inferring a paid tier or a one-year term.
+- No database migration. Rebuild API, source detector, crawler, importer and all five frontends; complete a full catalog publication with the new images before release acceptance.
+
 ## [3.9.85] - 2026-11-18
 
 - Prioritize mobile quote browsing with single-row, horizontally scrolling brand and plan navigation. Keep the selected category visible without moving the page vertically.

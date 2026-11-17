@@ -29,7 +29,7 @@ BRAND_MARKERS = {
     "chatgpt": [
         "chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus", "codex",
         "g free", "g-free", "gfree",
-        "g-p-t", "g-pt", "g-p·t", "g·p·t", "chat g", "chatg"
+        "g-p-t", "g-pt", "gp t", "g-p·t", "g·p·t", "chat g", "chatg"
     ],
     "claude": ["claude"],
     "gemini": ["gemini", "google one ai", "google ai", "谷歌ai", "谷歌 ai"],
@@ -63,7 +63,7 @@ CHATGPT_FREE_MARKERS = [
 ]
 CHATGPT_NON_PRODUCT_MARKERS = ["镜像站", "教程", "使用指南", "购买指南", "攻略", "授权神器", "自动化授权"]
 CHATGPT_AMBIGUOUS_CREDIT_MARKERS = ["刀额度", "美元额度"]
-IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登"]
+IMPLICIT_CHATGPT_MARKERS = ["成品", "半成品", "首登", "卡充", "官充"]
 NON_TARGET_PLUS_MARKERS = ["百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps"]
 PLATFORM_16688 = "16688"
 RELAY_MARKERS = ["中转", "反代", "sub2api", "倍率", "分组"]
@@ -430,6 +430,15 @@ def _chatgpt_tier(text: str) -> str | None:
     ]):
         return None
 
+    # A Team account can describe its quota without being an API balance SKU.
+    if (
+        re.search(r"(?<![a-z])(?:\d+x\s*)?team(?![a-z])", text)
+        and _contains(text, ["头车", "首车", "账密", "踢", "席位", "拼车"])
+        and not _contains(text, ["enterprise", "企业版", "k12"])
+        and not re.search(r"(?<![a-z])edu(?![a-z])", text)
+    ):
+        return "chatgpt-business"
+
     # Quotas (10刀, 50刀, 100刀, etc. combined with quota/api/token terms)
     if any(re.search(rf"(?<!\d){q}\s*(?:刀|美金|\$)(?!\d)", text) for q in [5, 10, 15, 25, 30, 50, 100, 120, 150, 200, 300, 500, 1000]):
         if any(w in text for w in ["额度", "余额", "api", "key", "token", "sol", "image"]):
@@ -497,6 +506,17 @@ def _first_title_brand(text: str) -> str | None:
 
 
 
+def _implicit_free_account(title: str, category: str, description: str) -> bool:
+    if not (
+        re.search(r"(?<![a-z])free(?![a-z])", title)
+        and _contains(title, ["已接马", "已接码", "接马free", "接码free"])
+        and _contains(title, ["2fa", "账密", "rt号", "家宽"])
+    ):
+        return False
+    description = html.unescape(re.sub(r"<[^>]+>", " ", description))
+    return bool(re.search(r"(?:codex|chatgpt|gpt)\s*free", description) or (category == "free" and "rt号" in title))
+
+
 def _detect_brand(title_text: str, category_text: str, description_text: str = "") -> str | None:
     clean_title = _strip_exclusions(title_text)
     clean_category = _strip_exclusions(category_text)
@@ -507,6 +527,16 @@ def _detect_brand(title_text: str, category_text: str, description_text: str = "
 
     if _contains(clean_title, NON_TARGET_PLUS_MARKERS):
         return None
+
+    if _implicit_free_account(clean_title, clean_category, description_text):
+        return "chatgpt"
+
+    if (
+        re.search(r"(?<![a-z])(?:\d+x\s*)?team(?![a-z])", clean_title)
+        and "team" in clean_category
+        and _contains(clean_title, ["2fa", "账密", "席位", "拼车", "头车", "首车", "首登", "轮", "踢"])
+    ):
+        return "chatgpt"
 
     if re.search(r"(?<![a-z])(?:business|team)(?![a-z])", clean_title) and _contains(clean_title, ["席位", "车位"]):
         return "chatgpt"
@@ -727,6 +757,11 @@ def _classify_identity_raw(
                 return alias_slug, True
         return None, False
 
+    if brand in {"chatgpt", "codex"} and _implicit_free_account(title_text, category_text, description_text):
+        # "可用于 Team" describes a later use of this Free account, not a paid
+        # Team subscription; "已接马" is account status, not a phone service.
+        return "chatgpt-account", True
+
     is_sub2api_only = any(w in tier_text for w in [
         "只能反代", "仅支持反代", "无账号和密码", "无账号密码", "没有账号密码",
         "没有邮箱账密", "只可反代", "反代专用", "没有账密"
@@ -894,6 +929,11 @@ def classify_product(
     description_evidence = normalize_title(_delivery_description(description))
     description_delivery_type = _delivery_type(description_evidence, description=True)
     category_delivery_type = _delivery_type(normalize_title(category))
+    if slug == "chatgpt-account" and _implicit_free_account(normalize_title(title), normalize_title(category), normalize_title(description)):
+        if title_delivery_type == "team_seat":
+            title_delivery_type = "finished_account"
+        if description_delivery_type == "team_seat":
+            description_delivery_type = "finished_account"
     mixed_delivery_title = bool(re.search(
         r"(?:代充|直充|充值)\s*[/／或]\s*成品|成品(?:账号|号)?\s*(?:[/／或]\s*(?:代充|直充|充值)|可代充)",
         title,

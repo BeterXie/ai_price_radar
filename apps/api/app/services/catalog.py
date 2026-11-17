@@ -240,7 +240,6 @@ def _base_public_offer_query(
     snapshot: CatalogSnapshot | None = None,
     cutoff: datetime | None = None,
 ):
-    snapshot = snapshot or get_current_snapshot(db)
     disabled_platforms = get_disabled_source_platforms()
     conditions = [
         Offer.active.is_(True),
@@ -248,7 +247,7 @@ def _base_public_offer_query(
         or_(Offer.hidden_reason.is_(None), func.trim(Offer.hidden_reason) == ""),
         Offer.product_id.is_not(None),
         Shop.is_visible.is_(True),
-        Offer.observed_at >= (cutoff or _snapshot_cutoff(db, snapshot)),
+        Offer.observed_at >= (cutoff or (_snapshot_cutoff(db, snapshot) if snapshot is not None else _fresh_cutoff())),
     ]
     if disabled_platforms:
         conditions.append(Shop.platform.notin_(disabled_platforms))
@@ -258,7 +257,17 @@ def _base_public_offer_query(
         .join(RawProduct, Offer.raw_product_id == RawProduct.id)
         .where(*conditions)
     )
-    stmt = stmt.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
+    # Live detail reads must resolve the published pointer in the same SQL
+    # statement as their offers. A publisher can move offers to a new snapshot
+    # while this API worker still has the previous pointer cached.
+    snapshot_id = snapshot.id if snapshot is not None else (
+        select(CatalogSnapshot.id)
+        .where(CatalogSnapshot.published_at.is_not(None))
+        .order_by(CatalogSnapshot.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = stmt.where(Offer.snapshot_id == snapshot_id)
     if include_details:
         stmt = stmt.options(contains_eager(Offer.shop), contains_eager(Offer.raw_product))
     return stmt
@@ -1443,7 +1452,7 @@ def get_group_offers(
     product_id = db.scalar(select(Product.id).where(Product.slug == canonical_product_slug(slug), Product.is_visible.is_(True)))
     if product_id is None:
         return None
-    snapshot = _snapshot_for_query(db, snapshot_id)
+    snapshot = _snapshot_for_query(db, snapshot_id) if snapshot_id is not None else None
     fingerprint_condition = Offer.item_fingerprint == fingerprint
     if fingerprint.startswith("offer-") and fingerprint[6:].isdigit():
         fingerprint_condition = or_(

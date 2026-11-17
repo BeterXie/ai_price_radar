@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models import CatalogSnapshot, Offer, OfferHistory, Product, RawProduct, Shop
+from app.services.catalog import get_current_snapshot
 
 
 @pytest.fixture
@@ -62,6 +63,36 @@ def test_unpublished_snapshot_never_exposes_offers(catalog_client):
     assert client.get("/api/v1/meta").json()["source_platforms"] == []
     assert client.get(f"/api/v1/offers/{offer_id}/description").status_code == 404
     assert client.get("/api/v1/products/review-product/history").json()["trend"] == []
+
+
+@pytest.mark.parametrize("resource", ["description", "shops"])
+def test_quote_details_follow_publication_before_pointer_cache_expires(catalog_client, resource):
+    client, engine, (snapshot_id, _, _, offer_id) = catalog_client
+    with Session(engine) as db:
+        assert get_current_snapshot(db).id == snapshot_id
+        newer = CatalogSnapshot(source="refresh", published_at=datetime.now(timezone.utc))
+        db.add(newer)
+        db.flush()
+        db.get(Offer, offer_id).snapshot_id = newer.id
+        db.commit()
+        # The importer publishes in a separate process: API workers retain the
+        # previous pointer for its TTL even though offers have already moved.
+        assert get_current_snapshot(db).id == snapshot_id
+
+    if resource == "description":
+        response = client.get(f"/api/v1/offers/{offer_id}/description")
+        assert response.status_code == 200
+        assert response.json()["original_description"] == "Public description"
+    else:
+        path = "/api/v1/products/review-product/groups/same"
+        old = client.get(path, params={"snapshot": snapshot_id})
+        assert old.status_code == 200 and old.json()["items"] == []
+        response = client.get(path)
+        assert response.status_code == 200
+        assert [offer["id"] for offer in response.json()["items"]] == [offer_id]
+        # A latest lookup must retain filters and explicit snapshot boundaries.
+        assert client.get(path, params={"exclude": "Keep"}).json()["items"] == []
+        assert client.get(path, params={"snapshot": 999999}).status_code == 404
 
 
 @pytest.mark.parametrize("hidden_scope", ["product", "offer", "platform"])

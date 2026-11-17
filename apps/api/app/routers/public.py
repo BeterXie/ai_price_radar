@@ -637,7 +637,8 @@ def product_group_offers(
     snapshot: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
 ) -> GroupOffersResponse:
-    current = _snapshot_or_404(db, snapshot)
+    if snapshot is not None:
+        _snapshot_or_404(db, snapshot)
     items = get_group_offers(
         db,
         slug,
@@ -657,7 +658,7 @@ def product_group_offers(
             min_price=min_price,
             max_price=max_price,
         ),
-        snapshot_id=current.id if current else None,
+        snapshot_id=snapshot,
     )
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
