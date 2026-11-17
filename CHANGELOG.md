@@ -2,6 +2,13 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.85] - 2026-11-18
+
+- Prioritize mobile quote browsing with single-row, horizontally scrolling brand and plan navigation. Keep the selected category visible without moving the page vertically.
+- Hide primary-site catalog sponsorship on mobile, align compact delivery and filter controls, and collapse quote statistics so a complete product and its ordering actions fit in the first screen.
+- Move mobile verification sources and ordering instructions to the bottom of the product page. Preserve complete product titles, desktop layouts and sponsorship inside shop-selection dialogs.
+- No database migration or crawler/pipeline changes. Rebuild API, importer and all five frontends; no full crawler refresh is required.
+
 ## [3.9.82] - 2026-11-17
 
 - Present the Astra comparison article's sample, previous-review and model-registration links as compact black buttons. Keep the treatment scoped to this comparison and allow the long registration label to wrap on mobile.

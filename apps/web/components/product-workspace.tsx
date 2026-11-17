@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
+import { CaretDown, Check, Clock, Package, ShieldCheck, Stack } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls, type OfferFilterValues } from "@/components/offer-scope-controls";
@@ -126,25 +126,31 @@ export function ProductWorkspace({
     return `${filterAction}?${next.toString()}`;
   })();
 
+  const quoteStats = <section className="product-quote-stats mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
+      <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条纳入统计</p>
+      <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
+      <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
+      <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
+    </section>;
+
   return (
     <>
       <JsonLd data={structuredData} />
       <BrandProductOverview product={product} />
-      {IS_PRIMARY_SITE && <section className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-[color:var(--line)] pb-4 text-sm text-[color:var(--muted)]" aria-label={`${product.display_name} 报价概况`}>
-        <p className="flex items-center gap-1.5"><ShieldCheck size={16} />{product.trusted_offer_count} 条纳入统计</p>
-        <p className="flex items-center gap-1.5"><Package size={16} />{product.in_stock_count} 条有货</p>
-        <p className="flex items-center gap-1.5"><Stack size={16} />{product.offer_count} 条当前报价</p>
-        <p className="flex items-center gap-1.5"><Clock size={16} />最近更新 {relativeTime(product.last_updated_at)}</p>
-      </section>}
-
-      {IS_PRIMARY_SITE && <ProductEvidence sources={evidenceSources} />}
+      {IS_PRIMARY_SITE && <>
+        <div className="product-desktop-overview">{quoteStats}<ProductEvidence sources={evidenceSources} /></div>
+        <details className="product-mobile-overview">
+          <summary><span>{product.display_name} · {product.offer_group_count.toLocaleString("zh-CN")} 组报价</span><span>报价概况<CaretDown size={13} aria-hidden="true" /></span></summary>
+          {quoteStats}
+        </details>
+      </>}
 
       <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} sourceNavigation={sourceNavigation} sponsor={IS_PRIMARY_SITE ? contextAds?.toolbar : undefined} />
 
       {!IS_PRIMARY_SITE && <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />}
 
       <section className="product-offers-section pb-12" id="product-offers">
-        <div className="mb-5 border-b border-[color:var(--line-strong)] pb-5">
+        <div className="product-offers-heading mb-5 border-b border-[color:var(--line-strong)] pb-5">
           <h2 className="text-3xl font-semibold tracking-[-.04em]">报价</h2>
           <p className="mt-2 text-sm text-[color:var(--muted)]">共 {product.offer_group_count} 组报价。直接查看店铺价格与库存，点击“去原站下单”前往店铺；同款其他店铺可点开比较。</p>
         </div>
@@ -228,6 +234,10 @@ export function ProductWorkspace({
         <div><h2 className="mb-2 text-3xl font-semibold tracking-[-.04em]">最近价格和库存变化</h2><p className="mb-5 text-sm text-[color:var(--muted)]">按天显示近期有货观测价、常见观测价和有货数量。</p><ProductHistoryPanel key={`${product.slug}:${single(rawParams, "source_platform")}`} slug={product.slug} sourcePlatform={single(rawParams, "source_platform")} /></div>
         <aside><ReportForm productSlug={product.slug} /></aside>
       </section>
+      {IS_PRIMARY_SITE && <section className="product-mobile-evidence" aria-label="报价依据与下单说明">
+        <ProductEvidence sources={evidenceSources} />
+        <p className="product-mobile-buying-help">点击“去原站下单”前往店铺；有同款时先选择店铺。价格、库存与售后以原商品页为准。</p>
+      </section>}
       <p className="border-t hairline py-5 text-xs text-[color:var(--muted)]">数据更新于：{exactTime(product.snapshot_at)}</p>
     </>
   );

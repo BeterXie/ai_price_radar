@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CatalogScrollNav } from "@/components/catalog-scroll-nav";
 import { BrandCatalogFrame } from "@/components/brand-catalog";
 import { IS_PRIMARY_SITE } from "@/lib/brands";
 import { notFound } from "next/navigation";
@@ -154,7 +155,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
       {catalogBrand ? <JsonLd data={breadcrumbJsonLd([{ name: "首页", path: "/" }, { name: `${catalogBrand} 比价`, path: basePath }])} /> : null}
 
       <BrandCatalogFrame title={headingTitle} intro={intro} navigation={
-          <nav className="catalog-brands" aria-label="品牌与商品筛选">
+          <CatalogScrollNav className="catalog-brands" label="品牌与商品筛选" activeKey={activeBrand || product?.slug || "all"}>
             <Link prefetch={false} href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部品牌</Link>
             {BRAND_TABS.map((brand) => (
               <Link prefetch={false} key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined}>
@@ -169,31 +170,31 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
             {meta.relay_hub_enabled !== false ? (
               <Link prefetch={false} href={RELAY_CATALOG_HREF} className="catalog-relay-link"><PlatformIcon platform="中转站" size={19} />中转站<ArrowUpRight size={14} aria-hidden="true" /></Link>
             ) : null}
-          </nav>
+          </CatalogScrollNav>
         }>
 
         <div className="catalog-content">
           {isJevCatalog ? <JevRelayProduct data={jevRelays} /> : <>
           {productTabs.length > 0 ? (
             <div className="catalog-plans">
-              <nav aria-label="商品类型筛选" className="catalog-plan-row">
+              <div className="catalog-plan-row">
                 <span className="catalog-plan-label">{officialTabs.length ? "官方套餐" : "商品类别"}</span>
-                <div className="catalog-plan-options">
+                <CatalogScrollNav className="catalog-plan-options" label="商品类型筛选" activeKey={product?.slug || activeBrand || "all"}>
                   <Link prefetch={false} href={catalogHref(activeBrand)} aria-current={!product ? "page" : undefined} className="filter-chip">全部</Link>
                   {(officialTabs.length ? officialTabs : otherTabs).map((tab) => (
                     <Link prefetch={false} key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
                   ))}
-                </div>
+                </CatalogScrollNav>
                 {officialSource ? <a href={officialSource} target="_blank" rel="noreferrer" className="catalog-official-link">官网套餐 <ArrowUpRight size={14} aria-hidden="true" /></a> : null}
-              </nav>
+              </div>
               {officialTabs.length > 0 && otherTabs.length > 0 ? (
                 <details className="catalog-other-plans" open={otherTabs.some((tab) => tab.slug === product?.slug)}>
                   <summary>其他商品</summary>
-                  <nav aria-label="其他商品筛选" className="catalog-plan-options">
+                  <CatalogScrollNav label="其他商品筛选" className="catalog-plan-options" activeKey={product?.slug || "all"}>
                     {otherTabs.map((tab) => (
                       <Link prefetch={false} key={tab.slug} href={productHref(tab.slug)} aria-current={product?.slug === tab.slug ? "page" : undefined} className="filter-chip">{tab.label}</Link>
                     ))}
-                  </nav>
+                  </CatalogScrollNav>
                 </details>
               ) : null}
             </div>
