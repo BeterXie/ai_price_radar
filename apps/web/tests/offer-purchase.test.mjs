@@ -52,29 +52,20 @@ test("same-product ordering asks the user to choose a shop and keeps a separate 
   }));
   assert.match(html, /<button[^>]+class="quote-visit"[^>]+aria-haspopup="dialog"/);
   assert.match(html, /去原站下单：选择 Gemini Plus 6 个月激活链接 的店铺/);
-  assert.match(html, />同款 2 家<\/button>/);
+  assert.match(html, /同款 <b\b[^>]*>2<\/b> 家/);
   assert.match(html, />商品详情<\/button>/);
   assert.doesNotMatch(html, /href="https:\/\/shop.example\/products\/42"/);
 });
 
-test("sponsorship occupies an ordinary table row after every five products, including later batches", () => {
+test("quote lists contain only products even when a sponsor is available for the detail dialog", () => {
   const ad = { id: 7, placement: "claude_feed", title: "Sponsor offer", description: "Sponsor description", sponsor_name: "Sponsor", link_url: "https://sponsor.example/", image_url: "", cta_text: "了解详情" };
   for (const count of [4, 5, 12, 35]) {
     const groups = Array.from({ length: count }, (_, index) => ({ product_slug: "gemini-plus", fingerprint: String(index), representative: { ...offer, id: index + 1 }, shop_count: 1, offer_count: 1 }));
     const render = (contextAds) => renderToStaticMarkup(createElement(OfferGroupTable, { groups, totalCount: 40, snapshotId: 42, contextAds }));
     const html = render({ feed: ad });
     const rows = [...html.matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g)].filter(([, , body]) => !body.includes("<th>"));
-    const sponsorPositions = rows.flatMap(([, attributes], index) => attributes.includes('data-ad-id="7"') ? [index + 1] : []);
-    assert.deepEqual(sponsorPositions, Array.from({ length: Math.floor(count / 5) }, (_, index) => (index + 1) * 6));
-    assert.equal(rows.length, count + Math.floor(count / 5));
-    assert.doesNotMatch(html, /context-sponsor-feed/);
-    for (const [, attributes, body] of rows) {
-      if (!attributes.includes('data-ad-id="7"')) continue;
-      assert.match(body, /colSpan="6"/);
-      assert.match(body, /赞助/);
-      assert.match(body, /nofollow sponsored/);
-      assert.doesNotMatch(body, /quote-price|quote-stock|quote-heat/);
-    }
+    assert.equal(rows.length, count);
+    assert.doesNotMatch(html, /context-sponsor-feed|data-ad-id|sponsor\.example/);
     assert.doesNotMatch(render({}), /data-ad-id/);
   }
 });

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CaretDown, SlidersHorizontal } from "@phosphor-icons/react/ssr";
 import { SearchBox } from "@/components/search-box";
+import { SponsorCard } from "@/components/sponsor-card";
+import type { AdSlotPublic } from "@/lib/types";
 
 export type OfferFilterValues = {
   comparable: string;
@@ -107,6 +109,8 @@ export function OfferScopeControls({
   defaultOpen = false,
   compact = false,
   quickFilter,
+  sourceNavigation,
+  sponsor,
 }: {
   action: string;
   values: OfferFilterValues;
@@ -115,6 +119,8 @@ export function OfferScopeControls({
   defaultOpen?: boolean;
   compact?: boolean;
   quickFilter?: React.ReactNode;
+  sourceNavigation?: React.ReactNode;
+  sponsor?: AdSlotPublic;
 }) {
   const activeFilterCount = Object.entries(values).filter(([name, value]) => name === "comparable" ? value === "false" : Boolean(value)).length;
   const searchTerm = hiddenFields.q || "";
@@ -127,15 +133,19 @@ export function OfferScopeControls({
     const suffix = query.toString();
     return suffix ? `${action}?${suffix}` : action;
   };
-  return (
-    <section className={`offer-search-toolbar ${compact ? "catalog-filters" : "offer-filters py-5"}`} aria-label="报价筛选">
-      <nav className="offer-delivery-switch" aria-label="交付方式快捷切换">
+  const deliverySwitch = <nav className="offer-delivery-switch" aria-label="交付方式快捷切换">
         {QUICK_DELIVERY_OPTIONS.map(([value, label]) => (
           <Link key={value || "all"} href={deliveryHref(value)} scroll={false} aria-current={values.delivery_type === value ? "page" : undefined}>
             {label}
           </Link>
         ))}
-      </nav>
+      </nav>;
+  return (
+    <section className={`offer-search-toolbar ${compact ? "catalog-filters" : "offer-filters py-5"}`} aria-label="报价筛选">
+      {sourceNavigation || sponsor ? <div className={`offer-toolbar-heading${sponsor ? " has-sponsor" : ""}`}>
+        <div className="offer-toolbar-navigation">{sourceNavigation}{deliverySwitch}</div>
+        {sponsor && <aside className="offer-toolbar-sponsor" aria-label="赞助内容" data-placement={sponsor.placement}><SponsorCard item={sponsor} variant="compact" /></aside>}
+      </div> : deliverySwitch}
       <details className="offer-filter-disclosure" open={defaultOpen}>
         <summary><SlidersHorizontal size={17} aria-hidden="true" />筛选 {activeFilterCount ? <span>{activeFilterCount}</span> : null}<CaretDown size={14} className="filter-disclosure-chevron" aria-hidden="true" /></summary>
         <div className="mt-3"><FilterForm key={JSON.stringify({ values, hiddenFields })} action={action} values={values} hiddenFields={hiddenFields} /></div>

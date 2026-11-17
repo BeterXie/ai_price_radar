@@ -27,13 +27,13 @@ import {
 
 export const AD_PLACEMENT_LABELS: Record<AdPlacement, { label: string; hint: string }> = {
   home_hero: { label: "首页 · 赞助伙伴", hint: "当前报价下方，支持多个赞助；排序值越小越靠前，首位为主赞助卡。图片请使用方形品牌 Logo。" },
-  catalog_top: { label: "报价目录 · 顶部", hint: "/products 品牌目录列表上方（不含单个商品页）。" },
-  product_offers: { label: "商品页 · 报价列表上方", hint: "每个标准商品工作区的报价表格上方，紧凑样式。" },
+  catalog_top: { label: "报价目录 · 筛选区右侧", hint: "通用目录广告；Claude、OpenAI 优先展示各自专属广告。Sidrune 仅在 Claude 报价区展示。" },
+  product_offers: { label: "商品页 · 筛选区右侧", hint: "标准商品工作区的紧凑广告；Claude、OpenAI 优先使用各自专属广告。Sidrune 仅在 Claude 商品页展示。" },
   relay_hub: { label: "中转站专区 · 顶部", hint: "/relays 品牌导航下方的独立横幅；图片请使用方形品牌 Logo。" },
-  claude_feed: { label: "Claude · 报价列表内嵌", hint: "仅 Claude 分类及商品页，第 5 条报价后展示一次；不足 5 条时置于末尾。详情赞助展示时隐藏此位。图片使用 Logo，标题简短。" },
-  claude_detail: { label: "Claude · 店铺报价下方", hint: "仅在最近展开的 Claude 商品内展示，位于全部店铺报价之后、购买教程之前；每页最多一个内嵌赞助。图片使用 Logo，标题简短。" },
-  openai_feed: { label: "OpenAI · 报价列表内嵌", hint: "仅 OpenAI 分类及商品页，第 5 条报价后展示一次；不足 5 条时置于末尾。详情赞助展示时隐藏此位。图片使用 Logo，标题简短。" },
-  openai_detail: { label: "OpenAI · 店铺报价下方", hint: "仅在最近展开的 OpenAI 商品内展示，位于全部店铺报价之后、购买教程之前；每页最多一个内嵌赞助。图片使用 Logo，标题简短。" },
+  claude_feed: { label: "Claude · 筛选区右侧", hint: "Claude 分类和商品页的紧凑卡片，手机端顺排。详情广告未配置时也用于商品弹窗。图片使用品牌 Logo。" },
+  claude_detail: { label: "Claude · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 Claude 报价区展示。" },
+  openai_feed: { label: "OpenAI · 筛选区右侧", hint: "OpenAI 分类和商品页的紧凑卡片，手机端顺排。详情广告未配置时也用于商品弹窗。" },
+  openai_detail: { label: "OpenAI · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 OpenAI 报价区展示。" },
   sidebar: { label: "预留 · 侧栏", hint: "暂未接入页面，供后续版式使用。" },
 };
 

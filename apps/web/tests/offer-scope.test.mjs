@@ -175,6 +175,7 @@ function catalogDescendants(node) {
   // Render the server layout so its navigation slot is checked in the same
   // tree as the quote controls, regardless of the selected brand composition.
   if (node.type?.name === "BrandCatalogFrame") return catalogDescendants(node.type(node.props));
+  if (node.type?.name === "OfferScopeControls") return [node, ...catalogDescendants(node.type(node.props))];
   return [node, ...[node.props?.children].flat(Infinity).flatMap(catalogDescendants)];
 }
 
