@@ -767,6 +767,7 @@ table { font-variant-numeric: tabular-nums; }
 .catalog-report { flex: 1; min-width: 0; }
 .catalog-report > summary { width: fit-content; min-height: 44px; padding-block: 12px; cursor: pointer; }
 .catalog-report-form { padding-top: 16px; }
+.product-mobile-overview, .product-mobile-evidence { display: none; }
 
 @media (max-width: 1199px) {
   .catalog-layout { grid-template-columns: 150px minmax(0, 1fr); gap: 24px; }
@@ -819,6 +820,51 @@ table { font-variant-numeric: tabular-nums; }
   .catalog-bottom > time { padding-top: 0; }
   .catalog-report { width: 100%; }
   .catalog-ad { margin-bottom: 16px; }
+}
+
+/* Mobile quote browsing: one row per category, then search and products. */
+@media (max-width: 639px) {
+  [data-brand="pricememo"] body:has(.catalog-page) { min-width: 0; }
+  [data-brand="pricememo"] .catalog-page { padding-top: 8px; }
+  [data-brand="pricememo"] .catalog-brands { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; padding-bottom: 8px; }
+  [data-brand="pricememo"] .catalog-brands a { flex-shrink: 0; }
+  [data-brand="pricememo"] .catalog-content { padding-top: 4px; }
+  [data-brand="pricememo"] .catalog-plans { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 4px 8px; padding-bottom: 4px; }
+  [data-brand="pricememo"] .catalog-plan-row { display: contents; }
+  [data-brand="pricememo"] .catalog-plan-label { display: none; }
+  [data-brand="pricememo"] .catalog-plan-options { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  [data-brand="pricememo"] .catalog-plan-options .filter-chip { flex-shrink: 0; min-height: 40px; }
+  [data-brand="pricememo"] .catalog-plan-row > .catalog-plan-options { grid-area: 1 / 1 / auto / -1; }
+  [data-brand="pricememo"] .catalog-plan-row > .catalog-official-link { grid-area: 2 / 2; min-height: 32px; }
+  [data-brand="pricememo"] .catalog-other-plans { grid-area: 2 / 1 / auto / -1; min-width: 0; margin-top: 0; }
+  [data-brand="pricememo"] .catalog-other-plans > summary { min-height: 32px; padding-block: 6px; }
+  [data-brand="pricememo"] .catalog-other-plans .catalog-plan-options { padding-block: 4px; }
+  [data-brand="pricememo"] :is(.catalog-brands, .catalog-plan-options)::-webkit-scrollbar { display: none; }
+  [data-brand="pricememo"] :is(.catalog-brands, .catalog-plan-options) a:focus-visible { outline-offset: -3px; }
+  [data-brand="pricememo"] .product-desktop-overview { display: none; }
+  .product-mobile-overview { display: block; border-bottom: 1px solid var(--line); }
+  .product-mobile-overview > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding-block: 6px; color: var(--muted); font-size: 12px; cursor: pointer; list-style: none; }
+  .product-mobile-overview > summary::-webkit-details-marker { display: none; }
+  .product-mobile-overview > summary > span:first-child { color: var(--ink); font-weight: 550; }
+  .product-mobile-overview > summary > span:last-child { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .product-mobile-overview[open] > summary svg { transform: rotate(180deg); }
+  .product-mobile-overview .product-quote-stats { margin-top: 8px; gap: 8px 16px; padding-bottom: 12px; font-size: 12px; }
+  .product-mobile-evidence { display: block; }
+  .product-mobile-evidence [data-seo-evidence] { margin-top: 0; padding-top: 16px; }
+  .product-mobile-buying-help { padding-block: 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  [data-brand="pricememo"] .catalog-page .offer-toolbar-sponsor { display: none; }
+  [data-brand="pricememo"] .catalog-page .offer-search-toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding-block: 12px; }
+  [data-brand="pricememo"] .catalog-page :is(.offer-toolbar-heading, .offer-toolbar-navigation) { display: contents; }
+  [data-brand="pricememo"] .catalog-page .offer-toolbar-search { grid-area: 1 / 1 / auto / -1; }
+  [data-brand="pricememo"] .catalog-page .catalog-source-row { grid-area: 2 / 1 / auto / -1; margin: 0; }
+  [data-brand="pricememo"] .catalog-page .offer-delivery-switch { grid-area: 3 / 1; align-self: start; margin: 0; z-index: 1; }
+  [data-brand="pricememo"] .catalog-page .offer-delivery-switch a { padding-inline: 11px; }
+  [data-brand="pricememo"] .catalog-page .offer-filter-disclosure { grid-area: 3 / 1 / auto / -1; }
+  [data-brand="pricememo"] .catalog-page .offer-filter-disclosure > summary { min-height: 40px; margin-left: auto; gap: 6px; padding-inline: 10px; }
+  [data-brand="pricememo"] .catalog-page .filter-toolbar-actions { grid-area: 4 / 1 / auto / -1; justify-content: flex-end; min-height: 32px; }
+  [data-brand="pricememo"] .catalog-page .catalog-stock-toggle { min-height: 32px; }
+  [data-brand="pricememo"] .catalog-page .product-offers-heading { display: none; }
+  [data-brand="pricememo"] .catalog-results-heading { padding-block: 0 8px; }
 }
 
 /* Ad slots (广告栏位) ------------------------------------------------------- */
