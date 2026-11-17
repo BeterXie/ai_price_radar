@@ -698,6 +698,15 @@ table { font-variant-numeric: tabular-nums; }
 .offer-delivery-switch a { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; padding-inline: 18px; border-radius: 6px; color: var(--muted); font-size: .875rem; font-weight: 550; white-space: nowrap; }
 .offer-delivery-switch a:hover { background: var(--panel); color: var(--ink); }
 .offer-delivery-switch a[aria-current="page"] { background: var(--ink); color: var(--paper); font-weight: 650; }
+.offer-toolbar-heading { grid-area: 1 / 1 / auto / -1; display: grid; align-items: center; gap: 20px; min-width: 0; margin-bottom: 14px; }
+.offer-toolbar-heading.has-sponsor { grid-template-columns: minmax(290px, 1fr) minmax(0, 560px); }
+.offer-toolbar-navigation, .offer-toolbar-sponsor { min-width: 0; }
+.offer-toolbar-sponsor, .quote-detail-sponsor { container-type: inline-size; }
+.offer-toolbar-navigation .catalog-source-row { margin-bottom: 10px; }
+.offer-toolbar-navigation .catalog-sources a { min-height: 34px; }
+.offer-toolbar-navigation .offer-delivery-switch { margin-bottom: 0; }
+[data-brand="pricememo"] .offer-delivery-switch { gap: 2px; padding: 3px; border-radius: 7px; }
+[data-brand="pricememo"] .offer-delivery-switch a { min-height: 32px; padding-inline: 15px; border-radius: 4px; font-size: 13px; }
 .offer-search-toolbar > .offer-filter-disclosure { grid-area: 2 / 1 / auto / -1; min-width: 0; }
 .offer-search-toolbar .offer-filter-disclosure > summary { width: max-content; min-height: 44px; gap: 8px; justify-content: flex-start; padding-inline: 12px; font-size: .8125rem; }
 .offer-toolbar-search { grid-area: 2 / 2; min-width: 0; align-self: start; z-index: 1; }
@@ -908,7 +917,6 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-cta { background: #168c70; border-color: #168c70; color: #fff; }
 .sponsor-banner[data-sponsor="电子猫 digitalcatscc"] .sponsor-cta:hover { background: #0f7059; }
 .ad-slot-compact .ad-card { background: #eff2e5; border-color: #c7d2b9; border-left: 3px solid #6b835b; }
-.context-sponsor-detail { margin-top: 12px; }
 .context-sponsor-feed { padding: 7px 20px; }
 .sponsor-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 18px 16px; column-gap: 12px; padding: 10px 12px 10px 50px; min-height: 56px; border-radius: 8px; border-left: 2px solid #849a6b; background: #eef1e5; }
 .sponsor-inline .sponsor-identity { gap: 7px; }
@@ -926,6 +934,31 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-card[data-sponsor="llmport"] .sponsor-copy p { color: #426184; }
 .sponsor-card[data-sponsor="llmport"] .sponsor-cta { background: #1464db; border-color: #1464db; color: #fff; }
 .sponsor-card[data-sponsor="llmport"] .sponsor-cta:hover { background: #104ea9; }
+
+.sponsor-compact { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 10px; align-items: center; padding: 8px 10px; border-radius: 7px; background: var(--paper); }
+.sponsor-compact .sponsor-identity { grid-column: 1; grid-row: 1; gap: 5px; }
+.sponsor-compact .sponsor-logo { width: 20px; height: 20px; border-radius: 4px; font-size: 11px; }
+.sponsor-compact .sponsor-logo img { width: 18px; height: 18px; }
+.sponsor-compact .sponsor-name { font-size: 12px; line-height: 1.5; }
+.sponsor-compact .sponsor-disclosure { margin-left: 0; padding: 0 4px; font-size: 9px; }
+.sponsor-compact .sponsor-copy { display: contents; }
+.sponsor-compact .sponsor-copy h3 { grid-column: 2; grid-row: 1; margin: 0; font-size: 13px; line-height: 1.5; font-weight: 650; }
+.sponsor-compact .sponsor-copy p { grid-column: 1 / -1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 0; font-size: 11px; line-height: 1.5; white-space: normal; }
+.sponsor-compact .sponsor-cta { grid-column: 3; grid-row: 1; min-height: 28px; gap: 5px; padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+.sponsor-compact[data-sponsor="sidrune ai"] { background: #193c33; border-color: #193c33; color: #fffef4; }
+.sponsor-compact[data-sponsor="sidrune ai"] .sponsor-disclosure { color: #d1debd; border-color: #617963; }
+.sponsor-compact[data-sponsor="sidrune ai"] .sponsor-rate { color: #d4ef8c; }
+.sponsor-compact[data-sponsor="sidrune ai"] .sponsor-copy p { display: block; color: #c7d6c4; }
+.sponsor-compact[data-sponsor="sidrune ai"] .sponsor-cta { background: #bae64c; border-color: #bae64c; color: #1d2d14; }
+.sponsor-compact[data-sponsor="sidrune ai"] .sponsor-cta:hover { background: #d0f27c; }
+@container (max-width: 479px) {
+  .sponsor-compact { grid-template-columns: minmax(0, 1fr) auto; }
+  .sponsor-compact .sponsor-cta { grid-column: 2; }
+  .sponsor-compact .sponsor-copy h3 { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 760px) {
+  .offer-toolbar-heading.has-sponsor { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
 @media (max-width: 700px) {
   .sponsor-grid, .sponsor-grid:not([data-count="1"]):not([data-count="2"]) { grid-template-columns: minmax(0, 1fr); }
   .sponsor-showcase { padding: 23px 20px; }

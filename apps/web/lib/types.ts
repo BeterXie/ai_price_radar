@@ -252,7 +252,7 @@ export type AdSlotListOut = {
   enabled: boolean;
 };
 
-export type ContextualAds = { feed?: AdSlotPublic; detail?: AdSlotPublic };
+export type ContextualAds = { feed?: AdSlotPublic; detail?: AdSlotPublic; toolbar?: AdSlotPublic };
 
 export type AdSlotAdmin = AdSlotPublic & {
   sort_order: number;

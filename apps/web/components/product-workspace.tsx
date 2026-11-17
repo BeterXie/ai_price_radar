@@ -68,6 +68,7 @@ export function ProductWorkspace({
   hiddenFields = {},
   scopeExpanded = false,
   contextAds,
+  sourceNavigation,
 }: {
   product: ProductDetail;
   rawParams: RawSearchParams;
@@ -78,6 +79,7 @@ export function ProductWorkspace({
   /** True when the page widened the scope to all offers because no directly comparable offer existed. */
   scopeExpanded?: boolean;
   contextAds?: ContextualAds;
+  sourceNavigation?: React.ReactNode;
 }) {
   const canonical = `${SITE_URL}/products/${encodeURIComponent(product.slug)}`;
   const seo = getProductSeoContent(product.slug, product.display_name, product.description);
@@ -137,7 +139,7 @@ export function ProductWorkspace({
 
       {IS_PRIMARY_SITE && <ProductEvidence sources={evidenceSources} />}
 
-      <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} />
+      <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} sourceNavigation={sourceNavigation} sponsor={IS_PRIMARY_SITE ? contextAds?.toolbar : undefined} />
 
       {!IS_PRIMARY_SITE && <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />}
 
