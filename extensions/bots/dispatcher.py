@@ -237,7 +237,7 @@ def dispatch_price_changes(
                 if telegram.send_admin_message(tg_text):
                     logger.info("Dispatched %d price change event(s) to Telegram Admin", len(events))
             if team_offers:
-                tg_text = render_telegram_team_report(team_offers, detected_at=detected_at)
+                tg_text = render_telegram_team_report(team_offers, detected_at=detected_at, site_base_url=site_url)
                 if telegram.send_admin_message(tg_text):
                     logger.info("Dispatched %d Team low-price offers to Telegram Admin", len(team_offers))
         except Exception as exc:
@@ -287,7 +287,7 @@ def dispatch_price_changes(
                 if allowed_events:
                     messages.append(render_qq_report(allowed_events, site_base_url=site_url, detected_at=detected_at))
                 if wants_team_alert:
-                    messages.extend(render_qq_team_reports(team_offers, detected_at=detected_at))
+                    messages.extend(render_qq_team_reports(team_offers, detected_at=detected_at, site_base_url=site_url))
                 all_delivered = True
                 for message in messages:
                     for chunk in split_qq_messages(message):

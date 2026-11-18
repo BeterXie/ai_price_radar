@@ -54,6 +54,7 @@ from ..schemas import (
     CommunityNoticeOut,
     OfferClickResponse,
     OfferDescriptionResponse,
+    OfferPublic,
     OfferGroupPageResponse,
     OfferPageResponse,
     ProductDetail,
@@ -95,6 +96,7 @@ from ..services.catalog import (
     get_current_snapshot,
     get_group_offers,
     get_offer_description,
+    get_offer_detail,
     get_product_detail,
     get_product_history,
     get_product_group_page,
@@ -663,6 +665,16 @@ def product_group_offers(
     if items is None:
         raise HTTPException(status_code=404, detail="product not found")
     return GroupOffersResponse(items=items)
+
+
+@router.get("/offers/{offer_id}", response_model=OfferPublic)
+def offer_detail(offer_id: int, db: Session = Depends(get_db)) -> OfferPublic:
+    if not 0 < offer_id <= 2**63 - 1:
+        raise HTTPException(status_code=404, detail="offer not found")
+    offer = get_offer_detail(db, offer_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="offer not found")
+    return offer
 
 
 @router.get("/offers/{offer_id}/description", response_model=OfferDescriptionResponse)

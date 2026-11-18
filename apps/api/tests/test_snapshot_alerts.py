@@ -155,7 +155,7 @@ def test_collects_only_current_public_in_stock_cny_offers_at_or_below_20(db):
     assert collect_team_low_price_offers(db, current) == []
 
 
-def test_reports_use_beijing_snapshot_time_and_original_product_link():
+def test_reports_use_beijing_snapshot_time_and_exact_site_offer_link():
     detected_at = datetime(2026, 11, 18, 18, 45, 56, tzinfo=timezone.utc)
     event = create_price_change_event(
         offer_id=1, product_name="Team <5x>", shop_name="A&B", source_platform="ldxp",
@@ -164,8 +164,9 @@ def test_reports_use_beijing_snapshot_time_and_original_product_link():
     )
     qq = render_qq_report([event], detected_at=detected_at)
     tg = render_telegram_report([event], detected_at=detected_at)
-    assert f"原站商品: {event.product_url}" in qq
-    assert "&amp;b=&quot;2&quot;" in tg
+    assert "商品详情: https://ai.pricememo.cn/offers/1" in qq
+    assert 'href="https://ai.pricememo.cn/offers/1"' in tg
+    assert "merchant.example" not in qq + tg
     for report in (qq, tg):
         assert "2026-11-19 02:45:56（北京时间 UTC+8）" in report
     assert render_qq_report([event], detected_at=detected_at.replace(tzinfo=None)) == qq
@@ -180,9 +181,12 @@ def test_team_reports_keep_all_results_and_escape_telegram_fields():
     assert "（3/3）" in reports[-1]
     assert "2026-11-18 21:45:56（北京时间 UTC+8）" in reports[-1]
     for offer in offers:
-        assert offer.product_url in "\n".join(reports)
+        assert f"https://ai.pricememo.cn/offers/{offer.offer_id}" in "\n".join(reports)
     tg = render_telegram_team_report(offers, detected_at=detected_at)
-    assert "Team &lt;5x&gt; 0" in tg and "A&amp;B" in tg and "&amp;b=2" in tg
+    assert "Team &lt;5x&gt; 0" in tg and "A&amp;B" in tg
+    assert 'href="https://ai.pricememo.cn/offers/18"' in tg
+    assert "merchant.example" not in tg + "\n".join(reports)
+    assert "https://example.com/offers/18" in render_qq_team_reports(offers, detected_at=detected_at, site_base_url="https://example.com/")[-1]
 
 
 def test_qq_messages_split_long_names_and_links_before_delivery():
@@ -198,7 +202,7 @@ def test_qq_messages_split_long_names_and_links_before_delivery():
     assert len(chunks) > 1
     assert all(0 < len(chunk.encode("utf-8")) <= 3500 for chunk in chunks)
     assert "现价: ¥20.00" in "\n".join(chunks)
-    assert long_offer.product_url in "\n".join(chunks)
+    assert "https://ai.pricememo.cn/offers/1" in "\n".join(chunks)
     tg = render_telegram_team_report([long_offer], detected_at=datetime.now(timezone.utc))
     assert "…" in tg and len(tg) < 4000
     oversized_link = "https://merchant.example/" + "x" * 5000

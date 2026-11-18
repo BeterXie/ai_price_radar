@@ -34,21 +34,23 @@ function Heat({ activity, grouped, failed }: { activity?: QuoteActivity; grouped
   return <span className="quote-heat" data-has-value={Boolean(activity)} title={`${grouped ? "本组同款商品各店铺" : "这条店铺报价"}最近 7 天访问原站次数，非销量。${activity ? `统计截至 ${exactTime(activity.endAt)}` : ""}`}><Fire size={13} aria-hidden /><span>近7天访问 <b>{activity ? activity.count.toLocaleString("zh-CN") : failed || activity === null ? "暂不可用" : "加载中"}</b></span></span>;
 }
 
-function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor }: { quote: Quote; view: "shops" | "description"; snapshotId?: number | null; filterQuery: string; onClose: () => void; sponsor?: ContextualAds["detail"] }) {
+export function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor, standalone = false }: { quote: Quote; view: "shops" | "description"; snapshotId?: number | null; filterQuery: string; onClose?: () => void; sponsor?: ContextualAds["detail"]; standalone?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [shops, setShops] = useState<Offer[] | null>(null);
+  const [shops, setShops] = useState<Offer[] | null>(quote.group && quote.group.offer_count > 1 ? null : [quote.offer]);
   const [description, setDescription] = useState(quote.offer.original_description || "");
   const [failed, setFailed] = useState(false);
   const [descriptionFailed, setDescriptionFailed] = useState(false);
   const [refreshed, setRefreshed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (standalone) return;
     const node = dialog.current;
     const previous = document.activeElement as HTMLElement | null;
     node?.showModal();
     return () => { node?.close(); previous?.focus(); };
-  }, []);
+  }, [standalone]);
   useEffect(() => {
+    if (standalone) return;
     let active = true;
     setFailed(false);
     setDescriptionFailed(false);
@@ -65,21 +67,29 @@ function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor }
         .catch(() => { if (active) setDescriptionFailed(true); });
     }
     return () => { active = false; };
-  }, [quote, snapshotId, filterQuery, attempt]);
+  }, [quote, snapshotId, filterQuery, attempt, standalone]);
+  const displayedShops = standalone ? [quote.offer] : shops;
+  const displayedDescription = standalone ? quote.offer.original_description : description;
+  let descriptionFallback = "来源未提供商品描述。";
+  if (!standalone) {
+    if (descriptionFailed) descriptionFallback = "原文暂时无法加载。";
+    else if (quote.offer.description_available) descriptionFallback = "正在读取原文…";
+  }
+  const Subheading = standalone ? "h2" : "h3";
   const shopSection = <section aria-label="店铺报价">
-      <h3>店铺报价</h3>
+      <Subheading className="quote-detail-section-title">店铺报价</Subheading>
       {refreshed && <p role="status">报价已更新，下方为最新店铺数据；页面上的报价仍为打开时记录。</p>}
       {failed && <p role="alert">其他店铺暂时无法加载，先显示当前店铺。<button onClick={() => setAttempt((value) => value + 1)}>重试</button></p>}
-      {shops ? shops.length ? <ul className="quote-shop-list">{shops.map((offer) => <li key={offer.id}><div className="quote-shop-summary"><Link prefetch={false} href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><div className="quote-shop-meta"><span>{quoteInventory(offer)}</span><span>{offer.source_platform_label}</span><time dateTime={offer.observed_at} title={exactTime(offer.observed_at)} suppressHydrationWarning>{relativeTime(offer.observed_at)}更新</time></div></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
+      {displayedShops ? displayedShops.length ? <ul className="quote-shop-list">{displayedShops.map((offer) => <li key={offer.id}><div className="quote-shop-summary"><Link prefetch={false} href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><div className="quote-shop-meta"><span>{quoteInventory(offer)}</span><span>{offer.source_platform_label}</span><time dateTime={offer.observed_at} title={exactTime(offer.observed_at)} suppressHydrationWarning>{relativeTime(offer.observed_at)}更新</time></div></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
   </section>;
   const descriptionSection = <section aria-label="商品详情">
-      <h3>商品原文</h3><p className="quote-description">{description || (descriptionFailed ? "原文暂时无法加载。" : quote.offer.description_available ? "正在读取原文…" : "来源未提供商品描述。")}</p>
+      <Subheading className="quote-detail-section-title">商品原文</Subheading><p className="quote-description">{displayedDescription || descriptionFallback}</p>
       {descriptionFailed && <button className="quote-more" onClick={() => setAttempt((value) => value + 1)}>重试原文</button>}
       {quote.offer.risk_flags.length > 0 && <p className="quote-detail-warning">商品说明提到：{quote.offer.risk_flags.join("、")}</p>}
   </section>;
-  return <dialog ref={dialog} className="quote-dialog" aria-labelledby="quote-dialog-title" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="quote-dialog-inner">
-      <header><div><p>{quote.name || quoteBrand(quote.slug)} · {quoteCategory(quote.offer)}</p><h2 id="quote-dialog-title">{quote.offer.original_name}</h2></div><button type="button" autoFocus className="quote-close" onClick={onClose} aria-label="关闭报价详情"><X size={22} /></button></header>
+  const Heading = standalone ? "h1" : "h2";
+  const content = <div className="quote-dialog-inner">
+      <header><div><p>{quote.name || quoteBrand(quote.slug)} · {quoteCategory(quote.offer)}</p><Heading id="quote-dialog-title">{quote.offer.original_name}</Heading></div>{!standalone && <button type="button" autoFocus className="quote-close" onClick={onClose} aria-label="关闭报价详情"><X size={22} /></button>}</header>
       <div className={`quote-detail-overview${sponsor ? " has-sponsor" : ""}`}>
         <div className="quote-detail-facts">
           <Caution offer={quote.offer} />
@@ -89,8 +99,9 @@ function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor }
         {sponsor && <aside className="quote-detail-sponsor" aria-label="赞助内容" data-placement={sponsor.placement}><SponsorCard item={sponsor} variant="compact" /></aside>}
       </div>
       {view === "description" ? <>{descriptionSection}{shopSection}</> : <>{shopSection}{descriptionSection}</>}
-    </div>
-  </dialog>;
+    </div>;
+  if (standalone) return <section className="quote-dialog quote-detail-page" aria-labelledby="quote-dialog-title">{content}</section>;
+  return <dialog ref={dialog} className="quote-dialog" aria-labelledby="quote-dialog-title" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>{content}</dialog>;
 }
 
 export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filterQuery = "", footer, contextAds }: { groups?: OfferGroup[]; offers?: Offer[]; productSlug?: string; snapshotId?: number | null; filterQuery?: string; footer: ReactNode; contextAds?: ContextualAds }) {
