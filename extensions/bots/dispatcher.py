@@ -11,8 +11,15 @@ from sqlalchemy import select
 from app.services.account_plans import canonical_product_slug
 from app.services.credential_crypto import decrypt_secret
 
-from .formatter import render_qq_report, render_telegram_report
+from .formatter import (
+    render_qq_report,
+    render_qq_team_reports,
+    render_telegram_report,
+    render_telegram_team_report,
+    split_qq_messages,
+)
 from .qq_bot import QQBotClient
+from .team_alerts import collect_team_low_price_offers
 from .telegram_bot import TelegramBotClient
 
 logger = logging.getLogger(__name__)
@@ -22,7 +29,9 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
+def dispatch_price_changes(
+    events: list[Any], db_session: Any = None, *, snapshot_id: int | None = None,
+) -> None:
     """Entry point called by apps/api/app/services/notification_hub.py.
 
     1. Checks user_product_subscriptions and dispatches personalized alerts:
@@ -30,14 +39,41 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
        - Via Bound Bot (Tencent ClawBot / QQ Bot)
     2. Dispatches admin summary report to Telegram Bot.
     3. Dispatches general updates to active QQ Bot bindings.
+    4. Checks Team <= CNY 20 on every published snapshot, even without changes.
     """
-    if not events:
+    if not events and snapshot_id is None:
         return
 
     site_url = os.getenv("NEXT_PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
+    detected_at = None
+    team_offers = []
+    if snapshot_id is not None and db_session is not None:
+        from app.models import CatalogSnapshot
+
+        try:
+            # Read the committed pointer without the catalog's request cache.
+            # Roll back SQL failures here so existing notifications can proceed.
+            with db_session.begin_nested():
+                published = db_session.get(CatalogSnapshot, snapshot_id)
+                if published is not None:
+                    detected_at = published.published_at
+                current_id = db_session.scalar(
+                    select(CatalogSnapshot.id)
+                    .where(CatalogSnapshot.published_at.is_not(None))
+                    .order_by(CatalogSnapshot.id.desc())
+                    .limit(1)
+                )
+                if published is not None and published.id == current_id:
+                    team_offers = collect_team_low_price_offers(db_session, published)
+                else:
+                    logger.info("Skipping Team offers for non-current snapshot %s", snapshot_id)
+        except Exception:
+            logger.exception("Failed collecting Team low-price offers for snapshot %s", snapshot_id)
+    if not events and not team_offers:
+        return
 
     # 1. Targeted Subscriptions Dispatch (Email & Personal Bot)
-    if db_session is not None:
+    if db_session is not None and events:
         try:
             from app.models import NotificationOutbox, Offer, Product, User, UserBotBinding, UserProductSubscription
 
@@ -196,10 +232,14 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
     telegram = TelegramBotClient()
     if telegram.is_configured:
         try:
-            tg_text = render_telegram_report(events, site_base_url=site_url)
-            delivered = telegram.send_admin_message(tg_text)
-            if delivered:
-                logger.info("Dispatched %d price change event(s) to Telegram Admin", len(events))
+            if events:
+                tg_text = render_telegram_report(events, site_base_url=site_url, detected_at=detected_at)
+                if telegram.send_admin_message(tg_text):
+                    logger.info("Dispatched %d price change event(s) to Telegram Admin", len(events))
+            if team_offers:
+                tg_text = render_telegram_team_report(team_offers, detected_at=detected_at)
+                if telegram.send_admin_message(tg_text):
+                    logger.info("Dispatched %d Team low-price offers to Telegram Admin", len(team_offers))
         except Exception as exc:
             logger.error("Failed dispatching price change report to Telegram: %s", exc)
 
@@ -230,7 +270,8 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                     if (getattr(e, "is_drop", False) and binding.notify_price_drop)
                     or (not getattr(e, "is_drop", False) and binding.notify_price_hike)
                 ]
-                if not allowed_events:
+                wants_team_alert = bool(team_offers and binding.notify_price_drop)
+                if not allowed_events and not wants_team_alert:
                     continue
 
                 app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
@@ -242,8 +283,17 @@ def dispatch_price_changes(events: list[Any], db_session: Any = None) -> None:
                 if not qq.is_configured:
                     continue
 
-                qq_text = render_qq_report(allowed_events, site_base_url=site_url)
-                if qq.send_c2c_message(binding.target_id, qq_text, app_id=app_id, app_secret=app_secret):
+                messages = []
+                if allowed_events:
+                    messages.append(render_qq_report(allowed_events, site_base_url=site_url, detected_at=detected_at))
+                if wants_team_alert:
+                    messages.extend(render_qq_team_reports(team_offers, detected_at=detected_at))
+                all_delivered = True
+                for message in messages:
+                    for chunk in split_qq_messages(message):
+                        if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
+                            all_delivered = False
+                if all_delivered:
                     sent_count += 1
             if sent_count:
                 logger.info("Dispatched general price report to %d QQ Bot user(s)", sent_count)

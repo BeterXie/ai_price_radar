@@ -1072,12 +1072,11 @@ def _publish_prepared_sources(
                 except Exception as export_err:
                     logger.exception("Failed to export public snapshot %d", snapshot.id)
                     raise SnapshotExportError(snapshot.id, export_err) from export_err
-                if all_price_changes:
-                    try:
-                        from app.services.notification_hub import dispatch_price_changes
-                        dispatch_price_changes(all_price_changes, db_session=db)
-                    except Exception as notify_err:
-                        logger.warning("Failed to dispatch price change notifications: %s", notify_err)
+                try:
+                    from app.services.notification_hub import dispatch_price_changes
+                    dispatch_price_changes(all_price_changes, db_session=db, snapshot_id=snapshot.id)
+                except Exception as notify_err:
+                    logger.warning("Failed to dispatch snapshot notifications: %s", notify_err)
             return result
     except Exception:
         db.rollback()

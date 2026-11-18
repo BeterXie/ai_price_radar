@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import html
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
+
+
+BEIJING_TIME = timezone(timedelta(hours=8))
+
+
+def format_detection_time(detected_at: datetime | None = None) -> str:
+    value = detected_at or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(BEIJING_TIME).strftime("%Y-%m-%d %H:%M:%S（北京时间 UTC+8）")
 
 
 def format_currency_symbol(currency: str) -> str:
@@ -20,12 +30,18 @@ def _esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=False)
 
 
+def _display_name(value: str, limit: int = 240) -> str:
+    return value if len(value) <= limit else value[:limit - 1] + "…"
+
+
 def _esc_attr(value: Any) -> str:
     """Escape dynamic text used inside an HTML attribute (e.g. href)."""
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
-def render_telegram_report(events: list[Any], site_base_url: str = "https://ai.pricememo.cn") -> str:
+def render_telegram_report(
+    events: list[Any], site_base_url: str = "https://ai.pricememo.cn", *, detected_at: datetime | None = None,
+) -> str:
     """Render an HTML formatted report suitable for Telegram Bot HTML parse_mode.
 
     All dynamic fields are HTML-escaped: product/shop names containing `<` or `&`
@@ -33,7 +49,7 @@ def render_telegram_report(events: list[Any], site_base_url: str = "https://ai.p
     """
     drops = [e for e in events if e.is_drop]
     hikes = [e for e in events if not e.is_drop]
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    now_str = format_detection_time(detected_at)
 
     lines = ["🔔 <b>【PriceMemo 价格变动监控提醒】</b>", ""]
 
@@ -44,7 +60,7 @@ def render_telegram_report(events: list[Any], site_base_url: str = "https://ai.p
             diff_abs = abs(Decimal(str(e.diff)))
             url = e.product_url or site_base_url
             lines.append(
-                f"• <b>{_esc(e.product_name)}</b> ({_esc(e.shop_name)})\n"
+                f"• <b>{_esc(_display_name(e.product_name))}</b> ({_esc(_display_name(e.shop_name, 80))})\n"
                 f"  原价: {symbol}{e.old_price} ➔ <b>现价: {symbol}{e.new_price}</b> "
                 f"(↓{symbol}{diff_abs}, <b>{e.percent_change}%</b>)\n"
                 f"  🔗 <a href=\"{_esc_attr(url)}\">查看商品</a>"
@@ -60,7 +76,7 @@ def render_telegram_report(events: list[Any], site_base_url: str = "https://ai.p
             diff_abs = abs(Decimal(str(e.diff)))
             url = e.product_url or site_base_url
             lines.append(
-                f"• <b>{_esc(e.product_name)}</b> ({_esc(e.shop_name)})\n"
+                f"• <b>{_esc(_display_name(e.product_name))}</b> ({_esc(_display_name(e.shop_name, 80))})\n"
                 f"  原价: {symbol}{e.old_price} ➔ <b>现价: {symbol}{e.new_price}</b> "
                 f"(↑{symbol}{diff_abs}, +{e.percent_change}%)\n"
                 f"  🔗 <a href=\"{_esc_attr(url)}\">查看商品</a>"
@@ -133,11 +149,13 @@ def _tag_tokens(line: str) -> list[str]:
     return tokens
 
 
-def render_qq_report(events: list[Any], site_base_url: str = "https://ai.pricememo.cn") -> str:
+def render_qq_report(
+    events: list[Any], site_base_url: str = "https://ai.pricememo.cn", *, detected_at: datetime | None = None,
+) -> str:
     """Render a clean plain-text/markdown report suitable for QQ Bot messages."""
     drops = [e for e in events if e.is_drop]
     hikes = [e for e in events if not e.is_drop]
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    now_str = format_detection_time(detected_at)
 
     lines = ["【PriceMemo 价格变动提醒】", ""]
 
@@ -150,6 +168,8 @@ def render_qq_report(events: list[Any], site_base_url: str = "https://ai.priceme
                 f"• {e.product_name} ({e.shop_name})\n"
                 f"  原价:{symbol}{e.old_price} -> 现价:{symbol}{e.new_price} (降{symbol}{diff_abs}, {e.percent_change}%)"
             )
+            if e.product_url:
+                lines.append(f"  🛒 原站商品: {e.product_url}")
         if len(drops) > 8:
             lines.append(f"... 其余 {len(drops) - 8} 条降价请登录官网查看")
         lines.append("")
@@ -167,4 +187,70 @@ def render_qq_report(events: list[Any], site_base_url: str = "https://ai.priceme
 
     lines.append(f"🔗 查看实时比价: {site_base_url}")
     lines.append(f"⏱ 检测时间: {now_str}")
+    return "\n".join(lines)
+
+
+def render_qq_team_reports(offers: list[Any], *, detected_at: datetime) -> list[str]:
+    """Keep every qualifying offer, paging instead of dropping later results."""
+    reports = []
+    page_count = (len(offers) + 7) // 8
+    for start in range(0, len(offers), 8):
+        page = f"（{start // 8 + 1}/{page_count}）" if page_count > 1 else ""
+        lines = [f"【PriceMemo OpenAI Team ≤¥20 提醒】{page}", f"本次快照共 {len(offers)} 款现货符合条件", ""]
+        for offer in offers[start:start + 8]:
+            lines.append(f"• {offer.product_name} ({offer.shop_name})\n  现价: ¥{offer.price:.2f}")
+            if offer.product_url:
+                lines.append(f"  🛒 原站商品: {offer.product_url}")
+        lines.append(f"\n⏱ 检测时间: {format_detection_time(detected_at)}")
+        reports.append("\n".join(lines))
+    return reports
+
+
+def split_qq_messages(text: str, limit: int = 3500) -> list[str]:
+    """Split QQ plain-text messages before the platform request is made.
+
+    Product names and merchant URLs are untrusted and can make a nominal
+    eight-item page exceed the platform's message limit. Prefer line breaks;
+    hard-split an unusually long individual line so it cannot block delivery.
+    """
+    if len(text.encode("utf-8")) <= limit:
+        return [text]
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for line in text.splitlines():
+        if "https://" in line and len(line.encode("utf-8")) > limit:
+            line = "原站链接过长，请在官网查看该商品：https://ai.pricememo.cn/products"
+        pieces = []
+        piece = ""
+        size = 0
+        for char in line:
+            width = len(char.encode("utf-8"))
+            if size + width > limit:
+                pieces.append(piece)
+                piece, size = "", 0
+            piece += char
+            size += width
+        pieces.append(piece)
+        for piece in pieces:
+            piece_len = len(piece.encode("utf-8"))
+            needed = piece_len + (1 if current else 0)
+            if current and current_len + needed > limit:
+                chunks.append("\n".join(current))
+                current = []
+                current_len = 0
+            current.append(piece)
+            current_len += piece_len + (1 if len(current) > 1 else 0)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+def render_telegram_team_report(offers: list[Any], *, detected_at: datetime) -> str:
+    lines = ["🔔 <b>【PriceMemo OpenAI Team ≤¥20 提醒】</b>", f"本次快照共 {len(offers)} 款现货符合条件", ""]
+    for offer in offers:
+        lines.append(f"• <b>{_esc(_display_name(offer.product_name))}</b> ({_esc(_display_name(offer.shop_name, 80))})\n  现价: <b>¥{offer.price:.2f}</b>")
+        if offer.product_url:
+            lines.append(f'  🛒 <a href="{_esc_attr(offer.product_url)}">原站商品</a>')
+    lines.append(f"\n⏱ 检测时间: {format_detection_time(detected_at)}")
     return "\n".join(lines)
