@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Float, Text, and_, case, cast, false, func, literal, not_, or_, select
+from sqlalchemy import Float, Numeric, Text, and_, case, cast, false, func, literal, not_, or_, select
 from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from ..core.config import get_settings
@@ -1472,6 +1472,50 @@ def get_group_offers(
     offers = list(db.scalars(stmt.order_by(*_group_offer_ordering())).unique())
     medians = _median_prices(offers, comparable_only=True)
     return [_offer_public(offer, median_price=medians.get(_median_key(offer))) for offer in offers]
+
+
+def get_offer_detail(db: Session, offer_id: int) -> OfferPublic | None:
+    cutoff = _fresh_cutoff()
+    delivery = func.coalesce(func.nullif(Offer.delivery_type, ""), "unknown")
+    currency = func.coalesce(func.nullif(Offer.currency, ""), PRICE_CURRENCY)
+    target = (
+        select(Offer.product_id, delivery.label("delivery"), currency.label("currency"))
+        .where(Offer.id == offer_id).cte("target_offer")
+    )
+    peers = (
+        _base_public_offer_query(db, include_details=False, cutoff=cutoff)
+        .join(target, and_(Offer.product_id == target.c.product_id, delivery == target.c.delivery, currency == target.c.currency))
+        .where(
+            Shop.status != "closed",
+            Offer.is_comparable.is_(True),
+            Offer.stock_status == "in_stock",
+            Offer.price > 0,
+        )
+        .with_only_columns(
+            Offer.price,
+            func.row_number().over(order_by=Offer.price).label("position"),
+            func.count().over().label("total"),
+            maintain_column_froms=True,
+        ).subquery()
+    )
+    # One SQL statement keeps the selected quote and its median on the same
+    # database snapshot, even when a publication commits during this request.
+    median = (
+        select(cast(func.avg(peers.c.price), Numeric(13, 3)))
+        .where(peers.c.position * 2 >= peers.c.total, peers.c.position * 2 <= peers.c.total + 2)
+        .scalar_subquery()
+    )
+    row = db.execute(
+        _base_public_offer_query(db, cutoff=cutoff)
+        .join(Product, Offer.product_id == Product.id)
+        .where(Offer.id == offer_id, Product.is_visible.is_(True), Shop.status != "closed")
+        .options(contains_eager(Offer.product))
+        .add_columns(median)
+    ).one_or_none()
+    if row is None:
+        return None
+    offer, median_price = row
+    return _offer_public(offer, include_description=True, product=offer.product, median_price=median_price)
 
 
 def get_offer_description(db: Session, offer_id: int) -> str | None:

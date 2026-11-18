@@ -9,6 +9,10 @@ from typing import Any
 BEIJING_TIME = timezone(timedelta(hours=8))
 
 
+def offer_detail_url(offer_id: int, site_base_url: str = "https://ai.pricememo.cn") -> str:
+    return f"{site_base_url.rstrip('/')}/offers/{offer_id}"
+
+
 def format_detection_time(detected_at: datetime | None = None) -> str:
     value = detected_at or datetime.now(timezone.utc)
     if value.tzinfo is None:
@@ -58,7 +62,7 @@ def render_telegram_report(
         for e in drops[:15]:  # Limit top 15 in message to avoid payload size overflow
             symbol = format_currency_symbol(e.currency)
             diff_abs = abs(Decimal(str(e.diff)))
-            url = e.product_url or site_base_url
+            url = offer_detail_url(e.offer_id, site_base_url)
             lines.append(
                 f"• <b>{_esc(_display_name(e.product_name))}</b> ({_esc(_display_name(e.shop_name, 80))})\n"
                 f"  原价: {symbol}{e.old_price} ➔ <b>现价: {symbol}{e.new_price}</b> "
@@ -168,8 +172,7 @@ def render_qq_report(
                 f"• {e.product_name} ({e.shop_name})\n"
                 f"  原价:{symbol}{e.old_price} -> 现价:{symbol}{e.new_price} (降{symbol}{diff_abs}, {e.percent_change}%)"
             )
-            if e.product_url:
-                lines.append(f"  🛒 原站商品: {e.product_url}")
+            lines.append(f"  🔗 商品详情: {offer_detail_url(e.offer_id, site_base_url)}")
         if len(drops) > 8:
             lines.append(f"... 其余 {len(drops) - 8} 条降价请登录官网查看")
         lines.append("")
@@ -190,7 +193,9 @@ def render_qq_report(
     return "\n".join(lines)
 
 
-def render_qq_team_reports(offers: list[Any], *, detected_at: datetime) -> list[str]:
+def render_qq_team_reports(
+    offers: list[Any], *, detected_at: datetime, site_base_url: str = "https://ai.pricememo.cn",
+) -> list[str]:
     """Keep every qualifying offer, paging instead of dropping later results."""
     reports = []
     page_count = (len(offers) + 7) // 8
@@ -199,8 +204,7 @@ def render_qq_team_reports(offers: list[Any], *, detected_at: datetime) -> list[
         lines = [f"【PriceMemo OpenAI Team ≤¥20 提醒】{page}", f"本次快照共 {len(offers)} 款现货符合条件", ""]
         for offer in offers[start:start + 8]:
             lines.append(f"• {offer.product_name} ({offer.shop_name})\n  现价: ¥{offer.price:.2f}")
-            if offer.product_url:
-                lines.append(f"  🛒 原站商品: {offer.product_url}")
+            lines.append(f"  🔗 商品详情: {offer_detail_url(offer.offer_id, site_base_url)}")
         lines.append(f"\n⏱ 检测时间: {format_detection_time(detected_at)}")
         reports.append("\n".join(lines))
     return reports
@@ -246,11 +250,13 @@ def split_qq_messages(text: str, limit: int = 3500) -> list[str]:
     return chunks
 
 
-def render_telegram_team_report(offers: list[Any], *, detected_at: datetime) -> str:
+def render_telegram_team_report(
+    offers: list[Any], *, detected_at: datetime, site_base_url: str = "https://ai.pricememo.cn",
+) -> str:
     lines = ["🔔 <b>【PriceMemo OpenAI Team ≤¥20 提醒】</b>", f"本次快照共 {len(offers)} 款现货符合条件", ""]
     for offer in offers:
         lines.append(f"• <b>{_esc(_display_name(offer.product_name))}</b> ({_esc(_display_name(offer.shop_name, 80))})\n  现价: <b>¥{offer.price:.2f}</b>")
-        if offer.product_url:
-            lines.append(f'  🛒 <a href="{_esc_attr(offer.product_url)}">原站商品</a>')
+        url = offer_detail_url(offer.offer_id, site_base_url)
+        lines.append(f'  🔗 <a href="{_esc_attr(url)}">商品详情</a>')
     lines.append(f"\n⏱ 检测时间: {format_detection_time(detected_at)}")
     return "\n".join(lines)

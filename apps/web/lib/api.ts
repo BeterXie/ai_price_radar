@@ -5,6 +5,7 @@ import type {
   CommunitySkillDetail,
   CommunitySkillPage,
   Meta,
+  Offer,
   ProductDetail,
   PublicCorrectionPage,
   RelayStationListOut,
@@ -98,6 +99,16 @@ export const getProduct = cache(async function getProduct(slug: string, query = 
       next: { revalidate: 30 },
     });
     return normalizeProductIdentity(product);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+});
+
+export const getOffer = cache(async function getOffer(id: string): Promise<Offer | null> {
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) return null;
+  try {
+    return await apiFetch<Offer>(`/api/v1/offers/${id}`, 1, { cache: "no-store" });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;

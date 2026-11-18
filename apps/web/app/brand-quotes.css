@@ -140,9 +140,10 @@ html[data-brand="aisi"] { --brand:#56633e;--brand-strong:#485632;--brand-soft:#e
 .quote-dialog-inner { padding:28px; }
 .quote-dialog header { display:flex;align-items:flex-start;gap:24px;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:20px; }
 .quote-dialog header p { color:var(--muted);font-size:12px;margin-bottom:8px; }
-.quote-dialog h2 { font-size:20px;line-height:1.6;overflow-wrap:anywhere; }
+.quote-dialog :is(h1,h2) { font-size:20px;line-height:1.6;overflow-wrap:anywhere; }
+.quote-detail-page { width:100%;max-height:none;box-shadow:none; }
 .quote-close { display:grid;place-items:center;min-width:40px;min-height:40px;border:1px solid var(--line);border-radius:50%;cursor:pointer; }
-.quote-dialog h3 { margin:26px 0 14px;font-size:15px;font-weight:650; }
+.quote-dialog h3,.quote-dialog .quote-detail-section-title { margin:26px 0 14px;font-size:15px;font-weight:650; }
 .quote-detail-terms,.quote-description,.quote-detail-warning { font-size:13px;line-height:1.9;margin-top:14px;white-space:pre-wrap;overflow-wrap:anywhere; }
 .quote-detail-warning { color:var(--warning); }
 .quote-detail-overview { margin-top:16px; }
