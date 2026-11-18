@@ -28,6 +28,7 @@ class TeamLowPriceOffer:
 
 def is_team_account_title(title: str) -> bool:
     text = unicodedata.normalize("NFKC", title).casefold().replace("×", "x").replace("✖", "x").replace("\ufe0f", "")
+    text = re.sub(r"(?:附带|附赠|附|赠送)(?:使用|上车)?教程", "", text)
     # A free/base account advertised as usable for opening Team is not a Team
     # subscription. Other vendors also sell products called "Team 5x".
     if account_plan("chatgpt", text, "") == "chatgpt-account" or re.search(
@@ -38,7 +39,7 @@ def is_team_account_title(title: str) -> bool:
     has_team = bool(
         re.search(r"(?<![a-z])team(?![a-z])|(?<![a-z0-9])(?:5|10)\s*x\s*team(?![a-z])", text)
     )
-    has_team_multiplier = bool(re.search(r"(?<!\d)(?:5|10)\s*(?:倍|x(?=team|[^a-z0-9]|$))", text))
+    has_team_multiplier = bool(re.search(r"(?<![\d.])(?:5|10)\s*(?:倍|x(?=team|[^a-z0-9]|$))", text))
     if has_team and has_team_multiplier:
         return True
     return bool(

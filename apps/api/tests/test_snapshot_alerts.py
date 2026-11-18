@@ -97,6 +97,7 @@ def add_offer(db, snapshot, *, title="【二车】Team 5x /23点踢/2fa-G邮箱"
     "【二车】Team 5x/23点踢/2fa-G邮箱/质保空间不炸",
     "Team 真头车｜不踢人｜500~1000刀10X额度",
     "ChatGPT Team 5× 成品号", "Team 10✖️ 成品号", "Team 5倍成品号", "Team 第2车",
+    "ChatGPT Team 5x 成品号（附使用教程）",
     "【二车】10Xteam /账密2fa /22点30踢/质保炸车封号1个小时",
     "5x team /2车/19号凌晨1点踢/不保降智 限流/发2fa",
     "二车晚上 23点59 踢 新10x team【 gm邮箱 700-1000刀】",
@@ -115,6 +116,7 @@ def test_matches_requested_team_title_variants(title):
     "5xteam 底号 可升级", "普号，可用5xteam车子号", "Team 5x 不含会员", "ChatGPT Plus 月卡", "steam 5x",
     "Team 1x 第十二车", "Team 1x 第12车", "ChatGPT 基础账号 2FA，可用于 Team 5x，无订阅",
     "普通账号 用于 Team 5x", "免费账号 用于 Team 5x", "Team 15x", "Team 100x",
+    "Team 2.5倍", "Team 0.5x", "Team 1.10x", "Team 5x 开通教程",
 ])
 def test_excludes_other_products_and_team_upgrade_accounts(title):
     assert not is_team_account_title(title)
