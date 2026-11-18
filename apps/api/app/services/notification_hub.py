@@ -79,13 +79,15 @@ def create_price_change_event(
 
 
 
-def dispatch_price_changes(events: list[PriceChangeEvent], db_session: Any = None) -> None:
+def dispatch_price_changes(
+    events: list[PriceChangeEvent], db_session: Any = None, *, snapshot_id: int | None = None,
+) -> None:
     """Safely dispatch price change events to private bots if installed.
 
     If extensions/bots is not installed (e.g. in public open-source repos),
     this gracefully logs and exits without interrupting pipeline execution.
     """
-    if not events:
+    if not events and snapshot_id is None:
         return
 
     if db_session is not None:
@@ -109,7 +111,7 @@ def dispatch_price_changes(events: list[PriceChangeEvent], db_session: Any = Non
         module = importlib.import_module(module_name)
         dispatch_fn = getattr(module, "dispatch_price_changes", None)
         if callable(dispatch_fn):
-            dispatch_fn(events, db_session=db_session)
+            dispatch_fn(events, db_session=db_session, snapshot_id=snapshot_id)
         else:
             logger.debug("extensions.bots.dispatcher has no dispatch_price_changes function")
     except ModuleNotFoundError as exc:
