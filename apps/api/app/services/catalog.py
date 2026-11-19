@@ -4,6 +4,7 @@ import threading
 import time
 import re
 from collections import OrderedDict, defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 import unicodedata
@@ -11,8 +12,8 @@ from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Float, Numeric, Text, and_, case, cast, false, func, literal, not_, or_, select
-from sqlalchemy.orm import Session, contains_eager, selectinload
+from sqlalchemy import Float, Numeric, Row, Text, and_, case, cast, false, func, literal, not_, or_, select
+from sqlalchemy.orm import Session, contains_eager, load_only, selectinload
 
 from ..core.config import get_settings
 from ..models import CatalogSnapshot, Offer, OfferClick, OfferHistory, Product, RawProduct, Shop
@@ -380,7 +381,7 @@ def _group_offer_ordering():
     )
 
 
-def _offer_sort_key(offer: Offer):
+def _offer_sort_key(offer: Offer | Row):
     return (
         offer.stock_status != "in_stock",
         not offer.is_comparable,
@@ -449,11 +450,11 @@ def _offer_public(
     )
 
 
-def _median_key(offer: Offer) -> tuple[int | None, str, str]:
+def _median_key(offer: Offer | Row) -> tuple[int | None, str, str]:
     return offer.product_id, offer.delivery_type or "unknown", offer.currency or PRICE_CURRENCY
 
 
-def _median_prices(offers: list[Offer], *, comparable_only: bool = False) -> dict[tuple[int | None, str, str], Decimal]:
+def _median_prices(offers: Iterable[Offer | Row], *, comparable_only: bool = False) -> dict[tuple[int | None, str, str], Decimal]:
     grouped: dict[tuple[int | None, str, str], list[Decimal]] = defaultdict(list)
     for offer in offers:
         if comparable_only and not offer.is_comparable:
@@ -467,7 +468,7 @@ def _median_prices(offers: list[Offer], *, comparable_only: bool = False) -> dic
     }
 
 
-def _is_trusted_offer(offer: Offer, medians: dict[tuple[int | None, str, str], Decimal]) -> bool:
+def _is_trusted_offer(offer: Offer | Row, medians: dict[tuple[int | None, str, str], Decimal]) -> bool:
     return (
         offer.stock_status == "in_stock"
         and bool(offer.is_comparable)
@@ -475,15 +476,15 @@ def _is_trusted_offer(offer: Offer, medians: dict[tuple[int | None, str, str], D
     )
 
 
-def _trusted_offer_sort_key(offer: Offer, medians: dict[tuple[int | None, str, str], Decimal] | None = None):
+def _trusted_offer_sort_key(offer: Offer | Row, medians: dict[tuple[int | None, str, str], Decimal] | None = None):
     return _offer_sort_key(offer)
 
 
 def _group_offers(
-    offers: list[Offer],
+    offers: Iterable[Offer | Row],
     medians: dict[tuple[int | None, str, str], Decimal] | None = None,
-) -> list[tuple[str, list[Offer]]]:
-    grouped: dict[str, list[Offer]] = defaultdict(list)
+) -> list[tuple[str, list[Offer | Row]]]:
+    grouped: dict[str, list[Offer | Row]] = defaultdict(list)
     for offer in offers:
         grouped[offer.item_fingerprint or f"offer-{offer.id}"].append(offer)
     groups = [
@@ -492,6 +493,16 @@ def _group_offers(
     ]
     groups.sort(key=lambda item: _trusted_offer_sort_key(item[1][0], medians))
     return groups
+
+
+def _offer_statistics_query(stmt):
+    """Read aggregation fields without materializing ORM graphs or descriptions."""
+    return stmt.with_only_columns(
+        Offer.id, Offer.product_id, Offer.shop_id, Offer.price, Offer.currency,
+        Offer.stock_status, Offer.is_comparable, Offer.delivery_type,
+        Offer.observed_at, Offer.item_fingerprint, Offer.click_count, Offer.tags,
+        maintain_column_froms=True,
+    )
 
 
 def get_product_recommendations(
@@ -527,7 +538,7 @@ def get_product_recommendations(
     ]
 
 
-def _data_quality(offers: list[Offer], trusted: list[Offer], comparable: list[Offer]) -> tuple[int, str]:
+def _data_quality(offers: Sequence[Offer | Row], trusted: Sequence[Offer | Row], comparable: Sequence[Offer | Row]) -> tuple[int, str]:
     if not offers:
         return 0, "数据不足"
     source_count = len({offer.shop_id for offer in offers})
@@ -764,7 +775,7 @@ def get_product_group_page(
         .where(Offer.product_id == product_id),
         filters,
     )
-    offers = list(db.scalars(stmt).unique())
+    offers = list(db.execute(_offer_statistics_query(stmt)))
     medians = _median_prices(offers, comparable_only=True)
     grouped = _group_offers(offers, medians)
     selected = grouped[offset:offset + limit]
@@ -773,8 +784,6 @@ def get_product_group_page(
     if representative_ids:
         detail_stmt = _base_public_offer_query(db, snapshot=snapshot, cutoff=cutoff).where(Offer.id.in_(representative_ids))
         representatives = {offer.id: offer for offer in db.scalars(detail_stmt).unique()}
-    medians = _median_prices(offers, comparable_only=True)
-
     items: list[OfferGroupPublic] = []
     for fingerprint, group in selected:
         representative = representatives.get(group[0].id)
@@ -1204,8 +1213,10 @@ def list_product_cards(
             return []
         stmt = stmt.where(Product.id.in_(page_ids))
 
-    offers = list(db.scalars(stmt.options(contains_eager(Offer.product))).unique())
-    grouped: dict[int, list[Offer]] = defaultdict(list)
+    offers = list(db.execute(_offer_statistics_query(stmt).add_columns(Product).options(
+        load_only(Product.id, Product.slug, Product.platform, Product.display_name, Product.subtitle, Product.product_type),
+    )))
+    grouped: dict[int, list[Row]] = defaultdict(list)
     for offer in offers:
         if offer.product_id is None:
             continue
@@ -1214,7 +1225,7 @@ def list_product_cards(
     cards: list[ProductCard] = []
     card_product_ids: dict[str, int] = {}
     for group in grouped.values():
-        product = group[0].product
+        product = group[0].Product
         if product is None:
             continue
         card_product_ids[product.slug] = product.id
@@ -1318,11 +1329,11 @@ def get_product_detail(
     if product is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
-    offers = list(db.scalars(_apply_offer_filters(
+    offers = list(db.execute(_offer_statistics_query(_apply_offer_filters(
         _base_public_offer_query(db, include_details=False, snapshot=snapshot)
         .where(Offer.product_id == product.id),
         filters,
-    )).unique())
+    ))))
     in_stock = [x for x in offers if x.stock_status == "in_stock" and x.price is not None and x.price > 0]
     price_scope = [x for x in in_stock if x.currency == PRICE_CURRENCY]
     comparable_in_stock = [x for x in price_scope if x.is_comparable]
@@ -1333,7 +1344,7 @@ def get_product_detail(
     all_tags = sorted({tag for offer in offers for tag in (offer.tags or [])})
 
     breakdown: list[DeliveryPriceSummary] = []
-    delivery_groups: dict[str, list[Offer]] = defaultdict(list)
+    delivery_groups: dict[str, list[Row]] = defaultdict(list)
     for offer in offers:
         delivery_groups[offer.delivery_type or "unknown"].append(offer)
     for delivery_type, group in delivery_groups.items():
@@ -1427,16 +1438,34 @@ def get_product_offer_page(
     if product_id is None:
         return None
     snapshot = _snapshot_for_query(db, snapshot_id)
-    stmt = _apply_offer_filters(
-        _base_public_offer_query(db, snapshot=snapshot)
+    scope = _apply_offer_filters(
+        _base_public_offer_query(db, include_details=False, snapshot=snapshot)
         .where(Offer.product_id == product_id),
         filters,
     )
-    offers = list(db.scalars(stmt.order_by(*_offer_ordering())).unique())
-    medians = _median_prices(offers, comparable_only=True)
+    # One SQL statement keeps prices and details in the same read view even
+    # when publication moves offers to a new snapshot. Only page rows join
+    # full merchant JSON; all other rows carry the small median inputs.
+    ranked = scope.with_only_columns(
+        Offer.id.label("quote_id"),
+        Offer.product_id, Offer.delivery_type, Offer.currency,
+        Offer.stock_status, Offer.price, Offer.is_comparable,
+        func.row_number().over(order_by=_offer_ordering()).label("position"),
+        maintain_column_froms=True,
+    ).subquery("ranked_offer_prices")
+    page = (
+        select(ranked, Offer).select_from(ranked)
+        .outerjoin(Offer, and_(Offer.id == ranked.c.quote_id, ranked.c.position > offset, ranked.c.position <= offset + limit))
+        .outerjoin(Shop, Offer.shop_id == Shop.id)
+        .outerjoin(RawProduct, Offer.raw_product_id == RawProduct.id)
+        .options(contains_eager(Offer.shop), contains_eager(Offer.raw_product))
+        .order_by(ranked.c.position)
+    )
+    rows = list(db.execute(page).unique())
+    medians = _median_prices(rows, comparable_only=True)
     return [
-        _offer_public(offer, median_price=medians.get(_median_key(offer)))
-        for offer in offers[offset:offset + limit]
+        _offer_public(row.Offer, median_price=medians.get(_median_key(row.Offer)))
+        for row in rows if row.Offer is not None
     ]
 
 

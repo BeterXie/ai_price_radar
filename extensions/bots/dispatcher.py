@@ -13,7 +13,7 @@ from app.services.credential_crypto import decrypt_secret
 
 from .formatter import (
     render_qq_report,
-    render_qq_team_reports,
+    iter_qq_team_reports,
     render_telegram_report,
     render_telegram_team_report,
     split_qq_messages,
@@ -29,6 +29,11 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _unexpired_team_offers(offers):
+    now = utcnow()
+    return [offer for offer in offers if offer.ends_at is not None and offer.ends_at > now]
+
+
 def dispatch_price_changes(
     events: list[Any], db_session: Any = None, *, snapshot_id: int | None = None,
 ) -> None:
@@ -39,7 +44,7 @@ def dispatch_price_changes(
        - Via Bound Bot (Tencent ClawBot / QQ Bot)
     2. Dispatches admin summary report to Telegram Bot.
     3. Dispatches general updates to active QQ Bot bindings.
-    4. Checks Team <= CNY 20 on every published snapshot, even without changes.
+    4. Checks unexpired Team head cars <= CNY 30 / other cars <= CNY 20 on every snapshot.
     """
     if not events and snapshot_id is None:
         return
@@ -236,10 +241,11 @@ def dispatch_price_changes(
                 tg_text = render_telegram_report(events, site_base_url=site_url, detected_at=detected_at)
                 if telegram.send_admin_message(tg_text):
                     logger.info("Dispatched %d price change event(s) to Telegram Admin", len(events))
-            if team_offers:
-                tg_text = render_telegram_team_report(team_offers, detected_at=detected_at, site_base_url=site_url)
+            current_team_offers = _unexpired_team_offers(team_offers)
+            if current_team_offers:
+                tg_text = render_telegram_team_report(current_team_offers, detected_at=detected_at, site_base_url=site_url)
                 if telegram.send_admin_message(tg_text):
-                    logger.info("Dispatched %d Team low-price offers to Telegram Admin", len(team_offers))
+                    logger.info("Dispatched %d Team low-price offers to Telegram Admin", len(current_team_offers))
         except Exception as exc:
             logger.error("Failed dispatching price change report to Telegram: %s", exc)
 
@@ -270,7 +276,8 @@ def dispatch_price_changes(
                     if (getattr(e, "is_drop", False) and binding.notify_price_drop)
                     or (not getattr(e, "is_drop", False) and binding.notify_price_hike)
                 ]
-                wants_team_alert = bool(team_offers and binding.notify_price_drop)
+                current_team_offers = _unexpired_team_offers(team_offers)
+                wants_team_alert = bool(current_team_offers and binding.notify_price_drop)
                 if not allowed_events and not wants_team_alert:
                     continue
 
@@ -286,13 +293,17 @@ def dispatch_price_changes(
                 messages = []
                 if allowed_events:
                     messages.append(render_qq_report(allowed_events, site_base_url=site_url, detected_at=detected_at))
-                if wants_team_alert:
-                    messages.extend(render_qq_team_reports(team_offers, detected_at=detected_at, site_base_url=site_url))
                 all_delivered = True
                 for message in messages:
                     for chunk in split_qq_messages(message):
                         if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
                             all_delivered = False
+                if wants_team_alert:
+                    for message in iter_qq_team_reports(current_team_offers, detected_at=detected_at,
+                                                         site_base_url=site_url, current_time=utcnow):
+                        for chunk in split_qq_messages(message):
+                            if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
+                                all_delivered = False
                 if all_delivered:
                     sent_count += 1
             if sent_count:
