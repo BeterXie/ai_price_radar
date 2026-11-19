@@ -98,7 +98,7 @@ def team_title_ends_at(title: str, *, observed_at: datetime) -> datetime | None:
     date_spans = []
     for calendar in _DATE.finditer(text):
         explicit_date = calendar['year'] or any(marker in calendar[0] for marker in ('月', '日', '号'))
-        followed_by_clock = any(other.start() >= calendar.end() and not text[calendar.end():other.start()].strip()
+        followed_by_clock = any(other.start() >= calendar.end() and not text[calendar.end():other.start()].strip(' \t\r\n,;|/[]():【】')
                                 for other in clocks)
         if explicit_date or followed_by_clock:
             date_spans.append(calendar.span())

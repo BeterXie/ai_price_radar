@@ -150,6 +150,9 @@ def test_excludes_other_products_and_team_upgrade_accounts(title):
     ('Team 头车 昨晚八点结束', '2026-11-18 20:00'),
     ('Team 头车 前天23点踢', '2026-11-17 23:00'),
     ('Team 头车 截止11.20 20:00', '2026-11-20 20:00'),
+    ('Team 头车 截止11.20，20:00踢', '2026-11-20 20:00'),
+    ('Team 头车 截止11.20｜20:00踢', '2026-11-20 20:00'),
+    ('Team 头车 截止【11.20】20:00踢', '2026-11-20 20:00'),
 ])
 def test_title_end_time_variants(title, expected):
     observed = datetime(2026, 11, 19, 20, 0, tzinfo=BEIJING)
