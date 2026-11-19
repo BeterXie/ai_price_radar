@@ -197,17 +197,35 @@ def render_qq_team_reports(
     offers: list[Any], *, detected_at: datetime, site_base_url: str = "https://ai.pricememo.cn",
 ) -> list[str]:
     """Keep every qualifying offer, paging instead of dropping later results."""
-    reports = []
-    page_count = (len(offers) + 7) // 8
-    for start in range(0, len(offers), 8):
-        page = f"（{start // 8 + 1}/{page_count}）" if page_count > 1 else ""
-        lines = [f"【PriceMemo OpenAI Team ≤¥20 提醒】{page}", f"本次快照共 {len(offers)} 款现货符合条件", ""]
-        for offer in offers[start:start + 8]:
+    return list(iter_qq_team_reports(offers, detected_at=detected_at, site_base_url=site_base_url))
+
+
+def iter_qq_team_reports(
+    offers: list[Any], *, detected_at: datetime, site_base_url: str = "https://ai.pricememo.cn", current_time=None,
+):
+    """Render each page immediately before delivery, dropping newly expired rows."""
+    pending = list(offers)
+    sent = 0
+    title = 'OpenAI Team 头车≤¥30 / 其他≤¥20 提醒' if any(offer.is_head_car for offer in offers) else 'OpenAI Team ≤¥20 提醒'
+    while pending:
+        if current_time is not None:
+            now = current_time()
+            pending = [offer for offer in pending if offer.ends_at is not None and offer.ends_at > now]
+        if not pending:
+            break
+        total = sent + len(pending)
+        page_count = (total + 7) // 8
+        page = f"（{sent // 8 + 1}/{page_count}）" if page_count > 1 else ""
+        batch, pending = pending[:8], pending[8:]
+        lines = [f"【PriceMemo {title}】{page}", f"本次快照共 {total} 款现货符合条件", ""]
+        for offer in batch:
             lines.append(f"• {offer.product_name} ({offer.shop_name})\n  现价: ¥{offer.price:.2f}")
+            if offer.ends_at is not None:
+                lines.append(f"  ⏳ 结束时间: {format_detection_time(offer.ends_at)}")
             lines.append(f"  🔗 商品详情: {offer_detail_url(offer.offer_id, site_base_url)}")
         lines.append(f"\n⏱ 检测时间: {format_detection_time(detected_at)}")
-        reports.append("\n".join(lines))
-    return reports
+        sent += len(batch)
+        yield "\n".join(lines)
 
 
 def split_qq_messages(text: str, limit: int = 3500) -> list[str]:
@@ -253,9 +271,12 @@ def split_qq_messages(text: str, limit: int = 3500) -> list[str]:
 def render_telegram_team_report(
     offers: list[Any], *, detected_at: datetime, site_base_url: str = "https://ai.pricememo.cn",
 ) -> str:
-    lines = ["🔔 <b>【PriceMemo OpenAI Team ≤¥20 提醒】</b>", f"本次快照共 {len(offers)} 款现货符合条件", ""]
+    title = 'OpenAI Team 头车≤¥30 / 其他≤¥20 提醒' if any(offer.is_head_car for offer in offers) else 'OpenAI Team ≤¥20 提醒'
+    lines = [f"🔔 <b>【PriceMemo {title}】</b>", f"本次快照共 {len(offers)} 款现货符合条件", ""]
     for offer in offers:
         lines.append(f"• <b>{_esc(_display_name(offer.product_name))}</b> ({_esc(_display_name(offer.shop_name, 80))})\n  现价: <b>¥{offer.price:.2f}</b>")
+        if offer.ends_at is not None:
+            lines.append(f"  ⏳ 结束时间: {format_detection_time(offer.ends_at)}")
         url = offer_detail_url(offer.offer_id, site_base_url)
         lines.append(f'  🔗 <a href="{_esc_attr(url)}">商品详情</a>')
     lines.append(f"\n⏱ 检测时间: {format_detection_time(detected_at)}")

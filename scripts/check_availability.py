@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import subprocess
 import time
 import urllib.request
@@ -25,6 +26,7 @@ CONTAINERS = (
     "ai-price-radar-web-aiprice-1", "ai-price-radar-web-aisi-1",
     "ai-price-radar-web-pricein-1", "ai-price-radar-web-openprice-1",
 )
+MAX_SNAPSHOT_AGE_SECONDS = 2 * 60 * 60
 
 
 def probe(url):
@@ -74,10 +76,43 @@ def inspect_host(previous, now):
             errors.append(name + " restarted unexpectedly")
     since = max(float(previous.get("timestamp", now - 300)), now - 3600)
     journal = command(["journalctl", "-k", "--since", "@" + str(int(since)), "--no-pager", "-o", "cat"])
-    oom_kills = sum("Out of memory: Killed process" in line for line in journal.splitlines())
+    # Pair the modern cgroup and legacy messages by victim PID. Mixed kernels
+    # can emit one or both forms; counting each format then taking max loses
+    # victims that appear in only one of the two formats.
+    victims = set()
+    for index, line in enumerate(journal.splitlines()):
+        if "oom-kill:constraint=" in line:
+            victim = re.search(r"\bpid=(\d+)", line)
+        elif "out of memory: killed process" in line.lower():
+            victim = re.search(r"killed process\s+(\d+)", line, re.IGNORECASE)
+        else:
+            continue
+        victims.add(victim[1] if victim else ('unknown', index))
+    oom_kills = len(victims)
     if oom_kills:
         errors.append("Kernel killed {} process(es) for lack of memory".format(oom_kills))
     return {"available_mib": memory, "oom_kills": oom_kills, "containers": containers}, errors
+
+
+def inspect_snapshot(pointer, now):
+    latest = json.loads(pointer.read_text(encoding="utf-8"))
+    value = re.sub(r"([+-]\d{2}):(\d{2})$", r"\1\2", latest["published_at"].replace("Z", "+0000"))
+    # The production host uses Python 3.6, which has no fromisoformat().
+    for pattern in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            published = datetime.strptime(value, pattern)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError("Invalid published snapshot timestamp")
+    age = now - published.timestamp()
+    errors = []
+    if age < -300:
+        errors.append("Published snapshot timestamp is in the future")
+    elif age > MAX_SNAPSHOT_AGE_SECONDS:
+        errors.append("No published snapshot for {:.0f} minutes".format(age / 60))
+    return {"snapshot_id": latest["snapshot_id"], "snapshot_age_seconds": round(age)}, errors
 
 
 def main():
@@ -103,6 +138,13 @@ def main():
             errors.extend(host_errors)
         except Exception as exc:
             errors.append("Host check failed: " + str(exc))
+        try:
+            pointer = Path(__file__).resolve().parents[1] / "apps/web/public/data/latest.json"
+            snapshot, snapshot_errors = inspect_snapshot(pointer, now)
+            report.update(snapshot)
+            errors.extend(snapshot_errors)
+        except Exception as exc:
+            errors.append("Snapshot check failed: " + str(exc))
     report.update({"ok": not errors, "errors": errors})
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
