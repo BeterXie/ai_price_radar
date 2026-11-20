@@ -46,7 +46,8 @@ def client(test_db):
     app.dependency_overrides.clear()
 
 
-def test_ad_slot_admin_crud_and_public_visibility(client, test_db):
+@pytest.mark.parametrize("placement", ["catalog_top", "shop_submit"])
+def test_ad_slot_admin_crud_and_public_visibility(client, test_db, placement):
     # Admin routes are protected.
     assert client.get("/api/v1/admin/ads").status_code == 401
 
@@ -54,7 +55,7 @@ def test_ad_slot_admin_crud_and_public_visibility(client, test_db):
         "/api/v1/admin/ads",
         headers=ADMIN,
         json={
-            "placement": "catalog_top",
+            "placement": placement,
             "title": "  某中转站 · 新用户赠额度 ",
             "description": "按量计费，支持主流模型。",
             "sponsor_name": "示例赞助商",
@@ -70,7 +71,7 @@ def test_ad_slot_admin_crud_and_public_visibility(client, test_db):
     assert slot["click_count"] == 0
 
     # Public read returns the live slot, filtered by placement.
-    public = client.get("/api/v1/ads", params={"placement": "catalog_top"}).json()
+    public = client.get("/api/v1/ads", params={"placement": placement}).json()
     assert public["enabled"] is True
     assert [item["id"] for item in public["items"]] == [slot["id"]]
     assert public["items"][0]["link_url"] == "https://relay.example.com/?ref=pricememo"

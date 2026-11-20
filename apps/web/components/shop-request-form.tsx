@@ -60,7 +60,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
           ...relay, ...relayProfileInputs(profile), groups: groupInputs(groups), name: shopName.trim(), url: shopUrl.trim(),
           contact: contact.trim(), note: note.trim(), authorization_confirmed: true,
         } : {
-          source_type: sourceType,
+          source_type: sourceType === "kmdian" ? "independent" : sourceType,
           shop_url: shopUrl.trim(),
           shop_name: shopName.trim(),
           contact: contact.trim(),

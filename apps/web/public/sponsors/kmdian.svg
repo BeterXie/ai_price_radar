@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="卡密小店">
+  <rect width="48" height="48" rx="13.5" fill="#2f54eb"/>
+  <g transform="translate(5.04 5.04) scale(1.58)" fill="#ffffff" fill-rule="evenodd">
+    <path d="M5.9 6.2h12.2a2.8 2.8 0 0 1 2.8 2.8v1.1a1.9 1.9 0 0 0 0 3.8v1.1a2.8 2.8 0 0 1-2.8 2.8H5.9a2.8 2.8 0 0 1-2.8-2.8v-1.1a1.9 1.9 0 0 0 0-3.8V9a2.8 2.8 0 0 1 2.8-2.8ZM10.95 12.9A2.55 2.55 0 1 1 13.05 12.9L13.5 15.15A.95.95 0 0 1 12.56 16.1H11.44A.95.95 0 0 1 10.5 15.15Z"/>
+  </g>
+</svg>

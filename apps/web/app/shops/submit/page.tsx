@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle, Eye, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { ShopRequestForm } from "@/components/shop-request-form";
+import { AdSlot } from "@/components/ad-slot";
 import { BUSINESS_EMAIL } from "@/lib/community";
 import { getMeta } from "@/lib/api";
 import { BRAND } from "@/lib/brands";
+import { SOURCE_INTAKE_OPTIONS } from "@/lib/source-intake.mjs";
 
 export const metadata: Metadata = {
   title: "提交商品来源",
@@ -20,6 +22,7 @@ export const metadata: Metadata = {
 export default async function ShopSubmitPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const meta = await getMeta().catch(() => null);
   const { type } = await searchParams;
+  const initialSourceType = SOURCE_INTAKE_OPTIONS.find((option) => option.id === type)?.id || "ldxp";
 
   return (
     <main id="main-content" className="shell py-12 md:py-16" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="task-orientation eligibility-check structured-form explicit-feedback">
@@ -30,8 +33,10 @@ export default async function ShopSubmitPage({ searchParams }: { searchParams: P
           <p className="lede mt-6" data-vds-role="explanation">提交公开店铺、商品页面、结构化 JSON Feed 或 API 中转站。商品来源核验报价信息；中转站使用提供的 Base URL、检测密钥和模型进行接口探活。</p>
         </div>
 
+        <AdSlot placement="shop_submit" limit={1} variant="intake" className="shop-submit-sponsor" />
+
         <div className="shop-submit-criteria">
-          <div className="mt-10 max-w-xl border-t border-black">
+          <div className="max-w-xl border-t border-black">
             {[
               { Icon: Eye, title: "核验来源信息", copy: "商品页面或 Feed 需公开可访问；中转站需提供公开官网和可用的接口信息。" },
               { Icon: ShieldCheck, title: "确认提交权限", copy: "使用已验证的登录邮箱提交。中转站密钥加密保存，请使用专门用于检测的低额度密钥。" },
@@ -66,7 +71,7 @@ export default async function ShopSubmitPage({ searchParams }: { searchParams: P
           ) : null}
         </div>
 
-        <ShopRequestForm initialSourceType={type === "relay" ? "relay" : "ldxp"} />
+        <ShopRequestForm initialSourceType={initialSourceType} />
       </section>
     </main>
   );

@@ -3,7 +3,7 @@ import type { AdSlotPublic } from "@/lib/types";
 
 export function SponsorCard({ item, variant = "showcase", primary = false }: {
   item: AdSlotPublic;
-  variant?: "showcase" | "banner" | "inline" | "compact";
+  variant?: "showcase" | "banner" | "inline" | "compact" | "intake";
   primary?: boolean;
 }) {
   const name = item.sponsor_name || item.title;
