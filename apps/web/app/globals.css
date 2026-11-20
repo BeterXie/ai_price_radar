@@ -543,12 +543,13 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 
 .shop-submit-layout {
   display: grid;
-  grid-template-areas: "intro" "form" "criteria";
+  grid-template-areas: "intro" "form" "sponsor" "criteria";
   gap: 32px;
 }
 .shop-submit-intro { grid-area: intro; }
 .shop-submit-criteria { grid-area: criteria; }
 .shop-submit-form { grid-area: form; }
+.shop-submit-sponsor { grid-area: sponsor; min-width: 0; }
 
 .radar-field { border: 1px solid var(--line-strong); border-top: 3px solid var(--info); border-radius: 9px; background: var(--panel); }
 .guide-card { border-color: var(--line); border-radius: 9px; transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease; }
@@ -576,10 +577,10 @@ table { font-variant-numeric: tabular-nums; }
 }
 @media (min-width: 900px) {
   .shop-submit-layout {
-    grid-template-areas: "intro form" "criteria form";
+    grid-template-areas: "intro form" "sponsor form" "criteria form";
     grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
     column-gap: 64px;
-    row-gap: 0;
+    row-gap: 28px;
     align-items: start;
   }
 }
@@ -926,6 +927,16 @@ table { font-variant-numeric: tabular-nums; }
 .sponsor-showcase .sponsor-cta { margin-top: auto; }
 .sponsor-cta:hover { background: #e0e9d1; }
 .sponsor-card a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+.sponsor-intake { display: grid; gap: 16px; padding: 20px; background: #f5f8ff; border-color: #c6d5f4; border-top: 3px solid #2f54eb; }
+.sponsor-intake .sponsor-logo { background: transparent; border: 0; }
+.sponsor-intake .sponsor-logo img { width: 44px; height: 44px; }
+.sponsor-intake .sponsor-name { font-size: 18px; color: #17336d; }
+.sponsor-intake .sponsor-disclosure { color: #52648c; border-color: #bccbed; }
+.sponsor-intake .sponsor-copy h3 { font-size: 18px; line-height: 1.5; color: #17336d; text-wrap: pretty; }
+.sponsor-intake .sponsor-copy p { margin-top: 8px; font-size: 13px; line-height: 1.8; color: #52617c; }
+.sponsor-intake .sponsor-copy p::first-line { font-weight: 650; color: #2448c4; }
+.sponsor-intake .sponsor-cta { justify-self: start; min-height: 44px; background: #2f54eb; border-color: #2f54eb; color: #fff; }
+.sponsor-intake .sponsor-cta:hover { background: #2343c3; border-color: #2343c3; }
 .sponsor-primary { background: #193c33; border-color: #193c33; color: #fffef4; }
 .sponsor-primary .sponsor-disclosure { color: #d1debd; border-color: #617963; }
 .sponsor-primary .sponsor-copy p { color: #c7d6c4; }

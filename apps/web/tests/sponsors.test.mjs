@@ -9,6 +9,21 @@ import { getContextualAds } from "../lib/contextual-ads.ts";
 
 const slot = (id, placement = "home_hero") => ({ id, placement, title: "Claude API / Claude Code", description: "Line details", sponsor_name: `Sponsor ${id}`, link_url: `https://example.com/?placement=${placement}`, image_url: "/sponsors/sidrune.svg", badge: "", cta_text: "了解 API" });
 
+test("intake sponsor keeps referral attribution, terms and its independent placement", async (context) => {
+  const item = { ...slot(20, "shop_submit"), sponsor_name: "卡密小店", title: "专业数字卡密自动交易平台", description: "新商 7 天 1% 费率。注册后联系客服领取。", link_url: "https://m.kmdian.com/register?ref=PRICEMEMORY" };
+  context.mock.method(globalThis, "fetch", async (url) => {
+    assert.equal(new URL(url).searchParams.get("placement"), "shop_submit");
+    return Response.json({ enabled: true, items: [item] });
+  });
+  const html = renderToStaticMarkup(await AdSlot({ placement: "shop_submit", variant: "intake", limit: 1 }));
+  assert.match(html, /data-placement="shop_submit"/);
+  assert.match(html, /ref=PRICEMEMORY/);
+  assert.match(html, /联系客服领取/);
+  assert.match(html, /nofollow sponsored/);
+  context.mock.method(globalThis, "fetch", async () => Response.json({ enabled: false, items: [] }));
+  assert.equal(await AdSlot({ placement: "shop_submit", variant: "intake", limit: 1 }), null);
+});
+
 test("sponsor showcase preserves configured order and hides empty placements", async (context) => {
   context.mock.method(globalThis, "fetch", async () => Response.json({ enabled: true, items: [slot(9), slot(2), slot(6)] }));
   const html = renderToStaticMarkup(await SponsorShowcase());

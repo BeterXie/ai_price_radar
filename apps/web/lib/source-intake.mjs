@@ -1,6 +1,7 @@
 export const SOURCE_INTAKE_OPTIONS = [
   { id: "ldxp", label: "链动小铺" },
   { id: "16688", label: "16688" },
+  { id: "kmdian", label: "卡密小店" },
   { id: "independent", label: "独立站点" },
   { id: "relay", label: "API 中转站" },
 ];
@@ -20,6 +21,11 @@ export const SOURCE_INTAKE_COPY = {
     fieldLabel: "独立站或商品页地址",
     placeholder: "https://shop.example.com/products/example",
     hint: "提交公开店铺首页、商品页面或 JSON Feed 地址。系统自动识别 Dujiao-Next、异次元/ACG-Faka、WooCommerce、Schema.org 等来源并核验商品。",
+  },
+  kmdian: {
+    fieldLabel: "卡密小店公开店铺地址",
+    placeholder: "粘贴店主后台提供的公开店铺链接",
+    hint: "提交可公开访问的店铺或商品页面，请勿填写店主后台、登录或注册链接。审核通过并成功读取商品后展示报价。",
   },
   relay: {
     fieldLabel: "中转站官网",

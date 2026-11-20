@@ -19,7 +19,7 @@ export async function AdSlot({
 }: {
   placement: AdPlacement;
   limit?: number;
-  variant?: "banner" | "compact" | "sponsor";
+  variant?: "banner" | "compact" | "sponsor" | "intake";
   className?: string;
 }) {
   const { items } = await getAdSlots(placement, limit);
@@ -27,7 +27,8 @@ export async function AdSlot({
   return (
     <aside className={`ad-slot ad-slot-${variant} ${className}`.trim()} aria-label="赞助内容" data-placement={placement}>
       {items.map((item, index) => (
-        variant === "sponsor" ? <SponsorCard key={item.id} item={item} variant="banner" primary={index === 0} /> : <AdCard key={item.id} item={item} variant={variant} />
+        variant === "intake" ? <SponsorCard key={item.id} item={item} variant="intake" /> :
+          variant === "sponsor" ? <SponsorCard key={item.id} item={item} variant="banner" primary={index === 0} /> : <AdCard key={item.id} item={item} variant={variant} />
       ))}
     </aside>
   );

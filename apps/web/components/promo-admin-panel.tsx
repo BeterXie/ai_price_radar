@@ -34,6 +34,7 @@ export const AD_PLACEMENT_LABELS: Record<AdPlacement, { label: string; hint: str
   claude_detail: { label: "Claude · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 Claude 报价区展示。" },
   openai_feed: { label: "OpenAI · 筛选区右侧", hint: "OpenAI 分类和商品页的紧凑卡片，手机端顺排。详情广告未配置时也用于商品弹窗。" },
   openai_detail: { label: "OpenAI · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 OpenAI 报价区展示。" },
+  shop_submit: { label: "申请收录 · 商户服务赞助", hint: "提交来源页的独立赞助卡片，桌面位于表单旁，手机位于表单下方。展示一位赞助商，支持排期和点击统计。" },
   sidebar: { label: "预留 · 侧栏", hint: "暂未接入页面，供后续版式使用。" },
 };
 
