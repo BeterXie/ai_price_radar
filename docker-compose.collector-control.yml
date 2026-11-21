@@ -1,0 +1,19 @@
+services:
+  collector-gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    tmpfs:
+      - /config:size=4m,uid=10001,gid=10001
+      - /data:size=4m,uid=10001,gid=10001
+    ports: ["127.0.0.1:18083:8080"]
+    volumes:
+      - ./deploy/collector-gateway.Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [detector_control]
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}

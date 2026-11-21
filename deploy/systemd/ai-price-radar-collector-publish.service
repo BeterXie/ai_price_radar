@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish completed remote PriceMemo collection
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-price-radar-v3
+ExecStart=/usr/bin/python3 /opt/ai-price-radar-v3/scripts/collector_schedule.py publish
+TimeoutStartSec=30m
+Nice=10
+NoNewPrivileges=true

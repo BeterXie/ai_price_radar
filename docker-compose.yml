@@ -54,6 +54,9 @@ services:
       INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:-replace-with-a-separate-intake-worker-key}
       DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
       DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
+      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-false}
+      COLLECTOR_WORKER_KEY: ${COLLECTOR_WORKER_KEY:-}
+      COLLECTOR_RESULTS_DIR: /app/collector-results
       DISCOVERY_ENABLED: ${DISCOVERY_ENABLED:-true}
       DISCOVERY_MAX_RAW_URLS: ${DISCOVERY_MAX_RAW_URLS:-2000}
       DISCOVERY_MAX_NEW_CANDIDATES: ${DISCOVERY_MAX_NEW_CANDIDATES:-1000}
@@ -77,6 +80,8 @@ services:
       SMTP_SSL: ${SMTP_SSL:-false}
     volumes:
       - ./apps/web/public/data:/app/public-data:ro
+      - ./data/collector-results:/app/collector-results
+    group_add: ["10001"]
     depends_on:
       db:
         condition: service_healthy

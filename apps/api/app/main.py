@@ -14,11 +14,11 @@ from fastapi.responses import JSONResponse
 from .core.config import get_settings
 from .core.runtime_safety import validate_api_runtime_settings
 from .database import Base, engine
-from .routers import admin, auth, discovery, internal, public, public_feed, sites, user
+from .routers import admin, auth, collectors, discovery, internal, public, public_feed, sites, user
 from .seed import seed
 
 settings = get_settings()
-VERSION = "3.9.92"
+VERSION = "3.9.93"
 PRIVACY_CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 logger = logging.getLogger(__name__)
 
@@ -124,6 +124,7 @@ app.include_router(admin.router)
 app.include_router(sites.router)
 app.include_router(sites.admin_router)
 app.include_router(internal.router)
+app.include_router(collectors.router)
 app.include_router(internal.detector_router)
 app.include_router(discovery.router)
 app.include_router(discovery.runs_router)

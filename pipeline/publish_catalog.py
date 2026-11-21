@@ -486,6 +486,23 @@ def _move_source_offers(
     elif spec.connector == "dujiao-next":
         source_url = dujiao_next._origin(dujiao_next._validate_store_url(spec.source))
         platform = "dujiao_next"
+    elif spec.connector == "ldxp":
+        result = db.execute(update(Offer).where(Offer.snapshot_id == from_snapshot_id,
+            Offer.shop_id.in_(select(Shop.id).where(Shop.platform == "ldxp"))).values(snapshot_id=to_snapshot_id))
+        return result.rowcount
+    elif spec.connector == "merchant-json":
+        from connectors.merchant_json import _internal_shop_token
+        from price_radar_http import PinnedHTTPSClient
+        token = _internal_shop_token(PinnedHTTPSClient.normalize_url(spec.source))
+        result = db.execute(update(Offer).where(Offer.snapshot_id == from_snapshot_id,
+            Offer.shop_id.in_(select(Shop.id).where(Shop.token == token, Shop.platform == "merchant_json"))).values(snapshot_id=to_snapshot_id))
+        return result.rowcount
+    elif spec.connector == "woocommerce-store":
+        from connectors.woocommerce_store import _origin, _validate_store_url, _shop_token
+        token = _shop_token(_origin(_validate_store_url(spec.source)))
+        result = db.execute(update(Offer).where(Offer.snapshot_id == from_snapshot_id,
+            Offer.shop_id.in_(select(Shop.id).where(Shop.token == token, Shop.platform == 'woocommerce'))).values(snapshot_id=to_snapshot_id))
+        return result.rowcount
     else:
         raise ValueError(f"unsupported source failure isolation: {spec.connector}")
     source_url = source_url.rstrip("/")
@@ -928,6 +945,7 @@ def _publish_prepared_sources(
     carry_forward_current: bool,
     dry_run: bool,
     started_at: datetime,
+    collector_job_id: str | None = None,
 ) -> PublishResult:
     retry_before = started_at - NO_PRODUCTS_RETRY_INTERVAL
     try:
@@ -1065,6 +1083,16 @@ def _publish_prepared_sources(
                 if offer_staging is not None:
                     offer_staging.apply(db)
                 snapshot.published_at = published_at
+                if collector_job_id is not None:
+                    from app.models import CollectorJob
+                    job = db.get(CollectorJob, collector_job_id)
+                    if job is None or job.status != "publishing":
+                        raise SourceImportError("collector job is not authorized to publish")
+                    job.published_snapshot_id = snapshot.id
+                    import export_snapshot
+                    pointer = export_snapshot.DEFAULT_OUTPUT_DIR / 'latest.json'
+                    public_baseline = int(json.loads(pointer.read_text(encoding='utf-8'))['snapshot_id']) if pointer.is_file() else None
+                    job.result_summary = {**job.result_summary, 'public_baseline_snapshot_id':public_baseline}
                 db.commit()
                 db.expire_all()
                 try:

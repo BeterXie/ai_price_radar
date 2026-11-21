@@ -1,0 +1,61 @@
+services:
+  collector:
+    image: pricememo-collector:${COLLECTOR_RELEASE:?release required}
+    restart: "no"
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1800m
+    cpus: 1.5
+    shm_size: 256m
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    environment:
+      COLLECTOR_API_URL: http://172.30.93.1:18081
+      INTAKE_API_URL: http://172.30.93.1:18081
+      DISCOVERY_API_URL: http://172.30.93.1:18081
+      COLLECTOR_RELEASE: ${COLLECTOR_RELEASE}
+      COLLECTOR_KEY_FILE: /secrets/collector.key
+      INTAKE_WORKER_KEY_FILE: /secrets/intake.key
+      DISCOVERY_WORKER_KEY_FILE: /secrets/discovery.key
+      COLLECTOR_RATE_DIR: /rates
+    volumes:
+      - ./data:/data
+      - ./rates:/rates
+      - ./secrets/collector.key:/secrets/collector.key:ro
+      - ./secrets/intake.key:/secrets/intake.key:ro
+      - ./secrets/discovery.key:/secrets/discovery.key:ro
+      - ./config:/config:ro
+    networks: [collection]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  detector:
+    image: pricememo-detector:${COLLECTOR_RELEASE:?release required}
+    restart: "no"
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 384m
+    cpus: 0.5
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    environment:
+      DETECTOR_API_URL: http://172.30.93.1:18081
+      DETECTOR_WORKER_KEY_FILE: /secrets/detector.key
+      DISCOVERY_WORKER_KEY_FILE: /secrets/discovery.key
+      COLLECTOR_RATE_DIR: /rates
+    volumes:
+      - ./rates:/rates
+      - ./secrets/detector.key:/secrets/detector.key:ro
+      - ./secrets/discovery.key:/secrets/discovery.key:ro
+    networks: [collection]
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "3"}
+networks:
+  collection:
+    name: pricememo_collection
+    external: true

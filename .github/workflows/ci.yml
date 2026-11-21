@@ -155,6 +155,33 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  collectors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+      - run: pip install ./shared_http -r apps/api/requirements.txt -r pipeline/requirements-test.txt -r collector/requirements.txt
+      - run: python -m pytest collector/tests -q
+      - run: COLLECTOR_RELEASE=ci docker compose -f collector/compose.yml config -q
+      - run: docker build -t pricememo-collector:ci -f collector/Dockerfile .
+      - name: Verify isolated collector runtime
+        run: >-
+          docker run --rm --network none -e COLLECTOR_API_URL=http://127.0.0.1:18081
+          -e COLLECTOR_RELEASE=ci -e COLLECTOR_KEY_FILE=/etc/hostname
+          pricememo-collector:ci python -c "import collector_worker, ldxp_gpt_crawler"
+      - name: Verify headed browser with production restrictions
+        run: >-
+          docker run --rm --init --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges:true --tmpfs /tmp:size=128m,mode=1777
+          --tmpfs /data:size=128m,uid=10001,gid=10001,mode=700
+          --shm-size 256m -v "$PWD/collector/tests/browser_smoke.py:/smoke.py:ro"
+          pricememo-collector:ci xvfb-run -a python /smoke.py
+      - name: Validate private worker gateway
+        run: docker run --rm -v "$PWD/deploy/collector-gateway.Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
   extensions:
     runs-on: ubuntu-latest
     timeout-minutes: 15

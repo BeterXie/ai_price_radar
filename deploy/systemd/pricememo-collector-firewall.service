@@ -1,0 +1,11 @@
+[Unit]
+Description=Isolate PriceMemo collection network
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/pricememo-collector/current/scripts/collector_firewall.py
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target

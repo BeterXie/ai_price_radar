@@ -33,6 +33,8 @@ def validate_api_runtime_settings(settings: Settings) -> None:
         "SESSION_SECRET_KEY": settings.session_secret_key,
         "BOT_SECRET_ENCRYPTION_KEY": settings.bot_secret_encryption_key,
     }
+    if settings.collector_enabled:
+        secrets["COLLECTOR_WORKER_KEY"] = settings.collector_worker_key
     for name, value in secrets.items():
         if value in _PLACEHOLDERS or len(value.encode("utf-8")) < 32:
             errors.append(f"{name} must contain at least 32 non-placeholder bytes")
@@ -43,6 +45,8 @@ def validate_api_runtime_settings(settings: Settings) -> None:
         settings.detector_worker_key,
         settings.discovery_worker_key,
     ]
+    if settings.collector_enabled:
+        worker_keys.append(settings.collector_worker_key)
     if len(set(worker_keys)) != len(worker_keys):
         errors.append("administrator and worker keys must all be distinct")
     if settings.bot_secret_encryption_key == settings.session_secret_key:

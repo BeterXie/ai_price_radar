@@ -55,6 +55,30 @@ class Product(Base):
     offers: Mapped[list[Offer]] = relationship(back_populates="product")
 
 
+class CollectorJob(Base):
+    __tablename__ = "collector_jobs"
+    __table_args__ = (UniqueConstraint("active_lane", name="uq_collector_active_lane"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    active_lane: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    release: Mapped[str] = mapped_column(String(30))
+    sources: Mapped[list] = mapped_column(JSON, default=list)
+    worker_id: Mapped[str] = mapped_column(String(80), default="")
+    lease_token: Mapped[str] = mapped_column(String(64), default="")
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    result_file: Mapped[str] = mapped_column(String(100), default="")
+    result_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(String(500), default="")
+    published_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    baseline_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    followup_kind: Mapped[str] = mapped_column(String(20), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class CatalogSnapshot(Base):
     __tablename__ = "catalog_snapshots"
 

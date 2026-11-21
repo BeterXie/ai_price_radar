@@ -8,6 +8,7 @@ from typing import Any
 from .bridge import DiscoveryBridge
 from .models import DiscoveryAdapter, DiscoveryBudget, DiscoveryRunStats
 from .normalize import candidate_key_for, normalize_candidate_url
+from price_radar_http.pacing import PacingStorageError
 
 
 class DiscoveryRunner:
@@ -105,6 +106,9 @@ class DiscoveryRunner:
                         if len(self._seen_keys) >= self.budget.max_unique_candidates:
                             self.stats.note = "unique candidate budget reached"
                             break
+                except PacingStorageError:
+                    self.stats.failure_stats['infrastructure'] = 1
+                    raise
                 except Exception as exc:
                     self.logger.error("Adapter %s 失败：%s", adapter.name, type(exc).__name__)
                     self.stats.failure_stats[adapter.name] = self.stats.failure_stats.get(adapter.name, 0) + 1

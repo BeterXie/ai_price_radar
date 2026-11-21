@@ -10,7 +10,8 @@ CRAWLER_DB="$DATA_DIR/ldxp_crawler.db"
 MERCHANT_SOURCES="$DATA_DIR/merchant_sources.json"
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.pricememo.yml)
 CRAWLER_CONTAINER_NAME="ai-price-radar-crawler-run-${MODE}"
-KEYWORDS=(gpt chatgpt "chatgpt plus" "chatgpt pro" "chatgpt team" "chatgpt business" "openai api" codex claude "claude pro" "claude api" anthropic gemini "gemini advanced" "google one ai" "gemini api" grok supergrok "xai api" "x.ai" cursor windsurf augment "github copilot" muse "muse ai" jev "智谱" "智谱清言" "清言" "glm" "chatglm" 账号 成品号 代充 直充 团队席位 车位 卡密 兑换码 API 额度 中转 自动发货 "open ai" "x premium" "twitter premium" "推特会员" "chat plus" "gpt plus" "gpt team")
+KEYWORD_TEXT=$(PYTHONIOENCODING=utf-8 python3 -c 'import json,sys; words=json.load(open(sys.argv[1], encoding="utf-8")); valid=isinstance(words,list) and words and all(isinstance(w,str) and w.strip() and "\n" not in w for w in words); valid or sys.exit("invalid collection keywords"); print("\n".join(words))' config/collection-keywords.json)
+mapfile -t KEYWORDS <<< "$KEYWORD_TEXT"
 
 cleanup_crawler_container() {
   docker rm -f "$CRAWLER_CONTAINER_NAME" >/dev/null 2>&1 || true
