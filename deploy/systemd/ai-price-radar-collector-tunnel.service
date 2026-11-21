@@ -1,0 +1,12 @@
+[Unit]
+Description=Private PriceMemo worker API reverse tunnel
+After=network-online.target docker.service
+Wants=network-online.target
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT -i /opt/ai-price-radar-v3/data/collector-ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/opt/ai-price-radar-v3/data/collector-ssh/known_hosts -o ExitOnForwardFailure=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -R 172.30.93.1:18081:127.0.0.1:18083 pm-collector-tunnel@129.146.71.73
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+[Install]
+WantedBy=multi-user.target

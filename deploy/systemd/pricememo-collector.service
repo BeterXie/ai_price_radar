@@ -1,0 +1,22 @@
+[Unit]
+Description=PriceMemo isolated collection workers
+Requires=pricememo-collector-firewall.service
+BindsTo=docker.service pricememo-collector-firewall.service
+After=docker.service pricememo-collector-firewall.service network-online.target
+Wants=network-online.target
+PartOf=docker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pricememo-collector
+ExecStartPre=/usr/bin/python3 /opt/pricememo-collector/current/scripts/collector_firewall.py
+ExecStart=/usr/bin/docker compose --env-file config/release.env -f compose.yml up --no-build --abort-on-container-exit --remove-orphans
+ExecStop=/usr/bin/docker compose --env-file config/release.env -f compose.yml down --timeout 30
+Restart=always
+RestartSec=15
+TimeoutStartSec=120
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

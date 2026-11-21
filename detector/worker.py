@@ -6,15 +6,25 @@ import signal
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from probe import MAX_TASK_SECONDS, probe_source
 from qualify import QualificationResult, qualify_candidate
+from price_radar_http.pacing import OriginCoolingDown
 
 
 API_URL = os.getenv("DETECTOR_API_URL", "http://api:8000").rstrip("/")
-WORKER_KEY = os.getenv("DETECTOR_WORKER_KEY", "")
-DISCOVERY_WORKER_KEY = os.getenv("DISCOVERY_WORKER_KEY", "")
+def _secret(name):
+    path = os.getenv(name + "_FILE")
+    value = Path(path).read_text().strip() if path else os.getenv(name, "")
+    if path and not value:
+        raise RuntimeError(name + '_FILE is empty')
+    return value
+
+
+WORKER_KEY = _secret("DETECTOR_WORKER_KEY")
+DISCOVERY_WORKER_KEY = _secret("DISCOVERY_WORKER_KEY")
 POLL_SECONDS = max(1.0, float(os.getenv("DETECTOR_POLL_SECONDS", "5")))
 CANDIDATE_CLAIM_LIMIT = max(1, int(os.getenv("DISCOVERY_CLAIM_LIMIT", "5")))
 CANDIDATE_LEASE_SECONDS = max(60, int(os.getenv("DISCOVERY_LEASE_SECONDS", "900")))
@@ -73,6 +83,11 @@ def run_once() -> int:
                     "shop_name": result.shop_name,
                     "product_count": result.product_count,
                 }
+            except OriginCoolingDown as exc:
+                # Leave the lease for expiry, rather than mark a source invalid
+                # because another process hit the shared origin budget.
+                print(f"Source lease deferred: {exc}", flush=True)
+                continue
             except Exception:
                 payload = {
                     "status": "validation_failed",
@@ -108,6 +123,9 @@ def run_once() -> int:
                     "confidence_score": result.confidence_score,
                     "failure_reason": result.failure_reason,
                 }
+            except OriginCoolingDown as exc:
+                print(f"Candidate lease deferred: {exc}", flush=True)
+                continue
             except Exception:
                 payload = {
                     "status": "validation_failed",

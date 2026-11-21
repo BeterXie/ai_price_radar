@@ -164,6 +164,14 @@ class PinnedHTTPSClient:
         raise failures[-1]
 
     def _request(
+        self, value: object, **kwargs,
+    ) -> PinnedResponse:
+        from .pacing import origin_budget
+        host = urllib.parse.urlsplit(self.normalize_url(value)).hostname or ""
+        with origin_budget(host, timeout=self._remaining_seconds()) as received:
+            return self._request_direct(value, on_status=received, **kwargs)
+
+    def _request_direct(
         self,
         value: object,
         *,
@@ -173,6 +181,7 @@ class PinnedHTTPSClient:
         content_type: str = "",
         extra_headers: dict[str, str] | None = None,
         on_chunk: Callable[[bytes], None] | None = None,
+        on_status=None,
     ) -> PinnedResponse:
         for key, header_value in (extra_headers or {}).items():
             if key.casefold() not in {"authorization", "x-api-key", "anthropic-version", "x-goog-api-key"}:
@@ -209,6 +218,8 @@ class PinnedHTTPSClient:
             tls_socket.sendall("".join(headers).encode("ascii") + b"\r\n" + body)
             response = http.client.HTTPResponse(tls_socket)
             response.begin()
+            if on_status:
+                on_status(response.status)
             headers = {key.casefold(): header_value for key, header_value in response.getheaders()}
             if 300 <= response.status < 400:
                 raise ValueError("source redirects are not followed")

@@ -1,0 +1,29 @@
+:8080 {
+    @result {
+        method PUT
+        path /api/v1/internal/collectors/*/result
+    }
+    handle @result {
+        request_body {
+            max_size 134217728
+        }
+        reverse_proxy api:8000
+    }
+    @worker {
+        method POST
+        path /api/v1/internal/collectors/* /api/v1/internal/source-detections/* /api/v1/internal/source-candidates/* /api/v1/internal/source-discovery/* /api/v1/internal/source-intakes/*
+    }
+    handle @worker {
+        request_body {
+            max_size 2MB
+        }
+        reverse_proxy api:8000
+    }
+    @health path /health
+    handle @health {
+        reverse_proxy api:8000
+    }
+    handle {
+        respond 404
+    }
+}

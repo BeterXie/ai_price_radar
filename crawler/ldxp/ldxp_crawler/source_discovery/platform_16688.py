@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 import requests
+from price_radar_http.pacing import origin_budget
 
 from .models import DiscoveredCandidate, DiscoveryAdapter, DiscoveryBudget
 from .normalize import normalize_candidate_url
@@ -39,13 +40,12 @@ class Platform16688Adapter(DiscoveryAdapter):
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         response = None
         try:
-            response = self.session.post(
-                f"{ORIGIN}{path}",
-                json=payload,
-                headers=PUBLIC_HEADERS,
-                timeout=self.timeout,
-                allow_redirects=False,
-            )
+            with origin_budget("www.16688.com.cn") as received:
+                response = self.session.post(
+                    f"{ORIGIN}{path}", json=payload, headers=PUBLIC_HEADERS,
+                    timeout=self.timeout, allow_redirects=False, stream=True,
+                )
+                received(response.status_code)
             if response.status_code != 200:
                 return None
             document = response.json()

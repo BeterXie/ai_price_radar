@@ -294,6 +294,19 @@ def test_16688_submission_uses_platform_scoped_alias_token(api_client):
     assert response.json()["shop_token"] == "16688-HARVEY"
 
 
+def test_new_16688_goods_detection_persists_canonical_shop_before_approval(api_client):
+    client, engine = api_client
+    response = client.post('/api/v1/shop-requests', json=_payload(shop_url='https://www.16688.com.cn/goods/G22076118'))
+    assert response.status_code == 201
+    identity = response.json()['request_id']
+    canonical = 'https://www.16688.com.cn/shop/S358780'
+    _detect(client, identity, platform='16688', source_url=canonical, source_key=canonical)
+    with Session(engine) as db:
+        intake = db.get(SourceIntake, identity)
+        assert intake.source_url == intake.source_key == canonical
+        assert intake.status == 'pending_review'
+
+
 def test_submission_is_an_intake_and_outbox_is_transactional(api_client):
     client, engine = api_client
     created = client.post("/api/v1/shop-requests", json=_payload())

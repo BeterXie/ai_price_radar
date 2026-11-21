@@ -1,5 +1,10 @@
 # 生产快速部署
 
+独立采集版本 v3.9.93 包含 v28 `collector_jobs` 表迁移，切换 API 前使用新 API 镜像和只读源码挂载执行
+`python scripts/migrate_collectors_v28.py`，先在临时 PostgreSQL 16 连续运行两次。采集节点部署、私有网关、网络隔离、隧道及调度切换按 [COLLECTOR_DEPLOY.md](COLLECTOR_DEPLOY.md) 验收。
+`COLLECTOR_ENABLED` 仅在私有通道与采集状态迁移完成后开启。切换后主站旧扫描命令改为 `scripts/collector_schedule.py` 入队，发布器 timer 独立消费已完成结果；原 source-detector 停止，迁往甲骨文。日常应用升级必须保持 `COLLECTOR_RELEASE` 与远端 Worker 镜像一致，避免跨版本领取任务。
+首次切换还需按 COLLECTOR_DEPLOY.md 将既有 SQLite/配置文件审批一次性导入主库；其后所有外部来源均带主库 intake ID，发布事务会锁定并复核审批，停用旧的文件审批入口。
+
 群主动推送版本包含 v27 新表迁移：切换 API 前使用该 Release 镜像运行
 以下命令执行源码包内的迁移脚本；`scripts/` 不在镜像内，必须只读挂载发布源码目录：
 

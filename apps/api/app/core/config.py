@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     intake_worker_key: str = ""
     detector_worker_key: str = ""
     discovery_worker_key: str = ""
+    collector_worker_key: str = ""
+    collector_results_dir: str = "./data/collector-results"
+    collector_enabled: bool = False
     intake_lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
     discovery_enabled: bool = True
     discovery_sources: str = "seed,16688,commoncrawl,bing,github"

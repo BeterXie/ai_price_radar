@@ -1,0 +1,8 @@
+[Unit]
+Description=Check remote collection results every minute
+[Timer]
+OnCalendar=*-*-* *:*:30
+Persistent=true
+Unit=ai-price-radar-collector-publish.service
+[Install]
+WantedBy=timers.target
