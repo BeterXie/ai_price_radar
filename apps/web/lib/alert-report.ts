@@ -94,5 +94,6 @@ const beijingTime = new Intl.DateTimeFormat("zh-CN", {
 });
 
 export function alertTime(value: string): string {
-  return beijingTime.format(new Date(value));
+  const parts = Object.fromEntries(beijingTime.formatToParts(new Date(value)).map(({ type, value: part }) => [type, part]));
+  return `${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }

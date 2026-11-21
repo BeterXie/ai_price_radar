@@ -25,7 +25,7 @@ test("links select a current board and use explicit Beijing time and currency", 
   assert.equal(alertView("rises"), "rises");
   assert.equal(alertView("unknown"), "drops");
   assert.equal(alertMoney("18", "USD"), "$18.00");
-  assert.match(alertTime(row.ends_at), /15:00/);
+  assert.equal(alertTime(row.ends_at), "11-21 15:00");
 });
 
 test("old report is rejected as soon as the public pointer advances", () => {
