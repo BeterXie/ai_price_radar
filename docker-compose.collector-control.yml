@@ -15,8 +15,12 @@ services:
     ports: ["127.0.0.1:18083:8080"]
     volumes:
       - ./deploy/collector-gateway.Caddyfile:/etc/caddy/Caddyfile:ro
-    networks: [detector_control]
+    networks: [collector_gateway]
     mem_limit: 64m
     logging:
       driver: json-file
       options: {max-size: "5m", max-file: "2"}
+networks:
+  collector_gateway:
+    external: true
+    name: ai-price-radar_collector_gateway
