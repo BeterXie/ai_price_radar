@@ -88,6 +88,7 @@ services:
     networks:
       default:
       detector_control:
+      collector_gateway:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -229,4 +230,7 @@ volumes:
 networks:
   detector_control:
     internal: true
+  collector_gateway:
+    external: true
+    name: ai-price-radar_collector_gateway
   detector_egress:
