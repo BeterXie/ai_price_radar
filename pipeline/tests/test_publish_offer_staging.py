@@ -67,6 +67,8 @@ def seed(engine):
         snapshot.published_at = utcnow()
         snapshot.offer_count = 1
         db.commit()
+        from export_snapshot import export_public_snapshot
+        export_public_snapshot(db, snapshot.id)
         return offer_id, snapshot.id
 
 

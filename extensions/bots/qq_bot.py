@@ -33,10 +33,15 @@ class QQBotClient:
         self.timeout_seconds = timeout_seconds
 
         self._token_cache: dict[str, tuple[str, float]] = {}
+        self.last_group_error_code: int | None = None
 
     @property
     def is_configured(self) -> bool:
         return bool(self.bridge_url or (self.app_id and self.app_secret))
+
+    def prepare_send(self, *, group: bool = False) -> bool:
+        """Complete token I/O before callers recheck quote expiry and permissions."""
+        return bool((self.bridge_url and not group) or self._get_access_token())
 
     def _get_access_token(self, app_id: str | None = None, app_secret: str | None = None) -> str | None:
         """Fetch and cache QQ Bot access token from Tencent."""
@@ -126,6 +131,7 @@ class QQBotClient:
         msg_id: str | None = None,
     ) -> bool:
         """Send passive or active reply to a QQ group."""
+        self.last_group_error_code = None
         if not group_openid.strip():
             return False
 
@@ -154,11 +160,44 @@ class QQBotClient:
                 if resp.status_code in (200, 201):
                     logger.info("Delivered QQ group message to: %s", group_openid[:6] + "...")
                     return True
-                logger.error("QQ Group Open API error %d: %s", resp.status_code, resp.text)
+                self.last_group_error_code = self._group_error_code(resp)
+                logger.warning("QQ group send failed [http=%d, code=%s]", resp.status_code, self.last_group_error_code)
                 return False
         except Exception as exc:
             logger.error("Failed to send QQ group message: %s", exc)
             return False
+
+
+    @staticmethod
+    def _group_error_code(response: httpx.Response) -> int:
+        if response.status_code == 429:
+            return 429
+        try:
+            return int(response.json().get("code") or response.status_code)
+        except (ValueError, TypeError, AttributeError):
+            return response.status_code
+
+    def get_group_state(self, group_openid: str, *, app_id: str | None = None,
+                        app_secret: str | None = None) -> dict | None:
+        """Read native proactive permission; a whitelist error is not a denial."""
+        self.last_group_error_code = None
+        effective_app_id = (app_id or self.app_id).strip()
+        token = self._get_access_token(effective_app_id, app_secret)
+        if not token or not group_openid.strip():
+            return None
+        try:
+            with httpx.Client(timeout=self.timeout_seconds) as client:
+                response = client.get(f"https://api.sgroup.qq.com/v2/groups/{group_openid}/bot_state", headers={
+                    "Authorization": f"QQBot {token}", "X-Union-Appid": effective_app_id,
+                })
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict) and isinstance(data.get("allow_proactive_msg"), bool):
+                    return data
+            self.last_group_error_code = self._group_error_code(response)
+        except Exception as exc:
+            logger.warning("QQ group state lookup failed: %s", type(exc).__name__)
+        return None
 
 
     def _send_via_bridge(

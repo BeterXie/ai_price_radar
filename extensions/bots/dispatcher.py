@@ -5,18 +5,23 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+from types import SimpleNamespace
 
 from sqlalchemy import select
 
 from app.services.account_plans import canonical_product_slug
 from app.services.credential_crypto import decrypt_secret
+from app.services.alert_reports import unique_price_events, unique_team_offers
 
 from .formatter import (
     render_qq_report,
     iter_qq_team_reports,
     render_telegram_report,
-    render_telegram_team_report,
+    iter_telegram_team_reports,
     split_qq_messages,
+    split_telegram_html,
+    fresh_alert_item,
+    iter_price_reports,
 )
 from .qq_bot import QQBotClient
 from .team_alerts import collect_team_low_price_offers
@@ -36,6 +41,7 @@ def _unexpired_team_offers(offers):
 
 def dispatch_price_changes(
     events: list[Any], db_session: Any = None, *, snapshot_id: int | None = None,
+    alert_report: dict | None = None,
 ) -> None:
     """Entry point called by apps/api/app/services/notification_hub.py.
 
@@ -52,6 +58,30 @@ def dispatch_price_changes(
     site_url = os.getenv("NEXT_PUBLIC_SITE_URL", "https://ai.pricememo.cn").rstrip("/")
     detected_at = None
     team_offers = []
+    stale_offer_hours = alert_report.get("stale_offer_hours") if alert_report is not None else None
+
+    def report_is_current() -> bool:
+        if alert_report is None:
+            return True
+        try:
+            from app.models import CatalogSnapshot, SystemSetting
+            enabled = db_session.scalar(select(SystemSetting.value).where(SystemSetting.key == "bot_enabled"))
+            if enabled and enabled.strip().lower() not in {"true", "1", "yes", "on"}:
+                return False
+            return db_session.scalar(select(CatalogSnapshot.id).where(CatalogSnapshot.published_at.is_not(None))
+                                     .order_by(CatalogSnapshot.id.desc()).limit(1)) == snapshot_id
+        except Exception:
+            logger.exception("Cannot verify current alert publication; stopping notifications")
+            return False
+    if alert_report is not None:
+        if alert_report["snapshot_id"] != snapshot_id:
+            raise ValueError("Alert report belongs to a different snapshot")
+        events = [SimpleNamespace(
+            **{k: v for k, v in row.items() if k not in ("price", "old_price", "diff")},
+            new_price=Decimal(row["price"]), old_price=Decimal(row["old_price"]),
+            diff=Decimal(row["diff"]), product_url=row.get("source_url", ""),
+        ) for row in [*alert_report["drops"], *alert_report["rises"]]]
+    events = unique_price_events(events)
     if snapshot_id is not None and db_session is not None:
         from app.models import CatalogSnapshot
 
@@ -68,12 +98,25 @@ def dispatch_price_changes(
                     .order_by(CatalogSnapshot.id.desc())
                     .limit(1)
                 )
+                if alert_report is not None and current_id != snapshot_id:
+                    logger.info("Skipping superseded alert report %s", snapshot_id)
+                    return
                 if published is not None and published.id == current_id:
-                    team_offers = collect_team_low_price_offers(db_session, published)
+                    if alert_report is not None:
+                        team_offers = [SimpleNamespace(
+                            **{k: v for k, v in row.items() if k not in ("price", "ends_at")},
+                            price=Decimal(row["price"]), ends_at=datetime.fromisoformat(row["ends_at"]),
+                            product_url="",
+                        ) for row in alert_report["team"]]
+                    else:
+                        team_offers = collect_team_low_price_offers(db_session, published)
                 else:
                     logger.info("Skipping Team offers for non-current snapshot %s", snapshot_id)
         except Exception:
             logger.exception("Failed collecting Team low-price offers for snapshot %s", snapshot_id)
+            if alert_report is not None:
+                return
+    team_offers = unique_team_offers(team_offers)
     if not events and not team_offers:
         return
 
@@ -86,6 +129,9 @@ def dispatch_price_changes(
             offer_slug_cache: dict[int, str] = {}
 
             for evt in events:
+                if not report_is_current():
+                    db_session.rollback()
+                    return
                 slug = getattr(evt, "product_slug", "") or ""
                 if not slug:
                     offer_id = getattr(evt, "offer_id", None)
@@ -127,6 +173,11 @@ def dispatch_price_changes(
                     continue
 
                 for sub, user in sub_rows:
+                    if not report_is_current():
+                        db_session.rollback()
+                        return
+                    if not fresh_alert_item(evt, utcnow(), stale_offer_hours):
+                        break
                     # `sub.notify_email` / `sub.notify_bot` gate the channels; the
                     # per-event drop/hike toggles live on the bot binding and are
                     # applied per binding below.
@@ -219,12 +270,10 @@ def dispatch_price_changes(
                                 app_secret = decrypt_secret(binding.bot_token) or None
                                 try:
                                     qq_client = QQBotClient(app_id=app_id, app_secret=app_secret)
-                                    qq_client.send_c2c_message(
-                                        binding.target_id,
-                                        bot_msg,
-                                        app_id=app_id,
-                                        app_secret=app_secret,
-                                    )
+                                    if qq_client.prepare_send() and report_is_current() and fresh_alert_item(evt, utcnow(), stale_offer_hours):
+                                        qq_client.send_c2c_message(
+                                            binding.target_id, bot_msg, app_id=app_id, app_secret=app_secret,
+                                        )
                                 except Exception as q_err:
                                     logger.warning("Failed sending QQ Bot alert: %s", q_err)
 
@@ -237,15 +286,21 @@ def dispatch_price_changes(
     telegram = TelegramBotClient()
     if telegram.is_configured:
         try:
-            if events:
-                tg_text = render_telegram_report(events, site_base_url=site_url, detected_at=detected_at)
-                if telegram.send_admin_message(tg_text):
-                    logger.info("Dispatched %d price change event(s) to Telegram Admin", len(events))
+            current_events = [event for event in events if fresh_alert_item(event, utcnow(), stale_offer_hours)]
+            if current_events:
+                for chunk in iter_price_reports(current_events, telegram=True, site_base_url=site_url, detected_at=detected_at,
+                                                current_time=utcnow, stale_offer_hours=stale_offer_hours):
+                    if not report_is_current():
+                        return
+                    telegram.send_admin_message(chunk)
             current_team_offers = _unexpired_team_offers(team_offers)
             if current_team_offers:
-                tg_text = render_telegram_team_report(current_team_offers, detected_at=detected_at, site_base_url=site_url)
-                if telegram.send_admin_message(tg_text):
-                    logger.info("Dispatched %d Team low-price offers to Telegram Admin", len(current_team_offers))
+                for tg_text in iter_telegram_team_reports(current_team_offers, detected_at=detected_at,
+                                                          site_base_url=site_url, current_time=utcnow,
+                                                          stale_offer_hours=stale_offer_hours):
+                    if not report_is_current():
+                        return
+                    telegram.send_admin_message(tg_text)
         except Exception as exc:
             logger.error("Failed dispatching price change report to Telegram: %s", exc)
 
@@ -265,6 +320,8 @@ def dispatch_price_changes(
 
             sent_count = 0
             for binding in bindings:
+                if not report_is_current():
+                    return
                 if not binding.target_id:
                     continue
 
@@ -289,19 +346,27 @@ def dispatch_price_changes(
                 qq = QQBotClient(app_id=app_id, app_secret=app_secret)
                 if not qq.is_configured:
                     continue
+                if not qq.prepare_send():
+                    continue
+                if not report_is_current():
+                    return
+                allowed_events = [event for event in allowed_events if fresh_alert_item(event, utcnow(), stale_offer_hours)]
 
-                messages = []
-                if allowed_events:
-                    messages.append(render_qq_report(allowed_events, site_base_url=site_url, detected_at=detected_at))
                 all_delivered = True
-                for message in messages:
+                for message in iter_price_reports(allowed_events, telegram=False, site_base_url=site_url, detected_at=detected_at,
+                                                  current_time=utcnow, stale_offer_hours=stale_offer_hours):
                     for chunk in split_qq_messages(message):
+                        if not report_is_current():
+                            return
                         if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
                             all_delivered = False
                 if wants_team_alert:
                     for message in iter_qq_team_reports(current_team_offers, detected_at=detected_at,
-                                                         site_base_url=site_url, current_time=utcnow):
+                                                         site_base_url=site_url, current_time=utcnow,
+                                                         stale_offer_hours=stale_offer_hours):
                         for chunk in split_qq_messages(message):
+                            if not report_is_current():
+                                return
                             if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
                                 all_delivered = False
                 if all_delivered:
@@ -310,3 +375,12 @@ def dispatch_price_changes(
                 logger.info("Dispatched general price report to %d QQ Bot user(s)", sent_count)
         except Exception as exc:
             logger.error("Failed dispatching general price change report to QQ Bot users: %s", exc)
+
+    if db_session is not None:
+        try:
+            from .group_push import dispatch_group_alerts
+            dispatch_group_alerts(events, team_offers, db=db_session, snapshot_id=snapshot_id,
+                                  detected_at=detected_at, site_url=site_url, stale_offer_hours=stale_offer_hours)
+        except Exception:
+            db_session.rollback()
+            logger.exception("Failed dispatching QQ group digests")

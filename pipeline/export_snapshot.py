@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for
+from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for, publication_lock
 from app.services.catalog_vocabulary import (
     BRAND_GROUPS, account_access, normalize_search, product_search_aliases,
 )
@@ -194,6 +194,23 @@ def export_public_snapshot(
     output_dir: Path | str | None = None,
     public_base_url: str | None = None,
     allow_historical: bool = False,
+    before_publish=None,
+) -> dict[str, Any]:
+    if db.info.get("publication_locked") or db.get_bind().dialect.name != "postgresql":
+        return _export_public_snapshot(db, snapshot_id, output_dir, public_base_url, allow_historical, before_publish)
+    # Independent exports read committed data without rolling back the caller.
+    with Session(bind=db.get_bind()) as reader:
+        with publication_lock(reader):
+            return _export_public_snapshot(reader, snapshot_id, output_dir, public_base_url, allow_historical, before_publish)
+
+
+def _export_public_snapshot(
+    db: Session,
+    snapshot_id: int | None = None,
+    output_dir: Path | str | None = None,
+    public_base_url: str | None = None,
+    allow_historical: bool = False,
+    before_publish=None,
 ) -> dict[str, Any]:
     """Export public immutable snapshot JSON and update latest.json pointer.
 
@@ -456,6 +473,8 @@ def export_public_snapshot(
             json.dump(snapshot_data, f, ensure_ascii=False, indent=2)
         temp_snapshot.replace(snapshot_file)
 
+    if before_publish is not None:
+        before_publish(snapshot_data)
     write_catalog_summary(snapshot_data, target_dir)
 
     # Write latest.json pointer (only for the current published snapshot)
@@ -472,6 +491,10 @@ def export_public_snapshot(
     }
 
     if is_current_snapshot:
+        if before_publish is None and (target_dir / "alerts-latest.json").is_file():
+            old_pointer = json.loads((target_dir / "latest.json").read_text(encoding="utf-8"))
+            if str(old_pointer.get("snapshot_id")) != str(snapshot_id):
+                raise ValueError("Advancing a catalog with alerts requires the complete publisher")
         latest_file = target_dir / "latest.json"
         temp_latest = target_dir / f".tmp_latest_{os.getpid()}.json"
         with open(temp_latest, "w", encoding="utf-8") as f:

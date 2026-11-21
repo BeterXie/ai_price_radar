@@ -48,6 +48,9 @@ def deliveries(monkeypatch):
         def __init__(self, **kwargs):
             pass
 
+        def prepare_send(self, **kwargs):
+            return True
+
         def send_c2c_message(self, target_id, text, **kwargs):
             sent.qq.append((target_id, text))
             return True
@@ -62,6 +65,27 @@ def deliveries(monkeypatch):
     monkeypatch.setattr(dispatcher, "QQBotClient", FakeQQ)
     monkeypatch.setattr(dispatcher, "TelegramBotClient", FakeTelegram)
     return sent
+
+
+def test_published_report_drives_bot_lists_without_recollecting_live_prices(db, deliveries, monkeypatch):
+    snapshot = add_snapshot(db)
+    user = User(email="report@example.com")
+    db.add(user)
+    db.flush()
+    db.add(UserBotBinding(user_id=user.id, target_id="report-user", notify_price_drop=True))
+    db.commit()
+    now = datetime.now(timezone.utc)
+    item = {"offer_id": 81, "product_name": "Team 5x 报价", "product_slug": "chatgpt-business",
+            "shop_name": "最低价商家", "price": "18.00", "currency": "CNY", "observed_at": now.isoformat()}
+    report = {"snapshot_id": snapshot.id, "drops": [{**item, "old_price": "20.00", "diff": "-2.00", "percent_change": -10, "is_drop": True}],
+              "rises": [], "team": [{**item, "ends_at": (now + timedelta(hours=2)).isoformat(), "is_head_car": False}]}
+    def unexpected_collect(*args, **kwargs):
+        pytest.fail("published alerts must use the same rows as the website")
+    monkeypatch.setattr(dispatcher, "collect_team_low_price_offers", unexpected_collect)
+    dispatch_price_changes([], db_session=db, snapshot_id=snapshot.id, alert_report=report)
+    assert len(deliveries.qq) == len(deliveries.telegram) == 2
+    assert "最新降价榜" in deliveries.qq[0][1] and "¥18.00" in deliveries.qq[0][1]
+    assert "/alerts?view=team" in deliveries.qq[1][1] and "/offers/81" in deliveries.qq[1][1]
 
 
 def add_snapshot(db):
@@ -219,8 +243,9 @@ def test_delivery_rechecks_expiry_after_collection(db, deliveries, monkeypatch):
 @pytest.mark.parametrize('expire_after', ['price_report', 'first_team_page'])
 def test_queued_team_pages_expire_while_earlier_messages_are_sending(db, deliveries, monkeypatch, expire_after):
     snapshot = add_snapshot(db)
-    for _ in range(9):
+    for index in range(9):
         offer = add_offer(db, snapshot)
+        offer.raw_product.original_name += f" 商品{index}"
     user = User(email='queued@example.com')
     db.add(user)
     db.flush()
@@ -300,7 +325,7 @@ def test_team_reports_keep_all_results_and_escape_telegram_fields():
     reports = render_qq_team_reports(offers, detected_at=detected_at)
     assert len(reports) == 3
     assert sum(report.count("现价: ¥20.00") for report in reports) == 19
-    assert "（3/3）" in reports[-1]
+    assert "（17–19/19）" in reports[-1]
     assert "2026-11-18 21:45:56（北京时间 UTC+8）" in reports[-1]
     for offer in offers:
         assert f"https://ai.pricememo.cn/offers/{offer.offer_id}" in "\n".join(reports)
@@ -321,7 +346,8 @@ def test_qq_messages_split_long_names_and_links_before_delivery():
     )
     reports = render_qq_team_reports([long_offer], detected_at=datetime.now(timezone.utc))
     chunks = split_qq_messages(reports[0], limit=3500)
-    assert len(chunks) > 1
+    assert len(chunks) == 1  # Long titles are shortened; their detail link retains the full title.
+    assert "…" in chunks[0]
     assert all(0 < len(chunk.encode("utf-8")) <= 3500 for chunk in chunks)
     assert "现价: ¥20.00" in "\n".join(chunks)
     assert "https://ai.pricememo.cn/offers/1" in "\n".join(chunks)

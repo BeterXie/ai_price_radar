@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,52 @@ from app.routers import public_feed
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+def test_latest_alert_feed_updates_and_missing_report_is_not_an_empty_success(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_DATA_DIR", str(tmp_path))
+    assert client.get("/data/alerts-latest.json").status_code == 404
+    report_file = tmp_path / "alerts-latest.json"
+    (tmp_path / "latest.json").write_text(json.dumps({"snapshot_id": 1}), encoding="utf-8")
+    report_file.write_text(json.dumps({"snapshot_id": 1, "drops": []}), encoding="utf-8")
+    first = client.get("/data/alerts-latest.json")
+    assert first.status_code == 200
+    assert "immutable" not in first.headers["Cache-Control"]
+    assert client.get("/data/alerts-latest.json", headers={"If-None-Match": first.headers["etag"]}).status_code == 304
+    report_file.write_text(json.dumps({"snapshot_id": 22, "drops": [{"offer_id": 5}]}), encoding="utf-8")
+    (tmp_path / "latest.json").write_text(json.dumps({"snapshot_id": 22}), encoding="utf-8")
+    updated = client.get("/data/alerts-latest.json", headers={"If-None-Match": first.headers["etag"]})
+    assert updated.status_code == 200 and updated.json()["snapshot_id"] == 22
+
+
+def test_latest_alert_feed_rejects_old_report_after_catalog_pointer_advances(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_DATA_DIR", str(tmp_path))
+    (tmp_path / "alerts-latest.json").write_text('{"snapshot_id": 1}', encoding="utf-8")
+    (tmp_path / "latest.json").write_text('{"snapshot_id": 2}', encoding="utf-8")
+    assert client.get("/data/alerts-latest.json").status_code == 503
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows denies replacing an open file; exercise POSIX publication in Linux CI")
+def test_replacing_alert_file_after_open_cannot_mix_response_headers_and_body(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_DATA_DIR", str(tmp_path))
+    path = tmp_path / "alerts-latest.json"
+    original = b'{"snapshot_id":1,"drops":[{"offer_id":5}]}'
+    path.write_bytes(original)
+    (tmp_path / "latest.json").write_text('{"snapshot_id":1}')
+    real_fstat = public_feed.os.fstat
+    replaced = [False]
+    def replacing_fstat(fd):
+        stat = real_fstat(fd)
+        if not replaced[0]:
+            replaced[0] = True
+            temporary = tmp_path / "next.json"
+            temporary.write_text('{"snapshot_id":2}')
+            temporary.replace(path)
+        return stat
+    monkeypatch.setattr(public_feed.os, "fstat", replacing_fstat)
+    response = client.get("/data/alerts-latest.json")
+    assert response.status_code == 200 and response.content == original
+    assert int(response.headers["content-length"]) == len(original)
 
 
 def test_public_feed_endpoints(client, tmp_path: Path, monkeypatch):

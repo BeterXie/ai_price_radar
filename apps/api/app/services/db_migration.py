@@ -94,7 +94,36 @@ def ensure_db_schema(engine: Engine) -> None:
         ensure_relay_probe_metrics(conn)
         ensure_relay_model_catalog(conn)
         ensure_relay_benchmark(conn)
+        ensure_qq_group_subscriptions(conn)
         _hide_retired_products(conn)
+
+
+def ensure_qq_group_subscriptions(conn) -> None:
+    # Standalone migrations must work without importing app.database/settings.
+    from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, UniqueConstraint, false, true
+
+    Table(
+        "qq_group_subscriptions", MetaData(),
+        Column("id", Integer, primary_key=True),
+        Column("app_id", String(40), nullable=False, index=True),
+        Column("group_openid", String(128), nullable=False),
+        Column("subscribed", Boolean, nullable=False, server_default=false()),
+        Column("is_member", Boolean, nullable=False, server_default=true()),
+        Column("allow_proactive", Boolean),
+        Column("last_event_at", DateTime(timezone=True)),
+        Column("last_event_kind", String(32), nullable=False, server_default=""),
+        Column("permission_event_at", DateTime(timezone=True)),
+        Column("permission_event_kind", String(32), nullable=False, server_default=""),
+        Column("permission_version", Integer, nullable=False, server_default="0"),
+        Column("state_version", Integer, nullable=False, server_default="0"),
+        Column("last_snapshot_id", Integer),
+        Column("last_attempt_at", DateTime(timezone=True)),
+        Column("last_sent_at", DateTime(timezone=True)),
+        Column("last_error_code", Integer),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+        Column("updated_at", DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+        UniqueConstraint("app_id", "group_openid", name="uq_qq_group_bot"),
+    ).create(conn, checkfirst=True)
 
 
 def ensure_relay_monitoring(conn) -> None:

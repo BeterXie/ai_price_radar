@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
@@ -116,3 +117,30 @@ def get_catalog_feed(snapshot_id: str, if_none_match: str | None = Header(None))
     if not catalog_file.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog summary not found")
     return _serve_feed_file(catalog_file, if_none_match, "public, max-age=31536000, immutable")
+
+
+@router.get("/data/alerts-latest.json")
+def get_latest_alerts(if_none_match: str | None = Header(None)) -> Response:
+    path = _find_data_dir() / "alerts-latest.json"
+    try:
+        with path.open("rb") as stream:
+            stat_result = os.fstat(stream.fileno())
+            if stat_result.st_size > 8 * 1024 * 1024:
+                raise ValueError("Oversized alert report")
+            content = stream.read(8 * 1024 * 1024 + 1)
+        if len(content) > 8 * 1024 * 1024:
+            raise ValueError("Oversized alert report")
+        report = json.loads(content)
+        with (_find_data_dir() / "latest.json").open("rb") as pointer:
+            latest = json.loads(pointer.read(64 * 1024))
+        if str(report["snapshot_id"]) != str(latest["snapshot_id"]):
+            raise ValueError("Alert report publication is pending")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Alert reports have not been published yet")
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(status_code=503, detail="Latest alert report is temporarily unavailable", headers={"Retry-After": "15"})
+    etag = f'W/"{stat_result.st_mtime_ns:x}-{len(content):x}"'
+    headers = {"ETag": etag, "Cache-Control": "public, no-cache", "Access-Control-Allow-Origin": "*"}
+    if _etag_matches(if_none_match, etag):
+        return Response(status_code=304, headers=headers)
+    return Response(content=content, media_type="application/json", headers=headers)

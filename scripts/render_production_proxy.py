@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import re
+import shlex
 
 
 UPSTREAMS = {
@@ -12,7 +13,7 @@ UPSTREAMS = {
     "ai-radar-pricein": "172.18.0.7",
     "ai-radar-aiprice": "172.18.0.8",
 }
-FEED_PATHS = " /data/latest.json /data/v1/snapshots/* /data/v1/catalogs/*"
+FEED_PATHS = " /data/latest.json /data/alerts-latest.json /data/v1/snapshots/* /data/v1/catalogs/*"
 
 
 def render(source):
@@ -21,10 +22,27 @@ def render(source):
         result = re.sub(r"(?<=reverse_proxy )" + re.escape(alias) + r"(?=:)", address, result)
         result = re.sub(r"(?<=import brand_site )" + re.escape(alias) + r"\b", address, result)
     lines = []
+    depth = 0
+    known_site = False
     for line in result.splitlines():
-        if line.strip().startswith("@api path /api/*") and " /health" in line and "/data/latest.json" not in line:
-            line += FEED_PATHS
+        matcher, marker, comment = line.partition("#")
+        lexer = shlex.shlex(matcher, posix=False)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+        if depth == 0:
+            known_site = known_site or bool(re.search(r"(?:^|[\s,])(?:https?://)?(?:ai\.pricememo\.cn|pricememo\.cn|aiprice\.si|aisi\.plus|pricein\.cc|openprice\.in)(?::\d+)?(?:[\s,{]|$)", matcher)
+                                            or matcher.strip().startswith("(brand_site)"))
+        if known_site and matcher.strip().startswith("@api path /api/*") and " /health" in matcher:
+            matcher = matcher.rstrip()
+            for path in FEED_PATHS.split():
+                if path not in matcher.split():
+                    matcher += " " + path
+            line = matcher + (" #" + comment if marker else "")
         lines.append(line)
+        depth += tokens.count("{") - tokens.count("}")
+        if depth == 0 and "}" in tokens:
+            known_site = False
     result = "\n".join(lines) + "\n"
     if "172.18.0.2:8000" not in result or "172.18.0.4:3000" not in result:
         raise ValueError("Expected production API/Web upstreams were not found")

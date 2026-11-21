@@ -6,7 +6,7 @@ ai.pricememo.cn, pricememo.cn {
         respond 404
     }
 
-    @api path /api/* /docs* /openapi.json /health /data/latest.json /data/v1/snapshots/* /data/v1/catalogs/*
+    @api path /api/* /docs* /openapi.json /health /data/latest.json /data/alerts-latest.json /data/v1/snapshots/* /data/v1/catalogs/*
     handle @api {
         request_body {
             max_size 1MB

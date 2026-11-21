@@ -135,6 +135,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .filter((brand) => catalog.items.some((product) => product.brand === brand && product.offer_count > 0))
     .map((brand) => ({ url: `${SITE_URL}${brandCatalogPath(brand)}`, lastModified: snapshotAt }));
   staticPages.push({ url: `${SITE_URL}/compare`, lastModified: snapshotAt });
+  if (IS_PRIMARY_SITE) {
+    for (const view of ["drops", "rises", "team"]) {
+      staticPages.push({ url: `${SITE_URL}/alerts?view=${view}` });
+    }
+  }
   if (snapshotAt) {
     staticPages[0].lastModified = snapshotAt;
     staticPages[1].lastModified = snapshotAt;

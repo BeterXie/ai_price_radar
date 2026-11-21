@@ -18,6 +18,7 @@ from app.services.catalog_vocabulary import (
     PERIOD_LABELS, WARRANTY_LABELS, _normalize_query_alias,
 )
 from app.services.bot_binding import complete_qq_binding
+from .qq_text import normalize_qq_text
 from app.services.catalog import (
     OfferFilters,
     _base_public_offer_query,
@@ -607,6 +608,10 @@ def help_menu(channel: str = "qq") -> str:
         "  • 暂停推送 / 恢复推送 — 一键启停消息通知",
         "  • 开启降价 / 关闭降价 — 独立控制降价提醒",
         "",
+        *(["🔔 QQ 群提醒:",
+           "  • 开启群推送 / 关闭群推送 — 群主或管理员操作",
+           "  • 群推送状态 — 查看本群订阅与最近发送状态",
+           "  • 也可在 QQ 机器人资料页开启或关闭通知", ""] if channel == "qq" else []),
         "🔗 绑定指令:",
         "  • /bind <6位验证码> — 绑定网页个人账号",
         "------------------------------------",
@@ -633,8 +638,7 @@ def handle_chat_command(
     if channel == "qq":
         # QQ group mentions can contain numeric IDs or opaque OpenIDs, and may
         # appear anywhere. Strip transport metadata before commands or AI see it.
-        text = re.sub(r"<@!?[A-Za-z0-9_-]+>", " ", text).strip()
-        text = re.sub(r"^@[^\s]+\s*", "", text).strip()
+        text = normalize_qq_text(text)
     if not text:
         return help_menu(channel)
 

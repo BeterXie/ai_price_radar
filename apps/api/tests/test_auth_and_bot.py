@@ -310,7 +310,7 @@ def test_price_change_event_and_formatter():
         qq_report = render_qq_report([drop_evt, hike_evt])
         assert "【PriceMemo 价格变动提醒】" in qq_report
         assert "ChatGPT Plus" in qq_report
-        assert "降¥15.00" in qq_report
+        assert "降 ¥15.00" in qq_report
 
     # Test dispatch without throwing
     dispatch_price_changes([drop_evt, hike_evt])

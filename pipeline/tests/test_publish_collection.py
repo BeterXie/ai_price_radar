@@ -18,6 +18,22 @@ from connectors import CONNECTORS
 from publish_catalog import SourceImportError, SourceSpec, approved_intake_sources, publish_sources
 
 
+def test_publication_mutex_survives_commit_and_nested_export_until_explicit_release(collection_db):
+    from common import publication_lock
+    db = collection_db
+    engine = db.get_bind()
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL session advisory locks")
+    with publication_lock(db) as release:
+        db.commit()
+        with publication_lock(db):
+            with engine.connect() as other:
+                assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": 0x415052494D504F52}) is False
+        release()
+        with engine.connect() as other:
+            assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": 0x415052494D504F52}) is True
+
+
 def goods(source: str, **overrides):
     value = dict(
         token=f"shop-{source}", shop_name=f"Shop {source}", shop_url=f"https://{source}.example",

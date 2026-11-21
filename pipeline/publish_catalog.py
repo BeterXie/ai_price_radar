@@ -30,6 +30,7 @@ from common import (
     begin_snapshot,
     ensure_products,
     import_lock,
+    publication_lock,
     session_for,
     upsert_offer,
     utcnow,
@@ -930,7 +931,7 @@ def _publish_prepared_sources(
 ) -> PublishResult:
     retry_before = started_at - NO_PRODUCTS_RETRY_INTERVAL
     try:
-        with import_lock(db):
+        with publication_lock(db, wait=False) as release_publication:
             # Approval can change while collecting. Lock before rechecking so an
             # administrator's decision cannot race the remaining local replay.
             _lock_publish_intakes(db, [item.spec for item in prepared])
@@ -1067,14 +1068,34 @@ def _publish_prepared_sources(
                 db.commit()
                 db.expire_all()
                 try:
+                    import export_snapshot
+                    from export_alerts import export_snapshot_alerts, prepare_snapshot_alerts
                     from export_snapshot import export_public_snapshot
-                    export_public_snapshot(db, snapshot.id)
+                    with import_lock(db, wait=True):
+                        if _current_snapshot_id(db) != snapshot.id:
+                            db.rollback()
+                            return result
+                        prepared_reports = []
+                        def prepare_alerts(public_snapshot):
+                            prepared_reports.append(prepare_snapshot_alerts(
+                                public_snapshot, all_price_changes, output_dir=export_snapshot.DEFAULT_OUTPUT_DIR,
+                                previous_snapshot_id=previous_snapshot_id,
+                            ))
+                        export_public_snapshot(db, snapshot.id, before_publish=prepare_alerts)
+                        alert_report = export_snapshot_alerts(
+                            db, snapshot.id, all_price_changes, output_dir=export_snapshot.DEFAULT_OUTPUT_DIR,
+                            previous_snapshot_id=previous_snapshot_id,
+                            prepared_report=prepared_reports[0] if prepared_reports else None,
+                        )
+                        db.commit()
                 except Exception as export_err:
                     logger.exception("Failed to export public snapshot %d", snapshot.id)
                     raise SnapshotExportError(snapshot.id, export_err) from export_err
+                release_publication()
                 try:
                     from app.services.notification_hub import dispatch_price_changes
-                    dispatch_price_changes(all_price_changes, db_session=db, snapshot_id=snapshot.id)
+                    if alert_report is not None:
+                        dispatch_price_changes(all_price_changes, db_session=db, snapshot_id=snapshot.id, alert_report=alert_report)
                 except Exception as notify_err:
                     logger.warning("Failed to dispatch snapshot notifications: %s", notify_err)
             return result

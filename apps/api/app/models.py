@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, false, true, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -450,6 +450,30 @@ class UserBotBinding(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="bot_bindings")
+
+
+class QQGroupSubscription(Base):
+    __tablename__ = "qq_group_subscriptions"
+    __table_args__ = (UniqueConstraint("app_id", "group_openid", name="uq_qq_group_bot"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[str] = mapped_column(String(40), index=True)
+    group_openid: Mapped[str] = mapped_column(String(128))
+    subscribed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    is_member: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    allow_proactive: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_kind: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    permission_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    permission_event_kind: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    permission_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    state_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class QQBindingSession(Base):

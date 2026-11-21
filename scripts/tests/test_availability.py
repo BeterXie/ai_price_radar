@@ -39,9 +39,23 @@ aiprice.si {
     assert "reverse_proxy 172.18.0.4:3000" in result
     assert "import brand_site 172.18.0.8" in result
     assert "/data/v1/catalogs/*" in result
+    assert "/data/alerts-latest.json" in result
     assert render(result) == result
     with pytest.raises(ValueError):
         render("unrelated.example { respond 200 }")
+
+
+def test_proxy_adds_new_feed_before_existing_trailing_comment():
+    source = """ai.pricememo.cn {
+    @api path /api/* /health /data/latest.json # existing feeds
+    reverse_proxy 172.18.0.2:8000
+    reverse_proxy 172.18.0.4:3000
+}
+"""
+    result = render(source)
+    matcher = next(line for line in result.splitlines() if "@api" in line)
+    assert "/data/alerts-latest.json" in matcher.split("#")[0]
+    assert render(result) == result
 
 
 def test_host_monitor_detects_restart_and_oom_without_flagging_a_new_release(monkeypatch):
