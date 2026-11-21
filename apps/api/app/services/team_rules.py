@@ -49,7 +49,8 @@ def _title_date(prefix: str, anchor: date) -> tuple[date | None, bool]:
     candidates = []
     full_dates = [match for match in _DATE.finditer(prefix)
                   if not re.match(r"分钟|小时|天|刀|元", prefix[match.end():])]
-    if re.search(r"(?:上|下|本)周|(?:上|下|本)星期", prefix):
+    week_markers = list(re.finditer(r"(?:上|下|本)周|(?:上|下|本)星期", prefix))
+    if week_markers and (not full_dates or week_markers[-1].start() > full_dates[-1].end()):
         return None, True
     if not full_dates and re.search(r"去年|明年|上个?月|下个?月|本月|这个月|星期|(?:本|上|下)?周[一二三四五六日天]", prefix):
         return None, True
@@ -102,10 +103,13 @@ def team_title_ends_at(title: str, *, observed_at: datetime) -> datetime | None:
         ambiguous_dotted_date = '.' in calendar[0] and (re.search(
             r"(?:截止|到期|结束|有效至|下车时间)\s*$", text[max(0, calendar.start() - 12):calendar.start()])
             or re.match(r"\s*(?:到期|截止|结束)", text[calendar.end():]))
+        if any(clock['period'] and clock.start('hour') == calendar.start() for clock in clocks):
+            ambiguous_dotted_date = False
         if explicit_date or followed_by_clock or ambiguous_dotted_date:
             date_spans.append(calendar.span())
     clocks = [match for match in clocks if not any(start <= match.start('hour') < end for start, end in date_spans)]
-    clocks = [match for match in clocks if not re.match(r"\s*(?:补货|上架|售卖|开售)", text[match.end():])]
+    clocks = [match for match in clocks if not re.match(r"\s*(?:补货|上架|售卖|开售)", text[match.end():])
+              or re.search(r"(?:截止|到期|结束|有效至|下车时间)\s*$", text[:match.start()])]
     explicit = [match for match in clocks if _END_AFTER.search(text[match.end():]) or re.search(
         r"(?:截止|到期|结束|有效至|下车时间)[^|\n,，;；。]{0,24}$", text[max(0, match.start() - 35):match.start()],
     )]
@@ -117,7 +121,7 @@ def team_title_ends_at(title: str, *, observed_at: datetime) -> datetime | None:
         return None  # A bare decimal can be a price or date, rather than a deadline.
     endings = set()
     for match in clocks:
-        if re.match(r"\s*(?:[ap]\.?m\.?|utc|gmt|pst|est)(?![a-z])", text[match.end():]):
+        if re.match(r"\s*(?:[ap]\.?m\.?|utc|gmt|pst|est|pdt|edt)(?![a-z])", text[match.end():]):
             return None
         try:
             hour = _number(match['hour'])

@@ -14,13 +14,18 @@ from app.services.alert_reports import build_alert_report, public_offer_prices
 def prepare_snapshot_alerts(snapshot: dict, events: list, *, output_dir: Path,
                             previous_snapshot_id: int | None = None) -> dict:
     previous_prices = {}
-    if events and previous_snapshot_id is not None:
-        previous_path = output_dir / "v1" / "snapshots" / f"{previous_snapshot_id}.json"
+    pointer_path = output_dir / "latest.json"
+    public_id = previous_snapshot_id
+    if pointer_path.is_file():
+        public_id = int(json.loads(pointer_path.read_text(encoding="utf-8"))["snapshot_id"])
+    recovering = public_id != previous_snapshot_id
+    if (events or recovering) and public_id is not None:
+        previous_path = output_dir / "v1" / "snapshots" / f"{public_id}.json"
         if previous_path.is_file():
             previous_prices = public_offer_prices(json.loads(previous_path.read_text(encoding="utf-8")))
         elif events:
             raise ValueError("Previous public snapshot is unavailable; cannot verify price changes")
-    report = build_alert_report(snapshot, events, previous_prices=previous_prices)
+    report = build_alert_report(snapshot, events, previous_prices=previous_prices, compare_all=recovering)
     _encoded_report(report)
     return report
 

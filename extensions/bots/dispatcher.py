@@ -21,6 +21,7 @@ from .formatter import (
     split_qq_messages,
     split_telegram_html,
     fresh_alert_item,
+    iter_price_reports,
 )
 from .qq_bot import QQBotClient
 from .team_alerts import collect_team_low_price_offers
@@ -287,12 +288,10 @@ def dispatch_price_changes(
         try:
             current_events = [event for event in events if fresh_alert_item(event, utcnow(), stale_offer_hours)]
             if current_events:
-                tg_text = render_telegram_report(current_events, site_base_url=site_url, detected_at=detected_at)
-                for chunk in split_telegram_html(tg_text):
+                for chunk in iter_price_reports(current_events, telegram=True, site_base_url=site_url, detected_at=detected_at,
+                                                current_time=utcnow, stale_offer_hours=stale_offer_hours):
                     if not report_is_current():
                         return
-                    if any(not fresh_alert_item(event, utcnow(), stale_offer_hours) for event in current_events):
-                        break
                     telegram.send_admin_message(chunk)
             current_team_offers = _unexpired_team_offers(team_offers)
             if current_team_offers:
@@ -353,16 +352,12 @@ def dispatch_price_changes(
                     return
                 allowed_events = [event for event in allowed_events if fresh_alert_item(event, utcnow(), stale_offer_hours)]
 
-                messages = []
-                if allowed_events:
-                    messages.append(render_qq_report(allowed_events, site_base_url=site_url, detected_at=detected_at))
                 all_delivered = True
-                for message in messages:
+                for message in iter_price_reports(allowed_events, telegram=False, site_base_url=site_url, detected_at=detected_at,
+                                                  current_time=utcnow, stale_offer_hours=stale_offer_hours):
                     for chunk in split_qq_messages(message):
                         if not report_is_current():
                             return
-                        if any(not fresh_alert_item(event, utcnow(), stale_offer_hours) for event in allowed_events):
-                            break
                         if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
                             all_delivered = False
                 if wants_team_alert:

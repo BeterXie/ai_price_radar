@@ -401,3 +401,26 @@ def render_qq_group_digest(events: list[Any], offers: list[Any], *, detected_at:
     return (f"【PriceMemo 群比价快报】\n{format_detection_time(detected_at)}\n\n"
             + ITEM_SEPARATOR.join(sections)
             + "\n\n同名取最低价，完整清单见榜单。群管理员可发送「关闭群推送」停止提醒。")
+
+
+def iter_price_reports(events, *, telegram: bool, detected_at, site_base_url, current_time, stale_offer_hours=None):
+    """Keep pending rows until each outbound request, so expiry never drops fresh siblings."""
+    drops = [event for event in events if event.is_drop][:15 if telegram else 8]
+    rises = [event for event in events if not event.is_drop][:10 if telegram else 5]
+    pending = drops + rises
+    renderer = render_telegram_report if telegram else render_qq_report
+    while pending:
+        now = current_time()
+        pending = [event for event in pending if fresh_alert_item(event, now, stale_offer_hours)]
+        if not pending:
+            break
+        batch, message = [], ""
+        for event in pending:
+            candidate = renderer([*batch, event], detected_at=detected_at, site_base_url=site_base_url)
+            size = len(candidate) if telegram else len(candidate.encode("utf-8"))
+            if batch and size > (3900 if telegram else 3400):
+                break
+            batch.append(event)
+            message = candidate
+        pending = pending[len(batch):]
+        yield message

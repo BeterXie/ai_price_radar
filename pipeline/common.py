@@ -50,16 +50,22 @@ def import_lock(db: Session, *, wait: bool = False):
 
 
 @contextmanager
-def publication_lock(db: Session):
+def publication_lock(db: Session, *, wait: bool = True):
     """Hold the publication mutex across commit and file export on one connection."""
     if db.get_bind().dialect.name != "postgresql" or db.info.get("publication_locked"):
         yield lambda: None
         return
     if db.new or db.dirty or db.deleted:
         raise ValueError("commit pending changes before taking the publication lock")
-    db.rollback()
+    if db.in_transaction():
+        raise ValueError("end the current transaction before taking the publication lock")
     original_bind = db.bind
-    connection = db.get_bind().connect()
+    from sqlalchemy.engine import Connection
+    bind = db.get_bind()
+    owns_connection = not isinstance(bind, Connection)
+    connection = bind.connect() if owns_connection else bind
+    if connection.in_transaction():
+        raise ValueError("publication requires an idle connection")
     db.bind = connection
     locked = False
     def release():
@@ -71,16 +77,26 @@ def publication_lock(db: Session):
             locked = False
             db.info.pop("publication_locked", None)
     try:
-        connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": 0x415052494D504F52})
+        acquired = connection.execute(text("SELECT pg_advisory_lock(:key)" if wait else "SELECT pg_try_advisory_lock(:key)"),
+                                      {"key": 0x415052494D504F52}).scalar_one()
         connection.commit()
+        if not wait and not acquired:
+            raise ImportLockUnavailable("another catalog import is already running")
         locked = True
         db.info["publication_locked"] = True
         yield release
     finally:
-        db.rollback()
-        release()
-        db.bind = original_bind
-        connection.close()
+        try:
+            db.rollback()
+            release()
+        except Exception:
+            connection.invalidate()
+            raise
+        finally:
+            db.info.pop("publication_locked", None)
+            db.bind = original_bind
+            if owns_connection:
+                connection.close()
 
 
 def utcnow() -> datetime:

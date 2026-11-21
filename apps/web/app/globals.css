@@ -110,6 +110,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 .alert-tabs > a { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 18px; border-bottom: 3px solid transparent; font-weight: 650; font-size: 15px; white-space: nowrap; }
 .alert-tabs > a[aria-current] { border-bottom-color: var(--ink); }
 .alert-tabs > a:hover { background: var(--subtle); }
+.alert-tabs > a:focus-visible { outline-offset: -3px; }
 .alert-tabs span { background: var(--subtle); border-radius: 5px; padding: 2px 6px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .alert-tabs > a[aria-current] span { color: var(--success); background: var(--brand-soft); }
 .alert-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 22px; }

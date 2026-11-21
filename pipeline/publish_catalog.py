@@ -931,7 +931,7 @@ def _publish_prepared_sources(
 ) -> PublishResult:
     retry_before = started_at - NO_PRODUCTS_RETRY_INTERVAL
     try:
-        with publication_lock(db) as release_publication:
+        with publication_lock(db, wait=False) as release_publication:
             # Approval can change while collecting. Lock before rechecking so an
             # administrator's decision cannot race the remaining local replay.
             _lock_publish_intakes(db, [item.spec for item in prepared])

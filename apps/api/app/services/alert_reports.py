@@ -49,7 +49,8 @@ def public_offer_prices(snapshot: dict) -> dict[int, tuple[Decimal, str]]:
             for product in snapshot["products"] for offer in product["offers"] if offer["price"] is not None}
 
 
-def build_alert_report(snapshot: dict, events: list[Any], *, previous_prices: dict | None = None) -> dict:
+def build_alert_report(snapshot: dict, events: list[Any], *, previous_prices: dict | None = None,
+                       compare_all: bool = False) -> dict:
     from .team_rules import (
         TEAM_HEAD_PRICE_LIMIT, TEAM_PRICE_LIMIT, is_head_car_title,
         is_team_account_title, team_title_ends_at,
@@ -84,7 +85,8 @@ def build_alert_report(snapshot: dict, events: list[Any], *, previous_prices: di
                 team.append({**row, "ends_at": ends.isoformat(), "is_head_car": head})
 
     changes = []
-    for offer_id in dict.fromkeys(event.offer_id for event in events):
+    changed_ids = available if compare_all else dict.fromkeys(event.offer_id for event in events)
+    for offer_id in changed_ids:
         row = available.get(offer_id)
         baseline = (previous_prices or {}).get(offer_id)
         # Never publish private/hidden/stale rows or a transition inconsistent

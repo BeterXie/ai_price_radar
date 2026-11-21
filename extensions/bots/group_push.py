@@ -33,7 +33,7 @@ def active_bot_credentials(db, only_app_id: str | None = None) -> dict[str, str]
     found = {}
     query = select(UserBotBinding).where(UserBotBinding.channel == "qq", UserBotBinding.is_active.is_(True))
     if only_app_id:
-        query = query.where(cast(UserBotBinding.extra_meta["app_id"].as_string(), String) == only_app_id)
+        query = query.where(func.trim(cast(UserBotBinding.extra_meta["app_id"].as_string(), String)) == only_app_id)
     for binding in db.scalars(query):
         app_id = (binding.extra_meta or {}).get("app_id")
         secret = decrypt_secret(binding.bot_token)
@@ -154,7 +154,9 @@ def handle_group_command(text: str, *, app_id: str, app_secret: str, group_openi
                 db.execute(update(QQGroupSubscription).where(
                     QQGroupSubscription.id == row.id,
                     or_(QQGroupSubscription.permission_event_at.is_(None),
-                        QQGroupSubscription.permission_event_at < query_started_at.replace(microsecond=0)),
+                        QQGroupSubscription.permission_event_at < query_started_at.replace(microsecond=0),
+                        and_(QQGroupSubscription.permission_event_at == query_started_at.replace(microsecond=0),
+                             QQGroupSubscription.permission_event_kind == "GROUP_ADD_ROBOT")),
                 ).values(is_member=True, allow_proactive=state["allow_proactive_msg"],
                          permission_event_at=query_started_at.replace(microsecond=0), permission_event_kind="state_query",
                          permission_version=QQGroupSubscription.permission_version + 1,
@@ -258,8 +260,11 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
         if ok:
             result["last_sent_at"] = utcnow()
         elif code in {40034101, 40054003}:
-            permission_result.update(is_member=False, subscribed=False, allow_proactive=False,
-                                     last_event_at=utcnow().replace(microsecond=0), last_event_kind="send_denied")
+            unchanged_local = QQGroupSubscription.state_version == claimed_version
+            permission_result.update(is_member=False, allow_proactive=False,
+                subscribed=case((unchanged_local, False), else_=QQGroupSubscription.subscribed),
+                last_event_at=case((unchanged_local, utcnow().replace(microsecond=0)), else_=QQGroupSubscription.last_event_at),
+                last_event_kind=case((unchanged_local, "send_denied"), else_=QQGroupSubscription.last_event_kind))
         elif code == 40034105:
             permission_result["allow_proactive"] = False
         elif code == 40034100 or code == 429:

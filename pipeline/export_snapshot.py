@@ -196,8 +196,12 @@ def export_public_snapshot(
     allow_historical: bool = False,
     before_publish=None,
 ) -> dict[str, Any]:
-    with publication_lock(db):
+    if db.info.get("publication_locked") or db.get_bind().dialect.name != "postgresql":
         return _export_public_snapshot(db, snapshot_id, output_dir, public_base_url, allow_historical, before_publish)
+    # Independent exports read committed data without rolling back the caller.
+    with Session(bind=db.get_bind()) as reader:
+        with publication_lock(reader):
+            return _export_public_snapshot(reader, snapshot_id, output_dir, public_base_url, allow_historical, before_publish)
 
 
 def _export_public_snapshot(
@@ -487,6 +491,10 @@ def _export_public_snapshot(
     }
 
     if is_current_snapshot:
+        if before_publish is None and (target_dir / "alerts-latest.json").is_file():
+            old_pointer = json.loads((target_dir / "latest.json").read_text(encoding="utf-8"))
+            if str(old_pointer.get("snapshot_id")) != str(snapshot_id):
+                raise ValueError("Advancing a catalog with alerts requires the complete publisher")
         latest_file = target_dir / "latest.json"
         temp_latest = target_dir / f".tmp_latest_{os.getpid()}.json"
         with open(temp_latest, "w", encoding="utf-8") as f:
