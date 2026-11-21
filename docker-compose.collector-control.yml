@@ -1,6 +1,9 @@
 services:
   collector-gateway:
-    image: caddy:2-alpine
+    image: ai-price-radar-collector-gateway
+    build:
+      context: .
+      dockerfile: deploy/collector-gateway.Dockerfile
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]

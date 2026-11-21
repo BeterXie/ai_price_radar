@@ -180,7 +180,9 @@ jobs:
           --shm-size 256m -v "$PWD/collector/tests/browser_smoke.py:/smoke.py:ro"
           pricememo-collector:ci xvfb-run -a python /smoke.py
       - name: Validate private worker gateway
-        run: docker run --rm -v "$PWD/deploy/collector-gateway.Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+        run: |
+          docker build -t pricememo-collector-gateway:ci -f deploy/collector-gateway.Dockerfile .
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --user 10001:10001 -v "$PWD/deploy/collector-gateway.Caddyfile:/etc/caddy/Caddyfile:ro" pricememo-collector-gateway:ci caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   extensions:
     runs-on: ubuntu-latest

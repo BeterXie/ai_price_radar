@@ -25,6 +25,7 @@
 
 1. 代码评审、测试、CI、干净 Tag 与 docs/QUICK_DEPLOY.md 发布流程全部完成。
 2. 甲骨文先建独立目录与镜像，现有 Caddy/API 转发服务不改动。
+   主站构建时加入 `-f docker-compose.collector-control.yml build collector-gateway`。v3.9.94 起使用移除文件能力标记的专用 Caddy 镜像，保持非 root、cap_drop ALL 和 no-new-privileges，不能直接用带 file capability 的官方二进制替代。
 3. 暂停主站旧扫描调度、等待当前刷新完成，再一致性备份 SQLite 和浏览器会话；保留原文件作为回滚点。
    主站结果目录预建为 root:10001、02770；甲骨文预建 `pricememo_collection` 外部网桥（`br-pm-collect`，172.30.93.0/24，网关 .1），先安装隔离规则再启动 Worker。
    停止旧审批入口使用后，将一致的 SQLite 副本与 merchant_sources.json 放到 root 所有的私有迁移目录，仅这两个文件只读挂载给新 importer，运行 `python collector_jobs.py import-approvals --crawler-db /legacy/approvals.db --merchant-sources /legacy/merchant_sources.json`（无 merchant 配置时省略该参数）。它只导入已经批准且主库不存在的来源，保留现有禁用决定和隐藏店铺，重复运行不重复创建。切换后审批统一在主站后台维护；旧 `review-dujiao` 与 merchant_sources.json 不再作为新采集流程的审批入口，仅用于旧调度回滚。日常调度不再读取或挂载旧采集库与浏览器会话。
