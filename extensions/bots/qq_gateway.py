@@ -412,6 +412,8 @@ class QQGatewayService:
                             account_id=app_id, conversation_id=f"group:{group}" if group else "c2c",
                         )
                 target = {"group_openid": group} if group else {"target_openid": sender}
+                if not await asyncio.to_thread(_is_bot_enabled):
+                    continue
                 send = self.bot_client.send_group_message if group else self.bot_client.send_c2c_message
                 ok = await asyncio.to_thread(send, **target, text=reply, app_id=app_id, app_secret=app_secret, msg_id=message_id)
                 logger.info("Sent QQ reply [success=%s, message_id=%s, length=%d]", ok, message_id, len(reply))

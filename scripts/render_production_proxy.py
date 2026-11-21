@@ -21,15 +21,21 @@ def render(source):
         result = re.sub(r"(?<=reverse_proxy )" + re.escape(alias) + r"(?=:)", address, result)
         result = re.sub(r"(?<=import brand_site )" + re.escape(alias) + r"\b", address, result)
     lines = []
+    depth = 0
+    known_site = False
     for line in result.splitlines():
         matcher, marker, comment = line.partition("#")
-        if matcher.strip().startswith("@api path /api/*") and " /health" in matcher:
+        if depth == 0:
+            known_site = bool(re.search(r"(?:^|[\s,])(?:ai\.pricememo\.cn|pricememo\.cn|aiprice\.si|aisi\.plus|pricein\.cc|openprice\.in)(?:[\s,{]|$)", matcher)
+                              or matcher.strip().startswith("(brand_site)"))
+        if known_site and matcher.strip().startswith("@api path /api/*") and " /health" in matcher:
             matcher = matcher.rstrip()
             for path in FEED_PATHS.split():
                 if path not in matcher.split():
                     matcher += " " + path
             line = matcher + (" #" + comment if marker else "")
         lines.append(line)
+        depth += matcher.count("{") - matcher.count("}")
     result = "\n".join(lines) + "\n"
     if "172.18.0.2:8000" not in result or "172.18.0.4:3000" not in result:
         raise ValueError("Expected production API/Web upstreams were not found")

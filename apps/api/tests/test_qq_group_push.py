@@ -382,6 +382,40 @@ def test_credentials_revoked_during_pacing_stop_the_next_group(setup, monkeypatc
     assert len(sent) == 1
 
 
+def test_native_deny_in_flight_survives_local_opt_out_then_unknown_permission_query(setup, monkeypatch):
+    factory, _, errors, state, clock, _ = setup
+    command()
+    original = group_push.QQBotClient.send_group_message
+    def close_while_waiting(self, group, message):
+        clock[0] += timedelta(seconds=2)
+        command("关闭群推送")
+        return original(self, group, message)
+    monkeypatch.setattr(group_push.QQBotClient, "send_group_message", close_while_waiting)
+    errors.append(40034105)
+    send(factory)
+    clock[0] += timedelta(seconds=1)
+    state[0] = None
+    command()
+    assert group_row(factory).allow_proactive is False
+
+
+def test_opaque_mentions_and_same_second_join_command_allow_admin_opt_in(setup):
+    factory, *_ = setup
+    native("GROUP_ADD_ROBOT", 1)
+    assert group_push.group_command("<@!bot_abc> 关闭群推送") == "关闭群推送"
+    command("<@!bot_abc> 开启群推送", timestamp="2026-11-21T07:00:01Z")
+    assert group_row(factory).subscribed
+
+
+def test_native_receive_after_same_second_state_query_is_authoritative(setup):
+    factory, _, _, state, clock, _ = setup
+    state[0] = {"allow_proactive_msg": False}
+    clock[0] += timedelta(seconds=1)
+    command()
+    native("GROUP_MSG_RECEIVE", 1)
+    assert group_row(factory).allow_proactive is True
+
+
 def test_token_latency_cannot_push_expired_team_only_digest(setup, monkeypatch):
     factory, sent, _, _, clock, _ = setup
     command()

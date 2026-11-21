@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for
+from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_for, publication_lock
 from app.services.catalog_vocabulary import (
     BRAND_GROUPS, account_access, normalize_search, product_search_aliases,
 )
@@ -194,6 +194,19 @@ def export_public_snapshot(
     output_dir: Path | str | None = None,
     public_base_url: str | None = None,
     allow_historical: bool = False,
+    before_publish=None,
+) -> dict[str, Any]:
+    with publication_lock(db):
+        return _export_public_snapshot(db, snapshot_id, output_dir, public_base_url, allow_historical, before_publish)
+
+
+def _export_public_snapshot(
+    db: Session,
+    snapshot_id: int | None = None,
+    output_dir: Path | str | None = None,
+    public_base_url: str | None = None,
+    allow_historical: bool = False,
+    before_publish=None,
 ) -> dict[str, Any]:
     """Export public immutable snapshot JSON and update latest.json pointer.
 
@@ -456,6 +469,8 @@ def export_public_snapshot(
             json.dump(snapshot_data, f, ensure_ascii=False, indent=2)
         temp_snapshot.replace(snapshot_file)
 
+    if before_publish is not None:
+        before_publish(snapshot_data)
     write_catalog_summary(snapshot_data, target_dir)
 
     # Write latest.json pointer (only for the current published snapshot)

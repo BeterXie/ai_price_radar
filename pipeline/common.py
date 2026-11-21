@@ -49,6 +49,40 @@ def import_lock(db: Session, *, wait: bool = False):
     yield
 
 
+@contextmanager
+def publication_lock(db: Session):
+    """Hold the publication mutex across commit and file export on one connection."""
+    if db.get_bind().dialect.name != "postgresql" or db.info.get("publication_locked"):
+        yield lambda: None
+        return
+    if db.new or db.dirty or db.deleted:
+        raise ValueError("commit pending changes before taking the publication lock")
+    db.rollback()
+    original_bind = db.bind
+    connection = db.get_bind().connect()
+    db.bind = connection
+    locked = False
+    def release():
+        nonlocal locked
+        if locked:
+            db.rollback()
+            connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": 0x415052494D504F52})
+            connection.commit()
+            locked = False
+            db.info.pop("publication_locked", None)
+    try:
+        connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": 0x415052494D504F52})
+        connection.commit()
+        locked = True
+        db.info["publication_locked"] = True
+        yield release
+    finally:
+        db.rollback()
+        release()
+        db.bind = original_bind
+        connection.close()
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 

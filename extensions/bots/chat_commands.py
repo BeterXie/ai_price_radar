@@ -18,6 +18,7 @@ from app.services.catalog_vocabulary import (
     PERIOD_LABELS, WARRANTY_LABELS, _normalize_query_alias,
 )
 from app.services.bot_binding import complete_qq_binding
+from .qq_text import normalize_qq_text
 from app.services.catalog import (
     OfferFilters,
     _base_public_offer_query,
@@ -637,8 +638,7 @@ def handle_chat_command(
     if channel == "qq":
         # QQ group mentions can contain numeric IDs or opaque OpenIDs, and may
         # appear anywhere. Strip transport metadata before commands or AI see it.
-        text = re.sub(r"<@!?[A-Za-z0-9_-]+>", " ", text).strip()
-        text = re.sub(r"^@[^\s]+\s*", "", text).strip()
+        text = normalize_qq_text(text)
     if not text:
         return help_menu(channel)
 

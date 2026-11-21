@@ -466,6 +466,7 @@ class QQGroupSubscription(Base):
     last_event_kind: Mapped[str] = mapped_column(String(32), default="", server_default="")
     permission_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     permission_event_kind: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    permission_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     state_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

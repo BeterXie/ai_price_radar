@@ -8,6 +8,7 @@ import { ALERT_VIEWS, alertMoney, alertTime, currentAlertRows, nextAlertExpiry, 
 export function AlertBoard({ report, view, initialNow }: { report: AlertReport; view: AlertView; initialNow: number }) {
   const [now, setNow] = useState(initialNow);
   const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(50);
   useEffect(() => {
     let started = performance.now();
     let serverNow = initialNow;
@@ -20,14 +21,13 @@ export function AlertBoard({ report, view, initialNow }: { report: AlertReport; 
       timer = window.setTimeout(tick, Math.max(1, nextAlertExpiry(report, alignedNow) - alignedNow));
     };
     const calibrate = async () => {
-      const sentAt = performance.now();
       try {
         const response = await fetch("/alerts/clock", { cache: "no-store", signal: AbortSignal.timeout(4000) });
         if (!response.ok) return;
         const data = await response.json();
         if (cancelled || !Number.isFinite(data.now)) return;
         const receivedAt = performance.now();
-        serverNow = Math.max(serverAlignedNow(serverNow, receivedAt - started), data.now + (receivedAt - sentAt) / 2);
+        serverNow = Math.max(serverAlignedNow(serverNow, receivedAt - started), data.now);
         started = receivedAt;
         tick();
       } catch { /* Keep monotonic server time until the next refresh. */ }
@@ -63,7 +63,7 @@ export function AlertBoard({ report, view, initialNow }: { report: AlertReport; 
     {stale && <p className="alert-stale" role="status">报价已有一段时间未更新，请核对商品详情中的最新库存。</p>}
     <div className="alert-list" data-view={view}>
       <div className="alert-list-heading" aria-hidden="true"><span>商品 / 商家</span><span>{isTeam ? "结束时间（北京）" : "价格变动"}</span><span>快照价格</span><span /></div>
-      {items.map((row, index) => <article className="alert-row" key={row.offer_id}>
+      {items.slice(0, visibleCount).map((row, index) => <article className="alert-row" key={row.offer_id}>
         <span className="alert-rank" aria-label={`第 ${index + 1} 项`}>{String(index + 1).padStart(2, "0")}</span>
         <div className="alert-product">
           <h2><Link href={`/offers/${row.offer_id}`}>{row.product_name}</Link></h2>
@@ -84,6 +84,7 @@ export function AlertBoard({ report, view, initialNow }: { report: AlertReport; 
         {query ? <button className="button-secondary" onClick={() => setSearch("")}>清除筛选</button> : <Link className="button-secondary" href="/products">查看全部报价</Link>}
       </div>}
     </div>
+    {items.length > visibleCount && <button className="button-secondary mt-6" onClick={() => setVisibleCount((count) => count + 50)}>继续查看 · 还有 {items.length - visibleCount} 条</button>}
     <p className="alert-footnote">{isTeam ? "同名、同结束时间的商品只保留最低价。结束时间从商家标题识别，具体规则请查看商品详情。" : "变动比较同一商家同一商品的前后报价，不代表历史最低价。"} 价格与库存以来源页面为准。</p>
   </>;
 }

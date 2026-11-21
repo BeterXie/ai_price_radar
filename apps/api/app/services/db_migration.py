@@ -114,6 +114,7 @@ def ensure_qq_group_subscriptions(conn) -> None:
         Column("last_event_kind", String(32), nullable=False, server_default=""),
         Column("permission_event_at", DateTime(timezone=True)),
         Column("permission_event_kind", String(32), nullable=False, server_default=""),
+        Column("permission_version", Integer, nullable=False, server_default="0"),
         Column("state_version", Integer, nullable=False, server_default="0"),
         Column("last_snapshot_id", Integer),
         Column("last_attempt_at", DateTime(timezone=True)),

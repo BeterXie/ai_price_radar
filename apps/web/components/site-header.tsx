@@ -47,7 +47,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
       if (!helpRef.current?.open) return;
       if (event instanceof KeyboardEvent) {
         if (event.key !== "Escape") return;
-        helpRef.current.querySelector("summary")?.focus();
+        if (helpRef.current.contains(document.activeElement)) helpRef.current.querySelector("summary")?.focus();
       } else if (event.target instanceof Node && helpRef.current.contains(event.target)) return;
       helpRef.current.open = false;
     };

@@ -137,7 +137,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   staticPages.push({ url: `${SITE_URL}/compare`, lastModified: snapshotAt });
   if (IS_PRIMARY_SITE) {
     for (const view of ["drops", "rises", "team"]) {
-      staticPages.push({ url: `${SITE_URL}/alerts?view=${view}`, lastModified: snapshotAt });
+      staticPages.push({ url: `${SITE_URL}/alerts?view=${view}` });
     }
   }
   if (snapshotAt) {

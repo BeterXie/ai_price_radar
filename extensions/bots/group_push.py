@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
@@ -15,6 +14,7 @@ from app.models import CatalogSnapshot, QQGroupSubscription, SystemSetting, User
 from app.services.credential_crypto import decrypt_secret
 from .formatter import format_detection_time, render_qq_group_digest
 from .qq_bot import QQBotClient
+from .qq_text import normalize_qq_text
 
 logger = logging.getLogger(__name__)
 GROUP_EVENTS = {"GROUP_ADD_ROBOT", "GROUP_DEL_ROBOT", "GROUP_MSG_RECEIVE", "GROUP_MSG_REJECT"}
@@ -29,9 +29,12 @@ def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-def active_bot_credentials(db) -> dict[str, str]:
+def active_bot_credentials(db, only_app_id: str | None = None) -> dict[str, str]:
     found = {}
-    for binding in db.scalars(select(UserBotBinding).where(UserBotBinding.channel == "qq", UserBotBinding.is_active.is_(True))):
+    query = select(UserBotBinding).where(UserBotBinding.channel == "qq", UserBotBinding.is_active.is_(True))
+    if only_app_id:
+        query = query.where(cast(UserBotBinding.extra_meta["app_id"].as_string(), String) == only_app_id)
+    for binding in db.scalars(query):
         app_id = (binding.extra_meta or {}).get("app_id")
         secret = decrypt_secret(binding.bot_token)
         if app_id and secret:
@@ -72,6 +75,7 @@ def apply_group_event(app_id: str, event: str, data: dict) -> None:
     with SessionLocal() as db:
         row = _get_group(db, app_id, group)
         values = {"permission_event_at": happened, "permission_event_kind": event, "updated_at": utcnow(),
+                  "permission_version": QQGroupSubscription.permission_version + 1,
                   "state_version": QQGroupSubscription.state_version + 1}
         if event == "GROUP_ADD_ROBOT":
             values.update(is_member=True,
@@ -98,16 +102,16 @@ def apply_group_event(app_id: str, event: str, data: dict) -> None:
 
 def _event_order(at_column, kind_column, event, happened):
     ordering = at_column < happened
-    if event == "GROUP_MSG_RECEIVE":
-        ordering = or_(ordering, and_(at_column == happened, kind_column == "GROUP_ADD_ROBOT"))
+    if event in {"GROUP_MSG_RECEIVE", "command_enable"}:
+        allowed_kinds = ["GROUP_ADD_ROBOT", "state_query"] if event == "GROUP_MSG_RECEIVE" else ["GROUP_ADD_ROBOT"]
+        ordering = or_(ordering, and_(at_column == happened, kind_column.in_(allowed_kinds)))
     elif event in {"GROUP_MSG_REJECT", "GROUP_DEL_ROBOT"}:
         ordering = at_column <= happened
     return or_(at_column.is_(None), ordering)
 
 
 def group_command(text: str) -> str:
-    clean = re.sub(r"^<@!?\d+>\s*", "", text.strip())
-    clean = re.sub(r"^@\S+\s+", "", clean).strip().lstrip("/")
+    clean = normalize_qq_text(text).lstrip("/")
     return clean if clean in GROUP_COMMANDS else ""
 
 
@@ -140,10 +144,11 @@ def handle_group_command(text: str, *, app_id: str, app_secret: str, group_openi
                       "state_version": QQGroupSubscription.state_version + 1, "updated_at": utcnow()}
             if enabling:
                 values.update(last_error_code=None)
-            ordering = QQGroupSubscription.last_event_at < happened if enabling else QQGroupSubscription.last_event_at <= happened
+            ordering = _event_order(QQGroupSubscription.last_event_at, QQGroupSubscription.last_event_kind,
+                                    "command_enable" if enabling else "GROUP_MSG_REJECT", happened)
             changed = db.execute(update(QQGroupSubscription).where(
                 QQGroupSubscription.id == row.id,
-                or_(QQGroupSubscription.last_event_at.is_(None), ordering),
+                ordering,
             ).values(**values).execution_options(synchronize_session=False))
             if changed.rowcount and enabling and state is not None:
                 db.execute(update(QQGroupSubscription).where(
@@ -152,6 +157,7 @@ def handle_group_command(text: str, *, app_id: str, app_secret: str, group_openi
                         QQGroupSubscription.permission_event_at < query_started_at.replace(microsecond=0)),
                 ).values(is_member=True, allow_proactive=state["allow_proactive_msg"],
                          permission_event_at=query_started_at.replace(microsecond=0), permission_event_kind="state_query",
+                         permission_version=QQGroupSubscription.permission_version + 1,
                          state_version=QQGroupSubscription.state_version + 1).execution_options(synchronize_session=False))
             db.commit()
             db.refresh(row)
@@ -204,7 +210,7 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
             delays.append(3.1 - (now - _aware(group.last_attempt_at)).total_seconds())
         if max(delays) > 0:
             time.sleep(min(max(delays), 3.1))
-        secret = active_bot_credentials(db).get(group.app_id)
+        secret = active_bot_credentials(db, group.app_id).get(group.app_id)
         if not secret:
             continue
         if client_secrets.get(group.app_id) != secret:
@@ -232,6 +238,7 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
             continue
         message = render_qq_group_digest(current_events, current_team, detected_at=detected_at, site_base_url=site_url)
         claimed_version = group.state_version
+        claimed_permission_version = group.permission_version
         # Claim before HTTP: an uncertain network outcome must never replay a
         # digest. Failures retry with the next publication, not the same one.
         claim = db.execute(update(QQGroupSubscription).where(
@@ -251,7 +258,8 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
         if ok:
             result["last_sent_at"] = utcnow()
         elif code in {40034101, 40054003}:
-            permission_result.update(is_member=False, subscribed=False, allow_proactive=False)
+            permission_result.update(is_member=False, subscribed=False, allow_proactive=False,
+                                     last_event_at=utcnow().replace(microsecond=0), last_event_kind="send_denied")
         elif code == 40034105:
             permission_result["allow_proactive"] = False
         elif code == 40034100 or code == 429:
@@ -260,9 +268,10 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
                    QQGroupSubscription.last_snapshot_id == snapshot_id).values(**result))
         if permission_result:
             permission_result.update(permission_event_at=utcnow().replace(microsecond=0), permission_event_kind="send_denied",
+                                     permission_version=QQGroupSubscription.permission_version + 1,
                                      state_version=QQGroupSubscription.state_version + 1)
             db.execute(update(QQGroupSubscription).where(QQGroupSubscription.id == group.id,
                        QQGroupSubscription.last_snapshot_id == snapshot_id,
-                       QQGroupSubscription.state_version == claimed_version).values(**permission_result))
+                       QQGroupSubscription.permission_version == claimed_permission_version).values(**permission_result))
         db.commit()
         logger.info("QQ group digest [subscription=%s, snapshot=%s, success=%s, code=%s]", group.id, snapshot_id, ok, code)

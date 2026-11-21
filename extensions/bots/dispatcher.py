@@ -291,6 +291,8 @@ def dispatch_price_changes(
                 for chunk in split_telegram_html(tg_text):
                     if not report_is_current():
                         return
+                    if any(not fresh_alert_item(event, utcnow(), stale_offer_hours) for event in current_events):
+                        break
                     telegram.send_admin_message(chunk)
             current_team_offers = _unexpired_team_offers(team_offers)
             if current_team_offers:
@@ -359,6 +361,8 @@ def dispatch_price_changes(
                     for chunk in split_qq_messages(message):
                         if not report_is_current():
                             return
+                        if any(not fresh_alert_item(event, utcnow(), stale_offer_hours) for event in allowed_events):
+                            break
                         if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
                             all_delivered = False
                 if wants_team_alert:
