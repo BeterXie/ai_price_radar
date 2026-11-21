@@ -30,6 +30,6 @@
    主站结果目录预建为 root:10001、02770；甲骨文预建 `pricememo_collection` 外部网桥（`br-pm-collect`，172.30.93.0/24，网关 .1），先安装隔离规则再启动 Worker。
    停止旧审批入口使用后，将一致的 SQLite 副本与 merchant_sources.json 放到 root 所有的私有迁移目录，仅这两个文件只读挂载给新 importer，运行 `python collector_jobs.py import-approvals --crawler-db /legacy/approvals.db --merchant-sources /legacy/merchant_sources.json`（无 merchant 配置时省略该参数）。它只导入已经批准且主库不存在的来源，保留现有禁用决定和隐藏店铺，重复运行不重复创建。切换后审批统一在主站后台维护；旧 `review-dujiao` 与 merchant_sources.json 不再作为新采集流程的审批入口，仅用于旧调度回滚。日常调度不再读取或挂载旧采集库与浏览器会话。
    安装 `pricememo-collector-firewall.service` 和 `pricememo-collector.service`；Compose 禁用 Docker 自动重启，由 systemd 管理整个采集服务，每次启动重新检查防火墙，规则失败时禁止启动。不得直接设置 `restart: unless-stopped` 绕过这个顺序。
-4. 迁移采集状态；验证 16688、浏览器扫描、发现/验证回传、任务续租、断线恢复、未授权请求拒绝、SSRF/云元数据拒绝。
-5. 完整采集结果经主站发布成功、快照推进后，恢复使用任务队列的新调度并停用主站旧 detector。
+4. 分阶段迁移时，将 `COLLECTOR_LDXP_ENABLED=false` 写入主站环境：主站继续运行 `refresh_remote.sh ldxp-only`，只扫描和发布 LDXP；Oracle `collector-scan.timer` 只领取已批准的非 LDXP 来源。验证 16688、HTTP 来源、发现/验证回传、任务续租、断线恢复、未授权请求拒绝、SSRF/云元数据拒绝。LDXP 验证挑战完成后，才切换该开关并迁移浏览器扫描。
+5. 分阶段切换时先恢复主站 inventory/refresh timer（refresh 使用 `ldxp-only`），启用 `collector-scan.timer` 和 `collector-publish.timer`，保持 source-detector 运行；Oracle 首轮非 LDXP 采集发布成功后再停用重复的旧非 LDXP 路径。完整 LDXP 迁移时，才停用主站旧 detector 并打开 `COLLECTOR_LDXP_ENABLED`。
 6. 回滚时停甲骨文 Worker、回收租约并恢复旧调度；保留任务与结果，数据库和既有快照不回滚。

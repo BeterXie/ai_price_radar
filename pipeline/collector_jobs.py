@@ -77,7 +77,8 @@ def enqueue(db, kind: str, release: str):
         return {"job_id": active.id, "created": False, "status": active.status}
     specs = []
     if kind != "discover":
-        specs = [SourceSpec("ldxp", "/data/ldxp_crawler.db")]
+        if os.getenv('COLLECTOR_LDXP_ENABLED', 'true').casefold() in {'1','true','yes','on'}:
+            specs.append(SourceSpec("ldxp", "/data/ldxp_crawler.db"))
         if kind == "scan":
             specs += approved_intake_sources(db, now=now)
         specs = merge_sources(specs)
@@ -85,7 +86,7 @@ def enqueue(db, kind: str, release: str):
     manifest = []
     for spec in specs:
         row = {"connector": spec.connector, "source": spec.source, "intake_ids": list(spec.intake_ids)}
-        if spec.connector == "16688":
+        if spec.connector != "ldxp":
             shop = resolve_intake_shop(db, source_url=spec.source, source_key=spec.source,
                 source_type={"woocommerce-store": "woocommerce"}.get(spec.connector, spec.connector.replace("-", "_")))
             if shop:

@@ -35,6 +35,14 @@ def test_scheduler_deduplicates_active_catalog_but_allows_discovery(runtime):
     assert discovery['created'] and discovery['job_id'] != first['job_id']
 
 
+def test_partial_migration_omits_ldxp_from_oracle_manifest(runtime, monkeypatch):
+    db, _ = runtime
+    monkeypatch.setenv('COLLECTOR_LDXP_ENABLED', 'false')
+    result = enqueue(db, 'scan', 'test')
+    job = db.get(CollectorJob, result['job_id'])
+    assert all(source['connector'] != 'ldxp' for source in job.sources)
+
+
 def test_uploaded_collection_publishes_without_fetching_again_and_replay_does_not_duplicate(runtime, monkeypatch):
     db, directory = runtime
     result = enqueue(db, 'inventory', 'test')

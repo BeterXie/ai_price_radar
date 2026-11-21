@@ -1,0 +1,12 @@
+[Unit]
+Description=Enqueue non-LDXP Oracle collection batch
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-price-radar-v3
+ExecStart=/usr/bin/python3 /opt/ai-price-radar-v3/scripts/collector_schedule.py scan
+TimeoutStartSec=30m
+Nice=10
+NoNewPrivileges=true

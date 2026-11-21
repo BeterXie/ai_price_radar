@@ -150,7 +150,7 @@ case "$MODE" in
       echo "dujiao_next discovery is currently disabled (ENABLE_DUJIAO_DISCOVERY=false)"
     fi
     ;;
-  inventory)
+  inventory|ldxp-only)
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; inventory scan skipped"
       exit 0
@@ -186,7 +186,7 @@ case "$MODE" in
       --circuit-breaker 3
     ;;
   *)
-    echo "usage: $0 {full|scan|inventory|discover}" >&2
+    echo "usage: $0 {full|scan|inventory|ldxp-only|discover}" >&2
     exit 2
     ;;
 esac
@@ -227,7 +227,7 @@ python3 scripts/build_crawler_publish_db.py "$CRAWLER_DB" "$PUBLISH_DB"
 find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_publish_*.db' \
   ! -path "$PUBLISH_DB" -delete
 
-if [[ "$MODE" == "inventory" ]]; then
+if [[ "$MODE" == "inventory" || "$MODE" == "ldxp-only" ]]; then
   PUBLISH_ARGS=(
     python sync_source.py
     --connector ldxp

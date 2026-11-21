@@ -161,11 +161,12 @@ def collect(job, lost):
     if not manifest.exists():
         atomic_json(manifest, sources)
     scan_done = directory / "scan.done"
+    needs_browser = any(spec["connector"] == "ldxp" for spec in sources)
     if job["kind"] == "discover":
         if not scan_done.exists():
             discover(lost)
             scan_done.touch()
-    elif not scan_done.exists() or time.time() - scan_done.stat().st_mtime > 3600:
+    elif needs_browser and (not scan_done.exists() or time.time() - scan_done.stat().st_mtime > 3600):
         # Never let a new scan marker make an old first-source checkpoint valid.
         (directory / "0.status.json").unlink(missing_ok=True)
         scan(job["kind"], lost)

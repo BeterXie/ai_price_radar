@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule non-LDXP Oracle collection
+
+[Timer]
+OnCalendar=*-*-* *:25:00
+Persistent=true
+Unit=ai-price-radar-collector-scan.service
+
+[Install]
+WantedBy=timers.target
