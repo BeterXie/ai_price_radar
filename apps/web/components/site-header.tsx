@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { GithubLogo, List, Storefront, Tag, User, X } from "@phosphor-icons/react";
+import { CaretDown, GithubLogo, List, Storefront, Tag, User, X } from "@phosphor-icons/react";
 import { PlatformIcon } from "@/components/platform-icon";
 import { fetchAuthMe, AUTH_CHANGE_EVENT } from "@/lib/auth-client";
 import type { AuthSessionState } from "@/lib/types";
@@ -23,6 +23,7 @@ function current(pathname: string, href: string) {
 export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }: { advertiseEnabled?: boolean; relayHubEnabled?: boolean }) {
   const pathname = usePathname();
   const menuRef = useRef<HTMLDetailsElement>(null);
+  const helpRef = useRef<HTMLDetailsElement>(null);
   const [session, setSession] = useState<AuthSessionState | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
@@ -36,6 +37,24 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
     ...(IS_PRIMARY_SITE ? [{ href: "/guides", label: "购买指南" }] : []),
     { href: "/methodology", label: "数据方法" },
   ];
+  const alertLinks = [
+    { href: "/alerts?view=drops", label: "降价榜" },
+    { href: "/alerts?view=team", label: "Team 车提醒" },
+  ];
+
+  useEffect(() => {
+    const dismiss = (event: MouseEvent | KeyboardEvent) => {
+      if (!helpRef.current?.open) return;
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== "Escape") return;
+        helpRef.current.querySelector("summary")?.focus();
+      } else if (event.target instanceof Node && helpRef.current.contains(event.target)) return;
+      helpRef.current.open = false;
+    };
+    document.addEventListener("click", dismiss);
+    document.addEventListener("keydown", dismiss);
+    return () => { document.removeEventListener("click", dismiss); document.removeEventListener("keydown", dismiss); };
+  }, []);
 
   // Load the session from any login entry point (header modal, account page,
   // QQ callback). AUTH_CHANGE_EVENT is dispatched by auth-client on every
@@ -82,6 +101,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
 
   const closeMenu = () => {
     if (menuRef.current) menuRef.current.open = false;
+    if (helpRef.current) helpRef.current.open = false;
   };
   if (!IS_PRIMARY_SITE) return <BrandHeader relayHubEnabled={relayHubEnabled} advertiseEnabled={advertiseEnabled} account={session === null ? <span aria-label="正在读取账户状态">账户</span> : session.authenticated && session.user ? <Link href="/account"><User size={18} /><span>{session.user.nickname || "个人中心"}</span></Link> : <button type="button" onClick={() => setShowLoginModal(true)}><User size={18} />登录</button>}><LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} onSuccess={setSession} /></BrandHeader>;
   return (
@@ -112,12 +132,14 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
         </nav>
 
         <div className="header-actions flex shrink-0 items-center gap-2">
-          <nav aria-label="帮助导航" className="header-help-nav hidden items-center xl:flex">
-            {helpLinks.map((item) => (
-              <Link key={item.href} href={item.href} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link">
-                {item.label}
-              </Link>
-            ))}
+          <nav aria-label="榜单与指南" className="header-help-nav hidden items-center xl:flex">
+            {alertLinks.map((item) => <Link key={item.href} href={item.href} className="nav-link">{item.label}</Link>)}
+            <details ref={helpRef} className="header-guide-menu">
+              <summary className="nav-link">指南与工具 <CaretDown size={13} aria-hidden="true" /></summary>
+              <div className="header-guide-panel">
+                {helpLinks.map((item) => <Link key={item.href} href={item.href} onClick={closeMenu} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link">{item.label}</Link>)}
+              </div>
+            </details>
           </nav>
           <Link href="/shops/submit" aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="header-action header-action-submit">
             <Storefront size={18} />申请收录
@@ -167,11 +189,11 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
                   </Link>
                 ))}
                 <span className="mx-2 my-1 h-px bg-[color:var(--line)]" aria-hidden="true" />
-                {helpLinks.map((item) => (
-                  <Link key={item.href} href={item.href} onClick={closeMenu} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link flex min-h-11">
-                    {item.label}
-                  </Link>
-                ))}
+                {alertLinks.map((item) => <Link key={item.href} href={item.href} onClick={closeMenu} className="nav-link flex min-h-11">{item.label}</Link>)}
+                <details className="mobile-guide-menu">
+                  <summary className="nav-link flex min-h-11">指南与工具 <CaretDown size={14} aria-hidden="true" /></summary>
+                  <div>{helpLinks.map((item) => <Link key={item.href} href={item.href} onClick={closeMenu} aria-current={current(pathname, item.href) ? "page" : undefined} className="nav-link flex min-h-11">{item.label}</Link>)}</div>
+                </details>
                 <Link href="/shops/submit" onClick={closeMenu} aria-current={current(pathname, "/shops/submit") ? "page" : undefined} className="nav-link flex min-h-11"><Storefront size={17} />申请收录</Link>
                 {advertiseEnabled ? (
                   <Link href="/advertise" onClick={closeMenu} aria-current={current(pathname, "/advertise") ? "page" : undefined} className="nav-link flex min-h-11"><Tag size={17} />商务合作</Link>

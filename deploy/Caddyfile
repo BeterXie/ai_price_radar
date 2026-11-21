@@ -14,7 +14,7 @@
         reverse_proxy api:8000
     }
 
-    @api path /api/* /health
+    @api path /api/* /health /data/alerts-latest.json
     handle @api {
         request_body {
             max_size 1MB

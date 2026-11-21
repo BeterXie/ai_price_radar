@@ -50,8 +50,10 @@ def intake_lock_engine(monkeypatch):
         ApiBase.metadata.create_all(engine)
         # Feed output is unrelated to row locking; keep this test entirely in its schema.
         import export_snapshot
+        import export_alerts
 
         monkeypatch.setattr(export_snapshot, "export_public_snapshot", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(export_alerts, "export_snapshot_alerts", lambda *_args, **_kwargs: None)
         yield engine
     finally:
         if engine is not None:

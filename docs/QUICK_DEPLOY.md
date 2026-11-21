@@ -1,5 +1,18 @@
 # 生产快速部署
 
+群主动推送版本包含 v27 新表迁移：切换 API 前使用该 Release 镜像运行
+以下命令执行源码包内的迁移脚本；`scripts/` 不在镜像内，必须只读挂载发布源码目录：
+
+```bash
+docker run --rm --network ai-price-radar_default --env-file .env \
+  -v "$PWD:/workspace:ro" -w /workspace ai-price-radar-api \
+  python scripts/migrate_qq_groups_v27.py
+```
+
+先在临时 PostgreSQL 16 连续执行两次确认可重复运行，再迁移生产。
+本次同时修改快照发布流程，须按下文完成完整刷新门禁，并重建 API、Web 和 importer。
+群内由群主/管理员发送「开启群推送」或在 QQ 机器人资料页开启通知后生效；迁移不自动订阅已有群。
+
 这是 `ai.pricememo.cn` 的唯一标准部署流程。生产主机为 `pricememo-prod`，运行目录为 `/opt/ai-price-radar-v3`；主机没有 Git 和 Node.js，因此源码来自 Release Tag，Next.js standalone 必须在本机生成。
 
 ## 原则

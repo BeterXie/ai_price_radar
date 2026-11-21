@@ -19,10 +19,10 @@ from sqlalchemy import select
 import websockets
 
 from app.database import SessionLocal
-from app.models import SystemSetting, UserBotBinding
-from app.services.credential_crypto import decrypt_secret
+from app.models import SystemSetting
 from .chat_commands import handle_chat_command
 from .qq_bot import QQBotClient
+from .group_push import GROUP_EVENTS, active_bot_credentials, apply_group_event, group_command, handle_group_command
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _is_bot_enabled() -> bool:
             return s.value.strip().lower() in ("true", "1", "yes", "on")
     except Exception as e:
         logger.warning("Failed checking bot_enabled setting: %s", e)
-        return True
+        return False
 
 
 class QQGatewayService:
@@ -82,44 +82,23 @@ class QQGatewayService:
         """Periodically scan active QQ bots and maintain their connection tasks."""
         while self.running:
             try:
-                bot_enabled = await asyncio.to_thread(_is_bot_enabled)
-                if not bot_enabled:
-                    # Cancel any active connections when bot is turned off
-                    for app_id, task in list(self._bot_tasks.items()):
-                        task.cancel()
-                    self._bot_tasks.clear()
-                    self._bot_credentials.clear()
-                    await asyncio.sleep(15.0)
-                    continue
-
+                # Stay connected while delivery is paused so native group
+                # permission changes and admin opt-outs are not lost.
                 # Query distinct active (app_id, bot_token)
                 active_bots: dict[str, str] = {}
                 try:
                     def _load_active_bots() -> dict[str, str]:
-                        found: dict[str, str] = {}
                         with SessionLocal() as db:
-                            bindings = db.scalars(
-                                select(UserBotBinding).where(
-                                    UserBotBinding.channel == "qq",
-                                    UserBotBinding.is_active == True,
-                                )
-                            ).all()
-                            for b in bindings:
-                                app_id = (b.extra_meta or {}).get("app_id") if b.extra_meta else None
-                                app_secret = decrypt_secret(b.bot_token)
-                                if app_id and app_secret:
-                                    found[str(app_id).strip()] = str(app_secret).strip()
-                        return found
+                            return active_bot_credentials(db)
 
                     active_bots = await asyncio.to_thread(_load_active_bots)
                 except Exception as db_err:
                     logger.error("Error querying active QQ bot bindings: %s", db_err)
 
-                # Fallback to env vars if present
-                env_app_id = os.getenv("QQ_BOT_APP_ID", "").strip()
-                env_app_secret = os.getenv("QQ_BOT_APP_SECRET", "").strip()
-                if env_app_id and env_app_secret and env_app_id not in active_bots:
-                    active_bots[env_app_id] = env_app_secret
+                # Environment-backed bots can stay online during a DB outage.
+                env_id, env_secret = os.getenv("QQ_BOT_APP_ID", "").strip(), os.getenv("QQ_BOT_APP_SECRET", "").strip()
+                if env_id and env_secret:
+                    active_bots.setdefault(env_id, env_secret)
 
                 # Launch tasks for newly discovered or disconnected bots, and
                 # rebuild when the stored credential has changed (re-bind).
@@ -275,8 +254,10 @@ class QQGatewayService:
                     s = payload.get("s")
                     t = payload.get("t")
                     d = payload.get("d") or {}
+                    group_control = t in {"GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"} and group_command(
+                        str(d.get("content", ""))) in {"开启群推送", "关闭群推送"}
 
-                    if s is not None:
+                    if s is not None and t not in GROUP_EVENTS and not group_control:
                         last_seq = s
 
                     if op == 0:  # DISPATCH
@@ -290,6 +271,11 @@ class QQGatewayService:
                         elif t == "RESUMED":
                             print(f">>> [QQBotGateway] RESUMED! app_id={app_id} <<<", flush=True)
                             logger.info("✅ QQ Bot [%s] session RESUMED successfully.", app_id)
+
+                        elif t in GROUP_EVENTS:
+                            await asyncio.to_thread(apply_group_event, app_id, t, d)
+                            if s is not None:
+                                last_seq = s
 
                         elif t == "C2C_MESSAGE_CREATE":
                             # Inbound private message from a QQ user
@@ -316,6 +302,13 @@ class QQGatewayService:
                             member_openid = author.get("member_openid") or author.get("id")
 
                             if group_openid:
+                                prepared_reply = None
+                                if group_control:
+                                    prepared_reply = await asyncio.to_thread(
+                                        handle_group_command, raw_content, app_id=app_id, app_secret=app_secret,
+                                        group_openid=group_openid, member_role=author.get("member_role", ""),
+                                        message_timestamp=d.get("timestamp", ""),
+                                    )
                                 logger.info(
                                     "Received QQ group message [group=%s, member=%s, message_id=%s, length=%d]",
                                     group_openid[:6] + "...",
@@ -323,12 +316,16 @@ class QQGatewayService:
                                     msg_id,
                                     len(raw_content),
                                 )
-                                self._enqueue_message(message_queue, raw_content, member_openid or "", group_openid, msg_id)
+                                self._enqueue_message(message_queue, raw_content, member_openid or "", group_openid,
+                                                      msg_id, member_role=author.get("member_role", ""),
+                                                      message_timestamp=d.get("timestamp", ""), prepared_reply=prepared_reply)
+                                if group_control and s is not None:
+                                    last_seq = s
 
                         elif t == "FRIEND_ADD":
                             # User added robot as friend
                             user_openid = d.get("openid") or d.get("user_openid") or d.get("id")
-                            if user_openid:
+                            if user_openid and await asyncio.to_thread(_is_bot_enabled):
                                 logger.info("QQ FRIEND_ADD event from: %s", user_openid[:6] + "...")
                                 welcome_text = (
                                     "🎉 欢迎添加 PriceMemo 比价助手！\n"
@@ -389,23 +386,31 @@ class QQGatewayService:
             backoff = min(backoff * 1.5, 30.0)
 
     @staticmethod
-    def _enqueue_message(queue: asyncio.Queue, text: str, sender: str, group: str, message_id: str) -> None:
+    def _enqueue_message(queue: asyncio.Queue, text: str, sender: str, group: str, message_id: str,
+                         *, member_role: str = "", message_timestamp: str = "", prepared_reply: str | None = None) -> None:
         try:
-            queue.put_nowait((text, sender, group, message_id, time.monotonic()))
+            queue.put_nowait((text, sender, group, message_id, time.monotonic(), member_role, message_timestamp, prepared_reply))
         except asyncio.QueueFull:
             logger.warning("QQ reply queue full; message skipped [message_id=%s]", message_id)
 
     async def _reply_worker(self, queue: asyncio.Queue, app_id: str, app_secret: str) -> None:
         while True:
-            text, sender, group, message_id, received_at = await queue.get()
+            text, sender, group, message_id, received_at, member_role, message_timestamp, prepared_reply = await queue.get()
             try:
+                if not await asyncio.to_thread(_is_bot_enabled):
+                    continue
                 if time.monotonic() - received_at > 60:
                     reply = "当前查询较多，请稍后重新发送。"
                 else:
-                    reply = await asyncio.to_thread(
-                        handle_chat_command, raw_text=text, sender_id=sender, channel="qq",
-                        account_id=app_id, conversation_id=f"group:{group}" if group else "c2c",
-                    )
+                    reply = prepared_reply
+                    if group and reply is None:
+                        reply = await asyncio.to_thread(handle_group_command, text, app_id=app_id, app_secret=app_secret,
+                                                        group_openid=group, member_role=member_role, message_timestamp=message_timestamp)
+                    if reply is None:
+                        reply = await asyncio.to_thread(
+                            handle_chat_command, raw_text=text, sender_id=sender, channel="qq",
+                            account_id=app_id, conversation_id=f"group:{group}" if group else "c2c",
+                        )
                 target = {"group_openid": group} if group else {"target_openid": sender}
                 send = self.bot_client.send_group_message if group else self.bot_client.send_c2c_message
                 ok = await asyncio.to_thread(send, **target, text=reply, app_id=app_id, app_secret=app_secret, msg_id=message_id)

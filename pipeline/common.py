@@ -35,16 +35,16 @@ class ImportLockUnavailable(RuntimeError):
 
 
 @contextmanager
-def import_lock(db: Session):
+def import_lock(db: Session, *, wait: bool = False):
     """Serialize import transactions that target the same PostgreSQL database."""
     if db.get_bind().dialect.name != "postgresql":
         yield
         return
     acquired = db.execute(
-        text("SELECT pg_try_advisory_xact_lock(:key)"),
+        text("SELECT pg_advisory_xact_lock(:key)" if wait else "SELECT pg_try_advisory_xact_lock(:key)"),
         {"key": 0x415052494D504F52},
     ).scalar_one()
-    if not acquired:
+    if not wait and not acquired:
         raise ImportLockUnavailable("another catalog import is already running")
     yield
 

@@ -12,7 +12,7 @@ UPSTREAMS = {
     "ai-radar-pricein": "172.18.0.7",
     "ai-radar-aiprice": "172.18.0.8",
 }
-FEED_PATHS = " /data/latest.json /data/v1/snapshots/* /data/v1/catalogs/*"
+FEED_PATHS = " /data/latest.json /data/alerts-latest.json /data/v1/snapshots/* /data/v1/catalogs/*"
 
 
 def render(source):
@@ -22,8 +22,13 @@ def render(source):
         result = re.sub(r"(?<=import brand_site )" + re.escape(alias) + r"\b", address, result)
     lines = []
     for line in result.splitlines():
-        if line.strip().startswith("@api path /api/*") and " /health" in line and "/data/latest.json" not in line:
-            line += FEED_PATHS
+        matcher, marker, comment = line.partition("#")
+        if matcher.strip().startswith("@api path /api/*") and " /health" in matcher:
+            matcher = matcher.rstrip()
+            for path in FEED_PATHS.split():
+                if path not in matcher.split():
+                    matcher += " " + path
+            line = matcher + (" #" + comment if marker else "")
         lines.append(line)
     result = "\n".join(lines) + "\n"
     if "172.18.0.2:8000" not in result or "172.18.0.4:3000" not in result:

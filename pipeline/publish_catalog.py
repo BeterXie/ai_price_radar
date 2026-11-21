@@ -1067,14 +1067,26 @@ def _publish_prepared_sources(
                 db.commit()
                 db.expire_all()
                 try:
+                    import export_snapshot
+                    from export_alerts import export_snapshot_alerts
                     from export_snapshot import export_public_snapshot
-                    export_public_snapshot(db, snapshot.id)
+                    with import_lock(db, wait=True):
+                        if _current_snapshot_id(db) != snapshot.id:
+                            db.rollback()
+                            return result
+                        export_public_snapshot(db, snapshot.id)
+                        alert_report = export_snapshot_alerts(
+                            db, snapshot.id, all_price_changes, output_dir=export_snapshot.DEFAULT_OUTPUT_DIR,
+                            previous_snapshot_id=previous_snapshot_id,
+                        )
+                        db.commit()
                 except Exception as export_err:
                     logger.exception("Failed to export public snapshot %d", snapshot.id)
                     raise SnapshotExportError(snapshot.id, export_err) from export_err
                 try:
                     from app.services.notification_hub import dispatch_price_changes
-                    dispatch_price_changes(all_price_changes, db_session=db, snapshot_id=snapshot.id)
+                    if alert_report is not None:
+                        dispatch_price_changes(all_price_changes, db_session=db, snapshot_id=snapshot.id, alert_report=alert_report)
                 except Exception as notify_err:
                     logger.warning("Failed to dispatch snapshot notifications: %s", notify_err)
             return result

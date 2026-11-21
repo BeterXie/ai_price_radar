@@ -25,6 +25,7 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-production}
+      PUBLIC_DATA_DIR: /app/public-data
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
       ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY must be set in .env}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
@@ -74,6 +75,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SMTP_SSL: ${SMTP_SSL:-false}
+    volumes:
+      - ./apps/web/public/data:/app/public-data:ro
     depends_on:
       db:
         condition: service_healthy

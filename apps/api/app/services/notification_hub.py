@@ -81,6 +81,7 @@ def create_price_change_event(
 
 def dispatch_price_changes(
     events: list[PriceChangeEvent], db_session: Any = None, *, snapshot_id: int | None = None,
+    alert_report: dict | None = None,
 ) -> None:
     """Safely dispatch price change events to private bots if installed.
 
@@ -111,7 +112,10 @@ def dispatch_price_changes(
         module = importlib.import_module(module_name)
         dispatch_fn = getattr(module, "dispatch_price_changes", None)
         if callable(dispatch_fn):
-            dispatch_fn(events, db_session=db_session, snapshot_id=snapshot_id)
+            kwargs = {"snapshot_id": snapshot_id}
+            if alert_report is not None:
+                kwargs["alert_report"] = alert_report
+            dispatch_fn(events, db_session=db_session, **kwargs)
         else:
             logger.debug("extensions.bots.dispatcher has no dispatch_price_changes function")
     except ModuleNotFoundError as exc:
