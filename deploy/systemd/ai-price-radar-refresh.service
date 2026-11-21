@@ -9,7 +9,7 @@ WorkingDirectory=/opt/ai-price-radar-v3
 # 从 .env 读取 DISCOVERY_* 等调优参数；前导 "-" 表示文件缺失时不失败。
 EnvironmentFile=-/opt/ai-price-radar-v3/.env
 ExecStart=/usr/bin/bash /opt/ai-price-radar-v3/scripts/refresh_remote.sh ldxp-only
-ExecStopPost=-/usr/bin/docker rm -f ai-price-radar-crawler-run-scan
+ExecStopPost=-/usr/bin/docker rm -f ai-price-radar-crawler-run-ldxp-only
 NoNewPrivileges=true
 Nice=10
 IOSchedulingClass=idle

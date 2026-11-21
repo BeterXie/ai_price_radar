@@ -132,9 +132,10 @@ def discover(lost):
             "--sources", "seed,16688,commoncrawl,bing,github", "--request-interval", "2",
             "--max-raw-urls", "2000", "--max-unique-candidates", "1000", "--keywords", *KEYWORDS]
     result = run_command(args, lost, capture=True)
-    run_command([sys.executable, "/app/ldxp_gpt_crawler.py", "discover", "--db", str(DATA / "ldxp_crawler.db"),
-                 "--seed-file", "/config/seeds.txt", "--sources", "seed,bing,commoncrawl", "--max-discovered", "500",
-                 "--keywords", *KEYWORDS], lost)
+    if os.getenv('COLLECTOR_LDXP_ENABLED','true').casefold() in {'true','1','yes','on'}:
+        run_command([sys.executable, "/app/ldxp_gpt_crawler.py", "discover", "--db", str(DATA / "ldxp_crawler.db"),
+                     "--seed-file", "/config/seeds.txt", "--sources", "seed,bing,commoncrawl", "--max-discovered", "500",
+                     "--keywords", *KEYWORDS], lost)
     if any(result.get("failures", {}).get(key) for key in ("run_create", "batch_upsert", "run_finish")):
         raise RuntimeError("source discovery did not completely report its run")
 

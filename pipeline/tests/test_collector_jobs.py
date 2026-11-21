@@ -36,11 +36,43 @@ def test_scheduler_deduplicates_active_catalog_but_allows_discovery(runtime):
 
 
 def test_partial_migration_omits_ldxp_from_oracle_manifest(runtime, monkeypatch):
+    from app.models import SourceIntake
     db, _ = runtime
+    db.add(SourceIntake(source_type='16688', detected_platform='16688', source_key='https://www.16688.com.cn/shop/S1',
+        source_url='https://www.16688.com.cn/shop/S1',contact_email='',status='approved'))
+    db.commit()
     monkeypatch.setenv('COLLECTOR_LDXP_ENABLED', 'false')
     result = enqueue(db, 'scan', 'test')
     job = db.get(CollectorJob, result['job_id'])
     assert all(source['connector'] != 'ldxp' for source in job.sources)
+
+
+def test_oracle_publication_preserves_newer_local_ldxp_prices(runtime, monkeypatch):
+    from app.models import SourceIntake
+    from common import Offer,Shop
+    from publish_catalog import publish_sources,SourceSpec
+    db,directory=runtime
+    write_job_bundle(db,directory,ldxp_record())
+    publish_ready(db,directory,release='test')
+    db.add(SourceIntake(source_type='16688',detected_platform='16688',source_key='https://www.16688.com.cn/shop/S1',
+        source_url='https://www.16688.com.cn/shop/S1',contact_email='',status='approved'))
+    db.commit()
+    monkeypatch.setenv('COLLECTOR_LDXP_ENABLED','false')
+    job=db.get(CollectorJob,enqueue(db,'scan','test')['job_id'])
+    job.status,job.result_file='collected',job.id+'-remote.gz'
+    row={**ldxp_record(),'token':'16688-S1','source_platform':'16688','shop_url':'https://www.16688.com.cn/shop/S1',
+        'product_url':'https://www.16688.com.cn/goods/G1','product_key':'16688:G1','listed_price':'60'}
+    rows=[{'type':'header','schema':SCHEMA,'job_id':job.id},{'type':'source','index':0,**job.sources[0]},
+          {'type':'record','record':row},{'type':'end','count':1,'status':'ok'},{'type':'complete','sources':1}]
+    (directory/job.result_file).write_bytes(gzip.compress(('\n'.join(json.dumps(r) for r in rows)+'\n').encode()))
+    db.commit()
+    monkeypatch.setitem(CONNECTORS,'ldxp',lambda source:iter([{**ldxp_record(),'listed_price':'75'}]))
+    local=publish_sources(db,[SourceSpec('ldxp','ignored')],source_label='ldxp',carry_forward_current=True)
+    assert local.snapshot_id>job.baseline_snapshot_id
+    remote=publish_ready(db,directory,release='test')
+    offers=db.execute(select(Shop.platform,Offer.price).join(Offer,Offer.shop_id==Shop.id)
+        .where(Offer.snapshot_id==remote['snapshot_id'])).all()
+    assert {platform:float(price) for platform,price in offers}=={'ldxp':75.0,'16688':60.0}
 
 
 def test_uploaded_collection_publishes_without_fetching_again_and_replay_does_not_duplicate(runtime, monkeypatch):

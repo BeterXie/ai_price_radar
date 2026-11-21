@@ -1,4 +1,7 @@
 services:
+  api:
+    networks:
+      collector_gateway:
   collector-gateway:
     image: ai-price-radar-collector-gateway
     build:

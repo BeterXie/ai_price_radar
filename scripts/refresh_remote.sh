@@ -109,9 +109,9 @@ run_source_discovery() {
 }
 
 case "$MODE" in
-  discover)
+  discover|ldxp-discover)
     # Run unified public-source discovery first so 16688 is not delayed by legacy Dujiao revalidation.
-    run_source_discovery
+    if [[ "$MODE" == "discover" ]]; then run_source_discovery; fi
     run_crawler discover \
       --db /data/ldxp_crawler.db \
       --keywords "${KEYWORDS[@]}" \
@@ -150,7 +150,7 @@ case "$MODE" in
       echo "dujiao_next discovery is currently disabled (ENABLE_DUJIAO_DISCOVERY=false)"
     fi
     ;;
-  inventory|ldxp-only)
+  inventory)
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; inventory scan skipped"
       exit 0
@@ -168,7 +168,7 @@ case "$MODE" in
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     ;;
-  scan)
+  scan|ldxp-only)
     if [[ ! -f "$CRAWLER_DB" ]]; then
       echo "crawler database is missing; run '$0 full' once first" >&2
       exit 2
@@ -186,7 +186,7 @@ case "$MODE" in
       --circuit-breaker 3
     ;;
   *)
-    echo "usage: $0 {full|scan|inventory|ldxp-only|discover}" >&2
+    echo "usage: $0 {full|scan|inventory|ldxp-only|discover|ldxp-discover}" >&2
     exit 2
     ;;
 esac

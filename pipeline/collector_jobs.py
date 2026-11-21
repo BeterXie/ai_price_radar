@@ -83,6 +83,9 @@ def enqueue(db, kind: str, release: str):
             specs += approved_intake_sources(db, now=now)
         specs = merge_sources(specs)
         specs = _eligible_publish_sources(db, specs, now=now)[0]
+        if not specs:
+            db.commit()
+            return {'created':False, 'status':'empty', 'reason':'no approved sources'}
     manifest = []
     for spec in specs:
         row = {"connector": spec.connector, "source": spec.source, "intake_ids": list(spec.intake_ids)}
@@ -160,6 +163,7 @@ def publish_ready(db, result_dir: Path, *, release: str | None = None):
     if filename.parent.resolve() != result_dir.resolve() or not filename.name.startswith(identity + "-"):
         raise ValueError("invalid stored collector result path")
     kind, raw_sources = job.kind, job.sources
+    preserve_local_ldxp = kind == 'scan' and not any(spec.connector == 'ldxp' for spec in specs)
     expected_snapshot = job.baseline_snapshot_id
     if any(spec.connector != 'ldxp' and not spec.intake_ids for spec in specs):
         job.status, job.active_lane, job.error = "failed", None, "source has no authoritative intake approval"
@@ -187,7 +191,8 @@ def publish_ready(db, result_dir: Path, *, release: str | None = None):
             db.rollback()
             result = _publish_prepared_sources(db, prepared, [], expected_snapshot_id=expected_snapshot,
                 expected_intakes=selected, source_label="collector:" + identity,
-                carry_forward_current=kind == "inventory", dry_run=False, started_at=utcnow(), collector_job_id=identity)
+                carry_forward_current=kind == "inventory", dry_run=False, started_at=utcnow(), collector_job_id=identity,
+                preserve_local_ldxp=preserve_local_ldxp)
         job = db.get(CollectorJob, identity, populate_existing=True)
         onboarding_errors = finish_onboarding(db, job, result_dir)
         job.status, job.active_lane = "published", None

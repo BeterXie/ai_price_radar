@@ -55,7 +55,6 @@ services:
       DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
       DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
       COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-false}
-      COLLECTOR_LDXP_ENABLED: ${COLLECTOR_LDXP_ENABLED:-true}
       COLLECTOR_WORKER_KEY: ${COLLECTOR_WORKER_KEY:-}
       COLLECTOR_RESULTS_DIR: /app/collector-results
       DISCOVERY_ENABLED: ${DISCOVERY_ENABLED:-true}
@@ -89,7 +88,6 @@ services:
     networks:
       default:
       detector_control:
-      collector_gateway:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
@@ -231,7 +229,4 @@ volumes:
 networks:
   detector_control:
     internal: true
-  collector_gateway:
-    external: true
-    name: ai-price-radar_collector_gateway
   detector_egress:
