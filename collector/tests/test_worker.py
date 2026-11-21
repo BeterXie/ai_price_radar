@@ -135,3 +135,11 @@ def test_non_ldxp_batch_does_not_require_browser_scan(worker, monkeypatch):
     monkeypatch.setattr(worker.httpx,'Client',Client)
     worker.collect(job,threading.Event())
     assert called == []
+
+
+def test_disabled_browser_rejects_old_ldxp_manifest_before_any_io(worker, monkeypatch):
+    from uuid import uuid4
+    monkeypatch.setenv('COLLECTOR_LDXP_ENABLED','false')
+    job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x','sources':[{'connector':'ldxp','source':'/data/ldxp_crawler.db'}]}
+    with pytest.raises(worker.TaskPolicyError):worker.collect(job,threading.Event())
+    assert not (worker.DATA/'jobs'/job['id']).exists()

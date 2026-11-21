@@ -73,6 +73,34 @@ def test_oracle_publication_preserves_newer_local_ldxp_prices(runtime, monkeypat
     offers=db.execute(select(Shop.platform,Offer.price).join(Offer,Offer.shop_id==Shop.id)
         .where(Offer.snapshot_id==remote['snapshot_id'])).all()
     assert {platform:float(price) for platform,price in offers}=={'ldxp':75.0,'16688':60.0}
+    intake=db.scalar(select(SourceIntake).where(SourceIntake.source_type=='16688'))
+    intake.status='disabled'
+    db.commit()
+    empty=db.get(CollectorJob,enqueue(db,'scan','test')['job_id'])
+    assert empty.sources==[]
+    empty.status,empty.result_file='collected',empty.id+'-empty.gz'
+    (directory/empty.result_file).write_bytes(gzip.compress(('\n'.join(json.dumps(row) for row in [
+        {'type':'header','schema':SCHEMA,'job_id':empty.id},{'type':'complete','sources':0}])+'\n').encode()))
+    db.commit()
+    cleaned=publish_ready(db,directory,release='test')
+    assert list(db.scalars(select(Shop.platform).join(Offer,Offer.shop_id==Shop.id).where(Offer.snapshot_id==cleaned['snapshot_id'])))==['ldxp']
+
+
+@pytest.mark.parametrize('keep_prior',[True,False])
+def test_partial_publication_rejects_catalog_rollback(runtime,keep_prior):
+    from publish_catalog import _publish_prepared_sources
+    from common import utcnow
+    db,_=runtime
+    first=CatalogSnapshot(source='ldxp',published_at=utcnow())
+    db.add(first);db.commit()
+    second=CatalogSnapshot(source='ldxp',published_at=utcnow())
+    db.add(second);db.commit()
+    second.published_at=None
+    if not keep_prior:first.published_at=None
+    db.commit()
+    with pytest.raises(RuntimeError,match='catalog changed'):
+        _publish_prepared_sources(db,[],[],expected_snapshot_id=second.id,expected_intakes={},source_label='test',
+            carry_forward_current=False,dry_run=False,started_at=utcnow(),preserve_local_ldxp=True)
 
 
 def test_uploaded_collection_publishes_without_fetching_again_and_replay_does_not_duplicate(runtime, monkeypatch):

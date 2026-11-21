@@ -121,7 +121,7 @@ case "$MODE" in
       --cc-indexes 3 \
       --max-discovered 500
     # Dujiao-Next discovery is suspended by default
-    if [[ "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]; then
+    if [[ "$MODE" == "discover" && "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]; then
       run_dujiao_discovery
     else
       echo "dujiao_next discovery is currently disabled (ENABLE_DUJIAO_DISCOVERY=false)"
@@ -170,7 +170,11 @@ case "$MODE" in
     ;;
   scan|ldxp-only)
     if [[ ! -f "$CRAWLER_DB" ]]; then
-      echo "crawler database is missing; run '$0 full' once first" >&2
+      if [[ "$MODE" == "ldxp-only" ]]; then
+        echo "crawler database is missing; run '$0 ldxp-discover', then retry '$0 ldxp-only'" >&2
+      else
+        echo "crawler database is missing; run '$0 full' once first" >&2
+      fi
       exit 2
     fi
     run_browser_crawler scan \

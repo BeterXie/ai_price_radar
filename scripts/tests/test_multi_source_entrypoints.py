@@ -39,7 +39,7 @@ def test_remote_refresh_uses_dedicated_importer_image():
 
 def test_inventory_refresh_carries_other_sources_forward():
     refresh = (ROOT / "scripts" / "refresh_remote.sh").read_text(encoding="utf-8")
-    inventory_publish = refresh.split('if [[ "$MODE" == "inventory" ]]', 1)[1]
+    inventory_publish = refresh.split('if [[ "$MODE" == "inventory" || "$MODE" == "ldxp-only" ]]', 1)[1]
     inventory_publish = inventory_publish.split("else", 1)[0]
     assert "python sync_source.py" in inventory_publish
     assert "--connector ldxp" in inventory_publish
@@ -62,7 +62,7 @@ def test_remote_crawler_mounts_and_runs_dujiao_discovery_seeds():
 
 def test_remote_discovery_prioritizes_unified_16688_source_discovery():
     refresh = (ROOT / "scripts/refresh_remote.sh").read_text(encoding="utf-8")
-    discover_block = refresh.split("  discover)", 1)[1].split("  full)", 1)[0]
+    discover_block = refresh.split("  discover|ldxp-discover)", 1)[1].split("  full)", 1)[0]
     assert discover_block.index("run_source_discovery") < discover_block.index("run_dujiao_discovery")
     assert "--16688-source-pages" in refresh
 

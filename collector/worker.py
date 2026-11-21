@@ -41,6 +41,10 @@ class CollectionCapacityError(RuntimeError):
     pass
 
 
+class TaskPolicyError(ValueError):
+    pass
+
+
 def terminate_tree(process):
     try:
         children = psutil.Process(process.pid).children(recursive=True)
@@ -150,6 +154,8 @@ def collect(job, lost):
     for spec in sources:
         if spec["connector"] not in CONNECTORS:
             raise ValueError("unsupported connector")
+        if spec['connector']=='ldxp' and os.getenv('COLLECTOR_LDXP_ENABLED','true').casefold() not in {'true','1','yes','on'}:
+            raise TaskPolicyError('LDXP collection is disabled on this worker')
         if spec["connector"] != "ldxp":
             PinnedHTTPSClient.normalize_url(spec["source"])
         elif spec["source"] != "/data/ldxp_crawler.db":
@@ -322,7 +328,7 @@ def main():
                 if not lost.is_set():
                     request(f"/api/v1/internal/collectors/{job['id']}/failure",
                             {"token": job["token"], "error": type(exc).__name__ + ": " + str(exc)[:350],
-                             'retryable': not isinstance(exc, CollectionCapacityError)})
+                             'retryable': not isinstance(exc, (CollectionCapacityError, TaskPolicyError))})
             finally:
                 stopped.set()
                 keepalive.join(timeout=25)

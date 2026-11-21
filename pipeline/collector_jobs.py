@@ -83,13 +83,13 @@ def enqueue(db, kind: str, release: str):
             specs += approved_intake_sources(db, now=now)
         specs = merge_sources(specs)
         specs = _eligible_publish_sources(db, specs, now=now)[0]
-        if not specs:
+        if not specs and kind == 'inventory':
             db.commit()
             return {'created':False, 'status':'empty', 'reason':'no approved sources'}
     manifest = []
     for spec in specs:
         row = {"connector": spec.connector, "source": spec.source, "intake_ids": list(spec.intake_ids)}
-        if spec.connector != "ldxp":
+        if spec.connector == "16688":
             shop = resolve_intake_shop(db, source_url=spec.source, source_key=spec.source,
                 source_type={"woocommerce-store": "woocommerce"}.get(spec.connector, spec.connector.replace("-", "_")))
             if shop:
@@ -192,7 +192,8 @@ def publish_ready(db, result_dir: Path, *, release: str | None = None):
             result = _publish_prepared_sources(db, prepared, [], expected_snapshot_id=expected_snapshot,
                 expected_intakes=selected, source_label="collector:" + identity,
                 carry_forward_current=kind == "inventory", dry_run=False, started_at=utcnow(), collector_job_id=identity,
-                preserve_local_ldxp=preserve_local_ldxp)
+                preserve_local_ldxp=preserve_local_ldxp,
+                before_import=lambda: validate_batch_identity(db, prepared))
         job = db.get(CollectorJob, identity, populate_existing=True)
         onboarding_errors = finish_onboarding(db, job, result_dir)
         job.status, job.active_lane = "published", None
