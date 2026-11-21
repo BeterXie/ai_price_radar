@@ -1,0 +1,10 @@
+[Unit]
+Description=Enqueue Oracle public-source discovery
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-price-radar-v3
+ExecStart=/usr/bin/python3 /opt/ai-price-radar-v3/scripts/collector_schedule.py discover
+TimeoutStartSec=30m
+NoNewPrivileges=true

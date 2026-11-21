@@ -946,6 +946,8 @@ def _publish_prepared_sources(
     dry_run: bool,
     started_at: datetime,
     collector_job_id: str | None = None,
+    preserve_local_ldxp: bool = False,
+    before_import=None,
 ) -> PublishResult:
     retry_before = started_at - NO_PRODUCTS_RETRY_INTERVAL
     try:
@@ -959,7 +961,15 @@ def _publish_prepared_sources(
             )
             previous_snapshot_id = _current_snapshot_id(db)
             if previous_snapshot_id != expected_snapshot_id:
-                raise SourceImportError("catalog changed during source collection; retry publication")
+                # During partial migration only independent LDXP publications
+                # may advance while Oracle collects. Never rebase over another
+                # external-source publication or an unknown manual mutation.
+                intervening = db.scalars(select(CatalogSnapshot.source).where(
+                    CatalogSnapshot.published_at.is_not(None), CatalogSnapshot.id > (expected_snapshot_id or 0)))
+                if not preserve_local_ldxp or previous_snapshot_id is None or previous_snapshot_id <= (expected_snapshot_id or 0) or any(source != 'ldxp' for source in intervening):
+                    raise SourceImportError("catalog changed during source collection; retry publication")
+            if before_import is not None:
+                before_import()
             prepared_by_source = {(item.spec.connector, item.spec.source): item for item in prepared}
             eligible_keys = {(spec.connector, spec.source) for spec in sources}
             if carry_forward_current and previous_snapshot_id is not None and any(
@@ -971,6 +981,9 @@ def _publish_prepared_sources(
             offer_staging = prepare_offer_staging(db)
             products = ensure_products(db)
             snapshot = begin_snapshot(db, source_label)
+            if preserve_local_ldxp and previous_snapshot_id is not None:
+                db.execute(update(Offer).where(Offer.snapshot_id == previous_snapshot_id,
+                    Offer.shop_id.in_(select(Shop.id).where(Shop.platform == 'ldxp'))).values(snapshot_id=snapshot.id))
             if carry_forward_current and previous_snapshot_id is not None:
                 inherited = update(Offer).where(Offer.snapshot_id == previous_snapshot_id)
                 if inactive_dujiao_origins:

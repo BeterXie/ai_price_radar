@@ -113,3 +113,33 @@ def test_partial_discovery_does_not_skip_browser_discovery(worker, monkeypatch):
     monkeypatch.setattr(worker, 'run_command', command)
     worker.discover(threading.Event())
     assert calls == ['discover-sources', 'discover']
+
+
+def test_non_ldxp_batch_does_not_require_browser_scan(worker, monkeypatch):
+    from uuid import uuid4
+    job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x',
+         'sources':[{'connector':'16688','source':'https://www.16688.com.cn/shop/S1','shop_token':'16688-S1'}]}
+    called=[]
+    monkeypatch.setattr(worker,'scan',lambda *args: called.append(True))
+    def load(source):
+        yield {'token':'16688-S1','shop_url':source,'source_platform':'16688','product_name':'Team',
+               'product_url':'https://www.16688.com.cn/goods/G1','product_key':'16688:G1'}
+    monkeypatch.setattr(worker,'get_connector',lambda name:load)
+    class Response:
+        def raise_for_status(self):pass
+    class Client:
+        def __init__(self,**kwargs):pass
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def put(self,*args,**kwargs):return Response()
+    monkeypatch.setattr(worker.httpx,'Client',Client)
+    worker.collect(job,threading.Event())
+    assert called == []
+
+
+def test_disabled_browser_rejects_old_ldxp_manifest_before_any_io(worker, monkeypatch):
+    from uuid import uuid4
+    monkeypatch.setenv('COLLECTOR_LDXP_ENABLED','false')
+    job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x','sources':[{'connector':'ldxp','source':'/data/ldxp_crawler.db'}]}
+    with pytest.raises(worker.TaskPolicyError):worker.collect(job,threading.Event())
+    assert not (worker.DATA/'jobs'/job['id']).exists()

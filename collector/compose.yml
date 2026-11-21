@@ -16,6 +16,7 @@ services:
       INTAKE_API_URL: http://172.30.93.1:18081
       DISCOVERY_API_URL: http://172.30.93.1:18081
       COLLECTOR_RELEASE: ${COLLECTOR_RELEASE}
+      COLLECTOR_LDXP_ENABLED: ${COLLECTOR_LDXP_ENABLED:-true}
       COLLECTOR_KEY_FILE: /secrets/collector.key
       INTAKE_WORKER_KEY_FILE: /secrets/intake.key
       DISCOVERY_WORKER_KEY_FILE: /secrets/discovery.key

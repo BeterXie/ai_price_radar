@@ -1,0 +1,8 @@
+[Unit]
+Description=Discover public sources from Oracle twice daily
+[Timer]
+OnCalendar=*-*-* 03,15:15:00
+Persistent=true
+Unit=ai-price-radar-collector-discover.service
+[Install]
+WantedBy=timers.target

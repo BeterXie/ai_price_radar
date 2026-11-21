@@ -41,6 +41,10 @@ class CollectionCapacityError(RuntimeError):
     pass
 
 
+class TaskPolicyError(ValueError):
+    pass
+
+
 def terminate_tree(process):
     try:
         children = psutil.Process(process.pid).children(recursive=True)
@@ -132,9 +136,10 @@ def discover(lost):
             "--sources", "seed,16688,commoncrawl,bing,github", "--request-interval", "2",
             "--max-raw-urls", "2000", "--max-unique-candidates", "1000", "--keywords", *KEYWORDS]
     result = run_command(args, lost, capture=True)
-    run_command([sys.executable, "/app/ldxp_gpt_crawler.py", "discover", "--db", str(DATA / "ldxp_crawler.db"),
-                 "--seed-file", "/config/seeds.txt", "--sources", "seed,bing,commoncrawl", "--max-discovered", "500",
-                 "--keywords", *KEYWORDS], lost)
+    if os.getenv('COLLECTOR_LDXP_ENABLED','true').casefold() in {'true','1','yes','on'}:
+        run_command([sys.executable, "/app/ldxp_gpt_crawler.py", "discover", "--db", str(DATA / "ldxp_crawler.db"),
+                     "--seed-file", "/config/seeds.txt", "--sources", "seed,bing,commoncrawl", "--max-discovered", "500",
+                     "--keywords", *KEYWORDS], lost)
     if any(result.get("failures", {}).get(key) for key in ("run_create", "batch_upsert", "run_finish")):
         raise RuntimeError("source discovery did not completely report its run")
 
@@ -149,6 +154,8 @@ def collect(job, lost):
     for spec in sources:
         if spec["connector"] not in CONNECTORS:
             raise ValueError("unsupported connector")
+        if spec['connector']=='ldxp' and os.getenv('COLLECTOR_LDXP_ENABLED','true').casefold() not in {'true','1','yes','on'}:
+            raise TaskPolicyError('LDXP collection is disabled on this worker')
         if spec["connector"] != "ldxp":
             PinnedHTTPSClient.normalize_url(spec["source"])
         elif spec["source"] != "/data/ldxp_crawler.db":
@@ -161,11 +168,12 @@ def collect(job, lost):
     if not manifest.exists():
         atomic_json(manifest, sources)
     scan_done = directory / "scan.done"
+    needs_browser = any(spec["connector"] == "ldxp" for spec in sources)
     if job["kind"] == "discover":
         if not scan_done.exists():
             discover(lost)
             scan_done.touch()
-    elif not scan_done.exists() or time.time() - scan_done.stat().st_mtime > 3600:
+    elif needs_browser and (not scan_done.exists() or time.time() - scan_done.stat().st_mtime > 3600):
         # Never let a new scan marker make an old first-source checkpoint valid.
         (directory / "0.status.json").unlink(missing_ok=True)
         scan(job["kind"], lost)
@@ -320,7 +328,7 @@ def main():
                 if not lost.is_set():
                     request(f"/api/v1/internal/collectors/{job['id']}/failure",
                             {"token": job["token"], "error": type(exc).__name__ + ": " + str(exc)[:350],
-                             'retryable': not isinstance(exc, CollectionCapacityError)})
+                             'retryable': not isinstance(exc, (CollectionCapacityError, TaskPolicyError))})
             finally:
                 stopped.set()
                 keepalive.join(timeout=25)

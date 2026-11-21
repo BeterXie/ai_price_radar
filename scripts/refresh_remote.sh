@@ -109,9 +109,9 @@ run_source_discovery() {
 }
 
 case "$MODE" in
-  discover)
+  discover|ldxp-discover)
     # Run unified public-source discovery first so 16688 is not delayed by legacy Dujiao revalidation.
-    run_source_discovery
+    if [[ "$MODE" == "discover" ]]; then run_source_discovery; fi
     run_crawler discover \
       --db /data/ldxp_crawler.db \
       --keywords "${KEYWORDS[@]}" \
@@ -121,7 +121,7 @@ case "$MODE" in
       --cc-indexes 3 \
       --max-discovered 500
     # Dujiao-Next discovery is suspended by default
-    if [[ "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]; then
+    if [[ "$MODE" == "discover" && "${ENABLE_DUJIAO_DISCOVERY:-false}" == "true" ]]; then
       run_dujiao_discovery
     else
       echo "dujiao_next discovery is currently disabled (ENABLE_DUJIAO_DISCOVERY=false)"
@@ -168,9 +168,13 @@ case "$MODE" in
       --manual-challenge-seconds 0 \
       --circuit-breaker 3
     ;;
-  scan)
+  scan|ldxp-only)
     if [[ ! -f "$CRAWLER_DB" ]]; then
-      echo "crawler database is missing; run '$0 full' once first" >&2
+      if [[ "$MODE" == "ldxp-only" ]]; then
+        echo "crawler database is missing; run '$0 ldxp-discover', then retry '$0 ldxp-only'" >&2
+      else
+        echo "crawler database is missing; run '$0 full' once first" >&2
+      fi
       exit 2
     fi
     run_browser_crawler scan \
@@ -186,7 +190,7 @@ case "$MODE" in
       --circuit-breaker 3
     ;;
   *)
-    echo "usage: $0 {full|scan|inventory|discover}" >&2
+    echo "usage: $0 {full|scan|inventory|ldxp-only|discover|ldxp-discover}" >&2
     exit 2
     ;;
 esac
@@ -227,7 +231,7 @@ python3 scripts/build_crawler_publish_db.py "$CRAWLER_DB" "$PUBLISH_DB"
 find "$DATA_DIR/backups" -maxdepth 1 -type f -name 'ldxp_publish_*.db' \
   ! -path "$PUBLISH_DB" -delete
 
-if [[ "$MODE" == "inventory" ]]; then
+if [[ "$MODE" == "inventory" || "$MODE" == "ldxp-only" ]]; then
   PUBLISH_ARGS=(
     python sync_source.py
     --connector ldxp
