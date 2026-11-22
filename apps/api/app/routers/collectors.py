@@ -140,7 +140,9 @@ async def result(job_id: UUID, request: Request, x_collector_lease: str = Header
     uncertain_commit = False
     try:
         received = 0
-        async with asyncio.timeout(180):
+        # Full multi-source bundles can take several minutes over the private
+        # SSH link. Heartbeats keep the lease active during this bounded upload.
+        async with asyncio.timeout(900):
             with target.open("xb") as stream:
                 async for chunk in request.stream():
                     received += len(chunk)

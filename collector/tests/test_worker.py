@@ -41,7 +41,10 @@ def test_worker_rejects_local_files_or_manifest_changes_before_collection(worker
         worker.collect(job,threading.Event())
 
 
-def test_completed_sources_survive_failed_upload_and_are_not_refetched(worker, monkeypatch):
+@pytest.mark.parametrize('bundle_age,expected_fetches', [(0, 1), (3700, 2)])
+def test_completed_sources_survive_failed_upload_and_are_not_refetched(worker, monkeypatch, bundle_age, expected_fetches):
+    import os
+    import time
     from datetime import datetime,timezone
     from uuid import uuid4
     from collector_protocol import parse_bundle
@@ -59,10 +62,20 @@ def test_completed_sources_survive_failed_upload_and_are_not_refetched(worker, m
         def __exit__(self,*args):pass
         def put(self,*args,**kwargs):raise ConnectionError('upload disconnected')
     monkeypatch.setattr(worker.httpx,'Client',Client)
-    for _ in range(2):
-        with pytest.raises(ConnectionError):worker.collect(job,threading.Event())
-    assert len(calls)==1
+    with pytest.raises(ConnectionError):worker.collect(job,threading.Event())
+    # A long scan may finish after its first source checkpoints expire. Retry
+    # the complete bundle, keeping all original observation times intact.
+    directory=worker.DATA/'jobs'/job['id']
+    checkpoint=directory/'0.status.json'
+    os.utime(checkpoint, (time.time()-3700, time.time()-3700))
+    completed=(directory/'result.jsonl.gz').read_bytes()
+    if bundle_age:
+        os.utime(directory/'result.jsonl.gz', (time.time()-bundle_age, time.time()-bundle_age))
+    with pytest.raises(ConnectionError):worker.collect(job,threading.Event())
+    assert len(calls)==expected_fetches
     path=worker.DATA/'jobs'/job['id']/'result.jsonl.gz'
+    if not bundle_age:
+        assert path.read_bytes()==completed
     result=parse_bundle(path,job['id'],job['sources'],worker.DATA/'decoded')
     assert result[0]['count']==1
 

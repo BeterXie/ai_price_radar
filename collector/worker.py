@@ -167,6 +167,10 @@ def collect(job, lost):
         raise ValueError("job manifest changed across attempts")
     if not manifest.exists():
         atomic_json(manifest, sources)
+    bundle = directory / "result.jsonl.gz"
+    if bundle.exists() and time.time() - bundle.stat().st_mtime < 3600:
+        deliver_bundle(job, bundle, lost)
+        return
     scan_done = directory / "scan.done"
     needs_browser = any(spec["connector"] == "ldxp" for spec in sources)
     if job["kind"] == "discover":
@@ -238,8 +242,8 @@ def collect(job, lost):
             raise ValueError("collection exceeds size limit")
         atomic_json(status_path, {"status": status, "count": count, "error": error, 'bytes':target.stat().st_size})
         logger.info("source %d/%d connector=%s status=%s records=%d", index + 1, len(sources), spec["connector"], status, count)
-    bundle = directory / "result.jsonl.gz"
-    with gzip.open(bundle, "wt", encoding="utf-8") as out:
+    temporary_bundle = directory / "result.jsonl.gz.part"
+    with gzip.open(temporary_bundle, "wt", encoding="utf-8") as out:
         expanded = records_total = 0
         def emit(value):
             nonlocal expanded, records_total
@@ -257,16 +261,24 @@ def collect(job, lost):
                     emit({"type": "record", "record": json.loads(line)})
             emit({"type": "end", **json.loads((directory / f"{index}.status.json").read_text())})
         emit({"type": "complete", "sources": len(sources)})
+    temporary_bundle.replace(bundle)
+    deliver_bundle(job, bundle, lost)
+
+
+def deliver_bundle(job, bundle, lost):
+    """Retry complete results without refreshing source timestamps or refetching."""
+    identity = job['id']
     if lost.is_set():
         raise RuntimeError('collector lease lost')
     if bundle.stat().st_size > MAX_COMPRESSED:
         raise CollectionCapacityError("result exceeds transport limit")
-    with bundle.open("rb") as content, httpx.Client(timeout=180, trust_env=False, follow_redirects=False) as client:
+    with bundle.open("rb") as content, httpx.Client(timeout=900, trust_env=False, follow_redirects=False) as client:
         response = client.put(API + f"/api/v1/internal/collectors/{identity}/result", content=content,
-                              headers={**HEADERS, "X-Collector-Lease": job["token"], "Content-Type": "application/gzip"})
+                              headers={**HEADERS, "X-Collector-Lease": job["token"], "Content-Type": "application/gzip",
+                                       "Content-Length": str(bundle.stat().st_size)})
         response.raise_for_status()
-    logger.info("collection delivered job=%s sources=%d", identity, len(sources))
-    (directory / "delivered").touch()
+    logger.info("collection delivered job=%s sources=%d", identity, len(job['sources']))
+    (bundle.parent / "delivered").touch()
 
 
 def cleanup_jobs(active=None):
