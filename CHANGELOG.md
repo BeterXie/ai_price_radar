@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.101] - 2026-11-22
+
+- Keep a completed collector bundle for upload retries, even when its earliest source checkpoints have expired; preserve original collection times and refresh bundles older than one hour.
+- Write completed bundles atomically, send their content length, and allow up to 15 minutes for authenticated uploads over the private SSH link.
+- Include v3.9.100 product classification corrections. No schema migration.
+
 ## [3.9.100] - 2026-11-22
 
 - Require specific product evidence instead of broad merchant categories when classifying auxiliary goods.
