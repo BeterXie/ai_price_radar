@@ -235,7 +235,6 @@ def test_openai_description_can_refine_an_already_identified_product():
 @pytest.mark.parametrize(
     ("title", "category"),
     [
-        ("Google Gmail 老号", "谷歌账号"),
         ("自用订阅链接30天60G", "网络加速"),
         ("小红书自动化工具月卡", "自动化工具"),
         ("StyleMe Chrome插件 API额度", "浏览器插件"),
@@ -246,8 +245,6 @@ def test_openai_description_can_refine_an_already_identified_product():
         ("WPS Plus账号", ""),
         ("多模型 API KEY", "GPT | Gemini | Claude | Grok"),
         ("Codex/Claude 官方中转API 50美元", "ChatGPT"),
-        ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free"),
-        ("谷歌邮箱成品老号，带2FA", "Gemini"),
         ("X Premium Business 企业认证", "企业服务"),
     ],
 )
@@ -301,7 +298,7 @@ def test_chatgpt_accounts_that_are_already_phone_verified_are_not_service_offers
         ("菲区提炼CDK 次卡 直卡支付链接 4361 5502 卡头开通plus必备", "代充", "chatgpt-access-service"),
         ("美区实卡号码 成 功 率99 大概3-5天卡", "OpenAI 接码", "chatgpt-access-service"),
         ("Claude 基础账号", "AI账号", "claude-account"),
-        ("Claude注册 实体手机号接码（codex接码另拍）", "Claude", "claude-account"),
+        ("Claude注册 实体手机号接码（codex接码另拍）", "Claude", "verification-claude"),
         ("Claude Pro 一个月", "AI会员", "claude-pro"),
         ("Claude MAX 5X成品号、代开（需要联系客服，质保一个月）", "Claude", "claude-max-5x"),
         ("Claude max 20x 黑冲成品号 质保30天订阅", "Claude", "claude-pro-20x"),
@@ -511,7 +508,7 @@ def test_relay_groups_and_non_20_dollar_quotas_rejected_from_plus(title: str, ca
         ("低价GPT接码渠道Plus接码渠道Codex接码渠道Plus成品号接码渠道", "GPT-plus半成品号", "", None, "unknown", False),
         ("plus pro邀请额度增加 自行使用卖出无售后", "OpenAI 额度充值", "", None, "unknown", False),
         ("【测试商品】不是 GPT PLUS RT号，不要购买", "Gemini", "", None, "unknown", False),
-        ("VISA 0刀虚拟卡 485954(Gemini KIRO GPT PAYPAL用不了拍错不退） 有效期两小时", "0刀卡和一刀卡", "", None, "unknown", False),
+        ("VISA 0刀虚拟卡 485954(Gemini KIRO GPT PAYPAL用不了拍错不退） 有效期两小时", "0刀卡和一刀卡", "", "virtual-card", "virtual_card", True),
         ("plus已接码有rt，无账号和密码，仅支持反代！不会用反代软件的切勿下单！", "gpt", "", "chatgpt-plus", "session_token", True),
         ("自营2- Plus 成品号 已接码 只能反代 json发货 没有账号密码那些", "全部", "只可反代，没有账号密码", "chatgpt-plus", "session_token", True),
         ("ChatGPT / Codex｜美国实体卡接码【30天可续租】", "接码", "", "chatgpt-access-service", "verification_service", True),
@@ -583,3 +580,65 @@ def test_chatgpt_plus_low_price_safeguard():
         price=1.20,
     )
     assert res7.slug != "chatgpt-plus"
+
+
+@pytest.mark.parametrize(
+    ("title", "category", "expected_slug", "expected_delivery"),
+    [
+        ("Gmail / Google 邮箱", "邮箱", "email-gmail", "finished_account"),
+        ("Google Gmail 老号", "谷歌账号", "email-gmail", "finished_account"),
+        ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free", "email-icloud", "finished_account"),
+        ("谷歌邮箱成品老号，带2FA", "Gemini", "email-gmail", "finished_account"),
+        ("Twitter 普通账号", "社交账号", "x-account", "finished_account"),
+        ("Outlook Hotmail 邮箱二手", "邮箱", "email-outlook", "finished_account"),
+        ("Gmail EDU 教育邮箱短租", "邮箱", "email-education", "finished_account"),
+        ("iCloud 隐私邮箱", "邮箱", "email-icloud", "finished_account"),
+        ("域名邮箱 拍一发十", "邮箱", "email-account", "finished_account"),
+        ("Google / Gemini 接码", "接码", "verification-google", "verification_service"),
+        ("Claude 自助接马", "接码", "verification-claude", "verification_service"),
+        ("Cursor 接码", "接码", "verification-cursor", "verification_service"),
+        ("Instagram / Threads 接码", "接码", "verification-social", "verification_service"),
+        ("PayPal 接码", "接码", "verification-paypal", "verification_service"),
+        ("通用接码", "接码", "verification-general", "verification_service"),
+        ("Bybit 真人 KYC 验证", "验证", "verification-kyc", "verification_service"),
+        ("VISA 0刀虚拟卡 485954", "0刀卡和一刀卡", "virtual-card", "virtual_card"),
+        ("Apple 礼品卡充值", "礼品卡", "gift-card", "gift_card"),
+        ("Discord 高配成品号", "社媒账号", "social-media-account", "finished_account"),
+        ("Apple ID 苹果账号 独享", "其他", "apple-id-account", "finished_account"),
+        ("VPS 2核4G 年付", "VPS", "vps", "hosting_service"),
+    ],
+)
+def test_auxiliary_catalog_products_are_classified_separately(title, category, expected_slug, expected_delivery):
+    result = classify_product(title, category)
+    assert result.slug == expected_slug
+    assert result.delivery_type == expected_delivery
+    assert result.is_comparable is True
+
+
+def test_ai_account_with_already_bound_email_is_not_promoted_to_email_catalog():
+    result = classify_product("ChatGPT Plus 成品号 已接码", "GPT Plus")
+    assert result.slug == "chatgpt-plus"
+
+
+def test_provider_api_quota_is_not_promoted_to_email_catalog():
+    assert classify_product("Gmail API额度", "").slug is None
+    assert classify_product("API额度", "Gmail").slug is None
+
+
+@pytest.mark.parametrize(("title", "description", "slug"), [
+    ("ChatGPT Plus 成品号", "联系邮箱 Gmail，支持虚拟卡付款，赠礼品卡，VPS部署指南", "chatgpt-plus"),
+    ("Gmail 邮箱 可用于 ChatGPT 注册", "支持 Gemini 和 Claude", "email-gmail"),
+    ("iCloud 隐私邮箱 无限接收验证码", "", "email-icloud"),
+    ("Discord 成品号 已接码 附Outlook邮箱+Token+2FA", "", "social-media-account"),
+    ("Apple ID 美区独享账号 附带Gmail邮箱", "", "apple-id-account"),
+    ("ChatGPT Plus 官方代充 支持 Apple 礼品卡", "", "chatgpt-plus"),
+    ("OpenAI 虚拟卡 5美元", "", "virtual-card"),
+    ("Claude Code VPS 云主机 月付", "", "vps"),
+    ("Claude 注册 实体手机号接码（Codex接码另拍）", "", "verification-claude"),
+    ("Muse 成品账号 已通过KYC", "", "muse-account"),
+    ("【教程】VPS 搭建教程", "", None),
+    ("礼品卡充值教程", "", None),
+    ("普通商品", "本店提供 Gmail、VPS 和虚拟卡", None),
+])
+def test_auxiliary_rules_ignore_attachments_and_contact_details(title, description, slug):
+    assert classify_product(title, description=description).slug == slug

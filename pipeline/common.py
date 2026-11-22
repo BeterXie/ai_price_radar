@@ -933,7 +933,7 @@ def upsert_offer(
         offer.risk_flags = result.risks
         offer.classification_confidence = result.confidence
         offer.delivery_type = result.delivery_type
-        offer.is_comparable = bool(result.slug) and (result.delivery_type in COMPARABLE_DELIVERY_TYPES)
+        offer.is_comparable = result.is_comparable
         offer.service_period = result.service_period
         offer.warranty = result.warranty
         offer.use_scenarios = result.use_scenarios

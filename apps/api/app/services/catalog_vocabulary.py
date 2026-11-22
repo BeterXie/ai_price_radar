@@ -5,7 +5,7 @@ from typing import Any
 import re
 import unicodedata
 
-from .account_plans import PLAN_PRODUCTS, canonical_product_slug
+from .account_plans import AUXILIARY_PRODUCTS, PLAN_PRODUCTS, canonical_product_slug
 
 DELIVERY_LABELS: dict[str, str] = {
     "subscription_recharge": "官方直充 / 代充",
@@ -19,6 +19,9 @@ DELIVERY_LABELS: dict[str, str] = {
     "relay_api": "中转 / 反代",
     "api_credit": "API 额度",
     "verification_service": "验证 / 接码服务",
+    "virtual_card": "虚拟卡",
+    "gift_card": "礼品卡",
+    "hosting_service": "服务器租用",
     "unknown": "形态待确认",
 }
 
@@ -200,6 +203,18 @@ PRODUCT_ALIASES: dict[str, str] = {
 for slug, _brand, name, _subtitle in PLAN_PRODUCTS:
     PRODUCT_ALIASES[slug] = slug
     PRODUCT_ALIASES[name] = slug
+for slug, _brand, name, _subtitle, _kind, _description in AUXILIARY_PRODUCTS:
+    PRODUCT_ALIASES[slug] = slug
+    PRODUCT_ALIASES[name] = slug
+PRODUCT_ALIASES.update({
+    "gmail": "email-gmail", "谷歌邮箱": "email-gmail",
+    "outlook": "email-outlook", "hotmail": "email-outlook", "微软邮箱": "email-outlook",
+    "icloud邮箱": "email-icloud", "edu邮箱": "email-education",
+    "claude接码": "verification-claude", "google接码": "verification-google",
+    "gemini接码": "verification-google", "cursor接码": "verification-cursor",
+    "paypal接码": "verification-paypal", "kyc": "verification-kyc",
+    "apple id": "apple-id-account", "苹果账号": "apple-id-account",
+})
 PRODUCT_ALIASES = {_normalize_query_alias(alias): canonical_product_slug(slug) for alias, slug in PRODUCT_ALIASES.items()}
 
 

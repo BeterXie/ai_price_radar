@@ -32,4 +32,4 @@ def test_muse_category_accepts_generic_accounts_but_not_other_memberships():
     assert has_target_brand("MUSE.AI 邀请码")
     assert not has_target_brand("Telegram Premium 三个月订阅", "Muse")
     assert not has_target_brand("电报会员订阅", "Muse")
-    assert not has_target_brand("谷歌邮箱成品老号，带2FA", "Muse")
+    assert has_target_brand("谷歌邮箱成品老号，带2FA", "Muse")

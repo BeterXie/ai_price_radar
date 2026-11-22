@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.97] - 2026-11-22
+
+- Add seven auxiliary catalog families and 17 product definitions across discovery, classification, publication and the five frontend catalogs.
+- Consolidate OpenAI/MUSE/JEV verification filters while preserving product identity, X account history and manual moderation.
+- Add explicit virtual-card, gift-card and hosting delivery labels. No database schema migration; rescan sources and republish using matching collector releases.
+
 ## [3.9.86] - 2026-11-18
 
 - Resolve the current published snapshot in the same query as live offer descriptions and shop quotes. A catalog publication no longer produces temporary description 404s and empty shop lists while the API pointer cache is stale; explicit historical queries and moderation filters remain enforced.

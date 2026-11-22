@@ -6,9 +6,9 @@ import re
 from dataclasses import dataclass
 
 if __package__:
-    from .account_plans import account_plan
+    from .account_plans import AUXILIARY_DELIVERY_TYPES, account_plan
 else:  # The isolated source detector packages these two modules together.
-    from account_plans import account_plan
+    from account_plans import AUXILIARY_DELIVERY_TYPES, account_plan
 
 
 @dataclass(slots=True)
@@ -42,6 +42,27 @@ BRAND_MARKERS = {
     # category or a description listing the models it can access.
     "perplexity": ["perplexity", "pplx"],
 }
+
+AUXILIARY_EMAIL_MARKERS = [
+    "邮箱", "邮件", "email", "gmail", "outlook", "hotmail", "icloud", "ic邮箱",
+    "微软邮箱", "谷歌邮箱", "谷歌邮件", "教育邮箱", "edu邮箱", "域名邮箱", "企业邮箱",
+]
+AUXILIARY_VERIFICATION_MARKERS = [
+    "接码", "接马", "验证码", "短信验证", "手机验证", "短信接收", "接收验证码", "接收验证",
+    "验证服务", "真人验证", "实名验证", "kyc", "提链", "扫码对接", "二维码生成",
+]
+AUXILIARY_VIRTUAL_CARD_MARKERS = [
+    "虚拟卡", "virtual card", "virtualcard", "vcc", "预付卡", "0刀卡", "一刀卡",
+    "visa卡", "mastercard卡",
+]
+AUXILIARY_GIFT_CARD_MARKERS = ["礼品卡", "gift card", "giftcard", "充值卡"]
+AUXILIARY_SOCIAL_MARKERS = [
+    "instagram", "threads", "facebook", "tiktok", "discord", "telegram", "社媒账号", "社交账号",
+    "twitter", "推特",
+]
+AUXILIARY_ACCOUNT_MARKERS = ["账号", "帐号", "成品", "普号", "老号", "账号密码", "登录", "收件箱", "2fa"]
+AUXILIARY_APPLE_ID_MARKERS = ["apple id", "appleid", "苹果id", "苹果账号", "苹果账户"]
+AUXILIARY_VPS_MARKERS = ["vps", "云服务器", "轻量服务器", "云主机"]
 
 CHATGPT_API_MARKERS = ["openai api", "open ai api", "gpt api", "api额度", "api 额度", "api余额", "api 余额", "api key", "apikey"]
 CHATGPT_K12_MARKERS = ["chatgpt team", "gpt team", "business", "k12", "团队", "车位", "母号", "自动拉", "团队邀请"]
@@ -162,6 +183,9 @@ COMPARABLE_DELIVERY_TYPES = {
     "card_code",
     "api_credit",
     "verification_service",
+    "virtual_card",
+    "gift_card",
+    "hosting_service",
 }
 
 
@@ -182,6 +206,110 @@ def _extract(mapping: dict[str, list[str]], text: str) -> list[str]:
 def _contains(text: str, needles: list[str]) -> bool:
     norm = normalize_title(text)
     return any(normalize_title(needle) in norm for needle in needles)
+
+
+def _active_verification_text(text: str) -> str:
+    value = normalize_title(text)
+    value = re.sub(r"(?:已|免|无需|不需|无需再)(?:完成|通过|过)?\s*(?:kyc|真人验证|实名验证)", "", value)
+    for marker in (
+        "已接码", "已接马", "已接🐎", "未接码", "未接马", "未接🐎", "免接码", "免接马",
+        "不接码", "不接马", "需自行接码", "需自行接马", "自行接码", "自行接马",
+    ):
+        value = value.replace(normalize_title(marker), "")
+    return value
+
+
+def _classify_auxiliary_identity(
+    title_text: str,
+    category_text: str,
+    description_text: str,
+    brand: str | None,
+) -> tuple[str, bool] | None:
+    """Identify the item being sold; attachments and marketing are not identity."""
+    # Descriptions commonly list payment methods, contact channels or supported
+    # services. They cannot establish a new auxiliary product's identity.
+    if brand in {"chatgpt", "codex"} and _implicit_free_account(title_text, category_text, description_text):
+        return None
+    title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|注册.{0,20}专用", title_text, maxsplit=1)[0]
+    primary_brand = _first_title_brand(title)
+    account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"])
+    email_product = _contains(title, ["邮箱", "邮件", "email"])
+    verification = _active_verification_text(title)
+    if not account and not email_product and not _contains(title, CHATGPT_NON_PRODUCT_MARKERS) and _contains(verification, AUXILIARY_VERIFICATION_MARKERS):
+        if re.search(r"(?<![a-z])kyc(?![a-z])|真人验证|实名验证", verification):
+            return "verification-kyc", True
+        target = primary_brand or brand
+        services = {
+            "claude": "verification-claude", "cursor": "verification-cursor",
+            "gemini": "verification-google", "muse": "muse-access-service",
+            "jev": "jev-access-service", "x": "verification-social",
+        }
+        if target == "chatgpt":
+            # Existing OpenAI rules distinguish accounts and payment helpers.
+            return None
+        if target in services:
+            return services[target], True
+        identity = title if re.search(r"google|gmail|谷歌|paypal|anthropic|instagram|facebook|threads|tiktok|discord|telegram", title) else category_text
+        if _contains(identity, ["google", "gmail", "谷歌"]):
+            return "verification-google", True
+        if "anthropic" in identity:
+            return "verification-claude", True
+        if "paypal" in identity:
+            return "verification-paypal", True
+        if _contains(identity, AUXILIARY_SOCIAL_MARKERS + ["meta"]):
+            return "verification-social", True
+        return "verification-general", True
+
+    # Prefer explicit item nouns over incidental AI names in card restrictions
+    # or server deployment examples, while preserving an AI item sold first.
+    for slug, markers in (
+        ("gift-card", AUXILIARY_GIFT_CARD_MARKERS),
+        ("virtual-card", AUXILIARY_VIRTUAL_CARD_MARKERS),
+        ("vps", AUXILIARY_VPS_MARKERS),
+        ("apple-id-account", AUXILIARY_APPLE_ID_MARKERS),
+    ):
+        positions = [title.find(normalize_title(marker)) for marker in markers if _contains(title, [marker])]
+        brand_positions = [_brand_position(title, primary_brand, marker) for marker in BRAND_MARKERS.get(primary_brand, [])]
+        brand_positions = [position for position in brand_positions if position >= 0]
+        if positions:
+            prefix = title[:min(positions)]
+            sold_ai_item = bool(primary_brand) and (
+                _contains(prefix, ["账号", "成品", "会员", "订阅", "代充", "直充"])
+                or bool(re.search(r"(?<![a-z])(?:plus|pro|max|ultra|premium|team)(?![a-z])", prefix))
+            )
+            if not sold_ai_item or not brand_positions or min(positions) < min(brand_positions):
+                return slug, True
+        if not primary_brand and not _contains(title, AUXILIARY_EMAIL_MARKERS + AUXILIARY_SOCIAL_MARKERS) and _contains(category_text, markers) and _contains(title, ["独享", "成品", "年付", "月付", "面额", "兑换", "卡密"]):
+            return slug, True
+
+    social = _contains(title, AUXILIARY_SOCIAL_MARKERS) or bool(re.search(r"(?<![a-z0-9])x\s*(?:账号|帐号)", title))
+    if social and primary_brand != "x" and _contains(title, AUXILIARY_ACCOUNT_MARKERS):
+        if primary_brand not in (None, "x") or re.search(r"premium|subscription|twitter blue|蓝标|蓝v|会员", title):
+            return None
+        return "social-media-account", True
+
+    email_noun = _contains(title, ["邮箱", "邮件", "email"])
+    email_provider = _contains(title, ["gmail", "outlook", "hotmail", "icloud", "谷歌账号"])
+    category_email = _contains(category_text, AUXILIARY_EMAIL_MARKERS)
+    if primary_brand or (brand and not email_noun and not email_provider):
+        return None
+    # Preserve implicit Plus account titles such as “谷歌邮件 成品 Plus”.
+    if brand == "chatgpt" and _contains(title, ["plus", "puls", "plsu"]) and _contains(title, ["成品", "首登", "原生支付"]):
+        return None
+    if not (email_noun or (email_provider or category_email) and _contains(title, AUXILIARY_ACCOUNT_MARKERS)):
+        return None
+    if _contains(title, ["api", "额度", "余额"]) and not email_noun:
+        return None
+    identity = title if email_noun or email_provider else category_text
+    if re.search(r"(?<![a-z])edu(?![a-z])|教育邮箱|学校邮箱", identity):
+        return "email-education", True
+    if _contains(identity, ["icloud", "ic邮箱"]):
+        return "email-icloud", True
+    if _contains(identity, ["outlook", "hotmail", "微软邮箱", "microsoft"]):
+        return "email-outlook", True
+    if _contains(identity, ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "google"]):
+        return "email-gmail", True
+    return "email-account", True
 
 
 def _strip_exclusions(text: str) -> str:
@@ -205,7 +333,7 @@ def _is_non_product(title_text: str, category_text: str = "", description_text: 
     c_l = normalize_title(category_text)
     d_l = normalize_title(description_text)
 
-    if any(m in c_l for m in ["教程", "虚拟卡", "0刀卡和一刀卡", "反代教程"]):
+    if any(m in c_l for m in ["教程", "反代教程"]):
         return True
     if any(m in d_l for m in ["【测试商品】", "仅图文教程", "本商品为教程", "不会发货，不要购买"]):
         return True
@@ -224,7 +352,6 @@ def _is_non_product(title_text: str, category_text: str = "", description_text: 
         "不要拍", "不要购买", "不可拍", "测试商品", "测试号", "非商品", "买了不发", "防失联", "补差价", "专拍",
         "接码渠道", "接码平台", "接码地址", "手把手",
         "邀请返利", "推广返利", "邀请推广", "邀请额度", "额度增加", "邀请资格",
-        "虚拟卡", "0刀卡", "一刀卡",
         "优惠链接", "提取链接",
     ]
     if any(m in t_l for m in direct_title_rejects):
@@ -748,6 +875,9 @@ def _classify_identity_raw(
         # Category metadata supplies identity, not a subscription verdict.
         # Continue through the usual service, free-account and tier rules.
         brand = "chatgpt"
+    auxiliary = _classify_auxiliary_identity(title_text, category_text, description_text, brand)
+    if auxiliary is not None:
+        return auxiliary
     if brand == "perplexity":
         return None, False
     if brand is None:
@@ -965,6 +1095,8 @@ def classify_product(
     warranty = _warranty(normalize_title(title))
     if warranty == "unknown":
         warranty = _warranty(detail_text)
+    if slug in AUXILIARY_DELIVERY_TYPES and delivery_type not in {"shared_pool", "trial_account", "semi_finished_account"}:
+        delivery_type = AUXILIARY_DELIVERY_TYPES[slug]
     return Classification(
         slug=slug,
         tags=tags,

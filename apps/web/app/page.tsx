@@ -8,7 +8,7 @@ import { ProductCard } from "@/components/product-card";
 import { PlatformIcon } from "@/components/platform-icon";
 import { getProducts } from "@/lib/api";
 import { productDisplayName } from "@/lib/product-identity";
-import { BRAND_TABS, brandCatalogPath, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { PRODUCT_CATEGORIES, brandCatalogPath } from "@/lib/catalog";
 import { exactTime, relativeTime } from "@/lib/format";
 import { SITE_URL } from "@/lib/site";
 import { BRAND, IS_PRIMARY_SITE } from "@/lib/brands";
@@ -56,16 +56,10 @@ export default async function HomePage() {
       </section>
 
       <nav className="home-brands shell" aria-label="按品牌或商品查看报价">
-        {BRAND_TABS.map((brand) => (
+        {PRODUCT_CATEGORIES.map((brand) => (
           <Link key={brand} href={brandCatalogPath(brand)}>
             <PlatformIcon platform={brand} size={26} />
             <span>{brand}</span>
-          </Link>
-        ))}
-        {STANDALONE_PRODUCTS.map((product) => (
-          <Link key={product.slug} href={`/products/${product.slug}`} className="home-service-link">
-            <PlatformIcon platform={product.label} size={26} />
-            <span>{product.label}</span>
           </Link>
         ))}
       </nav>

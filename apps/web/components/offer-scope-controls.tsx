@@ -29,6 +29,9 @@ const DELIVERY_OPTIONS = [
   ["shared_pool", "共享号池"],
   ["trial_account", "体验 / 日抛"],
   ["verification_service", "验证辅助"],
+  ["virtual_card", "虚拟卡"],
+  ["gift_card", "礼品卡"],
+  ["hosting_service", "服务器租用"],
   ["unknown", "形态未知"],
 ];
 
@@ -109,6 +112,7 @@ export function OfferScopeControls({
   defaultOpen = false,
   compact = false,
   quickFilter,
+  showDeliveryShortcuts = true,
   sourceNavigation,
   sponsor,
 }: {
@@ -119,6 +123,7 @@ export function OfferScopeControls({
   defaultOpen?: boolean;
   compact?: boolean;
   quickFilter?: React.ReactNode;
+  showDeliveryShortcuts?: boolean;
   sourceNavigation?: React.ReactNode;
   sponsor?: AdSlotPublic;
 }) {
@@ -133,7 +138,7 @@ export function OfferScopeControls({
     const suffix = query.toString();
     return suffix ? `${action}?${suffix}` : action;
   };
-  const deliverySwitch = <nav className="offer-delivery-switch" aria-label="交付方式快捷切换">
+  const deliverySwitch = showDeliveryShortcuts && <nav className="offer-delivery-switch" aria-label="交付方式快捷切换">
         {QUICK_DELIVERY_OPTIONS.map(([value, label]) => (
           <Link key={value || "all"} href={deliveryHref(value)} scroll={false} aria-current={values.delivery_type === value ? "page" : undefined}>
             {label}

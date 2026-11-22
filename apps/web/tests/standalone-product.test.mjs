@@ -23,10 +23,10 @@ const legacyProduct = {
 
 test("phone verification is its own product category, not an OpenAI plan", () => {
   assert.ok(BRAND_TABS.includes("OpenAI"));
-  assert.ok(PRODUCT_CATEGORIES.includes("手机接码"));
+  assert.ok(PRODUCT_CATEGORIES.includes("接码 / 验证"));
   assert.equal(PRODUCT_TABS.OpenAI.some((item) => item.slug === "chatgpt-access-service"), false);
-  assert.deepEqual(PRODUCT_TABS["手机接码"].map((item) => item.slug), ["chatgpt-access-service"]);
-  assert.deepEqual(ALL_PRODUCTS.filter((item) => item.slug === "chatgpt-access-service").map((item) => item.brand), ["手机接码"]);
+  assert.ok(PRODUCT_TABS["接码 / 验证"].some((item) => item.slug === "chatgpt-access-service"));
+  assert.deepEqual(ALL_PRODUCTS.filter((item) => item.slug === "chatgpt-access-service").map((item) => item.brand), ["接码 / 验证"]);
 });
 
 test("old product links and snapshots resolve to the standalone phone service identity", async (context) => {
@@ -44,13 +44,13 @@ test("old product links and snapshots resolve to the standalone phone service id
   const workspace = descendants(tree).find((node) => node.type?.name === "ProductWorkspace");
   assert.ok(workspace, "the independent category resolves the stable existing product");
   assert.equal(workspace.props.product.slug, "chatgpt-access-service");
-  assert.equal(workspace.props.product.brand, "手机接码");
-  assert.equal(workspace.props.product.display_name, "手机接码");
+  assert.equal(workspace.props.product.brand, "接码 / 验证");
+  assert.equal(workspace.props.product.display_name, "OpenAI / ChatGPT 接码");
   assert.ok(calls.some((url) => url.includes("/products/chatgpt-access-service?comparable=true")));
   const normalized = normalizeProductIdentity(legacyProduct);
   assert.equal(normalized.slug, legacyProduct.slug);
-  assert.equal(normalized.display_name, "手机接码");
-  assert.equal(normalized.brand, "手机接码");
+  assert.equal(normalized.display_name, "OpenAI / ChatGPT 接码");
+  assert.equal(normalized.brand, "接码 / 验证");
   assert.equal(normalized.lowest_price, legacyProduct.lowest_price);
   assert.equal(normalized.offer_count, legacyProduct.offer_count);
 });

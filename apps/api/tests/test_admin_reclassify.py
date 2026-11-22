@@ -7,7 +7,7 @@ from app.routers.admin import reclassify
 import pytest
 
 
-def test_reclassify_clears_an_invalid_previous_product():
+def test_reclassify_moves_email_out_of_an_invalid_ai_subscription():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -34,8 +34,9 @@ def test_reclassify_clears_an_invalid_previous_product():
         result = reclassify(db)
 
         db.refresh(offer)
-        assert offer.product_id is None
-        assert result == {"ok": True, "changed": 1, "delivery_changed": 1, "scanned": 1, "manual_skipped": 0, "unclassified": 1}
+        assert db.get(Product, offer.product_id).slug == "email-gmail"
+        assert offer.delivery_type == "finished_account"
+        assert result == {"ok": True, "changed": 1, "delivery_changed": 1, "scanned": 1, "manual_skipped": 0, "unclassified": 0}
 
 
 @pytest.mark.parametrize("source", ["ldxp", "16688"])

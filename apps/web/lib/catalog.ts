@@ -18,6 +18,9 @@ export const DELIVERY_TYPE_LABELS: Record<string, string> = {
   relay_api: "中转 / 反代",
   api_credit: "API 额度",
   verification_service: "验证 / 接码服务",
+  virtual_card: "虚拟卡",
+  gift_card: "礼品卡",
+  hosting_service: "服务器租用",
   unknown: "形态待确认",
 };
 
@@ -63,12 +66,14 @@ export function brandCatalogPath(brand: string): string {
 export function brandFromSlug(slug: string): BrandName | undefined {
   return BRAND_TABS.find((brand) => brand.toLowerCase() === slug);
 }
-export const STANDALONE_PRODUCTS = [{ label: "手机接码", slug: "chatgpt-access-service" }] as const;
-export const PRODUCT_CATEGORIES = [...BRAND_TABS, "手机接码"] as const;
+export const AUXILIARY_CATEGORIES = ["邮箱", "接码 / 验证", "虚拟卡", "礼品卡", "社媒账号", "Apple ID", "VPS"] as const;
+export const isAuxiliaryCategory = (category: string) => AUXILIARY_CATEGORIES.some((name) => name === category);
+export const STANDALONE_PRODUCTS = [{ label: "手机接码", slug: "chatgpt-access-service", brand: "接码 / 验证", name: "OpenAI / ChatGPT 接码" }] as const;
+export const PRODUCT_CATEGORIES = [...BRAND_TABS, ...AUXILIARY_CATEGORIES] as const;
 export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
 export const RELAY_CATALOG_HREF = "/products?brand=%E4%B8%AD%E8%BD%AC%E7%AB%99";
 
-export const OFFICIAL_PLAN_SOURCES: Partial<Record<BrandName, string>> = {
+export const OFFICIAL_PLAN_SOURCES: Partial<Record<ProductCategory, string>> = {
   OpenAI: "https://help.openai.com/en/articles/9793128-about-chatgpt-pro-tiers",
   Claude: "https://claude.com/pricing",
   Gemini: "https://one.google.com/intl/en/about/google-ai-plans/",
@@ -158,16 +163,37 @@ export const PRODUCT_TABS: Record<ProductCategory, { label: string; slug: string
     { label: "API Key / 额度", slug: "muse-api-credit", other: true },
     { label: "邀请码 / 激活码", slug: "muse-invite", other: true },
     { label: "订阅等级待确认", slug: "muse-subscription", other: true },
-    { label: "验证 / 接码", slug: "muse-access-service", other: true },
   ],
   JEV: [
     { label: "账号 / 成品号", slug: "jev-account", other: true },
     { label: "API Key / 额度", slug: "jev-api-credit", other: true },
     { label: "邀请码 / 激活码", slug: "jev-invite", other: true },
     { label: "订阅等级待确认", slug: "jev-subscription", other: true },
-    { label: "验证 / 接码", slug: "jev-access-service", other: true },
   ],
-  手机接码: [{ label: "手机接码", slug: "chatgpt-access-service", other: true }],
+  "邮箱": [
+    { label: "Gmail / Google", slug: "email-gmail", other: true },
+    { label: "Outlook / Hotmail", slug: "email-outlook", other: true },
+    { label: "教育邮箱", slug: "email-education", other: true },
+    { label: "iCloud", slug: "email-icloud", other: true },
+    { label: "其他邮箱", slug: "email-account", other: true },
+  ],
+  "接码 / 验证": [
+    { label: "OpenAI / ChatGPT", slug: "chatgpt-access-service", other: true },
+    { label: "Google / Gemini", slug: "verification-google", other: true },
+    { label: "Claude / Anthropic", slug: "verification-claude", other: true },
+    { label: "Cursor", slug: "verification-cursor", other: true },
+    { label: "MUSE", slug: "muse-access-service", other: true },
+    { label: "JEV", slug: "jev-access-service", other: true },
+    { label: "社媒验证", slug: "verification-social", other: true },
+    { label: "PayPal", slug: "verification-paypal", other: true },
+    { label: "通用接码", slug: "verification-general", other: true },
+    { label: "真人 / KYC", slug: "verification-kyc", other: true },
+  ],
+  "虚拟卡": [{ label: "虚拟卡", slug: "virtual-card", other: true }],
+  "礼品卡": [{ label: "礼品卡", slug: "gift-card", other: true }],
+  "社媒账号": [{ label: "社媒账号", slug: "social-media-account", other: true }],
+  "Apple ID": [{ label: "Apple ID / 苹果账号", slug: "apple-id-account", other: true }],
+  VPS: [{ label: "VPS / 云服务器", slug: "vps", other: true }],
 };
 
 export const ALL_PRODUCTS = PRODUCT_CATEGORIES.flatMap((brand) =>
