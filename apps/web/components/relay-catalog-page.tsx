@@ -4,7 +4,7 @@ import { AdSlot } from "@/components/ad-slot";
 import { PlatformIcon } from "@/components/platform-icon";
 import { JsonLd, breadcrumbJsonLd } from "@/components/structured-data";
 import { getMeta, getRelayStations } from "@/lib/api";
-import { BRAND_TABS, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { PRODUCT_CATEGORIES, RELAY_CATALOG_HREF } from "@/lib/catalog";
 import { RelayStationCard } from "@/components/relay-station-card";
 import { RelayRefresh } from "@/components/relay-refresh";
 import { single, type RawSearchParams } from "@/components/product-workspace";
@@ -42,12 +42,11 @@ export async function RelayCatalogPage({ rawParams, basePath }: { rawParams: Raw
           <div className="filter-group">
             <Link href="/products" prefetch={true} className="filter-chip filter-all"><PlatformIcon platform="" />全部</Link>
             <div className="filter-options">
-              {BRAND_TABS.map((brand) => (
+              {PRODUCT_CATEGORIES.map((brand) => (
                 <Link key={brand} href={`/products?brand=${encodeURIComponent(brand)}`} prefetch={true} className="filter-chip">
                   <PlatformIcon platform={brand} />{brand}
                 </Link>
               ))}
-              {STANDALONE_PRODUCTS.map((product) => <Link key={product.slug} href={`/products/${product.slug}`} className="filter-chip"><PlatformIcon platform={product.label} />{product.label}</Link>)}
               <Link href={RELAY_CATALOG_HREF} aria-current="page" className="filter-chip"><PlatformIcon platform="中转站" />中转站</Link>
             </div>
           </div>

@@ -437,7 +437,7 @@ button, input, select, textarea, a, summary { outline-offset: 3px; }
 .home-search .button-primary { min-height: 48px; padding-inline: 22px; }
 .home-snapshot { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 24px; margin-top: 18px; color: var(--muted); font-size: .8125rem; }
 .home-snapshot strong { color: var(--ink); font-weight: 550; font-variant-numeric: tabular-nums; }
-.home-brands { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); padding-block: 12px 28px; }
+.home-brands { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); padding-block: 12px 28px; }
 .home-brands .home-service-link { border-left: 1px solid var(--line); border-radius: 0; }
 .home-brands a { display: flex; min-height: 84px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border-radius: 10px; font-size: .875rem; font-weight: 600; transition: background 150ms ease; }
 .home-brands a:hover { background: var(--panel); }
@@ -737,7 +737,7 @@ table { font-variant-numeric: tabular-nums; }
 /* Quote directory --------------------------------------------------------- */
 .catalog-page { padding-block: 16px 48px; }
 .catalog-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 40px; align-items: start; }
-.catalog-sidebar { position: sticky; top: 92px; padding-top: 24px; }
+.catalog-sidebar { position: sticky; top: 92px; padding-top: 24px; max-height: calc(100dvh - 108px); overflow-y: auto; }
 .catalog-brands { display: flex; flex-direction: column; gap: 4px; }
 .catalog-brands a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 10px 14px; border-radius: 8px; color: var(--muted); font-size: .875rem; font-weight: 550; white-space: nowrap; }
 .catalog-brands a:hover { background: var(--panel); color: var(--ink); }
@@ -849,7 +849,7 @@ table { font-variant-numeric: tabular-nums; }
 }
 @media (max-width: 900px) {
   .catalog-layout { grid-template-columns: 1fr; gap: 0; }
-  .catalog-sidebar { position: static; min-width: 0; padding-top: 0; }
+  .catalog-sidebar { position: static; min-width: 0; padding-top: 0; max-height: none; overflow-y: visible; }
   .catalog-brands { flex-direction: row; flex-wrap: wrap; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
   .catalog-brands a { gap: 8px; padding: 10px 12px; font-size: .8125rem; }
   .catalog-brands .catalog-service-link, .catalog-brands .catalog-relay-link { margin-top: 0; border: 0; border-radius: 8px; }

@@ -7,7 +7,7 @@ import { JsonLd } from "@/components/structured-data";
 import { ProductEvidence } from "@/components/product-evidence";
 import { ProductHistoryPanel } from "@/components/product-history-panel";
 import { ReportForm } from "@/components/report-form";
-import { DELIVERY_TYPE_LABELS } from "@/lib/catalog";
+import { DELIVERY_TYPE_LABELS, isAuxiliaryCategory } from "@/lib/catalog";
 import { exactTime, relativeTime } from "@/lib/format";
 import { getProductGuide } from "@/lib/guides/registry";
 import { getProductEvidenceSources, getProductSeoContent } from "@/lib/product-seo";
@@ -145,7 +145,7 @@ export function ProductWorkspace({
         </details>
       </>}
 
-      <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} sourceNavigation={sourceNavigation} sponsor={IS_PRIMARY_SITE ? contextAds?.toolbar : undefined} />
+      <OfferScopeControls action={filterAction} values={filters} resetHref={resetHref} hiddenFields={hiddenFields} sourceNavigation={sourceNavigation} sponsor={IS_PRIMARY_SITE ? contextAds?.toolbar : undefined} showDeliveryShortcuts={!isAuxiliaryCategory(product.brand)} />
 
       {!IS_PRIMARY_SITE && <AdSlot placement="product_offers" limit={1} variant="compact" className="mb-6" />}
 

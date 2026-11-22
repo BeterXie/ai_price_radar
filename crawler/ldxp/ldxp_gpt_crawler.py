@@ -48,6 +48,14 @@ DEFAULT_KEYWORDS = [
     "jev",
     "team",
     "接码",
+    "邮箱",
+    "gmail",
+    "outlook",
+    "虚拟卡",
+    "礼品卡",
+    "社媒账号",
+    "apple id",
+    "vps",
 ]
 BLOCK_STATUSES = {"blocked", "challenge_required", "rate_limited"}
 PUBLIC_VALIDATION_FAILURE_REASONS = {

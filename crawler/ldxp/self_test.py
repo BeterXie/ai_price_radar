@@ -49,13 +49,13 @@ def main() -> None:
     assert BrowserShopScanner._extract_total({"data": {"total": 12}}) == 12
     assert has_target_brand("SuperGrok 代充值")
     assert has_target_brand("X（Twitter） Premium会员直充卡密")
-    assert not has_target_brand("Twitter 普通账号")
+    assert has_target_brand("Twitter 普通账号")
     assert has_target_brand("plus成品号", "chat plus 成品号")
     assert has_target_brand("谷歌邮件 成品 Plus", "全部")
-    assert not has_target_brand("Google Gmail 老号", "谷歌账号")
+    assert has_target_brand("Google Gmail 老号", "谷歌账号")
     assert not has_target_brand("百度网盘 Plus 成品号", "网盘账号")
-    assert not has_target_brand("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free")
-    assert not has_target_brand("谷歌邮箱成品老号，带2FA", "Gemini")
+    assert has_target_brand("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free")
+    assert has_target_brand("谷歌邮箱成品老号，带2FA", "Gemini")
     assert has_target_brand("高级会员直充一个月", "Claude")
     scanner = object.__new__(BrowserShopScanner)
     matches = scanner._build_matches(
@@ -65,12 +65,21 @@ def main() -> None:
             {"id": "3", "name": "ChatGPT Plus 直充一个月"},
             {"id": "4", "name": "SuperGrok 代充值"},
             {"id": "5", "name": "X Premium+ 12个月官方直充"},
+            {"id": "6", "name": "Claude 自助接码"},
+            {"id": "7", "name": "VISA 虚拟卡"},
+            {"id": "8", "name": "Apple 礼品卡"},
+            {"id": "9", "name": "Discord 成品账号"},
+            {"id": "10", "name": "Apple ID 美区独享"},
+            {"id": "11", "name": "香港 VPS 2核4G 年付"},
         ],
         ["gpt", "chatgpt", "openai", "grok", "supergrok", "x premium"],
         "https://pay.ldxp.cn/shop/TEST01",
         False,
     )
-    assert [item.product_name for item in matches] == ["ChatGPT Plus 直充一个月", "SuperGrok 代充值", "X Premium+ 12个月官方直充"]
+    assert [item.product_name for item in matches] == [
+        "Google Gmail 老号", "ChatGPT Plus 直充一个月", "SuperGrok 代充值", "X Premium+ 12个月官方直充",
+        "Claude 自助接码", "VISA 虚拟卡", "Apple 礼品卡", "Discord 成品账号", "Apple ID 美区独享", "香港 VPS 2核4G 年付",
+    ]
     replay_headers = BrowserShopScanner._safe_replay_headers(
         {"User-Agent": "bad", "visitorid": "stable", "X-App": "ok", "Cookie": "secret"}
     )

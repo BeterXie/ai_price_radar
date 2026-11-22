@@ -19,7 +19,7 @@ import { getBrandSeoContent } from "@/lib/brand-seo";
 import { getProductSeoContent } from "@/lib/product-seo";
 import { breadcrumbJsonLd, JsonLd } from "@/components/structured-data";
 import type { ContextualAds, Meta } from "@/lib/types";
-import { BRAND_TABS, type BrandName, brandCatalogPath, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS } from "@/lib/catalog";
+import { BRAND_TABS, type BrandName, type ProductCategory, PRODUCT_CATEGORIES, brandCatalogPath, PRODUCT_TABS, OFFICIAL_PLAN_SOURCES, RELAY_CATALOG_HREF, STANDALONE_PRODUCTS, isAuxiliaryCategory } from "@/lib/catalog";
 import { JevRelayProduct } from "@/components/jev-relay-product";
 
 const EMPTY_META: Meta = { platforms: [], brands: [], source_platforms: [], product_types: [], tags: [] };
@@ -91,8 +91,8 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
     }),
     isJevCatalog ? getRelayStations().catch(() => null) : Promise.resolve(null),
   ]);
-  const productTabBrand = BRAND_TABS.includes(activeBrand as BrandName)
-    ? activeBrand as BrandName
+  const productTabBrand = PRODUCT_CATEGORIES.includes(activeBrand as ProductCategory)
+    ? activeBrand as ProductCategory
     : null;
   const productTabs = productTabBrand ? PRODUCT_TABS[productTabBrand] : [];
   const officialTabs = productTabs.filter((tab) => !tab.other);
@@ -139,7 +139,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
   };
   const headingTitle = product ? `${product.display_name} 比价` : searchQuery ? `“${searchQuery}”的报价` : activeBrand ? `${activeBrand} 比价` : "AI 订阅比价";
   const intro = product ? getProductSeoContent(product.slug, product.display_name, product.description).intro
-    : productTabBrand ? getBrandSeoContent(productTabBrand).description : "比较公开商品的价格、库存、交付方式和更新时间。";
+    : BRAND_TABS.includes(activeBrand as BrandName) ? getBrandSeoContent(activeBrand as BrandName).description : "比较公开商品的价格、库存、交付方式和更新时间。";
   const sourceNavigation = <div className="catalog-source-row">
     <nav className="catalog-sources" aria-label="来源平台筛选">
       <Link prefetch={false} href={sourceHref()} aria-current={!activeSourcePlatform ? "page" : undefined}>全部来源</Link>
@@ -156,15 +156,10 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
 
       <BrandCatalogFrame title={headingTitle} intro={intro} navigation={
           <CatalogScrollNav className="catalog-brands" label="品牌与商品筛选" activeKey={activeBrand || product?.slug || "all"}>
-            <Link prefetch={false} href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部品牌</Link>
-            {BRAND_TABS.map((brand) => (
+            <Link prefetch={false} href={catalogHref()} aria-current={!activeBrand ? "page" : undefined}><PlatformIcon platform="" size={19} />全部商品</Link>
+            {PRODUCT_CATEGORIES.map((brand) => (
               <Link prefetch={false} key={brand} href={catalogHref(brand)} aria-current={activeBrand === brand ? "page" : undefined}>
                 <PlatformIcon platform={brand} size={19} />{brand}
-              </Link>
-            ))}
-            {STANDALONE_PRODUCTS.map((service) => (
-              <Link prefetch={false} key={service.slug} href={productHref(service.slug)} className="catalog-service-link" aria-current={product?.slug === service.slug ? "page" : undefined}>
-                <PlatformIcon platform={service.label} size={19} />{service.label}
               </Link>
             ))}
             {meta.relay_hub_enabled !== false ? (
@@ -212,6 +207,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                 hiddenFields={hiddenFields}
                 resetHref={navigationHref}
                 compact
+                showDeliveryShortcuts={!isAuxiliaryCategory(activeBrand)}
                 sourceNavigation={IS_PRIMARY_SITE ? sourceNavigation : undefined}
                 sponsor={IS_PRIMARY_SITE ? contextAds.toolbar : undefined}
                 quickFilter={<Link prefetch={false} href={withQuery(basePath, stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}

@@ -24,10 +24,54 @@ def canonical_product_slug(slug: str) -> str:
 
 # Existing service products use stable slugs, but do not belong to the OpenAI brand filter.
 CHATGPT_ACCESS_SERVICE_PRODUCT = (
-    "chatgpt-access-service", "手机接码", "手机接码",
+    "chatgpt-access-service", "接码 / 验证", "OpenAI / ChatGPT 接码",
     "适用于 ChatGPT / OpenAI 的注册验证、手机号接码与开通服务", "service",
     "聚合明确用于 ChatGPT 或 OpenAI 的手机接码、验证与开通服务公开报价。",
 )
+
+
+# Auxiliary catalog products are deliberately separate from AI account plans.
+# They must never become AI subscriptions because of supported-service names.
+AUXILIARY_PRODUCTS = [
+    ("email-gmail", "邮箱", "Gmail / Google 邮箱", "Gmail、Google 邮箱与相关账号交付", "account", "聚合 Gmail / Google 邮箱公开报价，保留账号形态、收件能力和质保信息。"),
+    ("email-outlook", "邮箱", "Outlook / Hotmail 邮箱", "Outlook、Hotmail / Microsoft 邮箱交付", "account", "聚合 Outlook / Hotmail 邮箱公开报价，保留账号形态、收件能力和质保信息。"),
+    ("email-education", "邮箱", "教育邮箱", "Edu、教育或学校邮箱交付", "account", "聚合教育邮箱公开报价，保留学校域名、有效期和使用限制信息。"),
+    ("email-icloud", "邮箱", "iCloud 邮箱", "iCloud / Apple 邮箱交付", "account", "聚合 iCloud 邮箱公开报价，保留收件、分裂和有效期等原始说明。"),
+    ("email-account", "邮箱", "其他邮箱", "域名、企业及其他邮箱交付", "account", "聚合未能归入具体服务商的邮箱公开报价。"),
+    ("verification-google", "接码 / 验证", "Google / Gemini 验证", "Google、Gmail 或 Gemini 的短信验证与接码", "service", "聚合明确面向 Google、Gmail 或 Gemini 的验证与接码服务。"),
+    ("verification-claude", "接码 / 验证", "Claude / Anthropic 验证", "Claude 或 Anthropic 的短信验证与接码", "service", "聚合明确面向 Claude 或 Anthropic 的验证与接码服务。"),
+    ("verification-cursor", "接码 / 验证", "Cursor 验证", "Cursor 的短信验证与接码", "service", "聚合明确面向 Cursor 的验证与接码服务。"),
+    ("verification-social", "接码 / 验证", "社媒验证", "Instagram、Threads、Facebook、TikTok、Discord 等社媒验证", "service", "聚合明确面向社交平台的短信验证、接码和验证服务。"),
+    ("verification-paypal", "接码 / 验证", "PayPal 验证", "PayPal 的短信验证与接码", "service", "聚合明确面向 PayPal 的验证与接码服务。"),
+    ("verification-general", "接码 / 验证", "通用接码", "未指定目标平台的短信、手机号和验证码服务", "service", "聚合未指定目标平台的通用验证与接码服务。"),
+    ("verification-kyc", "接码 / 验证", "真人 / KYC 验证", "真人、实名和 KYC 验证服务", "service", "聚合真人、实名和 KYC 相关验证服务，并保留原始说明。"),
+    ("virtual-card", "虚拟卡", "虚拟卡", "VISA、MasterCard、VCC 和预付虚拟卡", "card", "聚合虚拟卡和预付卡公开报价，保留地区、额度、有效期和使用限制。"),
+    ("gift-card", "礼品卡", "礼品卡", "Apple、平台及通用礼品卡", "card", "聚合礼品卡和充值卡公开报价，保留面额、地区和兑换限制。"),
+    ("social-media-account", "社媒账号", "社媒账号", "Instagram、Facebook、TikTok、Discord、Telegram 等账号", "account", "聚合社交媒体账号公开报价，保留地区、养号、2FA 和质保说明。X 普通账号沿用 X 品牌下的独立分类。"),
+    ("apple-id-account", "Apple ID", "Apple ID / 苹果账号", "Apple ID 与苹果账号交付", "account", "聚合 Apple ID 公开报价，保留地区、独享、资料修改和质保说明。"),
+    ("vps", "VPS", "VPS / 云服务器", "VPS、轻量服务器和云主机服务", "service", "聚合 VPS、轻量服务器和云主机公开报价，保留配置、带宽、流量和周期。"),
+]
+
+
+AUXILIARY_DELIVERY_TYPES = {
+    "email-gmail": "finished_account",
+    "email-outlook": "finished_account",
+    "email-education": "finished_account",
+    "email-icloud": "finished_account",
+    "email-account": "finished_account",
+    "verification-google": "verification_service",
+    "verification-claude": "verification_service",
+    "verification-cursor": "verification_service",
+    "verification-social": "verification_service",
+    "verification-paypal": "verification_service",
+    "verification-general": "verification_service",
+    "verification-kyc": "verification_service",
+    "virtual-card": "virtual_card",
+    "gift-card": "gift_card",
+    "social-media-account": "finished_account",
+    "apple-id-account": "finished_account",
+    "vps": "hosting_service",
+}
 
 
 # Existing public slugs remain identifiers; their labels describe the actual plan.
@@ -85,6 +129,8 @@ def product_definitions(definitions: list[tuple]) -> list[tuple]:
     result = {row[0]: row for row in definitions}
     for slug, brand, name, subtitle in PLAN_PRODUCTS:
         result[slug] = (slug, brand, name, subtitle, "subscription", f"聚合 {name} 的公开报价。{subtitle}。")
+    for row in AUXILIARY_PRODUCTS:
+        result[row[0]] = row
     result["chatgpt-access-service"] = CHATGPT_ACCESS_SERVICE_PRODUCT
     result["chatgpt-k12"] = (
         "chatgpt-k12", "OpenAI", "ChatGPT K12（商家标记）", "商家 K12 标签；不等同于 Business / Edu",
@@ -98,7 +144,8 @@ def product_definitions(definitions: list[tuple]) -> list[tuple]:
             ("access-service", "验证 / 接码", "service", "明确用于该品牌的验证与接码服务"),
         ):
             slug = f"{brand}-{suffix}"
-            result[slug] = (slug, label, f"{label} {name}", subtitle, kind, f"聚合 {label} {name}的公开报价。{subtitle}。")
+            category = "接码 / 验证" if suffix == "access-service" else label
+            result[slug] = (slug, category, f"{label} {name}", subtitle, kind, f"聚合 {label} {name}的公开报价。{subtitle}。")
     return list(result.values())
 
 

@@ -50,6 +50,13 @@ TARGET_BRAND_MARKERS = (
     "cursor",
     "muse",
 )
+AUXILIARY_PRODUCT_MARKERS = (
+    "gmail", "outlook", "hotmail", "icloud", "邮箱", "邮件", "接码", "接马", "验证码",
+    "虚拟卡", "virtualcard", "vcc", "礼品卡", "giftcard", "instagram", "threads", "facebook",
+    "tiktok", "discord", "telegram", "社媒", "appleid", "苹果id", "vps", "云服务器", "轻量服务器",
+    "paypal", "twitter", "推特", "x账号", "苹果账号", "云主机", "kyc", "实名验证", "真人验证",
+)
+TARGET_PRODUCT_MARKERS = TARGET_BRAND_MARKERS + AUXILIARY_PRODUCT_MARKERS
 IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登", "独享", "直充", "代充", "订阅", "月卡", "已接马", "已接码", "卡充", "官充", "质保")
 NON_TARGET_PLUS_MARKERS = ("百度", "网盘", "小红书", "加速器", "梯子", "夸克", "迅雷", "youtube", "netflix", "spotify", "office", "wps")
 GENERIC_EMAIL_MARKERS = ("gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "outlook", "hotmail", "icloud", "ic邮箱", "微软邮箱")
@@ -70,6 +77,8 @@ def has_target_brand(title: str, category: str = "") -> bool:
         "推特" in title_identity and any(marker in title_identity for marker in ("会员", "蓝v", "蓝标"))
     )
     if x_premium or any(marker in title_identity for marker in TARGET_BRAND_MARKERS):
+        return True
+    if not any(marker in title_identity for marker in NON_TARGET_MEMBERSHIP_MARKERS) and any(marker in title_identity for marker in AUXILIARY_PRODUCT_MARKERS):
         return True
     if any(marker in title_identity + category_identity for marker in NON_TARGET_PLUS_MARKERS):
         return False
@@ -113,7 +122,7 @@ def has_target_brand(title: str, category: str = "") -> bool:
         and bool(re.search(r"(?<![a-z])(?:team|business)(?![a-z])", title.casefold()))
     )
     return (
-        any(marker in category_identity for marker in TARGET_BRAND_MARKERS)
+        any(marker in category_identity for marker in TARGET_PRODUCT_MARKERS)
         and (team_account or not any(marker in title_identity for marker in GENERIC_EMAIL_MARKERS))
         and not any(marker in title_identity for marker in NON_TARGET_MEMBERSHIP_MARKERS)
         and any(marker in title_identity for marker in CATEGORY_COMMERCE_MARKERS)
@@ -749,7 +758,7 @@ class BrowserShopScanner:
             normalized_identity = normalize_identity(identity)
             hit = [kw for kw in normalized_keywords if normalize_identity(kw) in normalized_identity]
             if not hit:
-                matched_brands = [b for b in TARGET_BRAND_MARKERS if b in normalized_identity]
+                matched_brands = [b for b in TARGET_PRODUCT_MARKERS if b in normalized_identity]
                 if matched_brands:
                     hit = matched_brands
                 else:

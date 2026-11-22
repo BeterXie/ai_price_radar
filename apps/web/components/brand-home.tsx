@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Terminal, BookOpen, SlidersHorizontal } from "@phosphor-icons/react/ssr";
 import { BRAND, SITE_ID } from "@/lib/brands";
-import { BRAND_TABS, brandCatalogPath } from "@/lib/catalog";
+import { PRODUCT_CATEGORIES, brandCatalogPath } from "@/lib/catalog";
 import { exactTime, money, relativeTime } from "@/lib/format";
 import type { CatalogResponse, ProductCard } from "@/lib/types";
 import { getArticles, type Article } from "@/lib/site-content";
@@ -13,7 +13,7 @@ function Snapshot({ data }: { data: CatalogResponse }) {
   return <p className="brand-snapshot"><span>{data.offer_count.toLocaleString("zh-CN")} 条公开报价</span><time dateTime={data.snapshot_at || undefined} title={exactTime(data.snapshot_at)}>{data.snapshot_at ? `${relativeTime(data.snapshot_at)}更新` : "暂无更新"}</time></p>;
 }
 function BrandLinks() {
-  return <nav className="brand-categories" aria-label="品牌目录">{BRAND_TABS.map((brand, i) => <Link key={brand} href={brandCatalogPath(brand)}><span className="category-number">0{i + 1}</span><PlatformIcon platform={brand} size={24} /><span>{brand}</span><ArrowUpRight size={16} aria-hidden /></Link>)}</nav>;
+  return <nav className="brand-categories" aria-label="品牌目录">{PRODUCT_CATEGORIES.map((brand, i) => <Link key={brand} href={brandCatalogPath(brand)}><span className="category-number">{String(i + 1).padStart(2, "0")}</span><PlatformIcon platform={brand} size={24} /><span>{brand}</span><ArrowUpRight size={16} aria-hidden /></Link>)}</nav>;
 }
 function ProductLink({ product, index }: { product: ProductCard; index: number }) {
   return <Link href={`/products/${encodeURIComponent(product.slug)}`} className="brand-product">

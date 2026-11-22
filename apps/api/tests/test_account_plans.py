@@ -82,6 +82,33 @@ def test_plan_registration_restores_pro_previously_hidden_by_seed():
     engine.dispose()
 
 
+def test_auxiliary_products_are_registered_with_stable_platforms():
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from app.database import Base
+    from app.models import Product
+    from app.services.account_plans import ensure_account_plans
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        ensure_account_plans(db)
+        for slug, platform in (
+            ("email-gmail", "邮箱"),
+            ("verification-google", "接码 / 验证"),
+            ("virtual-card", "虚拟卡"),
+            ("gift-card", "礼品卡"),
+            ("social-media-account", "社媒账号"),
+            ("apple-id-account", "Apple ID"),
+            ("vps", "VPS"),
+        ):
+            product = db.scalar(select(Product).where(Product.slug == slug))
+            assert product is not None
+            assert product.platform == platform
+    engine.dispose()
+
+
 def test_chatgpt_access_product_sync_preserves_offer_link_and_stays_out_of_openai_filter():
     from datetime import datetime, timezone
     from decimal import Decimal
@@ -147,15 +174,15 @@ def test_chatgpt_access_product_sync_preserves_offer_link_and_stays_out_of_opena
             migrated = db.get(Product, original_product_id)
             linked_offer = db.get(Offer, original_offer_id)
             assert migrated.slug == "chatgpt-access-service"
-            assert migrated.platform == "手机接码"
-            assert migrated.display_name == "手机接码"
+            assert migrated.platform == "接码 / 验证"
+            assert migrated.display_name == "OpenAI / ChatGPT 接码"
             assert "ChatGPT" in migrated.subtitle and "OpenAI" in migrated.subtitle
             assert migrated.product_type == "service"
             assert linked_offer.product_id == original_product_id
             assert linked_offer.product.id == original_product_id
 
             assert list_product_cards(db, platform="OpenAI", snapshot_id=snapshot.id) == []
-            mobile_cards = list_product_cards(db, platform="手机接码", snapshot_id=snapshot.id)
+            mobile_cards = list_product_cards(db, platform="接码 / 验证", snapshot_id=snapshot.id)
             assert [card.slug for card in mobile_cards] == ["chatgpt-access-service"]
     finally:
         engine.dispose()

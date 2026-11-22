@@ -13,6 +13,7 @@
 
 - 聚合 ChatGPT、Codex、OpenAI API、Claude、Gemini、Grok、X Premium 等公开商品报价
 - 按品牌区分真实账号套餐，分别维护 Claude Pro / Max、Google AI、Cursor、Grok 等等级；未明确等级的订阅单独展示
+- 收录邮箱、接码 / 验证、虚拟卡、礼品卡、社媒账号、Apple ID 和 VPS，详见 [辅助商品目录](docs/AUXILIARY_CATALOG.md)
 - 展示原始商品标题、分类、描述、库存、价格、交付方式、更新时间与来源链接
 - 品牌、账号套餐与来源平台组合筛选，关键词支持跨标题、品牌和店铺的多词交集，并贯穿详情及分页
 - 标准产品使用清晰 URL 并复用统一目录工作区，报价通过真实分页瀑布流加载

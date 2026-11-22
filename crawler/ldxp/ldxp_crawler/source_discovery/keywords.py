@@ -19,6 +19,10 @@ BRAND_KEYWORDS: dict[str, list[str]] = {
     "muse": ["muse", "muse ai", "muse.ai"],
     "jev": ["jev"],
     "developer_tools": ["cursor", "windsurf", "augment", "github copilot"],
+    "auxiliary_services": [
+        "邮箱", "Gmail", "Outlook", "iCloud", "教育邮箱", "接码", "验证码", "虚拟卡",
+        "礼品卡", "社媒账号", "Apple ID", "VPS",
+    ],
 }
 
 CHINESE_AUX_KEYWORDS = [
@@ -105,6 +109,13 @@ def bing_16688_queries(keywords: Sequence[str] = ()) -> list[str]:
         "接码",
         "验证码",
         "成品号",
+        # Auxiliary catalog families
+        "邮箱",
+        "虚拟卡",
+        "礼品卡",
+        "社媒账号",
+        "Apple ID",
+        "VPS",
     ]
     return [
         f'site:16688.com.cn/shop "{term}"'

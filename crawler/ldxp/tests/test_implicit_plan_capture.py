@@ -46,14 +46,9 @@ def test_implicit_plans_survive_brand_and_keyword_filters(title, category):
 @pytest.mark.parametrize("title,category", [
     ("百度网盘 Plus 成品号", "网盘账号"),
     ("Plus 独享会员", "YouTube"),
-    ("Google Gmail 老号", "Codex Team"),
-    ("谷歌邮箱成品老号，带2FA", "Gemini"),
-    ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free"),
-    ("Team Gmail 企业邮箱账号", "邮箱"),
     ("Pro 正版月卡", "设计软件"),
     ("Go 会员充值", "游戏"),
     ("Telegram Premium 三个月订阅", "Muse"),
-    ("Team Gmail 企业邮箱账号", "team"),
     ("Microsoft Teams 企业账号", "team"),
 ])
 def test_generic_email_and_unrelated_memberships_stay_excluded(title, category):
@@ -61,3 +56,18 @@ def test_generic_email_and_unrelated_memberships_stay_excluded(title, category):
     row = {"goods_key": "unrelated", "name": title, "category": {"name": category},
            "description": "也可注册 ChatGPT、Claude"}
     assert scanner._build_matches([row], ["账号", "会员", "plus"], "https://wzyp.cn/shop/TEST", False) == []
+
+
+@pytest.mark.parametrize("title,category", [
+    ("Google Gmail 老号", "Codex Team"),
+    ("谷歌邮箱成品老号，带2FA", "Gemini"),
+    ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free"),
+    ("Team Gmail 企业邮箱账号", "邮箱"),
+    ("Team Gmail 企业邮箱账号", "team"),
+])
+def test_email_products_are_captured_for_the_new_email_catalog(title, category):
+    scanner = object.__new__(BrowserShopScanner)
+    row = {"goods_key": "email", "name": title, "category": {"name": category}, "price": 1.5}
+    matches = scanner._build_matches([row], ["gpt", "claude"], "https://wzyp.cn/shop/TEST", False)
+    assert len(matches) == 1
+    assert matches[0].raw == row

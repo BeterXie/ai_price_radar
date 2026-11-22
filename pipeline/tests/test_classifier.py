@@ -6,10 +6,10 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
 @pytest.mark.parametrize(
     ("title", "category", "expected"),
     [
-        ("Google Gmail 老号", "谷歌账号", None),
-        ("Instagram账号 成品号", "Instagram", None),
-        ("Threads Instagram账号", "社交账号", None),
-        ("Discord成品号", "Discord", None),
+        ("Google Gmail 老号", "谷歌账号", "email-gmail"),
+        ("Instagram账号 成品号", "Instagram", "social-media-account"),
+        ("Threads Instagram账号", "社交账号", "social-media-account"),
+        ("Discord成品号", "Discord", "social-media-account"),
         ("美区商店账号", "苹果账号", None),
         ("X账号 成品号｜邮箱已验证｜附2FA｜首登保障", "Twiiter X 账号", "x-account"),
         ("Twitter 普通账号", "社交账号", "x-account"),
@@ -24,8 +24,8 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("WPS Plus账号", "", None),
         ("多模型 API KEY", "GPT | Gemini | Claude | Grok", None),
         ("Codex/Claude 官方中转API 50美元", "ChatGPT", None),
-        ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free", None),
-        ("谷歌邮箱成品老号，带2FA", "Gemini", None),
+        ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free", "email-icloud"),
+        ("谷歌邮箱成品老号，带2FA", "Gemini", "email-gmail"),
         ("ChatGPT Plus 直充一个月", "", "chatgpt-plus"),
         ("ChatGPT Free 成品号", "", "chatgpt-account"),
         ("GPT Business Team K12 自动拉", "", "chatgpt-k12"),
@@ -93,7 +93,7 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("菲区提炼CDK 次卡 直卡支付链接 4361 5502 卡头开通plus必备", "代充", "chatgpt-access-service"),
         ("美区实卡号码 成 功 率99 大概3-5天卡", "OpenAI 接码", "chatgpt-access-service"),
         ("Claude 基础账号", "AI账号", "claude-account"),
-        ("Claude注册 实体手机号接码（codex接码另拍）", "Claude", "claude-account"),
+        ("Claude注册 实体手机号接码（codex接码另拍）", "Claude", "verification-claude"),
         ("Claude-Kiro API KEY 100M Token", "GPT | Gemini | Claude | Grok", "claude-api-access"),
         ("Gemini 成品号", "AI账号", "gemini-account"),
         ("SuperGrok 代充值", "AI会员", "grok-super"),
@@ -305,8 +305,8 @@ def test_mobile_verification_product_sync_preserves_existing_product_and_offer_l
         migrated = db.get(Product, product_id)
         linked_offer = db.get(Offer, offer_id)
         assert products["chatgpt-access-service"].id == product_id
-        assert migrated.platform == "手机接码"
-        assert migrated.display_name == "手机接码"
+        assert migrated.platform == "接码 / 验证"
+        assert migrated.display_name == "OpenAI / ChatGPT 接码"
         assert "ChatGPT" in migrated.subtitle and "OpenAI" in migrated.subtitle
         assert migrated.product_type == "service"
         assert linked_offer.product_id == product_id
@@ -460,7 +460,7 @@ def test_relay_groups_and_non_20_dollar_quotas_rejected_from_plus(title: str, ca
         ("低价GPT接码渠道Plus接码渠道Codex接码渠道Plus成品号接码渠道", "GPT-plus半成品号", "", None, "unknown", False),
         ("plus pro邀请额度增加 自行使用卖出无售后", "OpenAI 额度充值", "", None, "unknown", False),
         ("【测试商品】不是 GPT PLUS RT号，不要购买", "Gemini", "", None, "unknown", False),
-        ("VISA 0刀虚拟卡 485954(Gemini KIRO GPT PAYPAL用不了拍错不退） 有效期两小时", "0刀卡和一刀卡", "", None, "unknown", False),
+        ("VISA 0刀虚拟卡 485954(Gemini KIRO GPT PAYPAL用不了拍错不退） 有效期两小时", "0刀卡和一刀卡", "", "virtual-card", "virtual_card", True),
         ("plus已接码有rt，无账号和密码，仅支持反代！不会用反代软件的切勿下单！", "gpt", "", "chatgpt-plus", "session_token", True),
         ("自营2- Plus 成品号 已接码 只能反代 json发货 没有账号密码那些", "全部", "只可反代，没有账号密码", "chatgpt-plus", "session_token", True),
         ("ChatGPT / Codex｜美国实体卡接码【30天可续租】", "接码", "", "chatgpt-access-service", "verification_service", True),
@@ -591,3 +591,23 @@ def test_cursor_classification_and_retired_zhipu_titles():
 )
 def test_cursor_rules_match_the_api_classifier(title: str, expected: str):
     assert classify(title).slug == expected
+
+
+@pytest.mark.parametrize(
+    ("title", "category", "expected_slug", "expected_delivery"),
+    [
+        ("Gmail / Google 邮箱", "邮箱", "email-gmail", "finished_account"),
+        ("Google / Gemini 接码", "接码", "verification-google", "verification_service"),
+        ("Instagram / Threads 接码", "接码", "verification-social", "verification_service"),
+        ("VISA 0刀虚拟卡", "0刀卡和一刀卡", "virtual-card", "virtual_card"),
+        ("Apple 礼品卡", "礼品卡", "gift-card", "gift_card"),
+        ("Discord 高配成品号", "社媒账号", "social-media-account", "finished_account"),
+        ("Apple ID 苹果账号", "其他", "apple-id-account", "finished_account"),
+        ("VPS 2核4G 年付", "VPS", "vps", "hosting_service"),
+    ],
+)
+def test_auxiliary_catalog_products_match_api_classification(title, category, expected_slug, expected_delivery):
+    result = classify(title, category)
+    assert result.slug == expected_slug
+    assert result.delivery_type == expected_delivery
+    assert result.is_comparable is True
