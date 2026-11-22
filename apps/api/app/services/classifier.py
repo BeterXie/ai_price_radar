@@ -52,15 +52,15 @@ AUXILIARY_VERIFICATION_MARKERS = [
     "验证服务", "真人验证", "实名验证", "kyc", "提链", "扫码对接", "二维码生成",
 ]
 AUXILIARY_VIRTUAL_CARD_MARKERS = [
-    "虚拟卡", "virtual card", "virtualcard", "vcc", "预付卡", "0刀卡", "一刀卡",
+    "虚拟卡", "virtual card", "virtualcard", "vcc", "预付卡", "0刀卡", "一刀卡", "0美元卡",
     "visa卡", "mastercard卡",
 ]
 AUXILIARY_GIFT_CARD_MARKERS = ["礼品卡", "gift card", "giftcard", "充值卡"]
 AUXILIARY_SOCIAL_MARKERS = [
-    "instagram", "threads", "facebook", "tiktok", "discord", "telegram", "社媒账号", "社交账号",
-    "twitter", "推特",
+    "instagram", "threads", "facebook", "tiktok", "discord", "telegram", "whatsapp", "社媒账号", "社交账号",
+    "twitter", "推特", "小红书",
 ]
-AUXILIARY_ACCOUNT_MARKERS = ["账号", "帐号", "成品", "普号", "老号", "账号密码", "登录", "收件箱", "2fa"]
+AUXILIARY_ACCOUNT_MARKERS = ["账号", "帐号", "成品", "普号", "老号", "白号", "满月白", "账号密码", "登录", "收件箱", "2fa"]
 AUXILIARY_APPLE_ID_MARKERS = ["apple id", "appleid", "苹果id", "苹果账号", "苹果账户"]
 AUXILIARY_VPS_MARKERS = ["vps", "云服务器", "轻量服务器", "云主机"]
 
@@ -230,15 +230,21 @@ def _classify_auxiliary_identity(
     # services. They cannot establish a new auxiliary product's identity.
     if brand in {"chatgpt", "codex"} and _implicit_free_account(title_text, category_text, description_text):
         return None
-    title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|注册.{0,20}专用", title_text, maxsplit=1)[0]
+    if brand in {"chatgpt", "codex"} and "企业邮箱" not in title_text and re.search(r"(?<![a-z])(?:\d+\s*x\s*)?(?:team|business|plus|pro|go|k12)(?![a-z])", title_text):
+        return None
+    title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|只保证|注册.{0,20}专用", title_text, maxsplit=1)[0]
     primary_brand = _first_title_brand(title)
     account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"])
     email_product = _contains(title, ["邮箱", "邮件", "email"])
+    phone_service = _contains(title, ["实卡", "手机号", "手机验证", "短信", "换号"]) or bool(
+        re.search(r"(?:google|谷歌|gmail)\s*(?:邮箱)?\s*接[码马]", title)
+    )
     verification = _active_verification_text(title)
-    if not account and not email_product and not _contains(title, CHATGPT_NON_PRODUCT_MARKERS) and _contains(verification, AUXILIARY_VERIFICATION_MARKERS):
+    if not account and (not email_product or phone_service) and not _contains(title, CHATGPT_NON_PRODUCT_MARKERS) and _contains(verification, AUXILIARY_VERIFICATION_MARKERS):
         if re.search(r"(?<![a-z])kyc(?![a-z])|真人验证|实名验证", verification):
             return "verification-kyc", True
-        target = primary_brand or brand
+        title_target = "gemini" if re.search(r"google|gmail|谷歌", title) else None
+        target = primary_brand or title_target or brand
         services = {
             "claude": "verification-claude", "cursor": "verification-cursor",
             "gemini": "verification-google", "muse": "muse-access-service",
@@ -282,7 +288,11 @@ def _classify_auxiliary_identity(
         if not primary_brand and not _contains(title, AUXILIARY_EMAIL_MARKERS + AUXILIARY_SOCIAL_MARKERS) and _contains(category_text, markers) and _contains(title, ["独享", "成品", "年付", "月付", "面额", "兑换", "卡密"]):
             return slug, True
 
+    if _contains(category_text, AUXILIARY_APPLE_ID_MARKERS) and re.search(r"(?:id|商店)\s*(?:账号|帐号)", title):
+        return "apple-id-account", True
     social = _contains(title, AUXILIARY_SOCIAL_MARKERS) or bool(re.search(r"(?<![a-z0-9])x\s*(?:账号|帐号)", title))
+    if not social and brand is None and _contains(category_text, AUXILIARY_SOCIAL_MARKERS):
+        social = True
     if social and primary_brand != "x" and _contains(title, AUXILIARY_ACCOUNT_MARKERS):
         if primary_brand not in (None, "x") or re.search(r"premium|subscription|twitter blue|蓝标|蓝v|会员", title):
             return None
@@ -298,16 +308,19 @@ def _classify_auxiliary_identity(
         return None
     if not (email_noun or (email_provider or category_email) and _contains(title, AUXILIARY_ACCOUNT_MARKERS)):
         return None
+    if _contains(title, ["资格号", "已注册gqt"]):
+        return None
     if _contains(title, ["api", "额度", "余额"]) and not email_noun:
         return None
     identity = title if email_noun or email_provider else category_text
+    identity = re.sub(r"(?:不是|非|不含|不带|不送|没有)\s*(?:gmail|google|谷歌|outlook|hotmail|icloud|edu)", "", identity)
     if re.search(r"(?<![a-z])edu(?![a-z])|教育邮箱|学校邮箱", identity):
         return "email-education", True
     if _contains(identity, ["icloud", "ic邮箱"]):
         return "email-icloud", True
     if _contains(identity, ["outlook", "hotmail", "微软邮箱", "microsoft"]):
         return "email-outlook", True
-    if _contains(identity, ["gmail", "谷歌邮箱", "谷歌邮件", "谷歌账号", "google"]):
+    if _contains(identity, ["gmail", "谷歌", "google"]):
         return "email-gmail", True
     return "email-account", True
 
@@ -641,7 +654,7 @@ def _implicit_free_account(title: str, category: str, description: str) -> bool:
     ):
         return False
     description = html.unescape(re.sub(r"<[^>]+>", " ", description))
-    return bool(re.search(r"(?:codex|chatgpt|gpt)\s*free", description) or (category == "free" and "rt号" in title))
+    return bool(re.search(r"(?:codex|chatgpt|gpt)\s*free", description) or (category == "free" and re.search(r"rt\s*(?:老)?号", title)))
 
 
 def _detect_brand(title_text: str, category_text: str, description_text: str = "") -> str | None:
@@ -660,8 +673,8 @@ def _detect_brand(title_text: str, category_text: str, description_text: str = "
 
     if (
         re.search(r"(?<![a-z])(?:\d+x\s*)?team(?![a-z])", clean_title)
-        and "team" in clean_category
-        and _contains(clean_title, ["2fa", "账密", "席位", "拼车", "头车", "首车", "首登", "轮", "踢"])
+        and ("team" in clean_category or re.search(r"(?<![a-z])(?:\d+\s*x\s*team|team\s*\d+\s*x)", clean_title))
+        and _contains(clean_title, ["2fa", "账密", "席位", "拼车", "头车", "首车", "首登", "轮", "踢", "长效", "下车", "二车"])
     ):
         return "chatgpt"
 
@@ -950,6 +963,14 @@ def _classify_identity_raw(
     if brand == "cursor":
         plan = account_plan(brand, title_text, category_text, description_text)
         return plan or "cursor-account", bool(plan) and not plan.endswith(("-account", "-subscription"))
+
+    if (
+        re.search(r"(?<![a-z])(?:\d+\s*x\s*)?team(?![a-z])", title_text)
+        and _contains(title_text, ["账密", "踢", "头车", "首车", "二车", "轮"])
+        and not _contains(title_text, ["api", "key", "点数", "积分", "余额"])
+        and _chatgpt_tier(title_text) == "chatgpt-business"
+    ):
+        return "chatgpt-business", True
 
     if (
         _contains(title_text, ["点数", "积分", "余额"])

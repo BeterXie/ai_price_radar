@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.98] - 2026-11-22
+
+- Keep real Team, Plus and Free account titles out of the email catalog, including RT old-account and Team multiplier shorthand observed during publication checks.
+- Respect negated email provider names and classify Google phone-verification listings separately from email inboxes.
+- Add regression tests from the live publication sample. No schema migration.
+
 ## [3.9.97] - 2026-11-22
 
 - Add seven auxiliary catalog families and 17 product definitions across discovery, classification, publication and the five frontend catalogs.

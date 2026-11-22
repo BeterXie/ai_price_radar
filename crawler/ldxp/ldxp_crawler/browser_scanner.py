@@ -55,6 +55,7 @@ AUXILIARY_PRODUCT_MARKERS = (
     "虚拟卡", "virtualcard", "vcc", "礼品卡", "giftcard", "instagram", "threads", "facebook",
     "tiktok", "discord", "telegram", "社媒", "appleid", "苹果id", "vps", "云服务器", "轻量服务器",
     "paypal", "twitter", "推特", "x账号", "苹果账号", "云主机", "kyc", "实名验证", "真人验证",
+    "0美元卡", "0刀卡", "whatsapp",
 )
 TARGET_PRODUCT_MARKERS = TARGET_BRAND_MARKERS + AUXILIARY_PRODUCT_MARKERS
 IMPLICIT_CHATGPT_MARKERS = ("成品", "半成品", "首登", "独享", "直充", "代充", "订阅", "月卡", "已接马", "已接码", "卡充", "官充", "质保")

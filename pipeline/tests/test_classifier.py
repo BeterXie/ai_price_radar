@@ -10,7 +10,7 @@ from common import Product, RawProduct, Shop, classify, ensure_products, parse_d
         ("Instagram账号 成品号", "Instagram", "social-media-account"),
         ("Threads Instagram账号", "社交账号", "social-media-account"),
         ("Discord成品号", "Discord", "social-media-account"),
-        ("美区商店账号", "苹果账号", None),
+        ("美区商店账号", "苹果账号", "apple-id-account"),
         ("X账号 成品号｜邮箱已验证｜附2FA｜首登保障", "Twiiter X 账号", "x-account"),
         ("Twitter 普通账号", "社交账号", "x-account"),
         ("X Account", "", "x-account"),

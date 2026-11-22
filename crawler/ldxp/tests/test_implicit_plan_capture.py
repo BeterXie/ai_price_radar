@@ -64,6 +64,9 @@ def test_generic_email_and_unrelated_memberships_stay_excluded(title, category):
     ("gm ic邮箱 Free 已开通2fa，百分百0元优惠，开plus专用", "GPT Free"),
     ("Team Gmail 企业邮箱账号", "邮箱"),
     ("Team Gmail 企业邮箱账号", "team"),
+    ("485954 验证试用0美元卡", "虚拟卡"),
+    ("【台湾】 ID账号 可下APP 独享", "苹果账号"),
+    ("韩国Tiktok 满月白", "社媒账号"),
 ])
 def test_email_products_are_captured_for_the_new_email_catalog(title, category):
     scanner = object.__new__(BrowserShopScanner)
