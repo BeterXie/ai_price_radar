@@ -28,6 +28,19 @@ from app.services.classifier import classify_product
     ('Gmail教育邮箱租用 30天 GMail Edu 独享稳定', '邮箱', 'email-education'),
     ('小红书 · 千百天高权重长效老号 · 国际版（密码/SID/UID）', '社媒账号', 'social-media-account'),
     ('【GitHub 18-19号新注册账号】Gmail邮箱注册 | 带2FA+恢复码 | 到手即可换绑', '账号', None),
+    ('CapCut Pro 7天 账号｜500积分 全程质保', '海外社媒账号/邮箱/苹果账号', None),
+    ('【个人】谷歌Gmail | 辅助邮箱+2FA已设置 | 独立环境注册', '社交账号', 'email-gmail'),
+    ('【美区Google个人邮箱】26年｜账号密码直接登录', '海外社媒账号', 'email-gmail'),
+    ('USA +1双向成品号', '海外社媒账号', None),
+    ('【美国】ID账号 | 16年超级老号 | 个人独享', '社交账号', None),
+    ('【官方直冲】Codex 额度 500点数 自助充值卡密', '充值', None),
+    ('G plus菲区充值卡密 一个月', 'GPT', 'chatgpt-plus'),
+    ('【菲律宾区】GTP pro20x 官方充值卡冲（质保订阅30天）', 'GPT', 'chatgpt-pro-200'),
+    ('【手搓虚拟卡支付】MUSE 成品账号｜10亿 Token｜七天', 'MUSE', 'muse-account'),
+    ('真人手搓Muse号VISA卡过验证Muse成品号310亿满额成品号', 'MUSE', 'muse-account'),
+    ('【非卡】验证试用0刀优质卡台渠道推荐 visa万事达', '虚拟卡', None),
+    ('Steam 充值卡 20美元', '礼品卡', 'gift-card'),
+    ('Gemini 3 Muse 专门1刀卡 万事 537872 1刀虚拟卡', '虚拟卡', 'virtual-card'),
 ])
 def test_auxiliary_live_title_regressions(title, category, expected):
     assert classify_product(title, category).slug == expected

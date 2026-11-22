@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.100] - 2026-11-22
+
+- Require specific product evidence instead of broad merchant categories when classifying auxiliary goods.
+- Keep subscription recharge codes out of gift cards, payment-method mentions out of virtual cards, and card-channel recommendations out of the product catalog.
+- Add regressions from real merchant titles. No schema or collection-connector changes.
+
 ## [3.9.99] - 2026-11-22
 
 - Preserve GitHub account identity when Gmail is only its registration email; includes v3.9.98 auxiliary catalog fixes and original-merchant scan seeds.
