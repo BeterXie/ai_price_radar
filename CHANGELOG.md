@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.102] - 2026-11-23
+
+- Add the 卡密小店 platform feed with fixed authenticated pagination, CNY cent conversion, inventory and sales preservation, and a dedicated source tab.
+- Fetch the credentialed platform feed only on the main host during collector scan publication; preserve prior offers on transient failures, remove missing products only after a complete successful response, and reject cross-platform shop-token collisions.
+- No database schema migration.
+
 ## [3.9.101] - 2026-11-22
 
 - Keep a completed collector bundle for upload retries, even when its earliest source checkpoints have expired; preserve original collection times and refresh bundles older than one hour.

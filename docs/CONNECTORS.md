@@ -8,6 +8,7 @@ AI Price Memory separates source reading from database publication. A connector 
 - `merchant-json`: reads a local JSON file or a public HTTPS JSON Feed.
 - `dujiao-next`: reads a Dujiao-Next shop through its unauthenticated public REST API.
 - `16688`: reads a public 16688 shop through the shop detail and goods list APIs.
+- `kmdian`: reads all listed 卡密小店 shops and products through its authenticated platform API.
 
 Production publication must use one authoritative multi-source transaction:
 
@@ -75,6 +76,21 @@ Submit an official shop URL such as `https://www.16688.com.cn/shop/HARVEY`. The 
 16688 goods that reference `goods_category_no` are joined with `POST /shopApi/goodsCategory/list` using the canonical shop number. The category name is retained in the normalized record and the stored original category; missing or unknown IDs leave the category blank rather than borrowing another category. On this platform only, the exact `G直充` category supplies context for brandless Plus titles. Bare Plus titles without that context are still subject to the existing identity checks.
 
 16688 sources use the same asynchronous detector, administrator approval and atomic multi-source snapshot as the other public connectors. Automatic discovery approval is disabled by default with `DISCOVERY_16688_AUTO_APPROVE=false`.
+
+## 卡密小店 (KMDian)
+
+Set `KMDIAN_API_KEY=app_id.secret` in the main host's private environment. It enables the fixed platform feed in both the direct publisher and the current collector scan-batch publisher. The main-host importer fetches this API before acquiring the publication lock; it uses the existing atomic snapshot publisher alongside the remote worker's completed source records. Inventory batches carry this platform forward without fetching again. The credential and this source are never sent to the remote worker. The main host's outbound IP must be whitelisted; keep the key out of tracked files and frontend configuration.
+
+The connector calls only `https://www.kmdian.com/api/v1/open/products` with the `X-Api-Key` header. It reads `data.list` and `data.pagination`, requests 20 products per page and spaces requests by at least 1.1 seconds. For a multi-page response it reads the complete identity set twice because the API exposes no snapshot/version token; if the sets differ, the import aborts and no stale-product pruning occurs. Run one collector per key (platform limit: 60 requests/minute/key). HTTP 401/403 stops publication with a key/whitelist error. HTTP 408/429, network and server errors preserve previous observations while healthy sources refresh. Incomplete pages, repeated products and changing totals abort publication. Collection is bounded to 500 pages per pass, 50 MiB and 1,500 seconds in total.
+
+`shop_code` and `goods_no` become `kmdian-S825584` and `kmdian:KM07826776`. Shop name, shop URL, title and product URL come from the API. Integer `price_cent` is converted to CNY with decimal arithmetic; stock determines availability. Sales, cover and source edit time remain in the raw record. Observation freshness uses successful collection time. Existing classification, moderation and visibility rules control public offers; “卡密小店” appears as its own source tab once it has public offers.
+
+With the environment key configured, a manual sync uses the same publisher and carries other platforms forward. A complete empty response also removes previously listed shops with no remaining products:
+
+```powershell
+python pipeline/sync_source.py --connector kmdian --source https://www.kmdian.com/api/v1/open/products
+if ($LASTEXITCODE -ne 0) { throw 'KMDian sync failed' }
+```
 
 ## Unified source discovery engine
 

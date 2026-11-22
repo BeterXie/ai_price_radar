@@ -843,15 +843,23 @@ def upsert_offer(
         raise ValueError("product key must be at most 300 characters")
     raw_json = parse_json(record.get("raw_json"))
     shop = db.scalar(select(Shop).where(Shop.token == token))
+    incoming_platform = str(record.get("source_platform") or "ldxp").strip().casefold().replace("-", "_")
+    if shop is not None:
+        existing_platform = str(shop.platform or "").strip().casefold().replace("-", "_")
+        if existing_platform and existing_platform != incoming_platform:
+            raise ValueError(
+                f"source token {token!r} belongs to platform {existing_platform!r}, "
+                f"cannot import it as {incoming_platform!r}"
+            )
     observed_at = parse_dt(record.get("observed_at") or record.get("collected_at") or record.get("scanned_at"))
     if shop is None:
-        shop = Shop(token=token, name=str(record.get("shop_name") or token), source_url=str(record.get("shop_url") or ""), platform=str(record.get("source_platform") or "ldxp"))
+        shop = Shop(token=token, name=str(record.get("shop_name") or token), source_url=str(record.get("shop_url") or ""), platform=incoming_platform)
         db.add(shop); db.flush()
         if collected_new_shop_tokens is not None:
             collected_new_shop_tokens.add(token)
     shop.name = str(record.get("shop_name") or shop.name or token)
     shop.source_url = str(record.get("shop_url") or shop.source_url)
-    shop.platform = str(record.get("source_platform") or shop.platform or "unknown")
+    shop.platform = incoming_platform
     shop.source_score = int(record.get("source_score") or shop.source_score or 0)
     shop.status = str(record.get("shop_status") or "success")
     shop.consecutive_failures = int(record.get("consecutive_failures") or 0)

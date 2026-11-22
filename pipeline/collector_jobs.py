@@ -18,8 +18,9 @@ from app.models import CollectorJob, SourceIntake, SourceCandidate
 from common import Shop
 from app.services.collector_protocol import parse_bundle
 from connectors.base import SourceFetchError, SourceUnavailableError
+from connectors import kmdian
 from publish_catalog import (
-    PreparedSource, SourceSpec, _current_snapshot_id, _eligible_publish_sources,
+    PreparedSource, SourceSpec, _current_snapshot_id, _eligible_publish_sources, _prepare_sources,
     _publish_prepared_sources, approved_dujiao_sources, approved_intake_sources, merge_sources,
     resolve_intake_shop,
     load_merchant_sources,
@@ -186,14 +187,23 @@ def publish_ready(db, result_dir: Path, *, release: str | None = None):
                     rows.shop_tokens = {row["token"] for row in rows.records()}
                 prepared.append(rows)
             validate_batch_identity(db, prepared)
-            # No network connector is called here. Approval is rechecked by
-            # the existing publisher under the same locks as local collection.
             db.rollback()
+            # This credentialed platform feed runs only on the whitelisted main
+            # host. Worker manifests and uploaded records never receive its key.
+            # Finish collection before acquiring publication locks/connections.
+            if kind == "scan":
+                kmdian_key = os.getenv(kmdian.API_KEY_ENV, "").strip()
+                if kmdian_key:
+                    platform_directory = Path(directory) / "platform-api"
+                    platform_directory.mkdir()
+                    prepared.extend(_prepare_sources(
+                        [SourceSpec("kmdian", kmdian.API_URL)], platform_directory,
+                    ))
             result = _publish_prepared_sources(db, prepared, [], expected_snapshot_id=expected_snapshot,
                 expected_intakes=selected, source_label="collector:" + identity,
                 carry_forward_current=kind == "inventory", dry_run=False, started_at=utcnow(), collector_job_id=identity,
                 preserve_local_ldxp=preserve_local_ldxp,
-                before_import=lambda: validate_batch_identity(db, prepared))
+                before_import=lambda active_prepared: validate_batch_identity(db, active_prepared))
         job = db.get(CollectorJob, identity, populate_existing=True)
         onboarding_errors = finish_onboarding(db, job, result_dir)
         job.status, job.active_lane = "published", None
