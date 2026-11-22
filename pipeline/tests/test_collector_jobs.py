@@ -214,7 +214,7 @@ def test_missing_platform_key_refuses_to_publish_over_existing_platform(runtime,
     job = write_job_bundle(db, directory, ldxp_record())
     job.kind = "scan"
     db.commit()
-    with pytest.raises(ValueError, match="KMDIAN_API_KEY is missing"):
+    with pytest.raises(RuntimeError, match="KMDian source is not included"):
         publish_ready(db, directory, release="test")
     assert db.get(CollectorJob, job.id).status == "failed"
     assert db.query(CatalogSnapshot).count() == 1
@@ -235,6 +235,33 @@ def test_direct_publication_rejects_cross_platform_shop_token(runtime, monkeypat
     with pytest.raises(SourceImportError, match="belongs to platform"):
         publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
     assert db.scalar(select(Shop.platform).where(Shop.token == "kmdian-S1")) == "ldxp"
+
+
+def test_missing_key_is_checked_after_rebasing_over_local_inventory(runtime, monkeypatch):
+    from connectors import kmdian
+    from publish_catalog import SourceSpec, SourceImportError, publish_sources
+    from common import Offer
+    db, directory = runtime
+    monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([{
+        **ldxp_record(), "token": "kmdian-S1", "source_platform": "kmdian",
+    }]))
+    publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
+    monkeypatch.delenv(kmdian.API_KEY_ENV, raising=False)
+    monkeypatch.setenv("COLLECTOR_LDXP_ENABLED", "false")
+    job = db.get(CollectorJob, enqueue(db, "scan", "test")["job_id"])
+    job.status, job.result_file = "collected", job.id + "-empty.gz"
+    rows = [{"type": "header", "schema": SCHEMA, "job_id": job.id},
+            {"type": "complete", "sources": 0}]
+    (directory / job.result_file).write_bytes(gzip.compress(
+        ("\n".join(json.dumps(row) for row in rows) + "\n").encode(),
+    ))
+    db.commit()
+    monkeypatch.setitem(CONNECTORS, "ldxp", lambda _: iter([ldxp_record()]))
+    local = publish_sources(db, [SourceSpec("ldxp", "ignored")],
+                            source_label="ldxp", carry_forward_current=True)
+    with pytest.raises(SourceImportError, match="KMDian source is not included"):
+        publish_ready(db, directory, release="test")
+    assert db.query(Offer).filter(Offer.snapshot_id == local.snapshot_id).count() == 2
 
 
 def test_retry_exhaustion_frees_lane_for_a_new_batch(runtime):

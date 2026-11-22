@@ -921,16 +921,6 @@ def publish_sources(
     try:
         eligible, skipped, _inactive, selected_intakes = _eligible_publish_sources(db, sources, now=started_at)
         expected_snapshot_id = _current_snapshot_id(db)
-        if not carry_forward_current and not any(spec.connector == "kmdian" for spec in eligible):
-            existing_kmdian = db.scalar(select(Offer.id).join(Shop).where(
-                Offer.snapshot_id == expected_snapshot_id,
-                Shop.platform == "kmdian",
-            ).limit(1))
-            if existing_kmdian is not None and not os.getenv(kmdian.API_KEY_ENV, "").strip():
-                db.rollback()
-                raise SourceImportError(
-                    "KMDIAN_API_KEY is missing while the current catalog contains Kmdian offers"
-                )
         previous_tokens: dict[tuple[str, str], str] = {}
         if carry_forward_current and expected_snapshot_id is not None:
             for spec in eligible:
@@ -1018,11 +1008,25 @@ def _publish_prepared_sources(
                     CatalogSnapshot.published_at.is_not(None), CatalogSnapshot.id > (expected_snapshot_id or 0)))
                 if not preserve_local_ldxp or previous_snapshot_id is None or previous_snapshot_id <= (expected_snapshot_id or 0) or any(source != 'ldxp' for source in intervening):
                     raise SourceImportError("catalog changed during source collection; retry publication")
-            if before_import is not None:
-                before_import()
-            _validate_prepared_shop_identity(db, prepared)
+            if not carry_forward_current and not any(spec.connector == "kmdian" for spec in sources):
+                existing_kmdian = db.scalar(select(Offer.id).join(Shop).where(
+                    Offer.snapshot_id == previous_snapshot_id,
+                    Shop.platform == "kmdian",
+                ).limit(1))
+                if existing_kmdian is not None:
+                    raise SourceImportError(
+                        "KMDian source is not included in this full publication while the current catalog contains KMDian offers"
+                    )
             prepared_by_source = {(item.spec.connector, item.spec.source): item for item in prepared}
             eligible_keys = {(spec.connector, spec.source) for spec in sources}
+            active_prepared = [
+                item for item in prepared
+                if (item.spec.connector, item.spec.source) in eligible_keys
+            ]
+            if before_import is not None:
+                before_import(active_prepared)
+            else:
+                _validate_prepared_shop_identity(db, active_prepared)
             if carry_forward_current and previous_snapshot_id is not None and any(
                 item.spec.intake_ids and not item.previous_shop_token
                 and (item.spec.connector, item.spec.source) not in eligible_keys

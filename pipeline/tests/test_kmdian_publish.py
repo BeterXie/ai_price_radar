@@ -102,11 +102,25 @@ def test_incomplete_pagination_does_not_publish_partial_platform_data(db, monkey
     assert db.query(Offer).one().price == Decimal("27.50")
 
 
-def test_full_publication_refuses_to_drop_kmdian_when_the_key_is_missing(db, monkeypatch):
+@pytest.mark.parametrize("key_present", [True, False])
+def test_full_publication_refuses_to_drop_an_omitted_kmdian_source(db, monkeypatch, key_present):
     monkeypatch.setenv(kmdian.API_KEY_ENV, "test-app.test-secret")
     monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([record()]))
     publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
-    monkeypatch.delenv(kmdian.API_KEY_ENV)
+    if not key_present:
+        monkeypatch.delenv(kmdian.API_KEY_ENV)
     monkeypatch.setitem(CONNECTORS, "merchant-json", lambda _: iter([record(platform="merchant_json")]))
-    with pytest.raises(SourceImportError, match="KMDIAN_API_KEY is missing"):
+    with pytest.raises(SourceImportError, match="KMDian source is not included"):
         publish_sources(db, [SourceSpec("merchant-json", "other")])
+
+
+def test_legacy_ldxp_upsert_cannot_take_over_a_kmdian_shop(db, monkeypatch):
+    from common import ensure_products, upsert_offer
+    monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([record()]))
+    publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
+    legacy_record = record(platform="ldxp")
+    legacy_record["token"] = "kmdian-S1"
+    legacy_record.pop("source_platform")  # Old LDXP/CSV callers omit this field.
+    with pytest.raises(ValueError, match="belongs to platform"):
+        upsert_offer(db, legacy_record, ensure_products(db))
+    assert db.query(Shop).one().platform == "kmdian"

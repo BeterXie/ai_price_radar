@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 from common import session_for, utcnow
 from app.models import CollectorJob, SourceIntake, SourceCandidate
-from common import Offer, Shop
+from common import Shop
 from app.services.collector_protocol import parse_bundle
 from connectors.base import SourceFetchError, SourceUnavailableError
 from connectors import kmdian
@@ -199,21 +199,11 @@ def publish_ready(db, result_dir: Path, *, release: str | None = None):
                     prepared.extend(_prepare_sources(
                         [SourceSpec("kmdian", kmdian.API_URL)], platform_directory,
                     ))
-                actual_snapshot = _current_snapshot_id(db)
-                existing_kmdian = db.scalar(select(Offer.id).join(Shop).where(
-                    Offer.snapshot_id == actual_snapshot,
-                    Shop.platform == "kmdian",
-                ).limit(1))
-                db.rollback()
-                if not kmdian_key and existing_kmdian is not None:
-                    raise ValueError(
-                        "KMDIAN_API_KEY is missing while the current catalog contains KMDian offers"
-                    )
             result = _publish_prepared_sources(db, prepared, [], expected_snapshot_id=expected_snapshot,
                 expected_intakes=selected, source_label="collector:" + identity,
                 carry_forward_current=kind == "inventory", dry_run=False, started_at=utcnow(), collector_job_id=identity,
                 preserve_local_ldxp=preserve_local_ldxp,
-                before_import=lambda: validate_batch_identity(db, prepared))
+                before_import=lambda active_prepared: validate_batch_identity(db, active_prepared))
         job = db.get(CollectorJob, identity, populate_existing=True)
         onboarding_errors = finish_onboarding(db, job, result_dir)
         job.status, job.active_lane = "published", None

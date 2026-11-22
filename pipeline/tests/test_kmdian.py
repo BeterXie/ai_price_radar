@@ -154,6 +154,36 @@ def test_empty_platform_catalog_is_valid(api):
     assert list(kmdian.load_records(kmdian.API_URL)) == []
 
 
+def test_server_clamped_page_size_still_requires_a_confirming_pass(api):
+    # The server may return fewer than the requested 20 items per page.
+    pages = [
+        page([product()], per_page=1, total=2),
+        page([product("KM2")], current=2, per_page=1, total=2),
+    ]
+    api.responses = pages + pages
+    assert len(list(kmdian.load_records(kmdian.API_URL))) == 2
+    assert len(api.calls) == 4
+
+
+def test_equal_totals_with_changed_product_membership_abort(api):
+    api.responses = [
+        page([product()], per_page=1, total=2),
+        page([product("KM2")], current=2, per_page=1, total=2),
+        page([product("KM2")], per_page=1, total=2),
+        page([product("KM3")], current=2, per_page=1, total=2),
+    ]
+    with pytest.raises(ValueError, match="catalog changed"):
+        list(kmdian.load_records(kmdian.API_URL))
+
+
+def test_unknown_raw_fields_are_discarded_and_nested_values_rejected(api):
+    api.responses = [page([product(diagnostic={"unexpected": "value"})])]
+    assert "diagnostic" not in list(kmdian.load_records(kmdian.API_URL))[0]["raw_json"]
+    api.responses = [page([product(cover={"url": "https://example.com/image"})])]
+    with pytest.raises(ValueError, match="cover must be a string"):
+        list(kmdian.load_records(kmdian.API_URL))
+
+
 def test_network_failure_does_not_echo_exception_credentials(api):
     api.responses = [TimeoutError("test-app.test-secret")]
     with pytest.raises(SourceFetchError) as caught:

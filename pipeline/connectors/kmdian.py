@@ -22,6 +22,7 @@ API_URL = "https://www.kmdian.com/api/v1/open/products"
 API_KEY_ENV = "KMDIAN_API_KEY"
 PAGE_SIZE = 20
 MAX_PAGES = 500
+MAX_TASK_SECONDS = 1500  # Leave time for publication within the 30-minute host job.
 REQUEST_INTERVAL_SECONDS = 1.1  # Below the platform's 60 requests/minute/key limit.
 CODE_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,100}")
 RAW_FIELDS = frozenset({
@@ -53,6 +54,11 @@ def _record(item: Any, *, api_key: str) -> dict[str, Any]:
     encoded_item = json.dumps(item, ensure_ascii=False, default=str)
     if api_key in encoded_item:
         raise ValueError("kmdian response contains the API credential")
+    for key in ("cover", "updated_at"):
+        if item.get(key) is not None and not isinstance(item[key], str):
+            raise ValueError(f"kmdian {key} must be a string")
+    if item.get("sales_count") is not None:
+        _integer(item["sales_count"], "sales_count")
     raw_json = {key: item[key] for key in RAW_FIELDS if key in item}
     return validate_record({
         "token": f"kmdian-{item['shop_code']}",
@@ -123,13 +129,13 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     client = PinnedHTTPSClient(
         max_response_bytes=5 * 1024 * 1024,
         max_task_bytes=50 * 1024 * 1024,
-        max_task_seconds=600,
+        max_task_seconds=MAX_TASK_SECONDS,
         request_timeout=20,
         user_agent="AI-Price-Radar-Importer/1",
     )
     next_request_at = time.monotonic()
 
-    def read_pass() -> list[dict[str, Any]]:
+    def read_pass() -> tuple[list[dict[str, Any]], int]:
         nonlocal next_request_at
         seen: set[tuple[str, str]] = set()
         expected_pagination: tuple[int, int, int] | None = None
@@ -167,17 +173,17 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
                 record["observed_at"] = observed_at
                 records.append(record)
             if page >= last_page:
-                return records
+                return records, page
         raise ValueError("kmdian API exceeded the page limit")
 
-    first_pass = read_pass()
+    first_pass, first_pages = read_pass()
     # The API exposes no snapshot/version token. For a multi-page response,
     # read it twice and only permit stale-offer pruning when the complete
     # product identity set agrees across both passes.
-    if len(first_pass) <= PAGE_SIZE:
+    if first_pages == 1:
         yield from first_pass
         return
-    second_pass = read_pass()
+    second_pass, _second_pages = read_pass()
     first_ids = {(row["token"], row["product_key"]) for row in first_pass}
     second_ids = {(row["token"], row["product_key"]) for row in second_pass}
     if first_ids != second_ids:
