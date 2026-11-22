@@ -27,6 +27,7 @@ from app.services.classifier import classify_product
     ('ios礼品卡充值自助订阅Claude pro', '礼品卡', 'gift-card'),
     ('Gmail教育邮箱租用 30天 GMail Edu 独享稳定', '邮箱', 'email-education'),
     ('小红书 · 千百天高权重长效老号 · 国际版（密码/SID/UID）', '社媒账号', 'social-media-account'),
+    ('【GitHub 18-19号新注册账号】Gmail邮箱注册 | 带2FA+恢复码 | 到手即可换绑', '账号', None),
 ])
 def test_auxiliary_live_title_regressions(title, category, expected):
     assert classify_product(title, category).slug == expected
