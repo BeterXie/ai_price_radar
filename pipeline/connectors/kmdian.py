@@ -52,7 +52,7 @@ def _record(item: Any, *, api_key: str) -> dict[str, Any]:
     stock = None if item.get("stock") is None else _integer(item["stock"], "stock")
     price_cent = _integer(item.get("price_cent"), "price_cent")
     encoded_item = json.dumps(item, ensure_ascii=False, default=str)
-    if api_key in encoded_item:
+    if json.dumps(api_key, ensure_ascii=False)[1:-1] in encoded_item:
         raise ValueError("kmdian response contains the API credential")
     for key in ("cover", "updated_at"):
         if item.get(key) is not None and not isinstance(item[key], str):
@@ -183,8 +183,9 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     if first_pages == 1:
         yield from first_pass
         return
-    second_pass, _second_pages = read_pass()
     first_ids = {(row["token"], row["product_key"]) for row in first_pass}
+    del first_pass
+    second_pass, _second_pages = read_pass()
     second_ids = {(row["token"], row["product_key"]) for row in second_pass}
     if first_ids != second_ids:
         raise ValueError("kmdian catalog changed during pagination; retry the complete import")

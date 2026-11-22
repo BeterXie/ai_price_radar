@@ -124,3 +124,15 @@ def test_legacy_ldxp_upsert_cannot_take_over_a_kmdian_shop(db, monkeypatch):
     with pytest.raises(ValueError, match="belongs to platform"):
         upsert_offer(db, legacy_record, ensure_products(db))
     assert db.query(Shop).one().platform == "kmdian"
+
+
+def test_csv_platform_case_does_not_change_the_persisted_platform(db, monkeypatch):
+    from common import ensure_products, upsert_offer
+    monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([record()]))
+    publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
+    csv_row = {**record(), "source_platform": "KMDian"}
+    upsert_offer(db, csv_row, ensure_products(db))
+    db.commit()
+    assert db.query(Shop).one().platform == "kmdian"
+    # A regular connector refresh must still recognize the same store.
+    assert publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)]).offer_count == 1

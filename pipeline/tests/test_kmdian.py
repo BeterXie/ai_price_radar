@@ -189,3 +189,12 @@ def test_network_failure_does_not_echo_exception_credentials(api):
     with pytest.raises(SourceFetchError) as caught:
         list(kmdian.load_records(kmdian.API_URL))
     assert "test-secret" not in str(caught.value)
+
+
+def test_credential_echo_is_rejected_even_when_json_escapes_the_key(api, monkeypatch):
+    key = 'test-app.sec"ret'
+    monkeypatch.setenv(kmdian.API_KEY_ENV, key)
+    api.responses = [page([product(title=key)])]
+    with pytest.raises(ValueError, match="response contains the API credential") as caught:
+        list(kmdian.load_records(kmdian.API_URL))
+    assert key not in str(caught.value)
