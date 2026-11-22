@@ -35,7 +35,7 @@ from common import (
     upsert_offer,
     utcnow,
 )
-from connectors import acg_faka, dujiao_next, get_connector, platform_16688, schema_org
+from connectors import acg_faka, dujiao_next, get_connector, kmdian, platform_16688, schema_org
 from connectors.base import SourceFetchError, SourceUnavailableError
 from connectors.ldxp import load_records as load_ldxp_records
 from intake_bridge import IntakeBridge
@@ -177,6 +177,36 @@ class SnapshotExportError(RuntimeError):
     def __init__(self, snapshot_id: int, cause: Exception):
         super().__init__(f"snapshot {snapshot_id} was published but public feed export failed: {cause}")
         self.snapshot_id = snapshot_id
+
+
+def _validate_prepared_shop_identity(db: Session, prepared: Sequence[PreparedSource]) -> None:
+    """Reject a source batch that would reuse a shop token owned by another platform."""
+    owners: dict[str, str] = {}
+    for source in prepared:
+        if source.error is not None:
+            continue
+        for record in source.records():
+            token = str(record.get("token") or "").strip()
+            platform = str(record.get("source_platform") or "").strip()
+            if not token or not platform:
+                continue
+            previous = owners.setdefault(token, platform)
+            if previous != platform:
+                raise SourceImportError(
+                    f"source token {token!r} is claimed by both {previous!r} and {platform!r}"
+                )
+    if not owners:
+        return
+    tokens = list(owners)
+    for start in range(0, len(tokens), 500):
+        existing = db.scalars(select(Shop).where(Shop.token.in_(tokens[start:start + 500]))).all()
+        for shop in existing:
+            expected = owners.get(shop.token)
+            if expected is not None and shop.platform != expected:
+                raise SourceImportError(
+                    f"source token {shop.token!r} belongs to platform {shop.platform!r}, "
+                    f"cannot import it as {expected!r}"
+                )
 
 
 def _dujiao_origin(value: str) -> str:
@@ -475,6 +505,12 @@ def _move_source_offers(
     """Move only this source's snapshot membership, preserving every observation field."""
     if from_snapshot_id is None or to_snapshot_id is None:
         return 0
+    if spec.connector == "kmdian":
+        source_shop_ids = select(Shop.id).where(Shop.platform == "kmdian")
+        result = db.execute(update(Offer).where(
+            Offer.snapshot_id == from_snapshot_id, Offer.shop_id.in_(source_shop_ids),
+        ).values(snapshot_id=to_snapshot_id))
+        return result.rowcount
     if spec.connector == "16688":
         parsed, _shop, _goods = platform_16688._validate_store_url(spec.source)
         source_url, platform = urllib.parse.urlunsplit(parsed), "16688"
@@ -528,18 +564,22 @@ def _prune_stale_offers(
     *,
     snapshot_id: int,
     valid_offer_ids: set[int],
+    source_platform: str | None = None,
 ) -> int:
-    """Prune offers belonging to touched shops that are no longer present in the updated source."""
-    if not valid_offer_ids:
+    """Prune missing offers in touched shops, or across an authoritative platform feed."""
+    if not valid_offer_ids and source_platform is None:
         return 0
 
-    touched_shop_ids = set(
-        db.scalars(
-            select(Offer.shop_id)
-            .where(Offer.id.in_(valid_offer_ids))
-            .distinct()
-        ).all()
-    )
+    if source_platform:
+        touched_shop_ids = set(db.scalars(select(Shop.id).where(Shop.platform == source_platform)))
+    else:
+        touched_shop_ids = set(
+            db.scalars(
+                select(Offer.shop_id)
+                .where(Offer.id.in_(valid_offer_ids))
+                .distinct()
+            ).all()
+        )
     if not touched_shop_ids:
         return 0
 
@@ -881,6 +921,16 @@ def publish_sources(
     try:
         eligible, skipped, _inactive, selected_intakes = _eligible_publish_sources(db, sources, now=started_at)
         expected_snapshot_id = _current_snapshot_id(db)
+        if not carry_forward_current and not any(spec.connector == "kmdian" for spec in eligible):
+            existing_kmdian = db.scalar(select(Offer.id).join(Shop).where(
+                Offer.snapshot_id == expected_snapshot_id,
+                Shop.platform == "kmdian",
+            ).limit(1))
+            if existing_kmdian is not None and not os.getenv(kmdian.API_KEY_ENV, "").strip():
+                db.rollback()
+                raise SourceImportError(
+                    "KMDIAN_API_KEY is missing while the current catalog contains Kmdian offers"
+                )
         previous_tokens: dict[tuple[str, str], str] = {}
         if carry_forward_current and expected_snapshot_id is not None:
             for spec in eligible:
@@ -970,6 +1020,7 @@ def _publish_prepared_sources(
                     raise SourceImportError("catalog changed during source collection; retry publication")
             if before_import is not None:
                 before_import()
+            _validate_prepared_shop_identity(db, prepared)
             prepared_by_source = {(item.spec.connector, item.spec.source): item for item in prepared}
             eligible_keys = {(spec.connector, spec.source) for spec in sources}
             if carry_forward_current and previous_snapshot_id is not None and any(
@@ -1044,11 +1095,12 @@ def _publish_prepared_sources(
                     ))
                     continue
                 all_price_changes.extend(source_price_changes)
-                if carry_forward_current and imported.offer_ids:
+                if carry_forward_current and (imported.offer_ids or spec.connector == "kmdian"):
                     imported.pruned = _prune_stale_offers(
                         db,
                         snapshot_id=snapshot.id,
                         valid_offer_ids=imported.offer_ids,
+                        source_platform="kmdian" if spec.connector == "kmdian" else None,
                     )
                 imports.append(imported)
                 intake_finished_at = utcnow()
@@ -1153,6 +1205,8 @@ def _build_sources(args: argparse.Namespace) -> list[SourceSpec]:
         sources.extend(SourceSpec("dujiao-next", origin) for origin in approved_dujiao_sources(args.dujiao_db))
     if args.merchant_sources:
         sources.extend(SourceSpec("merchant-json", source) for source in load_merchant_sources(args.merchant_sources))
+    if os.getenv(kmdian.API_KEY_ENV, "").strip():
+        sources.append(SourceSpec("kmdian", kmdian.API_URL))
     return sources
 
 

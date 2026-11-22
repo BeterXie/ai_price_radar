@@ -13,6 +13,7 @@ SOURCE_PLATFORM_LABELS = {
     "merchant_json": "商家 Feed",
     "woocommerce": "WooCommerce",
     "16688": "16688",
+    "kmdian": "卡密小店",
     "schema_org": "Schema.org",
     "acg_faka": "异次元/ACG-Faka",
     "other": "其他独立站",
@@ -21,9 +22,10 @@ SOURCE_PLATFORM_LABELS = {
 SOURCE_PLATFORM_GROUP_LABELS = {
     "ldxp": "链动小铺",
     "16688": "16688",
+    "kmdian": "卡密小店",
     "independent": "独立站点",
 }
-INDEPENDENT_SOURCE_PLATFORMS = frozenset(SOURCE_PLATFORM_LABELS) - {"ldxp", "16688"}
+INDEPENDENT_SOURCE_PLATFORMS = frozenset(SOURCE_PLATFORM_LABELS) - {"ldxp", "16688", "kmdian"}
 
 SOURCE_KIND_BY_PLATFORM = {
     "ldxp": "public_page",
@@ -31,6 +33,7 @@ SOURCE_KIND_BY_PLATFORM = {
     "merchant_json": "public_feed",
     "woocommerce": "public_api",
     "16688": "public_api",
+    "kmdian": "platform_api",
     "schema_org": "structured_data",
     "acg_faka": "public_api",
     "other": "public_page",
@@ -39,6 +42,7 @@ SOURCE_KIND_BY_PLATFORM = {
 SOURCE_KIND_LABELS = {
     "public_page": "公开页面",
     "public_api": "公开 API",
+    "platform_api": "平台 API",
     "public_feed": "公开 Feed",
     "structured_data": "结构化数据",
 }

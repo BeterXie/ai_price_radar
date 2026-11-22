@@ -172,7 +172,7 @@ def test_independent_group_includes_all_store_connectors_across_catalog_and_shop
         product = Product(slug="chatgpt-plus", platform="OpenAI", display_name="ChatGPT Plus")
         db.add_all([snapshot, product])
         db.flush()
-        for platform in sorted(independent | {"ldxp", "16688"}):
+        for platform in sorted(independent | {"ldxp", "16688", "kmdian"}):
             shop = Shop(token=platform, name=platform, source_url=f"https://{platform.replace('_', '-')}.example", platform=platform)
             db.add(shop)
             db.flush()
@@ -198,7 +198,20 @@ def test_independent_group_includes_all_store_connectors_across_catalog_and_shop
         assert client.get("/api/v1/meta").json()["source_platforms"] == [
             {"id": "ldxp", "label": "链动小铺"},
             {"id": "16688", "label": "16688"},
+            {"id": "kmdian", "label": "卡密小店"},
             {"id": "independent", "label": "独立站点"},
         ]
+        kmdian_params = {"source_platform": "kmdian", "brand": "OpenAI"}
+        assert client.get("/api/v1/products", params=kmdian_params).json()["offer_count"] == 1
+        assert client.get("/api/v1/products/chatgpt-plus", params=kmdian_params).json()["offer_count"] == 1
+        groups = client.get("/api/v1/catalog/groups", params=kmdian_params).json()
+        assert groups["offer_total"] == 1
+        representative = groups["items"][0]["representative"]
+        assert representative["source_platform"] == "kmdian"
+        assert representative["source_platform_label"] == "卡密小店"
+        assert representative["source_kind"] == "platform_api"
+        shops = client.get("/api/v1/shops/cards", params=kmdian_params).json()
+        assert shops["total"] == 1
+        assert shops["items"][0]["source_platform"] == "kmdian"
     finally:
         app.dependency_overrides.clear()

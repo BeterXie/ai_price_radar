@@ -126,6 +126,117 @@ def test_uploaded_collection_publishes_without_fetching_again_and_replay_does_no
     assert len(list(db.scalars(select(CatalogSnapshot)))) == 1
 
 
+def test_main_host_platform_feed_joins_scan_batches_and_inventory_carries_it_forward(runtime, monkeypatch):
+    from common import Offer, Shop
+    from connectors import kmdian
+    db, directory = runtime
+    monkeypatch.setenv("KMDIAN_API_KEY", "test-app.test-secret")
+    calls = []
+    records = [{
+        **ldxp_record(), "token": "kmdian-S1", "source_platform": "kmdian",
+        "shop_url": "https://www.kmdian.com/shop/S1",
+        "product_url": "https://www.kmdian.com/item/KM1", "product_key": "kmdian:KM1",
+    }]
+
+    def load_platform(source):
+        assert not db.in_transaction()
+        assert source == kmdian.API_URL
+        calls.append(source)
+        yield from records
+
+    monkeypatch.setitem(CONNECTORS, "kmdian", load_platform)
+    job = write_job_bundle(db, directory, ldxp_record())
+    job.kind = "scan"
+    db.commit()
+    assert all(source["connector"] != "kmdian" for source in job.sources)
+    assert "test-secret" not in json.dumps(job.sources)
+    first = publish_ready(db, directory, release="test")
+    assert {item["connector"] for item in first["imports"]} == {"ldxp", "kmdian"}
+    assert len(calls) == 1
+    assert len(list(db.scalars(select(Offer).where(Offer.snapshot_id == first["snapshot_id"])))) == 2
+
+    write_job_bundle(db, directory, ldxp_record())
+    inventory = publish_ready(db, directory, release="test")
+    assert len(calls) == 1
+    assert len(list(db.scalars(select(Offer).where(Offer.snapshot_id == inventory["snapshot_id"])))) == 2
+
+    records.clear()
+    job = write_job_bundle(db, directory, ldxp_record())
+    job.kind = "scan"
+    db.commit()
+    last = publish_ready(db, directory, release="test")
+    assert len(calls) == 2
+    assert list(db.scalars(select(Shop.platform).join(Offer).where(Offer.snapshot_id == last["snapshot_id"]))) == ["ldxp"]
+    assert not publish_ready(db, directory, release="test")["published"]
+    assert len(calls) == 2
+
+
+def test_platform_failure_retains_prior_observations_in_remote_scan_publication(runtime, monkeypatch):
+    from common import Offer, Shop
+    from connectors.base import SourceFetchError
+    from publish_catalog import SourceSpec, publish_sources
+    from connectors import kmdian
+    db, directory = runtime
+    monkeypatch.setenv("KMDIAN_API_KEY", "test-app.test-secret")
+    row = {**ldxp_record(), "token": "kmdian-S1", "source_platform": "kmdian"}
+    monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([row]))
+    publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
+    previous = db.query(Offer).one()
+    price, observed = previous.price, previous.observed_at
+    db.rollback()
+
+    def fail(_):
+        raise SourceFetchError("upstream unavailable")
+
+    monkeypatch.setitem(CONNECTORS, "kmdian", fail)
+    job = write_job_bundle(db, directory, ldxp_record())
+    job.kind = "scan"
+    db.commit()
+    result = publish_ready(db, directory, release="test")
+    assert result["published"]
+    assert result["imports"][-1]["status"] == "fetch_failed"
+    assert result["imports"][-1]["retained"] == 1
+    db.expire_all()
+    retained = db.query(Offer).join(Shop).filter(Shop.platform == "kmdian").one()
+    assert (retained.price, retained.observed_at) == (price, observed)
+    assert retained.snapshot_id == result["snapshot_id"]
+
+
+def test_missing_platform_key_refuses_to_publish_over_existing_platform(runtime, monkeypatch):
+    from common import Offer, Shop
+    from connectors import kmdian
+    from publish_catalog import SourceSpec, publish_sources
+    db, directory = runtime
+    row = {**ldxp_record(), "token": "kmdian-S1", "source_platform": "kmdian"}
+    monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([row]))
+    publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
+    monkeypatch.delenv(kmdian.API_KEY_ENV, raising=False)
+    job = write_job_bundle(db, directory, ldxp_record())
+    job.kind = "scan"
+    db.commit()
+    with pytest.raises(ValueError, match="KMDIAN_API_KEY is missing"):
+        publish_ready(db, directory, release="test")
+    assert db.get(CollectorJob, job.id).status == "failed"
+    assert db.query(CatalogSnapshot).count() == 1
+
+
+def test_direct_publication_rejects_cross_platform_shop_token(runtime, monkeypatch):
+    from connectors import kmdian
+    from publish_catalog import SourceSpec, SourceImportError, publish_sources
+    from common import Shop
+    db, _ = runtime
+    db.add(Shop(token="kmdian-S1", name="Existing", source_url="https://wzyp.cn/shop/S1", platform="ldxp"))
+    db.commit()
+    monkeypatch.setitem(CONNECTORS, "kmdian", lambda _: iter([{
+        **ldxp_record(), "token": "kmdian-S1", "source_platform": "kmdian",
+        "shop_url": "https://www.kmdian.com/shop/S1",
+        "product_url": "https://www.kmdian.com/item/KM1", "product_key": "kmdian:KM1",
+    }]))
+    with pytest.raises(SourceImportError, match="belongs to platform"):
+        publish_sources(db, [SourceSpec("kmdian", kmdian.API_URL)])
+    assert db.scalar(select(Shop.platform).where(Shop.token == "kmdian-S1")) == "ldxp"
+
+
 def test_retry_exhaustion_frees_lane_for_a_new_batch(runtime):
     db, _ = runtime
     first = enqueue(db, 'inventory', 'test')

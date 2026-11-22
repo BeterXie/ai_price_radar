@@ -211,6 +211,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
       INTAKE_API_URL: ${INTAKE_API_URL:-http://api:8000}
       INTAKE_WORKER_KEY: ${INTAKE_WORKER_KEY:?INTAKE_WORKER_KEY must be set in .env}
+      KMDIAN_API_KEY: ${KMDIAN_API_KEY:-}
     volumes:
       # 只挂载 importer 需要读写的目录，避免整个仓库（含 .env）进入容器。
       - ./pipeline:/workspace/pipeline

@@ -15,11 +15,12 @@ from sqlalchemy.exc import IntegrityError
 
 from common import session_for, utcnow
 from app.models import CollectorJob, SourceIntake, SourceCandidate
-from common import Shop
+from common import Offer, Shop
 from app.services.collector_protocol import parse_bundle
 from connectors.base import SourceFetchError, SourceUnavailableError
+from connectors import kmdian
 from publish_catalog import (
-    PreparedSource, SourceSpec, _current_snapshot_id, _eligible_publish_sources,
+    PreparedSource, SourceSpec, _current_snapshot_id, _eligible_publish_sources, _prepare_sources,
     _publish_prepared_sources, approved_dujiao_sources, approved_intake_sources, merge_sources,
     resolve_intake_shop,
     load_merchant_sources,
@@ -186,9 +187,28 @@ def publish_ready(db, result_dir: Path, *, release: str | None = None):
                     rows.shop_tokens = {row["token"] for row in rows.records()}
                 prepared.append(rows)
             validate_batch_identity(db, prepared)
-            # No network connector is called here. Approval is rechecked by
-            # the existing publisher under the same locks as local collection.
             db.rollback()
+            # This credentialed platform feed runs only on the whitelisted main
+            # host. Worker manifests and uploaded records never receive its key.
+            # Finish collection before acquiring publication locks/connections.
+            if kind == "scan":
+                kmdian_key = os.getenv(kmdian.API_KEY_ENV, "").strip()
+                if kmdian_key:
+                    platform_directory = Path(directory) / "platform-api"
+                    platform_directory.mkdir()
+                    prepared.extend(_prepare_sources(
+                        [SourceSpec("kmdian", kmdian.API_URL)], platform_directory,
+                    ))
+                actual_snapshot = _current_snapshot_id(db)
+                existing_kmdian = db.scalar(select(Offer.id).join(Shop).where(
+                    Offer.snapshot_id == actual_snapshot,
+                    Shop.platform == "kmdian",
+                ).limit(1))
+                db.rollback()
+                if not kmdian_key and existing_kmdian is not None:
+                    raise ValueError(
+                        "KMDIAN_API_KEY is missing while the current catalog contains KMDian offers"
+                    )
             result = _publish_prepared_sources(db, prepared, [], expected_snapshot_id=expected_snapshot,
                 expected_intakes=selected, source_label="collector:" + identity,
                 carry_forward_current=kind == "inventory", dry_run=False, started_at=utcnow(), collector_job_id=identity,
