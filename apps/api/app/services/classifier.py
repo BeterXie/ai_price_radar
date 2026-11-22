@@ -234,12 +234,21 @@ def _classify_auxiliary_identity(
         return None
     title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|只保证|注册.{0,20}专用", title_text, maxsplit=1)[0]
     primary_brand = _first_title_brand(title)
-    account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"])
+    account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"]) or bool(re.search(r"成\s*品(?:账)?号", title))
     email_product = _contains(title, ["邮箱", "邮件", "email"])
     phone_service = _contains(title, ["实卡", "手机号", "手机验证", "短信", "换号"]) or bool(
         re.search(r"(?:google|谷歌|gmail)\s*(?:邮箱)?\s*接[码马]", title)
     )
     verification = _active_verification_text(title)
+    kyc = re.search(r"(?<![a-z])kyc(?![a-z])|真人验证|实名验证", verification)
+    recharge = re.search(r"代充|直充|充值", title)
+    if primary_brand and kyc and recharge and (
+        recharge.start() < kyc.start()
+        or re.search(r"(?:需(?:要)?|必须|强制|要求)[^，。|]{0,20}(?:kyc|真人验证|实名验证)", title)
+    ):
+        # A prerequisite or included check does not turn a subscription into a
+        # separately sold verification service.
+        return None
     if not account and (not email_product or phone_service) and not _contains(title, CHATGPT_NON_PRODUCT_MARKERS) and _contains(verification, AUXILIARY_VERIFICATION_MARKERS):
         if re.search(r"(?<![a-z])kyc(?![a-z])|真人验证|实名验证", verification):
             return "verification-kyc", True

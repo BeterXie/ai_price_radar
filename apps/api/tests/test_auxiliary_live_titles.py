@@ -41,6 +41,12 @@ from app.services.classifier import classify_product
     ('【非卡】验证试用0刀优质卡台渠道推荐 visa万事达', '虚拟卡', None),
     ('Steam 充值卡 20美元', '礼品卡', 'gift-card'),
     ('Gemini 3 Muse 专门1刀卡 万事 537872 1刀虚拟卡', '虚拟卡', 'virtual-card'),
+    ('Claude Pro直充月卡 (IOS渠道需要强制KYC，介意勿下)', 'Claude', 'claude-pro'),
+    ('服Claude Pro iOS官方直充（售出不退不换）需要过了kyc且早于9.15之前注册的号', 'Claude Code代充/订阅', 'claude-pro'),
+    ('【必须自行过 KYC】Claude Pro iOS CDK (官方充值 质保订阅 不保封号)', 'Claude', 'claude-pro'),
+    ('Claude美区正价代充（远程充值）Pro（包过订阅KYC）', 'Claude Code', 'claude-pro'),
+    ('Claude Ultra 20X成 品号，过KYC，实卡正价订阅', 'AI与效率', 'claude-pro-20x'),
+    ('Claude 门户验证 KYC认证服务 24h接批量过KYC', 'Claude官方直充', 'verification-kyc'),
 ])
 def test_auxiliary_live_title_regressions(title, category, expected):
     assert classify_product(title, category).slug == expected

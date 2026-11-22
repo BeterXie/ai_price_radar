@@ -6,6 +6,7 @@ All notable changes to AI Price Memory are documented in this file.
 
 - Require specific product evidence instead of broad merchant categories when classifying auxiliary goods.
 - Keep subscription recharge codes out of gift cards, payment-method mentions out of virtual cards, and card-channel recommendations out of the product catalog.
+- Treat subscription KYC prerequisites as subscription information, preserving separately sold verification services.
 - Add regressions from real merchant titles. No schema or collection-connector changes.
 
 ## [3.9.99] - 2026-11-22
