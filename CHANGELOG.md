@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.99] - 2026-11-22
+
+- Preserve GitHub account identity when Gmail is only its registration email; includes v3.9.98 auxiliary catalog fixes and original-merchant scan seeds.
+- No schema migration; supersedes the pending v3.9.98 deployment candidate.
+
 ## [3.9.98] - 2026-11-22
 
 - Keep real Team, Plus and Free account titles out of the email catalog, including RT old-account and Team multiplier shorthand observed during publication checks.

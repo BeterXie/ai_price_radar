@@ -301,6 +301,8 @@ def _classify_auxiliary_identity(
     email_noun = _contains(title, ["邮箱", "邮件", "email"])
     email_provider = _contains(title, ["gmail", "outlook", "hotmail", "icloud", "谷歌账号"])
     category_email = _contains(category_text, AUXILIARY_EMAIL_MARKERS)
+    if re.search(r"(?:github|netflix|spotify|microsoft teams|wps|百度网盘)\s*[^，。|]{0,20}(?:账号|帐号|会员|订阅)", title):
+        return None
     if primary_brand or (brand and not email_noun and not email_provider):
         return None
     # Preserve implicit Plus account titles such as “谷歌邮件 成品 Plus”.
