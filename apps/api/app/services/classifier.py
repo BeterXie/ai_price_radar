@@ -52,15 +52,15 @@ AUXILIARY_VERIFICATION_MARKERS = [
     "验证服务", "真人验证", "实名验证", "kyc", "提链", "扫码对接", "二维码生成",
 ]
 AUXILIARY_VIRTUAL_CARD_MARKERS = [
-    "虚拟卡", "virtual card", "virtualcard", "vcc", "预付卡", "0刀卡", "一刀卡",
+    "虚拟卡", "virtual card", "virtualcard", "vcc", "预付卡", "0刀卡", "一刀卡", "0美元卡",
     "visa卡", "mastercard卡",
 ]
 AUXILIARY_GIFT_CARD_MARKERS = ["礼品卡", "gift card", "giftcard", "充值卡"]
 AUXILIARY_SOCIAL_MARKERS = [
-    "instagram", "threads", "facebook", "tiktok", "discord", "telegram", "社媒账号", "社交账号",
-    "twitter", "推特",
+    "instagram", "threads", "facebook", "tiktok", "discord", "telegram", "whatsapp", "社媒账号", "社交账号",
+    "twitter", "推特", "小红书",
 ]
-AUXILIARY_ACCOUNT_MARKERS = ["账号", "帐号", "成品", "普号", "老号", "账号密码", "登录", "收件箱", "2fa"]
+AUXILIARY_ACCOUNT_MARKERS = ["账号", "帐号", "成品", "普号", "老号", "白号", "满月白", "账号密码", "登录", "收件箱", "2fa"]
 AUXILIARY_APPLE_ID_MARKERS = ["apple id", "appleid", "苹果id", "苹果账号", "苹果账户"]
 AUXILIARY_VPS_MARKERS = ["vps", "云服务器", "轻量服务器", "云主机"]
 
@@ -232,7 +232,7 @@ def _classify_auxiliary_identity(
         return None
     if brand in {"chatgpt", "codex"} and "企业邮箱" not in title_text and re.search(r"(?<![a-z])(?:\d+\s*x\s*)?(?:team|business|plus|pro|go|k12)(?![a-z])", title_text):
         return None
-    title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|注册.{0,20}专用", title_text, maxsplit=1)[0]
+    title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|只保证|注册.{0,20}专用", title_text, maxsplit=1)[0]
     primary_brand = _first_title_brand(title)
     account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"])
     email_product = _contains(title, ["邮箱", "邮件", "email"])
@@ -288,7 +288,11 @@ def _classify_auxiliary_identity(
         if not primary_brand and not _contains(title, AUXILIARY_EMAIL_MARKERS + AUXILIARY_SOCIAL_MARKERS) and _contains(category_text, markers) and _contains(title, ["独享", "成品", "年付", "月付", "面额", "兑换", "卡密"]):
             return slug, True
 
+    if _contains(category_text, AUXILIARY_APPLE_ID_MARKERS) and re.search(r"(?:id|商店)\s*(?:账号|帐号)", title):
+        return "apple-id-account", True
     social = _contains(title, AUXILIARY_SOCIAL_MARKERS) or bool(re.search(r"(?<![a-z0-9])x\s*(?:账号|帐号)", title))
+    if not social and brand is None and _contains(category_text, AUXILIARY_SOCIAL_MARKERS):
+        social = True
     if social and primary_brand != "x" and _contains(title, AUXILIARY_ACCOUNT_MARKERS):
         if primary_brand not in (None, "x") or re.search(r"premium|subscription|twitter blue|蓝标|蓝v|会员", title):
             return None

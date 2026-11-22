@@ -18,6 +18,15 @@ from app.services.classifier import classify_product
     ('Google 接马-美区 【长效60天】全系谷歌邮箱 不售后', '谷歌，油管接马', 'verification-google'),
     ('iCloud 隐私邮箱 无限接收验证码', '邮箱', 'email-icloud'),
     ('Team Gmail 企业邮箱账号', '邮箱', 'email-gmail'),
+    ('【稳定可用】iCloud隐私邮箱|不能分裂|只保证能用openAI', '邮箱', 'email-icloud'),
+    ('韩国Tiktok | 满月白', '社媒账号', 'social-media-account'),
+    ('【台湾】 ID账号-可下币安等APP/独享/质保', 'Apple ID', 'apple-id-account'),
+    ('【港区】ID账号-可下APP/独享/质保/gmail后缀非谷歌邮箱', '苹果账号', 'apple-id-account'),
+    ('USA +1双向成品号', 'Telegram账号', 'social-media-account'),
+    ('485954 验证试用0美元卡', '虚拟卡', 'virtual-card'),
+    ('ios礼品卡充值自助订阅Claude pro', '礼品卡', 'gift-card'),
+    ('Gmail教育邮箱租用 30天 GMail Edu 独享稳定', '邮箱', 'email-education'),
+    ('小红书 · 千百天高权重长效老号 · 国际版（密码/SID/UID）', '社媒账号', 'social-media-account'),
 ])
 def test_auxiliary_live_title_regressions(title, category, expected):
     assert classify_product(title, category).slug == expected
