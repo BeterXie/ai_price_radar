@@ -234,12 +234,21 @@ def _classify_auxiliary_identity(
         return None
     title = re.split(r"附赠|附带|赠送|兼送|附(?=[a-z])|可用于|适用于|用于|支持|只保证|注册.{0,20}专用", title_text, maxsplit=1)[0]
     primary_brand = _first_title_brand(title)
-    account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"])
+    account = _contains(title, ["成品", "账密", "普号", "老号", "白号", "账号密码"]) or bool(re.search(r"成\s*品(?:账)?号", title))
     email_product = _contains(title, ["邮箱", "邮件", "email"])
     phone_service = _contains(title, ["实卡", "手机号", "手机验证", "短信", "换号"]) or bool(
         re.search(r"(?:google|谷歌|gmail)\s*(?:邮箱)?\s*接[码马]", title)
     )
     verification = _active_verification_text(title)
+    kyc = re.search(r"(?<![a-z])kyc(?![a-z])|真人验证|实名验证", verification)
+    recharge = re.search(r"代充|直充|充值", title)
+    if primary_brand and kyc and recharge and (
+        recharge.start() < kyc.start()
+        or re.search(r"(?:需(?:要)?|必须|强制|要求)[^，。|]{0,20}(?:kyc|真人验证|实名验证)", title)
+    ):
+        # A prerequisite or included check does not turn a subscription into a
+        # separately sold verification service.
+        return None
     if not account and (not email_product or phone_service) and not _contains(title, CHATGPT_NON_PRODUCT_MARKERS) and _contains(verification, AUXILIARY_VERIFICATION_MARKERS):
         if re.search(r"(?<![a-z])kyc(?![a-z])|真人验证|实名验证", verification):
             return "verification-kyc", True
@@ -274,7 +283,13 @@ def _classify_auxiliary_identity(
         ("vps", AUXILIARY_VPS_MARKERS),
         ("apple-id-account", AUXILIARY_APPLE_ID_MARKERS),
     ):
-        positions = [title.find(normalize_title(marker)) for marker in markers if _contains(title, [marker])]
+        positions = [
+            match.start()
+            for marker in markers
+            for match in re.finditer(re.escape(normalize_title(marker)) + (r"(?!密|冲|充)" if marker == "充值卡" else ""), title)
+        ]
+        if slug == "virtual-card" and primary_brand and _contains(title, ["账号", "帐号", "成品号"]) and re.search(r"卡(?:支付|过验证)", title):
+            continue
         brand_positions = [_brand_position(title, primary_brand, marker) for marker in BRAND_MARKERS.get(primary_brand, [])]
         brand_positions = [position for position in brand_positions if position >= 0]
         if positions:
@@ -285,13 +300,11 @@ def _classify_auxiliary_identity(
             )
             if not sold_ai_item or not brand_positions or min(positions) < min(brand_positions):
                 return slug, True
-        if not primary_brand and not _contains(title, AUXILIARY_EMAIL_MARKERS + AUXILIARY_SOCIAL_MARKERS) and _contains(category_text, markers) and _contains(title, ["独享", "成品", "年付", "月付", "面额", "兑换", "卡密"]):
-            return slug, True
 
     if _contains(category_text, AUXILIARY_APPLE_ID_MARKERS) and re.search(r"(?:id|商店)\s*(?:账号|帐号)", title):
         return "apple-id-account", True
     social = _contains(title, AUXILIARY_SOCIAL_MARKERS) or bool(re.search(r"(?<![a-z0-9])x\s*(?:账号|帐号)", title))
-    if not social and brand is None and _contains(category_text, AUXILIARY_SOCIAL_MARKERS):
+    if not social and brand is None and _contains(category_text, ["telegram", "电报账号", "电宝账号"]):
         social = True
     if social and primary_brand != "x" and _contains(title, AUXILIARY_ACCOUNT_MARKERS):
         if primary_brand not in (None, "x") or re.search(r"premium|subscription|twitter blue|蓝标|蓝v|会员", title):
@@ -300,7 +313,6 @@ def _classify_auxiliary_identity(
 
     email_noun = _contains(title, ["邮箱", "邮件", "email"])
     email_provider = _contains(title, ["gmail", "outlook", "hotmail", "icloud", "谷歌账号"])
-    category_email = _contains(category_text, AUXILIARY_EMAIL_MARKERS)
     if re.search(r"(?:github|netflix|spotify|microsoft teams|wps|百度网盘)\s*[^，。|]{0,20}(?:账号|帐号|会员|订阅)", title):
         return None
     if primary_brand or (brand and not email_noun and not email_provider):
@@ -308,7 +320,7 @@ def _classify_auxiliary_identity(
     # Preserve implicit Plus account titles such as “谷歌邮件 成品 Plus”.
     if brand == "chatgpt" and _contains(title, ["plus", "puls", "plsu"]) and _contains(title, ["成品", "首登", "原生支付"]):
         return None
-    if not (email_noun or (email_provider or category_email) and _contains(title, AUXILIARY_ACCOUNT_MARKERS)):
+    if not (email_noun or email_provider and _contains(title, AUXILIARY_ACCOUNT_MARKERS)):
         return None
     if _contains(title, ["资格号", "已注册gqt"]):
         return None
@@ -368,6 +380,7 @@ def _is_non_product(title_text: str, category_text: str = "", description_text: 
         "接码渠道", "接码平台", "接码地址", "手把手",
         "邀请返利", "推广返利", "邀请推广", "邀请额度", "额度增加", "邀请资格",
         "优惠链接", "提取链接",
+        "【非卡】", "[非卡]", "卡台渠道推荐",
     ]
     if any(m in t_l for m in direct_title_rejects):
         return True
