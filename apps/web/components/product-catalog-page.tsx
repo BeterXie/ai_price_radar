@@ -154,13 +154,9 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
   const toolbarHeader = IS_PRIMARY_SITE && (
     <div className="directory-source-line">
       {sourceNavigation}
-      {sponsor ? (
+      {sponsor && (
         <aside className="directory-sponsor" aria-label="赞助内容" data-placement={sponsor.placement}>
           <SponsorCard item={sponsor} variant="compact" />
-        </aside>
-      ) : meta.ad_slots_enabled && (
-        <aside className="directory-sponsor directory-vacancy" aria-label="广告位" data-placement={product ? "product_offers" : "catalog_top"}>
-          {meta.advertise_enabled ? <Link href="/advertise">广告合作 <ArrowUpRight size={14} aria-hidden="true" /></Link> : <span>广告位</span>}
         </aside>
       )}
     </div>

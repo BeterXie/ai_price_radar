@@ -199,22 +199,23 @@ function mockCatalogMetadata() {
   };
 }
 
-test("the catalog reserves its vacant sponsor slot only while ads are enabled", async (context) => {
-  let enabled = true;
+test("the catalog renders a sponsor only when the placement returns an active campaign", async (context) => {
+  const campaign = { id: 7, sponsor_name: "Example", placement: "catalog_top", title: "Example campaign" };
+  let ads = [];
   context.mock.method(globalThis, "fetch", async (url) => {
     const path = new URL(String(url)).pathname;
-    return Response.json(path.endsWith("/meta")
-      ? { ...mockCatalogMetadata(), ad_slots_enabled: enabled, advertise_enabled: true }
-      : { items: [], total: 0 });
+    if (path.endsWith("/meta")) return Response.json({ ...mockCatalogMetadata(), ad_slots_enabled: true, advertise_enabled: true });
+    if (path.endsWith("/ads")) return Response.json({ enabled: true, items: ads });
+    return Response.json({ items: [], total: 0 });
   });
   const nodes = async () => catalogDescendants(await ProductCatalogPage({ rawParams: {} }));
-  const active = await nodes();
-  assert.equal(active.filter((node) => node.type === "h1").length, 1);
-  const vacancy = active.find((node) => node.props?.["data-placement"] === "catalog_top");
-  assert.ok(vacancy);
-  assert.ok(catalogLink(catalogDescendants(vacancy), (url) => url.pathname === "/advertise"));
-  enabled = false;
-  assert.ok(!(await nodes()).some((node) => node.props?.["data-placement"] === "catalog_top"));
+  const empty = await nodes();
+  assert.equal(empty.filter((node) => node.type === "h1").length, 1);
+  assert.ok(!empty.some((node) => node.props?.["data-placement"] === "catalog_top"));
+  assert.ok(!catalogLink(empty, (url) => url.pathname === "/advertise"));
+  ads = [campaign];
+  const placement = (await nodes()).find((node) => node.props?.["data-placement"] === "catalog_top");
+  assert.equal(placement?.props.children.props.item.id, campaign.id);
 });
 
 test("brand, source and product navigation retain the widened scope and intersecting filters", async (context) => {
