@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
-  ArrowsDownUp, Bell, BookOpen, ChartLineDown, Flask, GithubLogo, List,
-  Plugs, Scales, SlidersHorizontal, Storefront, Tag, X,
+  ArrowRight, ArrowsDownUp, Bell, BookOpen, CaretDown, ChartLineDown,
+  Flask, GithubLogo, List, Plugs, Storefront, X,
 } from "@phosphor-icons/react";
 import { alertView } from "@/lib/alert-report";
 import { BRAND } from "@/lib/brands";
@@ -32,27 +32,45 @@ export function DirectoryHeader({ account, relayHubEnabled, advertiseEnabled, ch
 
   const mainLinks = [
     { href: "/products", label: "报价目录", icon: ArrowsDownUp },
-    { href: "/alerts?view=drops", label: "降价榜", icon: ChartLineDown },
-    { href: "/alerts?view=team", label: "Team 车提醒", icon: Bell },
-    ...(relayHubEnabled ? [{ href: "/relays", label: "API 中转站", icon: Plugs }] : []),
+    ...(relayHubEnabled ? [{ href: "/relays", label: "中转站", icon: Plugs }] : []),
     { href: "/skills", label: "技能与实验室", icon: Flask },
   ];
-  const utilityLinks = [
-    { href: "/compare", label: "模型对比", icon: Scales },
-    { href: "/guides", label: "购买指南", icon: BookOpen },
-    { href: "/methodology", label: "数据方法", icon: SlidersHorizontal },
-    { href: "/shops/submit", label: "申请收录", icon: Storefront },
-    ...(advertiseEnabled ? [{ href: "/advertise", label: "商务合作", icon: Tag }] : []),
+  const alertLinks = [
+    { href: "/alerts?view=team", label: "Team 车提醒", icon: Bell },
+    { href: "/alerts?view=drops", label: "降价榜", icon: ChartLineDown },
   ];
+  const utilityLinks = [
+    { href: "/compare", label: "模型对比" },
+    { href: "/guides", label: "购买指南" },
+    { href: "/methodology", label: "数据方法" },
+    ...(advertiseEnabled ? [{ href: "/advertise", label: "商务合作" }] : []),
+  ];
+  const isCurrent = (href: string) => current === href || current.startsWith(href + "/");
   function navLink({ href, label, icon: Icon }: typeof mainLinks[number]) {
-    const selected = current === href || current.startsWith(href + "/");
-    return <Link key={href} href={href} prefetch={false} aria-current={selected ? "page" : undefined}>
+    return <Link key={href} href={href} prefetch={false} aria-current={isCurrent(href) ? "page" : undefined}>
       <Icon size={18} aria-hidden="true" /><span>{label}</span>
     </Link>;
   }
   const navigation = <>
     <nav className="directory-main-links" aria-label="主要导航" onClick={closeMenu}>{mainLinks.map(navLink)}</nav>
-    <nav className="directory-utility-links" aria-label="帮助导航" onClick={closeMenu}>{utilityLinks.map(navLink)}</nav>
+    <nav className="directory-alert-links" aria-label="报价动态" onClick={closeMenu}>{alertLinks.map(navLink)}</nav>
+    <Link href="/shops/submit" className="directory-submit" onClick={closeMenu} aria-current={isCurrent("/shops/submit") ? "page" : undefined}>
+      <Storefront size={18} aria-hidden="true" />申请收录<ArrowRight size={15} aria-hidden="true" />
+    </Link>
+    <details key={pathname} className="directory-guides" open={utilityLinks.some(({ href }) => isCurrent(href))}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !event.currentTarget.open) return;
+        event.stopPropagation();
+        event.currentTarget.open = false;
+        event.currentTarget.querySelector("summary")?.focus();
+      }}>
+      <summary><BookOpen size={17} aria-hidden="true" />指南与工具<CaretDown size={14} aria-hidden="true" /></summary>
+      <nav aria-label="指南与工具" onClick={closeMenu}>
+        {utilityLinks.map(({ href, label }) => (
+          <Link key={href} href={href} prefetch={false} aria-current={isCurrent(href) ? "page" : undefined}>{label}</Link>
+        ))}
+      </nav>
+    </details>
   </>;
 
   return <>

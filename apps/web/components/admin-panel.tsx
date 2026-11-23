@@ -899,7 +899,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
       {!stats && !error && <section className="surface-subtle p-5" role="status"><p className="section-kicker">尚未连接</p><p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">输入管理密钥后加载当前统计、收录申请、纠错队列和最近报价。</p></section>}
 
       {stats && (
-        <div className="sticky top-0 z-20 -mx-2 bg-[color:var(--paper)]/95 px-2 py-3 backdrop-blur-md border-b border-[color:var(--line)]">
+        <div className="management-tabs sticky top-0 z-20 -mx-2 bg-[color:var(--paper)]/95 px-2 py-3 backdrop-blur-md border-b border-[color:var(--line)]">
           <nav className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="后台功能模块导航">
             {[
               { id: "settings" as const, label: "运营与配置", icon: Gear, count: 0 },
@@ -933,8 +933,8 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                     <span
                       className={`mono rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
                         isActive
-                          ? "bg-white/20 text-white"
-                          : "bg-amber-100 text-amber-900 border border-amber-300"
+                          ? "bg-current/10 text-inherit"
+                          : "bg-[color:var(--subtle)] text-[color:var(--muted)]"
                       }`}
                     >
                       {tab.count}

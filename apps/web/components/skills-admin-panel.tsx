@@ -321,7 +321,7 @@ export function SkillsAdminPanel({
             type="button"
             onClick={() => setSelectedKind("benchmark")}
             className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium transition ${
-              selectedKind === "benchmark" ? "bg-rose-600 text-white" : "text-[color:var(--muted)] hover:text-rose-600"
+              selectedKind === "benchmark" ? "bg-[color:var(--ink)] text-[color:var(--paper)]" : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
             }`}
           >
             <Fire size={12} weight="fill" />
@@ -331,7 +331,7 @@ export function SkillsAdminPanel({
             type="button"
             onClick={() => setSelectedKind("pk")}
             className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium transition ${
-              selectedKind === "pk" ? "bg-amber-600 text-white" : "text-[color:var(--muted)] hover:text-amber-600"
+              selectedKind === "pk" ? "bg-[color:var(--ink)] text-[color:var(--paper)]" : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
             }`}
           >
             <Sword size={12} weight="fill" />
@@ -341,7 +341,7 @@ export function SkillsAdminPanel({
             type="button"
             onClick={() => setSelectedKind("skill")}
             className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium transition ${
-              selectedKind === "skill" ? "bg-purple-600 text-white" : "text-[color:var(--muted)] hover:text-purple-600"
+              selectedKind === "skill" ? "bg-[color:var(--ink)] text-[color:var(--paper)]" : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
             }`}
           >
             <Sparkle size={12} weight="fill" />
@@ -351,7 +351,7 @@ export function SkillsAdminPanel({
             type="button"
             onClick={() => setSelectedKind("article")}
             className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium transition ${
-              selectedKind === "article" ? "bg-emerald-600 text-white" : "text-[color:var(--muted)] hover:text-emerald-600"
+              selectedKind === "article" ? "bg-[color:var(--ink)] text-[color:var(--paper)]" : "text-[color:var(--muted)] hover:text-[color:var(--ink)]"
             }`}
           >
             <TerminalWindow size={12} weight="fill" />

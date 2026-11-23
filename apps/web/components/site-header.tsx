@@ -105,11 +105,11 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
     if (menuRef.current) menuRef.current.open = false;
     if (helpRef.current) helpRef.current.open = false;
   };
-  if (!IS_PRIMARY_SITE || (pathname !== "/" && !current(pathname, "/admin"))) {
+  if (!IS_PRIMARY_SITE || pathname !== "/") {
     const Header = IS_PRIMARY_SITE ? DirectoryHeader : BrandHeader;
     const account = session === null ? <span aria-label="正在读取账户状态">账户</span>
       : session.authenticated && session.user
-        ? <Link href="/account"><User size={18} /><span>{session.user.nickname || "个人中心"}</span></Link>
+        ? <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}><User size={18} /><span>{session.user.nickname || "个人中心"}</span></Link>
         : <button type="button" onClick={() => setShowLoginModal(true)}><User size={18} />登录</button>;
     return (
       <Header relayHubEnabled={relayHubEnabled} advertiseEnabled={advertiseEnabled} account={account}>

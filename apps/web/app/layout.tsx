@@ -6,6 +6,7 @@ import "./globals.css";
 import "./brands.css";
 import "./brand-quotes.css";
 import "./directory.css";
+import "./management.css";
 import { BRAND, IS_PRIMARY_SITE, SITE_ID } from "@/lib/brands";
 import { getSiteSettings } from "@/lib/site-content";
 import { BackToTop } from "@/components/back-to-top";

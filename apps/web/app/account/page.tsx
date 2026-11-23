@@ -10,11 +10,7 @@ export const metadata: Metadata = {
 
 export default function AccountPage() {
   return (
-    <InfoPage
-      eyebrow="账号与通知"
-      title="个人中心"
-      description="管理您的个人账户，绑定 QQ 机器人接收 AI 服务商品价格波动与降价实时提醒。"
-    >
+    <InfoPage className="management-page account-page" title="个人中心">
       <AccountClient />
     </InfoPage>
   );
