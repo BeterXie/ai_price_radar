@@ -28,7 +28,7 @@ class Classification:
 BRAND_MARKERS = {
     "chatgpt": [
         "chatgpt", "chat gpt", "openai", "open ai", "gpt", "chat plus", "codex",
-        "g free", "g-free", "gfree",
+        "g free", "g-free", "gfree", "g*p free",
         "g-p-t", "g-pt", "gp t", "g-p·t", "g·p·t", "chat g", "chatg"
     ],
     "claude": ["claude"],
@@ -313,6 +313,12 @@ def _classify_auxiliary_identity(
 
     email_noun = _contains(title, ["邮箱", "邮件", "email"])
     email_provider = _contains(title, ["gmail", "outlook", "hotmail", "icloud", "谷歌账号"])
+    # These titles name the account first and describe the registration email afterwards.
+    if re.match(r"^(?:【[^】]+】\s*)?id\s*[账帐]号", title) and re.search(r"可下(?:载)?\s*app", title):
+        return "apple-id-account", True
+    if re.match(r"^gro(?:\s|[|｜])", title) and "邮箱注册" in title and _contains(title, ["普通号", "普号"]):
+        if brand == "grok" or re.match(r"^gr[0o]k?(?:\s|$)", category_text):
+            return "grok-account", True
     if re.search(r"(?:github|netflix|spotify|microsoft teams|wps|百度网盘)\s*[^，。|]{0,20}(?:账号|帐号|会员|订阅)", title):
         return None
     if primary_brand or (brand and not email_noun and not email_provider):

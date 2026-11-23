@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -13,7 +13,7 @@ from app.models import CatalogSnapshot, Offer, Product, RawProduct, Shop
 
 
 @pytest.fixture
-def search_client():
+def search_db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -32,7 +32,6 @@ def search_client():
             ("x-premium", "X Premium", "高级会员", "in_stock", "one_year"),
         ]):
             product = next((row for row in db.new if isinstance(row, Product) and row.slug == slug), None)
-            from sqlalchemy import select
             product = product or db.scalar(select(Product).where(Product.slug == slug))
             if product is None:
                 brand = {"chatgpt": "OpenAI", "claude": "Claude", "gemini": "Gemini", "x": "X"}[slug.split("-")[0]]
@@ -48,8 +47,16 @@ def search_client():
                          item_fingerprint=f"search-{index}"))
         db.commit()
 
+    try:
+        yield factory
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def search_client(search_db):
     def override_db():
-        with factory() as db:
+        with search_db() as db:
             yield db
 
     app.dependency_overrides[get_db] = override_db
@@ -57,7 +64,72 @@ def search_client():
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
-        engine.dispose()
+
+
+@pytest.fixture
+def mailbox_client(search_client, search_db):
+    with search_db() as db:
+        snapshot = db.scalar(select(CatalogSnapshot))
+        shop = Shop(token="mail-search", name="邮箱成品号小店", source_url="https://mail-shop.example", platform="16688")
+        db.add(shop)
+        db.flush()
+        for slug, brand, name, title, delivery in [
+            ("email-gmail", "邮箱", "Gmail / Google 邮箱", "独享长效 Google 邮箱，支持 ChatGPT 注册", "finished_account"),
+            ("email-outlook", "邮箱", "Outlook / Hotmail 邮箱", "微软邮箱成品号", "finished_account"),
+            ("chatgpt-account", "OpenAI", "ChatGPT Free", "现货独享，自带 Gmail 邮箱", "finished_account"),
+            ("claude-account", "Claude", "Claude 账号", "半成品号 · Gmail 邮箱交付", "semi_finished_account"),
+            ("verification-google", "接码 / 验证", "Google 验证", "Gmail 接码服务", "verification_service"),
+        ]:
+            product = Product(slug=slug, platform=brand, display_name=name)
+            db.add(product)
+            db.flush()
+            raw = RawProduct(shop_id=shop.id, source_product_key=slug, original_name=title)
+            db.add(raw)
+            db.flush()
+            db.add(Offer(raw_product_id=raw.id, shop_id=shop.id, product_id=product.id, snapshot_id=snapshot.id,
+                         price=Decimal("12"), currency="CNY", stock_status="in_stock", active=True, approved=True,
+                         observed_at=snapshot.published_at, is_comparable=True, delivery_type=delivery,
+                         item_fingerprint=slug))
+        db.commit()
+    return search_client
+
+
+@pytest.mark.parametrize(("q", "expected"), [
+    ("邮箱", {"email-gmail", "email-outlook"}),
+    ("Ｇｍａｉｌ", {"email-gmail"}),
+    ("谷歌 邮箱", {"email-gmail"}),
+    ("独享 Gmail", {"email-gmail"}),
+    ("长效邮箱", {"email-gmail"}),
+    ("邮箱账号", {"email-gmail", "email-outlook"}),
+    ("邮箱 成品号", {"email-gmail", "email-outlook"}),
+    ("Outlook邮箱成品号", {"email-outlook"}),
+    ("Gmail 接码", {"verification-google"}),
+    ("ChatGPT成品号 Gmail", {"chatgpt-account"}),
+])
+def test_mailbox_search_uses_product_identity_before_title_or_shop(mailbox_client, q, expected):
+    for path, key in [("products", "slug"), ("catalog/groups", "product_slug")]:
+        res = mailbox_client.get("/api/v1/" + path, params={"q": q, "comparable": True})
+        assert res.status_code == 200, res.text
+        assert {row[key] for row in res.json()["items"]} == expected
+
+
+def test_finished_accounts_use_delivery_and_respect_explicit_mailbox_scope(mailbox_client):
+    q = {"q": "成品号", "source_platform": "16688"}
+    groups = mailbox_client.get("/api/v1/catalog/groups", params=q).json()["items"]
+    assert all(row["representative"]["delivery_type"] == "finished_account" for row in groups)
+    assert "chatgpt-account" in {row["product_slug"] for row in groups}
+    assert not {row["product_slug"] for row in groups} & {"email-gmail", "email-outlook", "claude-account", "verification-google"}
+    scoped = mailbox_client.get("/api/v1/catalog/groups", params={**q, "brand": "邮箱"}).json()
+    assert {r["product_slug"] for r in scoped["items"]} == {"email-gmail", "email-outlook"}
+    for slug, query in [("email-gmail", "成品号"), ("chatgpt-account", "Gmail")]:
+        for path in ["", "/groups", "/offers", "/groups/" + slug]:
+            res = mailbox_client.get(f"/api/v1/products/{slug}{path}", params={"q": query})
+            assert res.status_code == 200, res.text
+            data = res.json()
+            if not path:
+                assert data["offer_count"] == 1
+            else:
+                assert len(data["items"]) == 1
 
 
 def test_words_match_across_fields_in_any_order_and_intersect_filters(search_client):
