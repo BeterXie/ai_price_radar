@@ -31,8 +31,7 @@ export default async function AlertsPage({ searchParams }: Props) {
   return <main id="main-content" className="shell alert-page">
     <AlertRefresh />
     <header className="alert-page-header">
-      <div><p className="alert-eyebrow">最新报价动态</p><h1>{title}</h1>
-        <p className="alert-page-summary">{view === "team" ? "找一班合适的 Team 车。" : view === "drops" ? "这轮更新，哪些商品便宜了。" : "这轮更新，哪些商品涨价了。"}</p></div>
+      <h1>{title}</h1>
       <div className="alert-updated">{report && <time dateTime={report.published_at}>{alertTime(report.published_at)} 更新 · 北京时间</time>}
         <a className="text-action" href={`/alerts?view=${view}`}><ArrowClockwise size={17} aria-hidden="true" />刷新报价</a></div>
     </header>

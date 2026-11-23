@@ -568,7 +568,7 @@ export function AccountClient() {
       {/* 2. Coupon Wallet Section */}
       <section className="surface-panel p-6 sm:p-8 shadow-sm space-y-6">
         <div className="flex items-start gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-800">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[color:var(--subtle)] text-[color:var(--ink)]">
             <Gift size={18} weight="fill" />
           </div>
           <div>
@@ -657,11 +657,11 @@ export function AccountClient() {
                   key={coupon.id}
                   className={`relative overflow-hidden rounded-xl border p-4 flex flex-col justify-between gap-3 shadow-xs ${
                     isUsable
-                      ? "border-amber-500/30 bg-gradient-to-br from-amber-500/[0.04] to-amber-500/[0.12]"
+                      ? "border-[color:var(--line-strong)] bg-[color:var(--panel)]"
                       : "border-[color:var(--line)] bg-[color:var(--subtle)]/30 opacity-70"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3 border-b border-amber-500/15 pb-2.5">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold tracking-[.06em] text-[color:var(--muted)] uppercase">适用店铺</p>
                       <p className="mt-0.5 truncate text-xs font-bold text-[color:var(--ink)]" title={shopLabel}>{shopLabel}</p>
@@ -672,10 +672,10 @@ export function AccountClient() {
                   </div>
 
                   <div>
-                    <div className="flex items-baseline gap-1 text-amber-700">
+                    <div className="flex items-baseline gap-1 text-[color:var(--ink)]">
                       <span className="text-xs font-bold">¥</span>
                       <span className="text-2xl font-black tracking-tight">{coupon.discount_amount}</span>
-                      <span className="text-xs font-semibold ml-1.5 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30">
+                      <span className="ml-1.5 text-xs text-[color:var(--muted)]">
                         满 {coupon.min_spend} 元可用
                       </span>
                     </div>
@@ -684,7 +684,7 @@ export function AccountClient() {
                     </h4>
                   </div>
 
-                  <div className="pt-2.5 border-t border-amber-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="pt-2.5 border-t hairline flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-[color:var(--muted)]">券码:</span>
                       <code className="px-2 py-0.5 rounded bg-[color:var(--panel)] border border-[color:var(--line)] font-mono font-bold text-[color:var(--ink)] text-xs tracking-wider">
@@ -693,7 +693,7 @@ export function AccountClient() {
                       <button
                         type="button"
                         onClick={() => handleCopy(coupon.code)}
-                        className="button-secondary tactile p-1.5 rounded-lg text-xs hover:text-amber-700 inline-flex items-center gap-1"
+                        className="button-secondary tactile p-1.5 rounded-lg text-xs inline-flex items-center gap-1"
                         title="复制券码"
                       >
                         {copiedCode === coupon.code ? (
@@ -912,7 +912,7 @@ export function AccountClient() {
 
                   {/* Clean QR Code Frame */}
                   <div className="flex flex-col items-center justify-center p-5 rounded-2xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] max-w-xs mx-auto shadow-sm">
-                    <div className="p-3 bg-white rounded-xl border border-[color:var(--line)]">
+                    <div className="account-qr p-3 rounded-xl border border-[color:var(--line)]">
                       {qrDataUrl ? (
                         <img src={qrDataUrl} alt="QQ 扫码绑定二维码" className="w-48 h-48 object-contain" />
                       ) : qrError ? (

@@ -178,8 +178,8 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
           {loading ? "加载中" : "刷新发现数据"}
         </button>
       </div>
-      {error && <p className="rounded-[10px] bg-[#f2d8d2] p-4 text-[color:var(--danger)]">{error}</p>}
-      {actionMessage && <p className="rounded-[10px] bg-[#d4edda] p-4 text-[#155724]">{actionMessage}</p>}
+      {error && <p className="rounded-[10px] bg-[color:var(--danger-soft)] p-4 text-[color:var(--danger)]">{error}</p>}
+      {actionMessage && <p className="rounded-[10px] bg-[color:var(--success-soft)] p-4 text-[color:var(--success)]">{actionMessage}</p>}
 
       <div className="data-table-frame grid gap-px overflow-hidden border hairline bg-[color:var(--line)] sm:grid-cols-3 lg:grid-cols-5">
         {[
@@ -231,7 +231,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
             <button
               onClick={cleanInvalidCandidates}
               disabled={cleaning}
-              className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm text-[color:var(--danger)] hover:bg-[#f2d8d2]/30 disabled:opacity-50"
+              className="tactile flex items-center gap-1 rounded-[10px] border hairline px-3 py-2 text-sm text-[color:var(--danger)] hover:bg-[color:var(--danger-soft)] disabled:opacity-50"
               title="清理无 AI 商品、验证失败及已停用的无效候选记录"
             >
               <Trash size={15} />
@@ -281,7 +281,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                   <p className="break-all">发现来源：{candidate.discovery_sources.join("、") || "未知"}</p>
                   <p className="break-all">候选键：{candidate.candidate_key}</p>
                   <p className="break-all">检测后来源：{candidate.detected_source_url || "未检测"}</p>
-                  {candidate.failure_reason && <p className="rounded-[8px] bg-[#f2d8d2] px-3 py-2 text-[color:var(--danger)]">失败原因：{candidate.failure_reason}</p>}
+                  {candidate.failure_reason && <p className="rounded-[8px] bg-[color:var(--danger-soft)] px-3 py-2 text-[color:var(--danger)]">失败原因：{candidate.failure_reason}</p>}
                   {candidate.decision_note && <p className="whitespace-pre-line text-black/65">决策备注：{candidate.decision_note}</p>}
                   {candidate.promoted_intake_id && <p>已转入收录申请 #{candidate.promoted_intake_id}</p>}
                   {candidate.sample_products.length > 0 && (

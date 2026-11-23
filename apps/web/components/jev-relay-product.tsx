@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react/ssr";
 import { AdLink } from "@/components/ad-link";
-import { PlatformIcon } from "@/components/platform-icon";
 import type { RelayStationListOut } from "@/lib/types";
 
 /** Use the live, approved relay identity and link without borrowing another model's metrics. */
@@ -14,11 +13,9 @@ export function JevRelayProduct({ data }: { data: RelayStationListOut | null }) 
   }) : undefined;
 
   return (
-    <section aria-labelledby="catalog-page-title">
+    <section aria-labelledby="jev-access-title">
       <header className="jev-catalog-heading">
-        <PlatformIcon platform="JEV" size={28} />
-        <h1 id="catalog-page-title">JEV</h1>
-        <span>API 接入</span>
+        <h2 id="jev-access-title">API 接入</h2>
       </header>
       {station ? (
         <article className="relay-card jev-product-card" data-sponsor="llmport" aria-labelledby="jev-product-title">

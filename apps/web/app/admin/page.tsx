@@ -10,7 +10,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
   const params = await searchParams;
   const rawState = Array.isArray(params.state) ? params.state.at(-1) : params.state;
   return (
-    <InfoPage eyebrow="内部操作" title="管理与审核" description="处理来源、分类、纠错和发布状态。管理密钥只保存在当前页面内存中，并随管理请求发送；生产环境仍应在反向代理层增加身份认证。">
+    <InfoPage className="management-page" title="管理与审核" description="管理密钥只保存在当前页面内存中，并随管理请求发送。生产环境仍应在反向代理层增加身份认证。">
       <AdminPanel previewState={rawState === "error" ? "error" : undefined} />
     </InfoPage>
   );

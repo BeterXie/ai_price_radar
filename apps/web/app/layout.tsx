@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import "./brands.css";
 import "./brand-quotes.css";
+import "./directory.css";
+import "./management.css";
 import { BRAND, IS_PRIMARY_SITE, SITE_ID } from "@/lib/brands";
 import { getSiteSettings } from "@/lib/site-content";
 import { BackToTop } from "@/components/back-to-top";
@@ -18,6 +21,7 @@ import { SiteAnalytics } from "@/components/site-analytics";
 import { getMeta } from "@/lib/api";
 import { getSearchEngineVerificationMetadata } from "@/lib/search-engine-verification";
 import { SITE_URL } from "@/lib/site";
+import { THEME_COOKIE } from "@/lib/theme";
 import { version } from "@/package.json";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -68,9 +72,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const settings = await getSiteSettings().catch(() => null);
   const advertiseEnabled = Boolean(meta?.advertise_enabled);
   const relayHubEnabled = meta?.relay_hub_enabled !== false;
+  const theme = IS_PRIMARY_SITE && (await cookies()).get(THEME_COOKIE)?.value === "dark" ? "dark" : "light";
 
   return (
-    <html lang="zh-CN" data-brand={SITE_ID} className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="zh-CN" data-brand={SITE_ID} data-theme={IS_PRIMARY_SITE ? theme : undefined} className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <SiteStructuredData />
         <SiteAnalytics {...(settings?.configured ? { measurementId: settings.ga_measurement_id, baiduId: settings.baidu_analytics_id } : IS_PRIMARY_SITE ? {} : { measurementId: "", baiduId: "" })} />

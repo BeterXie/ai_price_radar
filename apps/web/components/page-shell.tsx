@@ -43,16 +43,18 @@ export function InfoPage({
   title,
   description,
   meta,
+  className = "",
   children,
 }: {
   eyebrow?: string;
   title: string;
   description?: ReactNode;
   meta?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <main id="main-content" className="shell" data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="page-orientation factual-sequence responsive-reading closing-path">
+    <main id="main-content" className={`shell ${className}`.trim()} data-vds-schema="v3.1" data-vds-layer="field" data-vds-action="page-orientation factual-sequence responsive-reading closing-path">
       <PageHero eyebrow={eyebrow} title={title} description={description} meta={meta} compact />
       <div className="content-stage py-10 sm:py-14">{children}</div>
     </main>

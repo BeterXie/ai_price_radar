@@ -31,7 +31,7 @@ function Caution({ offer }: { offer: Offer }) {
 }
 
 function Heat({ activity, grouped, failed }: { activity?: QuoteActivity; grouped: boolean; failed: boolean }) {
-  return <span className="quote-heat" data-has-value={Boolean(activity)} title={`${grouped ? "本组同款商品各店铺" : "这条店铺报价"}最近 7 天访问原站次数，非销量。${activity ? `统计截至 ${exactTime(activity.endAt)}` : ""}`}><Fire size={13} aria-hidden /><span>近7天访问 <b>{activity ? activity.count.toLocaleString("zh-CN") : failed || activity === null ? "暂不可用" : "加载中"}</b></span></span>;
+  return <span className="quote-heat" data-has-value={Boolean(activity)} title={`${grouped ? "本组同款商品各店铺" : "这条店铺报价"}最近 7 天访问原站次数，非销量。${activity ? `统计截至 ${exactTime(activity.endAt)}` : ""}`}><Fire size={13} aria-hidden /><span><span className="quote-heat-label">近7天访问 </span><b>{activity ? activity.count.toLocaleString("zh-CN") : failed || activity === null ? "暂不可用" : "加载中"}</b></span></span>;
 }
 
 export function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sponsor, standalone = false }: { quote: Quote; view: "shops" | "description"; snapshotId?: number | null; filterQuery: string; onClose?: () => void; sponsor?: ContextualAds["detail"]; standalone?: boolean }) {
@@ -150,7 +150,13 @@ export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filt
   const updated = (quote: Quote) => <time className="quote-updated" dateTime={quote.offer.observed_at} title={exactTime(quote.offer.observed_at)} suppressHydrationWarning>{relativeTime(quote.offer.observed_at)}更新</time>;
   let body: ReactNode;
   if (isMarketTable) {
-    body = <div className="quote-market-table"><table><caption className="sr-only">商品、展示店铺价格、库存和近期热度</caption><thead><tr><th>商品 / 分类</th><th>店铺</th><th>报价</th><th>库存</th><th>商品热度</th><th>来源</th></tr></thead><tbody>{quotes.map((quote) =>
+    body = <div className="quote-market-table"><table>
+      <caption className="sr-only">商品、展示店铺价格、库存和近期热度</caption>
+      <thead><tr>
+        <th scope="col">商品 / 分类</th><th scope="col">店铺</th><th scope="col">报价</th><th scope="col">库存</th>
+        <th scope="col">商品热度{SITE_ID === "pricememo" && <small title="最近 7 天访问原站次数，非销量">近 7 天访问</small>}</th>
+        <th scope="col">来源</th>
+      </tr></thead><tbody>{quotes.map((quote) =>
       <tr key={quote.offer.id}><td>{identity(quote)}{updated(quote)}</td><td>{shop(quote)}<small>{quote.offer.source_platform_label}</small></td><td>{price(quote)}</td><td>{stock(quote)}</td><td>{heat(quote)}</td><td><div className="quote-market-actions">{purchase(quote)}{quote.group && quote.group.shop_count > 1 && more(quote)}{details(quote)}</div></td></tr>
     )}</tbody></table></div>;
   } else if (SITE_ID === "aisi") {
@@ -161,5 +167,5 @@ export function BrandQuotes({ groups, offers, productSlug = "", snapshotId, filt
   } else {
     body = <div className="quote-directory">{quotes.map((quote) => <article className="quote-directory-entry" key={quote.offer.id}><div className="quote-directory-product"><PlatformIcon platform={quoteBrand(quote.slug)} size={26} />{identity(quote)}</div><div className="quote-directory-meta">{shop(quote)}{stock(quote)}{heat(quote)}{updated(quote)}</div><aside>{price(quote)}{purchase(quote)}{more(quote)}</aside></article>)}</div>;
   }
-  return <div className={`brand-quotes brand-quotes-${SITE_ID}`}><p className="quote-data-note">价格与库存对应展示店铺。热度按{grouped ? "每组同款商品" : "每条店铺报价"}统计近 7 天原站访问次数，非销量。</p>{!isMarketTable && !(selected && contextAds?.detail) && contextAds?.feed && <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement={contextAds.feed.placement}><SponsorCard item={contextAds.feed} variant="inline" /></aside>}{body}{footer}{selected && <QuoteDetails quote={selected.quote} view={selected.view} snapshotId={snapshotId} filterQuery={filterQuery} sponsor={contextAds?.detail || (isMarketTable ? contextAds?.feed : undefined)} onClose={() => setSelected(null)} />}</div>;
+  return <div className={`brand-quotes brand-quotes-${SITE_ID}`}><p className={SITE_ID === "pricememo" ? "sr-only" : "quote-data-note"}>价格与库存对应展示店铺。热度按{grouped ? "每组同款商品" : "每条店铺报价"}统计近 7 天原站访问次数，非销量。</p>{!isMarketTable && !(selected && contextAds?.detail) && contextAds?.feed && <aside className="context-sponsor-feed" aria-label="赞助内容" data-placement={contextAds.feed.placement}><SponsorCard item={contextAds.feed} variant="inline" /></aside>}{body}{footer}{selected && <QuoteDetails quote={selected.quote} view={selected.view} snapshotId={snapshotId} filterQuery={filterQuery} sponsor={contextAds?.detail || (isMarketTable ? contextAds?.feed : undefined)} onClose={() => setSelected(null)} />}</div>;
 }

@@ -25,7 +25,7 @@ test("catalog and standalone offers expose purchasing directly in the market tab
     const html = markup(offer, grouped);
     const purchase = html.indexOf('href="https://shop.example/products/42"');
     assert.match(html, /quote-market-table/);
-    assert.match(html, /<th>店铺<\/th><th>报价<\/th><th>库存<\/th>/);
+    assert.match(html, /<th scope="col">店铺<\/th><th scope="col">报价<\/th><th scope="col">库存<\/th>/);
     assert.ok(purchase > 0 && purchase < html.indexOf("商品详情</button>"));
     assert.match(html.slice(purchase, purchase + 500), /target="_blank".*去原站下单/s);
     assert.match(html, /去原站下单：示例店铺 · Gemini Plus 6 个月激活链接（新窗口打开）/);
@@ -63,7 +63,9 @@ test("quote lists contain only products even when a sponsor is available for the
     const groups = Array.from({ length: count }, (_, index) => ({ product_slug: "gemini-plus", fingerprint: String(index), representative: { ...offer, id: index + 1 }, shop_count: 1, offer_count: 1 }));
     const render = (contextAds) => renderToStaticMarkup(createElement(OfferGroupTable, { groups, totalCount: 40, snapshotId: 42, contextAds }));
     const html = render({ feed: ad });
-    const rows = [...html.matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g)].filter(([, , body]) => !body.includes("<th>"));
+    const body = html.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1];
+    assert.ok(body, "market table must have a quote body");
+    const rows = [...body.matchAll(/<tr\b[^>]*>/g)];
     assert.equal(rows.length, count);
     assert.doesNotMatch(html, /context-sponsor-feed|data-ad-id|sponsor\.example/);
     assert.doesNotMatch(render({}), /data-ad-id/);
