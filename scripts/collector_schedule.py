@@ -5,6 +5,17 @@ from pathlib import Path
 import subprocess
 
 
+def collector_release(root):
+    # The host application and the remote worker can be released independently.
+    # Use the same dotenv reader as the production preflight.
+    if __package__:
+        from .production_preflight import load_env
+    else:
+        from production_preflight import load_env
+    pinned = load_env(root / '.env').get('COLLECTOR_RELEASE', '').strip()
+    return pinned or (root / 'VERSION').read_text().strip()
+
+
 def main():
     import fcntl
     parser = argparse.ArgumentParser(description=__doc__)
@@ -24,7 +35,7 @@ def main():
             return
         command = ['docker', 'run', '--rm', '--user', '10001:10001', '--cpus', '1.0', '--memory', '600m',
                    '--network', 'ai-price-radar_default', '--env-file', str(root / '.env'),
-                   '-e', 'COLLECTOR_RELEASE=' + (root / 'VERSION').read_text().strip(),
+                   '-e', 'COLLECTOR_RELEASE=' + collector_release(root),
                    '-e', 'PUBLIC_DATA_DIR=/workspace/apps/web/public/data',
                    '-e', 'COLLECTOR_RESULTS_DIR=/data/collector-results',
                    '-e', 'INTAKE_API_URL=http://api:8000',

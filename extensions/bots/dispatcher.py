@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -318,7 +319,9 @@ def dispatch_price_changes(
                 )
             )
 
-            sent_count = 0
+            eligible = 0
+            attempted = 0
+            accepted = 0
             for binding in bindings:
                 if not report_is_current():
                     return
@@ -337,6 +340,7 @@ def dispatch_price_changes(
                 wants_team_alert = bool(current_team_offers and binding.notify_price_drop)
                 if not allowed_events and not wants_team_alert:
                     continue
+                eligible += 1
 
                 app_id = (binding.extra_meta or {}).get("app_id") if isinstance(binding.extra_meta, dict) else None
                 app_secret = decrypt_secret(binding.bot_token) or None
@@ -352,14 +356,13 @@ def dispatch_price_changes(
                     return
                 allowed_events = [event for event in allowed_events if fresh_alert_item(event, utcnow(), stale_offer_hours)]
 
-                all_delivered = True
                 for message in iter_price_reports(allowed_events, telegram=False, site_base_url=site_url, detected_at=detected_at,
                                                   current_time=utcnow, stale_offer_hours=stale_offer_hours):
                     for chunk in split_qq_messages(message):
                         if not report_is_current():
                             return
-                        if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
-                            all_delivered = False
+                        attempted += 1
+                        accepted += int(bool(qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret)))
                 if wants_team_alert:
                     for message in iter_qq_team_reports(current_team_offers, detected_at=detected_at,
                                                          site_base_url=site_url, current_time=utcnow,
@@ -367,12 +370,12 @@ def dispatch_price_changes(
                         for chunk in split_qq_messages(message):
                             if not report_is_current():
                                 return
-                            if not qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret):
-                                all_delivered = False
-                if all_delivered:
-                    sent_count += 1
-            if sent_count:
-                logger.info("Dispatched general price report to %d QQ Bot user(s)", sent_count)
+                            attempted += 1
+                            accepted += int(bool(qq.send_c2c_message(binding.target_id, chunk, app_id=app_id, app_secret=app_secret)))
+            # Importer stdout is machine-readable JSON. Keep a recipient-free
+            # receipt in its job journal even with the default warning log level.
+            print(f"QQ private delivery snapshot={snapshot_id} eligible_bindings={eligible} "
+                  f"messages_attempted={attempted} api_accepted={accepted}", file=sys.stderr, flush=True)
         except Exception as exc:
             logger.error("Failed dispatching general price change report to QQ Bot users: %s", exc)
 

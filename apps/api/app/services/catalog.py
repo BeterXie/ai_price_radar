@@ -29,6 +29,7 @@ from ..schemas import (
     ShopDetail,
 )
 from .account_plans import canonical_product_slug
+from .catalog_vocabulary import BRAND_ALIASES, PRODUCT_ALIASES
 from .official_pricing import official_reference_for
 from .pricing import MIN_TRUSTED_PRICE, is_trusted_price, low_price_warning, price_median
 from .source_health import source_health
@@ -278,7 +279,74 @@ def _literal_pattern(value: str) -> str:
     return "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
-def _apply_search(stmt, query: str):
+_MAILBOX_WORDS = {
+    "邮箱": "", "电子邮箱": "", "邮件": "", "电子邮件": "", "email": "", "e-mail": "", "mailbox": "",
+    "icloud": "email-icloud", "google邮箱": "email-gmail", "谷歌邮件": "email-gmail",
+    "microsoft邮箱": "email-outlook", "学校邮箱": "email-education",
+    **{alias: slug for alias, slug in PRODUCT_ALIASES.items() if slug.startswith("email-")},
+}
+_FINISHED_ACCOUNT = re.compile(r"(?<![半非无])(?<!不是)(?<!不含)(?<!没有)成品(?:账号|帐号|账户|号)(?!小?店|商城)")
+
+
+def _account_search_scope(stmt, query: str, scope: str):
+    """Use item identity for mailbox searches and delivery type for finished accounts."""
+    query, finished = _FINISHED_ACCOUNT.subn(" ", query)
+    query = re.sub(r"(谷歌|google|微软|microsoft|edu|教育|学校)\s+(?=邮箱|邮件)", r"\1", query)
+    words = query.split()
+    mail_words = {}
+    remaining = []
+    for word in words:
+        name = re.sub(r"(?:账号|帐号|账户)$", "", word)
+        if name not in _MAILBOX_WORDS and name.endswith("邮箱"):
+            prefix = name[:-2]
+            if prefix in _MAILBOX_WORDS:
+                name = prefix
+            else:
+                remaining.append(prefix)
+                name = "邮箱"
+        if name in _MAILBOX_WORDS:
+            mail_words[word] = _MAILBOX_WORDS[name]
+        else:
+            remaining.append(word)
+    if not (mail_words or finished):
+        return stmt, words
+
+    mailbox_scope = scope == "邮箱" or scope.startswith("email-")
+    mailbox_products = select(Product.id).where(Product.platform == "邮箱").correlate(None)
+    if finished:
+        stmt = stmt.where(Offer.delivery_type == "finished_account")
+
+    # An explicitly named account or service can specify its login mailbox.
+    brands = {BRAND_ALIASES[word] for word in remaining if word in BRAND_ALIASES}
+    if "codex" in remaining:
+        brands.add("OpenAI")
+    named_products = {PRODUCT_ALIASES[word] for word in remaining if word in PRODUCT_ALIASES}
+    verification = any(word in {"接码", "接马", "验证码", "短信验证"} for word in remaining)
+    if mail_words and not (brands or named_products or verification or (scope and not mailbox_scope)):
+        stmt = stmt.where(Offer.product_id.in_(mailbox_products))
+        slugs = set(mail_words.values()) - {""}
+        if len(slugs) > 1:
+            return stmt.where(false()), []
+        if slugs:
+            stmt = stmt.where(Offer.product_id.in_(select(Product.id).where(Product.slug.in_(slugs)).correlate(None)))
+        return stmt, [word for word in remaining if word not in {"账号", "帐号", "账户"}]
+
+    if verification and mail_words and not scope:
+        stmt = stmt.where(Offer.product_id.in_(select(Product.id).where(Product.platform == "接码 / 验证").correlate(None)))
+    elif brands:
+        stmt = stmt.where(Offer.product_id.in_(select(Product.id).where(Product.platform.in_(brands)).correlate(None)))
+    if (finished or named_products) and not mailbox_scope:
+        stmt = stmt.where(Offer.product_id.not_in(mailbox_products))
+    for word, slug in mail_words.items():
+        # In an account search the provider describes delivery. A provider in
+        # the shop name alone is not evidence that this account uses its mail.
+        variants = [alias for alias, target in _MAILBOX_WORDS.items() if target == slug]
+        stmt = stmt.where(or_(*(RawProduct.original_name.ilike(_literal_pattern(term), escape="\\")
+                                for term in {word, *variants})))
+    return stmt, remaining
+
+
+def _apply_search(stmt, query: str, scope: str = ""):
     # AND between words, OR between fields/brand aliases. Wildcards are literal.
     aliases = {
         "openai": ("openai", "chatgpt", "codex"),
@@ -295,7 +363,7 @@ def _apply_search(stmt, query: str):
     # Treat a multiword brand name as one term, rather than requiring a
     # standalone "ai" match on a product whose canonical name is Gemini.
     normalized = re.sub(r"(?<!\w)(?:谷歌\s+ai|google\s+(?:one\s+)?ai)(?!\w)", "gemini", normalized)
-    terms = normalized.split()
+    stmt, terms = _account_search_scope(stmt, normalized, scope)
     for term in dict.fromkeys(terms):
         # Keep the original spelling too: an alias may also be part of a shop name.
         variants = tuple(dict.fromkeys((term, *aliases.get(term, ()))))
@@ -322,9 +390,9 @@ def _apply_search(stmt, query: str):
     return stmt
 
 
-def _apply_offer_filters(stmt, filters: OfferFilters):
+def _apply_offer_filters(stmt, filters: OfferFilters, search_scope: str = ""):
     if filters.search:
-        stmt = _apply_search(stmt, filters.search)
+        stmt = _apply_search(stmt, filters.search, search_scope)
     if filters.source_platform:
         stmt = stmt.where(Shop.platform.in_(source_platform_filter_values(filters.source_platform)))
     if filters.delivery_type == "account":
@@ -773,7 +841,7 @@ def get_product_group_page(
     stmt = _apply_offer_filters(
         _base_public_offer_query(db, include_details=False, snapshot=snapshot, cutoff=cutoff)
         .where(Offer.product_id == product_id),
-        filters,
+        filters, product.slug,
     )
     offers = list(db.execute(_offer_statistics_query(stmt)))
     medians = _median_prices(offers, comparable_only=True)
@@ -850,10 +918,10 @@ def get_catalog_group_page(
     if platform:
         stmt = stmt.where(Product.platform == platform)
     if q:
-        stmt = _apply_search(stmt, q)
+        stmt = _apply_search(stmt, q, product_slug or platform)
     if product_slug:
         stmt = stmt.where(Product.slug == canonical_product_slug(product_slug))
-    filtered_stmt = _apply_offer_filters(stmt, filters)
+    filtered_stmt = _apply_offer_filters(stmt, filters, product_slug or platform)
     fingerprint = func.coalesce(
         func.nullif(Offer.item_fingerprint, ""),
         literal("offer-") + cast(Offer.id, Text),
@@ -1058,7 +1126,7 @@ def _product_card_scope(
         .join(Product, Offer.product_id == Product.id)
         .where(Product.is_visible.is_(True))
     )
-    stmt = _apply_offer_filters(stmt, filters)
+    stmt = _apply_offer_filters(stmt, filters, product_slug or platform)
     if platform:
         stmt = stmt.where(Product.platform == platform)
     if product_slug:
@@ -1068,7 +1136,7 @@ def _product_card_scope(
     if product_type:
         stmt = stmt.where(Product.product_type == product_type)
     if q:
-        stmt = _apply_search(stmt, q)
+        stmt = _apply_search(stmt, q, product_slug or platform)
     if tag:
         escaped = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         stmt = stmt.where(cast(Offer.tags, Text).like(f'%"{escaped}"%', escape="\\"))
@@ -1332,7 +1400,7 @@ def get_product_detail(
     offers = list(db.execute(_offer_statistics_query(_apply_offer_filters(
         _base_public_offer_query(db, include_details=False, snapshot=snapshot)
         .where(Offer.product_id == product.id),
-        filters,
+        filters, product.slug,
     ))))
     in_stock = [x for x in offers if x.stock_status == "in_stock" and x.price is not None and x.price > 0]
     price_scope = [x for x in in_stock if x.currency == PRICE_CURRENCY]
@@ -1441,7 +1509,7 @@ def get_product_offer_page(
     scope = _apply_offer_filters(
         _base_public_offer_query(db, include_details=False, snapshot=snapshot)
         .where(Offer.product_id == product_id),
-        filters,
+        filters, slug,
     )
     # One SQL statement keeps prices and details in the same read view even
     # when publication moves offers to a new snapshot. Only page rows join
@@ -1494,7 +1562,7 @@ def get_group_offers(
             Offer.product_id == product_id,
             fingerprint_condition,
         ),
-        filters,
+        filters, slug,
     )
     if currency:
         stmt = stmt.where(Offer.currency == currency.upper())
