@@ -6,7 +6,11 @@ import { money, relativeTime } from "@/lib/format";
 import { PlatformIcon } from "./platform-icon";
 
 export function BrandCatalogFrame({ navigation, title, intro, children }: { navigation: ReactNode; title: string; intro: string; children: ReactNode }) {
-  if (IS_PRIMARY_SITE) return <div className="catalog-layout"><aside className="catalog-sidebar">{navigation}</aside>{children}</div>;
+  if (IS_PRIMARY_SITE) return <>
+    <h1 id="catalog-page-title" className="directory-title">{title}</h1>
+    {navigation}
+    {children}
+  </>;
   const heading = <header className="brand-catalog-heading"><p className="brand-eyebrow">{SITE_ID === "aiprice" ? "AIPRICE / 报价行情" : SITE_ID === "aisi" ? "AISI PLUS / 品牌商品目录" : SITE_ID === "pricein" ? "PRICEIN / 账号与代充" : "OPENPRICE / 公开报价目录"}</p><h1 id="catalog-page-title">{title}</h1><p>查品牌、选账号或代充，直接看价格与库存。</p></header>;
   if (SITE_ID === "aiprice") return <>{heading}<div className="terminal-catalog"><aside className="catalog-sidebar"><p className="index-label">产品分区</p>{navigation}</aside>{children}</div></>;
   if (SITE_ID === "aisi") return <>{heading}<div className="editorial-catalog-nav">{navigation}</div>{children}</>;

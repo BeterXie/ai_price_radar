@@ -5,6 +5,7 @@ import { IS_PRIMARY_SITE } from "@/lib/brands";
 import { notFound } from "next/navigation";
 import { ArrowRight, ArrowUpRight, Check } from "@phosphor-icons/react/ssr";
 import { AdSlot } from "@/components/ad-slot";
+import { SponsorCard } from "@/components/sponsor-card";
 import { OfferGroupTable } from "@/components/offer-table";
 import { OfferScopeControls } from "@/components/offer-scope-controls";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -149,6 +150,21 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
     </nav>
     {!metaResult ? <span className="catalog-source-error" role="status">来源选项暂不可用</span> : null}
   </div>;
+  const sponsor = contextAds.toolbar;
+  const toolbarHeader = IS_PRIMARY_SITE && (
+    <div className="directory-source-line">
+      {sourceNavigation}
+      {sponsor ? (
+        <aside className="directory-sponsor" aria-label="赞助内容" data-placement={sponsor.placement}>
+          <SponsorCard item={sponsor} variant="compact" />
+        </aside>
+      ) : meta.ad_slots_enabled && (
+        <aside className="directory-sponsor directory-vacancy" aria-label="广告位" data-placement={product ? "product_offers" : "catalog_top"}>
+          {meta.advertise_enabled ? <Link href="/advertise">广告合作 <ArrowUpRight size={14} aria-hidden="true" /></Link> : <span>广告位</span>}
+        </aside>
+      )}
+    </div>
+  );
 
   return (
     <main id="main-content" className="catalog-page shell" aria-labelledby="catalog-page-title">
@@ -198,7 +214,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
           {!IS_PRIMARY_SITE && sourceNavigation}
 
           {product ? (
-            <ProductWorkspace product={product} rawParams={rawParams} query={detailQuery} filterAction={`/products/${encodeURIComponent(product.slug)}`} resetHref={navigationHref} hiddenFields={hiddenFields} scopeExpanded={scopeExpanded} contextAds={contextAds} sourceNavigation={IS_PRIMARY_SITE ? sourceNavigation : undefined} />
+            <ProductWorkspace product={product} rawParams={rawParams} query={detailQuery} filterAction={`/products/${encodeURIComponent(product.slug)}`} resetHref={navigationHref} hiddenFields={hiddenFields} scopeExpanded={scopeExpanded} contextAds={contextAds} toolbarHeader={toolbarHeader} />
           ) : (
             <>
               <OfferScopeControls
@@ -208,8 +224,7 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
                 resetHref={navigationHref}
                 compact
                 showDeliveryShortcuts={!isAuxiliaryCategory(activeBrand)}
-                sourceNavigation={IS_PRIMARY_SITE ? sourceNavigation : undefined}
-                sponsor={IS_PRIMARY_SITE ? contextAds.toolbar : undefined}
+                toolbarHeader={toolbarHeader}
                 quickFilter={<Link prefetch={false} href={withQuery(basePath, stockQuery)} className="catalog-stock-toggle" aria-current={filters.in_stock === "true" ? "page" : undefined}><span aria-hidden="true">{filters.in_stock === "true" ? <Check size={12} weight="bold" /> : null}</span>仅看有货</Link>}
               />
               {catalog ? (
@@ -252,8 +267,8 @@ export async function ProductCatalogPage({ rawParams, productSlug = "", catalogB
               ) : null}
             </>
           )}
-          <section className="mt-8 border-t border-[color:var(--line)] pt-6" aria-labelledby="catalog-page-title">
-            {IS_PRIMARY_SITE ? <h1 id="catalog-page-title" className="text-2xl font-semibold tracking-tight">{headingTitle}</h1> : <h2 className="text-xl font-semibold">关于这些报价</h2>}
+          <section className="mt-8 border-t border-[color:var(--line)] pt-6" aria-label="关于这些报价">
+            {!IS_PRIMARY_SITE && <h2 className="text-xl font-semibold">关于这些报价</h2>}
             <p className="mt-2 max-w-4xl text-sm leading-6 text-[color:var(--muted)]">{intro}</p>
             <Link prefetch={false} href="/compare" className="mt-2 inline-block text-sm underline underline-offset-4">比较 ChatGPT、Claude 与 Gemini</Link>
           </section>

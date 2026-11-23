@@ -199,6 +199,24 @@ function mockCatalogMetadata() {
   };
 }
 
+test("the catalog reserves its vacant sponsor slot only while ads are enabled", async (context) => {
+  let enabled = true;
+  context.mock.method(globalThis, "fetch", async (url) => {
+    const path = new URL(String(url)).pathname;
+    return Response.json(path.endsWith("/meta")
+      ? { ...mockCatalogMetadata(), ad_slots_enabled: enabled, advertise_enabled: true }
+      : { items: [], total: 0 });
+  });
+  const nodes = async () => catalogDescendants(await ProductCatalogPage({ rawParams: {} }));
+  const active = await nodes();
+  assert.equal(active.filter((node) => node.type === "h1").length, 1);
+  const vacancy = active.find((node) => node.props?.["data-placement"] === "catalog_top");
+  assert.ok(vacancy);
+  assert.ok(catalogLink(catalogDescendants(vacancy), (url) => url.pathname === "/advertise"));
+  enabled = false;
+  assert.ok(!(await nodes()).some((node) => node.props?.["data-placement"] === "catalog_top"));
+});
+
 test("brand, source and product navigation retain the widened scope and intersecting filters", async (context) => {
   context.mock.method(globalThis, "fetch", async (url) => new Response(JSON.stringify(
     String(url).includes("/meta")
