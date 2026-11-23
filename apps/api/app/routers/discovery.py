@@ -162,7 +162,7 @@ def claim_source_candidates(
     payload: DiscoveryCandidateClaimRequest,
     db: Session = Depends(get_db),
 ) -> list[DiscoveryCandidateClaimOut]:
-    rows = claim_candidates(db, limit=payload.limit, lease_seconds=payload.lease_seconds)
+    rows = claim_candidates(db, limit=payload.limit, lease_seconds=payload.lease_seconds, scope=payload.scope)
     return [
         DiscoveryCandidateClaimOut(
             candidate_id=row.id,

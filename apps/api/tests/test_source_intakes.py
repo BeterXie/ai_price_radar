@@ -101,6 +101,25 @@ def _detect(client: TestClient, intake_id: int, *, platform: str = "ldxp", sourc
     return result
 
 
+def test_16688_claims_are_reserved_for_oracle_without_trusting_declared_platform(api_client, monkeypatch):
+    client, engine = api_client
+    monkeypatch.setattr(get_settings(), 'detector_16688_on_oracle', True)
+    urls = ['https://www.16688.com.cn/shop/XIAOMO', 'https://16688.com.cn/goods/G1',
+            'https://WWW.16688.COM.CN:443/shop/alias', 'https://ldxp.cn/shop/local',
+            'https://www.16688.com.cn.evil.example/shop/fake', 'https://shop.example/?next=https://www.16688.com.cn/shop/x']
+    with Session(engine) as db:
+        for index, url in enumerate(urls):
+            db.add(SourceIntake(source_type='unknown', detected_platform='unknown', status='submitted',
+                source_key=url, source_url=url, contact_email='', declared_platform='ldxp' if index < 3 else '16688'))
+        db.commit()
+    headers={'X-Detector-Worker-Key':'detector-test'}
+    main=client.post('/api/v1/internal/source-detections/claim',headers=headers,json={'limit':20}).json()
+    assert {row['source_url'] for row in main} == set(urls[3:])
+    oracle=client.post('/api/v1/internal/source-detections/claim',headers=headers,json={'limit':20,'scope':'16688'}).json()
+    assert {row['source_url'] for row in oracle} == set(urls[:3])
+    assert client.post('/api/v1/internal/source-detections/claim',headers=headers,json={'scope':'16688'}).json()==[]
+
+
 def test_shop_request_requires_valid_contact_email(api_client):
     client, _ = api_client
     missing = client.post("/api/v1/shop-requests", json={"shop_url": "https://pay.ldxp.cn/shop/ABC123"})

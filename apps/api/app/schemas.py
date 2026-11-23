@@ -485,6 +485,7 @@ class SourceIntakeClaimRequest(BaseModel):
 class SourceDetectionClaimRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     lease_seconds: int = Field(default=300, ge=30, le=30 * 60)
+    scope: Literal["all", "16688", "other"] = "all"
 
 
 class SourceDetectionClaimOut(BaseModel):
@@ -570,6 +571,7 @@ class DiscoveryCandidateBatch(BaseModel):
 class DiscoveryCandidateClaimRequest(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     lease_seconds: int = Field(default=900, ge=60, le=24 * 60 * 60)
+    scope: Literal["all", "16688", "other"] = "all"
 
 
 class DiscoveryCandidateClaimOut(BaseModel):

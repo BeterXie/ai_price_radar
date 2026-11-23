@@ -81,6 +81,17 @@ def claim(client, limit=10):
     ).json()
 
 
+def test_16688_candidate_claims_use_actual_origin_and_leave_ldxp_local(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), 'detector_16688_on_oracle', True)
+    remote=upsert(client,'https://ｗｗｗ.１６６８８.com.cn/shop/XIAOMO',hint='unknown').json()['candidate_id']
+    local=upsert(client,'https://pay.ldxp.cn/shop/keep-local',hint='16688').json()['candidate_id']
+    assert [row['candidate_id'] for row in claim(client)] == [local]
+    oracle=client.post('/api/v1/internal/source-candidates/claim',headers=DISCOVERY_HEADERS,
+        json={'limit':10,'lease_seconds':300,'scope':'16688'}).json()
+    assert [row['candidate_id'] for row in oracle] == [remote]
+    assert oracle[0]['canonical_url'] == 'https://www.16688.com.cn/shop/XIAOMO'
+
+
 def report(client, candidate_id, attempt_count, **overrides):
     payload = {
         "status": "detected",

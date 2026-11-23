@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     shop_intake_auto_approve: bool = False
     intake_worker_key: str = ""
     detector_worker_key: str = ""
+    detector_16688_on_oracle: bool = False
     discovery_worker_key: str = ""
     collector_worker_key: str = ""
     collector_results_dir: str = "./data/collector-results"
