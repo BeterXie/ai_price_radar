@@ -55,6 +55,7 @@ services:
       DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
       DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
       COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-false}
+      DETECTOR_16688_ON_ORACLE: ${DETECTOR_16688_ON_ORACLE:-false}
       COLLECTOR_WORKER_KEY: ${COLLECTOR_WORKER_KEY:-}
       COLLECTOR_RESULTS_DIR: /app/collector-results
       DISCOVERY_ENABLED: ${DISCOVERY_ENABLED:-true}
@@ -133,6 +134,7 @@ services:
       - /tmp:size=16m,mode=1777
     environment:
       DETECTOR_API_URL: http://api:8000
+      DETECTOR_SCOPE: ${DETECTOR_SCOPE:-all}
       DETECTOR_WORKER_KEY: ${DETECTOR_WORKER_KEY:-replace-with-a-separate-detector-worker-key}
       DISCOVERY_WORKER_KEY: ${DISCOVERY_WORKER_KEY:-}
       DETECTOR_POLL_SECONDS: ${DETECTOR_POLL_SECONDS:-5}

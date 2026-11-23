@@ -20,6 +20,7 @@ from ..schemas import (
     SourceIntakeResult,
 )
 from ..security import require_detector_worker, require_intake_worker
+from ..services.detection_scope import detection_scope_filter
 from ..services.source_intake import (
     enqueue_admin_notification,
     enqueue_transition_notification,
@@ -194,7 +195,8 @@ def claim_source_detections(
     rows = list(
         db.scalars(
             select(SourceIntake)
-            .where(SourceIntake.source_type == "unknown", available)
+            .where(SourceIntake.source_type == "unknown", available,
+                   detection_scope_filter(SourceIntake.source_url, payload.scope))
             .order_by(SourceIntake.created_at, SourceIntake.id)
             .with_for_update(skip_locked=True)
             .limit(payload.limit)

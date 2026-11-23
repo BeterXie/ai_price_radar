@@ -138,6 +138,10 @@ def normalize_public_https_url(value: object) -> str:
         raise ValueError("来源地址包含非法控制字符或空格")
     parsed = urllib.parse.urlsplit(url_str)
     host = (parsed.hostname or "").casefold().rstrip(".")
+    try:
+        host = host.encode('idna').decode('ascii').casefold().rstrip('.')
+    except UnicodeError as exc:
+        raise ValueError("来源地址域名无效") from exc
     if parsed.scheme.casefold() != "https" or not host or parsed.username or parsed.password:
         raise ValueError("来源地址必须是公开 HTTPS URL")
     if host in FORBIDDEN_HOSTS or host.endswith(FORBIDDEN_HOST_SUFFIXES):

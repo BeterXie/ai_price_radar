@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ..core.config import get_settings
 from ..models import SourceCandidate, SourceDiscoveryRun, SourceIntake
 from .source_intake import utcnow
+from .detection_scope import detection_scope_filter
 from .source_platform import (
     canonical_source_platform,
     is_source_platform_disabled,
@@ -201,6 +202,7 @@ def claim_candidates(
     *,
     limit: int,
     lease_seconds: int,
+    scope: str = 'all',
 ) -> list[SourceCandidate]:
     now = utcnow()
     lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -229,7 +231,7 @@ def claim_candidates(
     rows = list(
         db.scalars(
             select(SourceCandidate)
-            .where(available)
+            .where(available, detection_scope_filter(SourceCandidate.canonical_url, scope))
             .order_by(SourceCandidate.next_verify_at, SourceCandidate.id)
             .with_for_update(skip_locked=True)
             .limit(limit)

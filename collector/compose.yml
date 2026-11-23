@@ -45,6 +45,7 @@ services:
     tmpfs: ["/tmp:size=16m,mode=1777"]
     environment:
       DETECTOR_API_URL: http://172.30.93.1:18081
+      DETECTOR_SCOPE: "16688"
       DETECTOR_WORKER_KEY_FILE: /secrets/detector.key
       DISCOVERY_WORKER_KEY_FILE: /secrets/discovery.key
       COLLECTOR_RATE_DIR: /rates

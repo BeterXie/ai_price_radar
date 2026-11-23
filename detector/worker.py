@@ -6,11 +6,13 @@ import signal
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any
 
-from probe import MAX_TASK_SECONDS, probe_source
-from qualify import QualificationResult, qualify_candidate
+from probe import MAX_TASK_SECONDS, MAX_RESPONSE_BYTES, MAX_TASK_BYTES, PLATFORM_16688_HOSTS, probe_source
+from price_radar_http import PinnedHTTPSClient
+from qualify import QualificationResult, qualify_candidate, MAX_TASK_BYTES as QUALIFICATION_MAX_BYTES
 from price_radar_http.pacing import OriginCoolingDown
 
 
@@ -28,12 +30,49 @@ DISCOVERY_WORKER_KEY = _secret("DISCOVERY_WORKER_KEY")
 POLL_SECONDS = max(1.0, float(os.getenv("DETECTOR_POLL_SECONDS", "5")))
 CANDIDATE_CLAIM_LIMIT = max(1, int(os.getenv("DISCOVERY_CLAIM_LIMIT", "5")))
 CANDIDATE_LEASE_SECONDS = max(60, int(os.getenv("DISCOVERY_LEASE_SECONDS", "900")))
+DETECTOR_SCOPE = os.getenv('DETECTOR_SCOPE', 'all')
+if DETECTOR_SCOPE not in {'all', '16688', 'other'}:
+    raise RuntimeError('DETECTOR_SCOPE must be all, 16688 or other')
 
 
-def _probe_with_timeout(source_url: str, *, timeout_seconds: float = MAX_TASK_SECONDS):
+def is_16688(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or '').encode('idna').decode('ascii').casefold().rstrip('.')
+        return parsed.scheme.casefold() == 'https' and parsed.port in (None, 443) and host in PLATFORM_16688_HOSTS
+    except (ValueError, UnicodeError):
+        return False
+
+
+def accepts_source(url: str) -> bool:
+    return DETECTOR_SCOPE == 'all' or is_16688(url) == (DETECTOR_SCOPE == '16688')
+
+
+def report_result(path, payload, **kwargs):
+    try:
+        _request(path, payload, **kwargs)
+        return True
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (404, 409, 422):
+            raise
+        # One stale/rejected result must not abandon the rest of the claim.
+        print(f'Detector result deferred: path={path} status={exc.code}', flush=True)
+        return False
+
+
+def _probe_with_timeout(source_url: str, *, timeout_seconds: float | None = None):
     """Enforce a wall-clock limit around DNS resolution and all probe I/O."""
-    if not hasattr(signal, "setitimer"):
+    remote_16688 = is_16688(source_url)
+    if timeout_seconds is None:
+        timeout_seconds = 60.0 if remote_16688 else MAX_TASK_SECONDS
+    def probe():
+        if remote_16688:
+            return probe_source(source_url, client=PinnedHTTPSClient(max_response_bytes=MAX_RESPONSE_BYTES,
+                max_task_bytes=MAX_TASK_BYTES, max_task_seconds=timeout_seconds, request_timeout=20,
+                user_agent='AI-Price-Radar-Detector/1'))
         return probe_source(source_url)
+    if not hasattr(signal, "setitimer"):
+        return probe()
 
     def raise_timeout(_signum, _frame):
         raise TimeoutError("source detection exceeded total time limit")
@@ -41,7 +80,7 @@ def _probe_with_timeout(source_url: str, *, timeout_seconds: float = MAX_TASK_SE
     previous_handler = signal.signal(signal.SIGALRM, raise_timeout)
     previous_timer = signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
     try:
-        return probe_source(source_url)
+        return probe()
     finally:
         signal.setitimer(signal.ITIMER_REAL, *previous_timer)
         signal.signal(signal.SIGALRM, previous_handler)
@@ -70,8 +109,12 @@ def _request(
 def run_once() -> int:
     processed = 0
     if WORKER_KEY:
-        tasks = _request("/api/v1/internal/source-detections/claim", {"limit": 10, "lease_seconds": 300})
+        tasks = _request("/api/v1/internal/source-detections/claim", {
+            "limit": 10 if DETECTOR_SCOPE == 'other' else 1, "lease_seconds": 300, "scope": DETECTOR_SCOPE})
         for task in tasks:
+            if not accepts_source(task['source_url']):
+                print(f"Detector scope mismatch: intake={task['intake_id']}", flush=True)
+                continue
             try:
                 result = _probe_with_timeout(task["source_url"])
                 payload = {
@@ -80,7 +123,7 @@ def run_once() -> int:
                     "detected_platform": result.detected_platform,
                     "source_url": result.source_url,
                     "source_key": result.source_key,
-                    "shop_name": result.shop_name,
+                    "shop_name": result.shop_name[:120],
                     "product_count": result.product_count,
                 }
             except OriginCoolingDown as exc:
@@ -94,21 +137,32 @@ def run_once() -> int:
                     "attempt_count": task["attempt_count"],
                     "failure_reason": "source detection failed",
                 }
-            _request(f"/api/v1/internal/source-detections/{task['intake_id']}/result", payload)
-            processed += 1
+            if report_result(f"/api/v1/internal/source-detections/{task['intake_id']}/result", payload):
+                processed += 1
+                print(f"Detected intake={task['intake_id']} scope={DETECTOR_SCOPE} status={payload['status']}", flush=True)
 
     if DISCOVERY_WORKER_KEY:
         candidates = _request(
             "/api/v1/internal/source-candidates/claim",
-            {"limit": CANDIDATE_CLAIM_LIMIT, "lease_seconds": CANDIDATE_LEASE_SECONDS},
+            {"limit": 1 if DETECTOR_SCOPE == '16688' else CANDIDATE_CLAIM_LIMIT,
+             "lease_seconds": CANDIDATE_LEASE_SECONDS, "scope": DETECTOR_SCOPE},
             worker_key=DISCOVERY_WORKER_KEY,
             header_name="X-Discovery-Worker-Key",
         )
         for task in candidates:
+            if not accepts_source(task['canonical_url']):
+                print(f"Detector scope mismatch: candidate={task['candidate_id']}", flush=True)
+                continue
             try:
+                qualification_options = {}
+                if is_16688(task['canonical_url']):
+                    qualification_options['client'] = PinnedHTTPSClient(max_response_bytes=MAX_RESPONSE_BYTES,
+                        max_task_bytes=QUALIFICATION_MAX_BYTES, max_task_seconds=60, request_timeout=20,
+                        user_agent='AI-Price-Radar-Detector/3.7')
                 result: QualificationResult = qualify_candidate(
                     task["canonical_url"],
                     task["platform_hint"],
+                    **qualification_options,
                 )
                 payload = {
                     "status": result.status,
@@ -140,13 +194,13 @@ def run_once() -> int:
                     "confidence_score": 0,
                     "failure_reason": "candidate qualification failed",
                 }
-            _request(
+            reported = report_result(
                 f"/api/v1/internal/source-candidates/{task['candidate_id']}/result",
                 payload,
                 worker_key=DISCOVERY_WORKER_KEY,
                 header_name="X-Discovery-Worker-Key",
             )
-            processed += 1
+            processed += int(reported)
     return processed
 
 
