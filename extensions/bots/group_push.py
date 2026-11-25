@@ -29,19 +29,40 @@ def _aware(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-def active_bot_credentials(db, only_app_id: str | None = None) -> dict[str, str]:
+def bot_credentials(db, only_app_id: str | None = None, *, active_only: bool = True) -> dict[str, str]:
     found = {}
-    query = select(UserBotBinding).where(UserBotBinding.channel == "qq", UserBotBinding.is_active.is_(True))
+    active_app_ids = set()
+    query = select(UserBotBinding).where(UserBotBinding.channel == "qq")
+    if active_only:
+        query = query.where(UserBotBinding.is_active.is_(True))
     if only_app_id:
         query = query.where(func.trim(cast(UserBotBinding.extra_meta["app_id"].as_string(), String)) == only_app_id)
+    # A paused binding may still hold an older secret for the same bot. Keep
+    # gateway and proactive delivery aligned on the newest active binding.
+    query = query.order_by(UserBotBinding.is_active.desc(), UserBotBinding.updated_at.desc(), UserBotBinding.id.desc())
     for binding in db.scalars(query):
-        app_id = (binding.extra_meta or {}).get("app_id")
-        secret = decrypt_secret(binding.bot_token)
+        meta = binding.extra_meta
+        if not isinstance(meta, dict):
+            logger.warning("Skipping invalid QQ metadata for binding %s", binding.id)
+            continue
+        app_id = meta.get("app_id")
+        if not isinstance(app_id, (str, int)) or isinstance(app_id, bool) or not str(app_id).strip():
+            continue
+        try:
+            secret = decrypt_secret(binding.bot_token)
+        except RuntimeError:
+            logger.warning("Skipping unreadable QQ credential for binding %s", binding.id)
+            continue
         if app_id and secret:
-            found[str(app_id).strip()] = secret.strip()
+            app_id = str(app_id).strip()
+            found.setdefault(app_id, secret.strip())
+            if binding.is_active:
+                active_app_ids.add(app_id)
     app_id, secret = os.getenv("QQ_BOT_APP_ID", "").strip(), os.getenv("QQ_BOT_APP_SECRET", "").strip()
-    if app_id and secret:
-        found.setdefault(app_id, secret)
+    if app_id and secret and app_id not in active_app_ids:
+        # Environment credentials remain the delivery fallback and therefore
+        # outrank a paused binding's potentially stale secret in the gateway.
+        found[app_id] = secret
     return found
 
 
@@ -188,7 +209,7 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
                           detected_at: datetime | None, site_url: str, stale_offer_hours: int | None = None) -> None:
     if snapshot_id is None:
         return
-    credentials = active_bot_credentials(db)
+    credentials = bot_credentials(db)
     groups = list(db.scalars(select(QQGroupSubscription).where(
         QQGroupSubscription.subscribed.is_(True), QQGroupSubscription.is_member.is_(True),
         or_(QQGroupSubscription.allow_proactive.is_(None), QQGroupSubscription.allow_proactive.is_(True)),
@@ -212,7 +233,7 @@ def dispatch_group_alerts(events, team_offers, *, db, snapshot_id: int | None,
             delays.append(3.1 - (now - _aware(group.last_attempt_at)).total_seconds())
         if max(delays) > 0:
             time.sleep(min(max(delays), 3.1))
-        secret = active_bot_credentials(db, group.app_id).get(group.app_id)
+        secret = bot_credentials(db, group.app_id).get(group.app_id)
         if not secret:
             continue
         if client_secrets.get(group.app_id) != secret:
