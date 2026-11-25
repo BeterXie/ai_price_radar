@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.107] - 2026-11-25
+
+- Keep QQ bots connected when private price notifications are paused, so queries and the resume command remain available; unbinding still removes the connection.
+- Preserve existing gateway connections during temporary database failures, and isolate unreadable credentials to their own binding.
+- Keep proactive notification preferences unchanged. No database migration or collection changes.
+
 ## [3.9.102] - 2026-11-23
 
 - Add the 卡密小店 platform feed with fixed authenticated pagination, CNY cent conversion, inventory and sales preservation, and a dedicated source tab.

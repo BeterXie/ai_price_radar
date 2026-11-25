@@ -22,7 +22,7 @@ from app.database import SessionLocal
 from app.models import SystemSetting
 from .chat_commands import handle_chat_command
 from .qq_bot import QQBotClient
-from .group_push import GROUP_EVENTS, active_bot_credentials, apply_group_event, group_command, handle_group_command
+from .group_push import GROUP_EVENTS, bot_credentials, apply_group_event, group_command, handle_group_command
 
 logger = logging.getLogger(__name__)
 
@@ -84,16 +84,20 @@ class QQGatewayService:
             try:
                 # Stay connected while delivery is paused so native group
                 # permission changes and admin opt-outs are not lost.
-                # Query distinct active (app_id, bot_token)
+                # is_active controls proactive delivery, not inbound queries or
+                # the "恢复推送" command. Only unbinding removes a connection.
                 active_bots: dict[str, str] = {}
                 try:
                     def _load_active_bots() -> dict[str, str]:
                         with SessionLocal() as db:
-                            return active_bot_credentials(db)
+                            return bot_credentials(db, active_only=False)
 
                     active_bots = await asyncio.to_thread(_load_active_bots)
                 except Exception as db_err:
-                    logger.error("Error querying active QQ bot bindings: %s", db_err)
+                    logger.error("Error querying QQ bot bindings: %s", type(db_err).__name__)
+                    # A failed read is not evidence that bots were unbound.
+                    # Keep the last successful connections until the next read.
+                    active_bots = dict(self._bot_credentials)
 
                 # Environment-backed bots can stay online during a DB outage.
                 env_id, env_secret = os.getenv("QQ_BOT_APP_ID", "").strip(), os.getenv("QQ_BOT_APP_SECRET", "").strip()
