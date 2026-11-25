@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { isBaiduTrackingAllowed } from "@/lib/analytics-preferences";
@@ -9,17 +9,22 @@ import { CAMPAIGN_QUERY_KEYS } from "@/lib/share-url";
 
 type Gtag = (...args: unknown[]) => void;
 type BaiduCommand = [string, ...unknown[]];
+type Clarity = ((...args: unknown[]) => void) & { q?: unknown[][] };
 
 declare global {
   interface Window {
     dataLayer: unknown[];
     gtag?: Gtag;
     _hmt?: { push: (command: BaiduCommand) => unknown };
+    clarity?: Clarity;
   }
 }
 
 const MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const CONSENT_KEY = "apr:analytics-consent:v1";
+const CLARITY_PROJECT_ID = "zj9ygr64oc";
+const CLARITY_SCRIPT_ID = "microsoft-clarity";
+const CLARITY_CONSENT_KEY = "apr:analytics-consent:v1:clarity";
 const BAIDU_SITE_ID = "0abf0f3c54963dc5874f6a4ebcbfaf37";
 const BAIDU_SCRIPT_ID = "baidu-tongji";
 let lastBaiduPage: string | null = null;
@@ -51,6 +56,51 @@ export function isAnalyticsPathAllowed(pathname: string | null): boolean {
   return !["/account", "/admin", "/auth", "/tools/json-to-cockpit"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
+}
+
+export function isClarityAnalyticsEnabled(): boolean {
+  return typeof window !== "undefined" && window.location.hostname === "ai.pricememo.cn";
+}
+
+export function isClarityPathAllowed(pathname: string | null): boolean {
+  return isAnalyticsPathAllowed(pathname) && !["/watchlist", "/shops/submit"].some(
+    (prefix) => pathname === prefix || pathname?.startsWith(`${prefix}/`)
+  );
+}
+
+export function loadClarityAnalytics(pathname: string | null, consentGranted: boolean): void {
+  if (!isClarityAnalyticsEnabled() || !consentGranted || !isClarityPathAllowed(pathname)) return;
+  if (document.getElementById(CLARITY_SCRIPT_ID)) return;
+
+  const clarity: Clarity = (...args) => {
+    (clarity.q = clarity.q || []).push(args);
+  };
+  window.clarity = window.clarity || clarity;
+  window.clarity("consentv2", { analytics_Storage: "granted", ad_Storage: "denied" });
+
+  const script = document.createElement("script");
+  script.id = CLARITY_SCRIPT_ID;
+  script.async = true;
+  script.src = `https://www.clarity.ms/tag/${CLARITY_PROJECT_ID}`;
+  document.head.appendChild(script);
+}
+
+// Clarity restarts itself after SPA navigation, even after stop. Keep private UI
+// out of a tracked document and reload without the SDK, including pending loads.
+export function AnalyticsPageBoundary({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const reloadWithoutClarity = !isClarityPathAllowed(pathname)
+    && typeof document !== "undefined"
+    && Boolean(document.getElementById(CLARITY_SCRIPT_ID));
+
+  useLayoutEffect(() => {
+    if (reloadWithoutClarity) {
+      window.clarity?.("stop");
+      window.location.reload();
+    }
+  }, [reloadWithoutClarity]);
+
+  return reloadWithoutClarity ? null : children;
 }
 const AI_REFERRAL_RULES = [
   { term: "chatgpt", pattern: /chatgpt/i },
@@ -148,25 +198,33 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
   const referralChecked = useRef(false);
   const lastGooglePage = useRef<string | null>(null);
   const [consent, setConsent] = useState<AnalyticsConsent | null>(null);
+  const [clarityEnabled, setClarityEnabled] = useState(false);
+  const clarityConsentKey = `${CLARITY_CONSENT_KEY}${MEASUREMENT_ID ? ":google" : ""}`;
+  const consentKey = clarityEnabled ? clarityConsentKey : CONSENT_KEY;
   const pathAllowed = isAnalyticsPathAllowed(pathname);
   const rawSearch = searchParams.toString();
   const analyticsPath = buildAnalyticsPath(pathname, rawSearch);
   const navigationPath = buildAnalyticsPath(pathname, rawSearch, false);
 
   useEffect(() => {
-    if (!MEASUREMENT_ID) return;
+    const enableClarity = isClarityAnalyticsEnabled();
+    setClarityEnabled(enableClarity);
+    if (!MEASUREMENT_ID && !enableClarity) return;
     try {
-      const stored = window.localStorage.getItem(CONSENT_KEY)
-        ?? window.localStorage.getItem("apr:analytics-consent:v2:baidu:google");
+      // Existing Google/Baidu permissions do not authorize Clarity recordings.
+      const stored = enableClarity
+        ? window.localStorage.getItem(clarityConsentKey)
+        : window.localStorage.getItem(CONSENT_KEY)
+          ?? window.localStorage.getItem("apr:analytics-consent:v2:baidu:google");
       setConsent(stored === "granted" || stored === "denied" ? stored : "unknown");
     } catch {
       setConsent("unknown");
     }
-  }, []);
+  }, [MEASUREMENT_ID, clarityConsentKey]);
 
   const updateConsent = (value: Exclude<AnalyticsConsent, "unknown">) => {
     try {
-      window.localStorage.setItem(CONSENT_KEY, value);
+      window.localStorage.setItem(consentKey, value);
     } catch {
       // Keep the in-memory choice for this page even when storage is blocked.
     }
@@ -176,6 +234,10 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
   useEffect(() => {
     trackBaiduPageview(pathname, rawSearch, baiduId);
   }, [pathname, rawSearch, baiduId]);
+
+  useEffect(() => {
+    loadClarityAnalytics(pathname, consent === "granted");
+  }, [pathname, consent]);
 
   useEffect(() => {
     if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) {
@@ -201,7 +263,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
     }
   }, [analyticsPath, navigationPath, consent, pathAllowed]);
 
-  if (!MEASUREMENT_ID) return null;
+  if (!MEASUREMENT_ID && !clarityEnabled) return null;
   if (!pathAllowed) return null;
   if (consent === null) return null;
   if (consent === "denied") return null;
@@ -209,7 +271,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
     return (
       <aside className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-4 shadow-[0_18px_55px_rgba(18,19,15,.2)]" aria-label="分析服务选择">
         <p className="text-sm leading-6 text-[color:var(--ink)]">
-          是否允许加载 Google Analytics，用于统计页面访问和 AI 引荐来源？拒绝不影响任何功能。详见
+          是否允许加载{clarityEnabled ? " Microsoft Clarity" : " Google Analytics"}{clarityEnabled && MEASUREMENT_ID ? " 和 Google Analytics" : ""}，用于{clarityEnabled ? "访问统计、点击热图和操作回放" : "统计页面访问和 AI 引荐来源"}？拒绝不影响任何功能。详见
           <Link href="/privacy" className="ml-1 underline">隐私政策</Link>。
         </p>
         <div className="mt-3 flex justify-end gap-2">
@@ -223,6 +285,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
       </aside>
     );
   }
+  if (!MEASUREMENT_ID) return null;
   const measurementId = JSON.stringify(MEASUREMENT_ID).replace(/</g, "\\u003c");
   return (
     <>

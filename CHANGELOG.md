@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.111] - 2026-11-26
+
+- Add Microsoft Clarity to ai.pricememo.cn after explicit analytics consent, with heatmaps and session recordings. Existing Baidu preferences and other brand analytics stay intact.
+- Isolate private routes from the recording SDK, mask login UI and account nicknames, and allow Clarity endpoints in the proxy templates.
+- Production patch based on v3.9.109; no database migration, collector upgrade or collection changes.
+
 ## [3.9.109] - 2026-11-25
 
 - Validate KMDian submissions against the complete platform API feed and finish onboarding only when the matching shop or product has public quotes. Preserve rejected, disabled and hidden sources.

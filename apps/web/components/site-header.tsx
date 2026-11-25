@@ -109,7 +109,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
     const Header = IS_PRIMARY_SITE ? DirectoryHeader : BrandHeader;
     const account = session === null ? <span aria-label="正在读取账户状态">账户</span>
       : session.authenticated && session.user
-        ? <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}><User size={18} /><span>{session.user.nickname || "个人中心"}</span></Link>
+        ? <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}><User size={18} /><span data-clarity-mask="true">{session.user.nickname || "个人中心"}</span></Link>
         : <button type="button" onClick={() => setShowLoginModal(true)}><User size={18} />登录</button>;
     return (
       <Header relayHubEnabled={relayHubEnabled} advertiseEnabled={advertiseEnabled} account={account}>
@@ -164,7 +164,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
           ) : session.authenticated && session.user ? (
             <Link href="/account" aria-current={current(pathname, "/account") ? "page" : undefined} className="header-action header-action-account header-action-user">
               <User size={18} />
-              <span className="max-w-[70px] truncate">{session.user.nickname || "个人中心"}</span>
+              <span data-clarity-mask="true" className="max-w-[70px] truncate">{session.user.nickname || "个人中心"}</span>
             </Link>
           ) : (
             <button type="button" onClick={() => setShowLoginModal(true)} className="header-action header-action-account header-action-login">
@@ -188,7 +188,7 @@ export function SiteHeader({ advertiseEnabled = false, relayHubEnabled = true }:
                   </span>
                 ) : session.authenticated && session.user ? (
                   <Link href="/account" onClick={closeMenu} aria-current={current(pathname, "/account") ? "page" : undefined} className="nav-link flex min-h-11">
-                    <User size={17} />个人中心 · {session.user.nickname || "我的账号"}
+                    <User size={17} />个人中心 · <span data-clarity-mask="true">{session.user.nickname || "我的账号"}</span>
                   </Link>
                 ) : (
                   <button type="button" onClick={() => { closeMenu(); setShowLoginModal(true); }} className="nav-link flex min-h-11 w-full text-left items-center gap-1.5">
