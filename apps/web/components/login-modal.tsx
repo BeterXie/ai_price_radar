@@ -300,6 +300,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   return createPortal(
     <div
       role="dialog"
+      data-clarity-mask="true"
       aria-modal="true"
       aria-labelledby="login-dialog-title"
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200"

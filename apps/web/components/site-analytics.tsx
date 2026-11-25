@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { isBaiduTrackingAllowed } from "@/lib/analytics-preferences";
@@ -9,17 +9,21 @@ import { CAMPAIGN_QUERY_KEYS } from "@/lib/share-url";
 
 type Gtag = (...args: unknown[]) => void;
 type BaiduCommand = [string, ...unknown[]];
+type Clarity = ((...args: unknown[]) => void) & { q?: unknown[][] };
 
 declare global {
   interface Window {
     dataLayer: unknown[];
     gtag?: Gtag;
     _hmt?: { push: (command: BaiduCommand) => unknown };
+    clarity?: Clarity;
   }
 }
 
 const MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const CONSENT_KEY = "apr:analytics-consent:v1";
+const CLARITY_PROJECT_ID = "zj9ygr64oc";
+const CLARITY_SCRIPT_ID = "microsoft-clarity";
 const BAIDU_SITE_ID = "0abf0f3c54963dc5874f6a4ebcbfaf37";
 const BAIDU_SCRIPT_ID = "baidu-tongji";
 let lastBaiduPage: string | null = null;
@@ -51,6 +55,51 @@ export function isAnalyticsPathAllowed(pathname: string | null): boolean {
   return !["/account", "/admin", "/auth", "/tools/json-to-cockpit"].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
+}
+
+export function isClarityAnalyticsEnabled(): boolean {
+  return typeof window !== "undefined" && window.location.hostname === "ai.pricememo.cn";
+}
+
+export function isClarityPathAllowed(pathname: string | null): boolean {
+  return isAnalyticsPathAllowed(pathname) && !["/watchlist", "/shops/submit"].some(
+    (prefix) => pathname === prefix || pathname?.startsWith(`${prefix}/`)
+  );
+}
+
+export function loadClarityAnalytics(pathname: string | null): void {
+  if (!isClarityAnalyticsEnabled() || !isClarityPathAllowed(pathname)) return;
+  if (document.getElementById(CLARITY_SCRIPT_ID)) return;
+
+  const clarity: Clarity = (...args) => {
+    (clarity.q = clarity.q || []).push(args);
+  };
+  window.clarity = window.clarity || clarity;
+  window.clarity("consentv2", { analytics_Storage: "granted", ad_Storage: "denied" });
+
+  const script = document.createElement("script");
+  script.id = CLARITY_SCRIPT_ID;
+  script.async = true;
+  script.src = `https://www.clarity.ms/tag/${CLARITY_PROJECT_ID}`;
+  document.head.appendChild(script);
+}
+
+// Clarity restarts itself after SPA navigation, even after stop. Keep private UI
+// out of a tracked document and reload without the SDK, including pending loads.
+export function AnalyticsPageBoundary({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const reloadWithoutClarity = !isClarityPathAllowed(pathname)
+    && typeof document !== "undefined"
+    && Boolean(document.getElementById(CLARITY_SCRIPT_ID));
+
+  useLayoutEffect(() => {
+    if (reloadWithoutClarity) {
+      window.clarity?.("stop");
+      window.location.reload();
+    }
+  }, [reloadWithoutClarity]);
+
+  return reloadWithoutClarity ? null : children;
 }
 const AI_REFERRAL_RULES = [
   { term: "chatgpt", pattern: /chatgpt/i },
@@ -162,7 +211,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
     } catch {
       setConsent("unknown");
     }
-  }, []);
+  }, [MEASUREMENT_ID]);
 
   const updateConsent = (value: Exclude<AnalyticsConsent, "unknown">) => {
     try {
@@ -176,6 +225,10 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
   useEffect(() => {
     trackBaiduPageview(pathname, rawSearch, baiduId);
   }, [pathname, rawSearch, baiduId]);
+
+  useEffect(() => {
+    loadClarityAnalytics(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) {
@@ -223,6 +276,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
       </aside>
     );
   }
+  if (!MEASUREMENT_ID) return null;
   const measurementId = JSON.stringify(MEASUREMENT_ID).replace(/</g, "\\u003c");
   return (
     <>
