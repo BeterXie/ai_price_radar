@@ -24,7 +24,6 @@ const MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const CONSENT_KEY = "apr:analytics-consent:v1";
 const CLARITY_PROJECT_ID = "zj9ygr64oc";
 const CLARITY_SCRIPT_ID = "microsoft-clarity";
-const CLARITY_CONSENT_KEY = "apr:analytics-consent:v1:clarity";
 const BAIDU_SITE_ID = "0abf0f3c54963dc5874f6a4ebcbfaf37";
 const BAIDU_SCRIPT_ID = "baidu-tongji";
 let lastBaiduPage: string | null = null;
@@ -68,8 +67,8 @@ export function isClarityPathAllowed(pathname: string | null): boolean {
   );
 }
 
-export function loadClarityAnalytics(pathname: string | null, consentGranted: boolean): void {
-  if (!isClarityAnalyticsEnabled() || !consentGranted || !isClarityPathAllowed(pathname)) return;
+export function loadClarityAnalytics(pathname: string | null): void {
+  if (!isClarityAnalyticsEnabled() || !isClarityPathAllowed(pathname)) return;
   if (document.getElementById(CLARITY_SCRIPT_ID)) return;
 
   const clarity: Clarity = (...args) => {
@@ -198,33 +197,25 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
   const referralChecked = useRef(false);
   const lastGooglePage = useRef<string | null>(null);
   const [consent, setConsent] = useState<AnalyticsConsent | null>(null);
-  const [clarityEnabled, setClarityEnabled] = useState(false);
-  const clarityConsentKey = `${CLARITY_CONSENT_KEY}${MEASUREMENT_ID ? ":google" : ""}`;
-  const consentKey = clarityEnabled ? clarityConsentKey : CONSENT_KEY;
   const pathAllowed = isAnalyticsPathAllowed(pathname);
   const rawSearch = searchParams.toString();
   const analyticsPath = buildAnalyticsPath(pathname, rawSearch);
   const navigationPath = buildAnalyticsPath(pathname, rawSearch, false);
 
   useEffect(() => {
-    const enableClarity = isClarityAnalyticsEnabled();
-    setClarityEnabled(enableClarity);
-    if (!MEASUREMENT_ID && !enableClarity) return;
+    if (!MEASUREMENT_ID) return;
     try {
-      // Existing Google/Baidu permissions do not authorize Clarity recordings.
-      const stored = enableClarity
-        ? window.localStorage.getItem(clarityConsentKey)
-        : window.localStorage.getItem(CONSENT_KEY)
-          ?? window.localStorage.getItem("apr:analytics-consent:v2:baidu:google");
+      const stored = window.localStorage.getItem(CONSENT_KEY)
+        ?? window.localStorage.getItem("apr:analytics-consent:v2:baidu:google");
       setConsent(stored === "granted" || stored === "denied" ? stored : "unknown");
     } catch {
       setConsent("unknown");
     }
-  }, [MEASUREMENT_ID, clarityConsentKey]);
+  }, [MEASUREMENT_ID]);
 
   const updateConsent = (value: Exclude<AnalyticsConsent, "unknown">) => {
     try {
-      window.localStorage.setItem(consentKey, value);
+      window.localStorage.setItem(CONSENT_KEY, value);
     } catch {
       // Keep the in-memory choice for this page even when storage is blocked.
     }
@@ -236,8 +227,8 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
   }, [pathname, rawSearch, baiduId]);
 
   useEffect(() => {
-    loadClarityAnalytics(pathname, consent === "granted");
-  }, [pathname, consent]);
+    loadClarityAnalytics(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (!MEASUREMENT_ID || consent !== "granted" || !pathAllowed) {
@@ -263,7 +254,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
     }
   }, [analyticsPath, navigationPath, consent, pathAllowed]);
 
-  if (!MEASUREMENT_ID && !clarityEnabled) return null;
+  if (!MEASUREMENT_ID) return null;
   if (!pathAllowed) return null;
   if (consent === null) return null;
   if (consent === "denied") return null;
@@ -271,7 +262,7 @@ function SiteAnalyticsInner({ measurementId: MEASUREMENT_ID, baiduId }: Analytic
     return (
       <aside className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-xl border border-[color:var(--line-strong)] bg-[color:var(--panel)] p-4 shadow-[0_18px_55px_rgba(18,19,15,.2)]" aria-label="分析服务选择">
         <p className="text-sm leading-6 text-[color:var(--ink)]">
-          是否允许加载{clarityEnabled ? " Microsoft Clarity" : " Google Analytics"}{clarityEnabled && MEASUREMENT_ID ? " 和 Google Analytics" : ""}，用于{clarityEnabled ? "访问统计、点击热图和操作回放" : "统计页面访问和 AI 引荐来源"}？拒绝不影响任何功能。详见
+          是否允许加载 Google Analytics，用于统计页面访问和 AI 引荐来源？拒绝不影响任何功能。详见
           <Link href="/privacy" className="ml-1 underline">隐私政策</Link>。
         </p>
         <div className="mt-3 flex justify-end gap-2">

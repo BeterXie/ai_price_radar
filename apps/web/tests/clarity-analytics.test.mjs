@@ -31,15 +31,15 @@ function browser(t, hostname = "ai.pricememo.cn") {
   return { window, scripts };
 }
 
-test("Clarity cannot load without consent or outside the primary production hostname", (t) => {
+test("Clarity loads by default only on the primary production hostname", (t) => {
   const page = browser(t);
-  loadClarityAnalytics("/", false);
+  loadClarityAnalytics("/");
+  assert.equal(page.scripts.length, 1);
   for (const hostname of ["localhost", "127.0.0.1", "preview.pricememo.cn", "pricememo.cn", "aiprice.si", "aisi.plus", "pricein.cc", "openprice.in"]) {
     page.window.location.hostname = hostname;
-    loadClarityAnalytics("/", true);
+    loadClarityAnalytics("/");
   }
-  assert.equal(page.window.clarity, undefined);
-  assert.deepEqual(page.scripts, []);
+  assert.equal(page.scripts.length, 1);
 });
 
 const privatePaths = [
@@ -49,15 +49,15 @@ const privatePaths = [
 
 test("Clarity never initializes on private routes", (t) => {
   const page = browser(t);
-  for (const pathname of privatePaths) loadClarityAnalytics(pathname, true);
+  for (const pathname of privatePaths) loadClarityAnalytics(pathname);
   assert.equal(page.window.clarity, undefined);
   assert.deepEqual(page.scripts, []);
 });
 
-test("Clarity queues analytics-only consent before loading and stays a singleton across public navigation", (t) => {
+test("Clarity queues analytics settings before loading and stays a singleton across public navigation", (t) => {
   const page = browser(t);
   for (const pathname of ["/", "/", "/products", "/products/chatgpt", "/compare"]) {
-    loadClarityAnalytics(pathname, true);
+    loadClarityAnalytics(pathname);
   }
   assert.equal(page.scripts.length, 1);
   assert.equal(page.scripts[0].src, "https://www.clarity.ms/tag/zj9ygr64oc");
@@ -73,7 +73,7 @@ function renderPage(pathname) {
 
 test("private UI cannot render in a tracked document, including a still-downloading SDK", (t) => {
   const page = browser(t);
-  loadClarityAnalytics("/", true);
+  loadClarityAnalytics("/");
   assert.equal(page.window.clarity.v, undefined);
   for (const pathname of privatePaths) assert.equal(renderPage(pathname), "");
   assert.equal(renderPage("/products"), "<main>page content</main>");
