@@ -49,7 +49,10 @@ class PinnedHTTPSClient:
             raise ValueError("HTTPS limits must be positive")
         self.resolver = resolver
         self.connector = connector
-        self.ssl_context = ssl_context or ssl.create_default_context()
+        if ssl_context is None:
+            ssl_context = ssl.create_default_context()
+            ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        self.ssl_context = ssl_context
         self.max_response_bytes = max_response_bytes
         self.remaining_bytes = max_task_bytes
         self.deadline = time.monotonic() + max_task_seconds

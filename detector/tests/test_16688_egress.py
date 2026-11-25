@@ -11,6 +11,12 @@ from price_radar_http import egress, pacing
 from price_radar_http.pinned import PinnedResponse
 
 
+def test_default_client_requires_modern_tls():
+    client=PinnedHTTPSClient()
+    assert client.ssl_context.minimum_version>=ssl.TLSVersion.TLSv1_2
+    assert client.ssl_context.verify_mode==ssl.CERT_REQUIRED and client.ssl_context.check_hostname
+
+
 @pytest.fixture
 def proxy(tmp_path, monkeypatch):
     path=tmp_path/'proxy.key'
