@@ -24,6 +24,7 @@ from price_radar_http.pacing import PacingStorageError
 from collector_protocol import CONNECTORS, MAX_COMPRESSED, MAX_EXPANDED, MAX_LINE, MAX_RECORDS, SCHEMA, validate_collected_record
 from connectors import get_connector
 from connectors.base import SourceUnavailableError
+import source_cache
 
 logger = logging.getLogger("collector")
 DATA = Path(os.getenv("COLLECTOR_DATA_DIR", "/data"))
@@ -200,6 +201,7 @@ def collect(job, lost):
             except (ValueError, OSError):
                 status_path.unlink(missing_ok=True)
         count, status, error = 0, "ok", ""
+        cached_records = source_cache.load(DATA, spec) if os.getenv('COLLECTOR_16688_CACHE', '') == 'true' else None
         temporary = target.with_suffix(".tmp")
         writing = True
         try:
@@ -207,7 +209,8 @@ def collect(job, lost):
                 writing = False
                 local_source = DATA / "ldxp_crawler.db" if spec["connector"] == "ldxp" else spec["source"]
                 source_bytes=0
-                for record in get_connector(spec["connector"])(local_source):
+                records = cached_records if cached_records is not None else get_connector(spec["connector"])(local_source)
+                for record in records:
                     if lost.is_set():
                         raise RuntimeError("collector lease lost")
                     record.setdefault("observed_at", record.get("collected_at") or datetime.now(timezone.utc).isoformat())
@@ -240,8 +243,13 @@ def collect(job, lost):
         total_count += count
         if total_bytes > MAX_EXPANDED:
             raise ValueError("collection exceeds size limit")
+        if status == 'ok' and cached_records is None and os.getenv('COLLECTOR_16688_CACHE', '') == 'true':
+            try:
+                source_cache.store(DATA, spec, target, count)
+            except OSError:
+                logger.warning('16688 source cache unavailable; complete source result remains valid')
         atomic_json(status_path, {"status": status, "count": count, "error": error, 'bytes':target.stat().st_size})
-        logger.info("source %d/%d connector=%s status=%s records=%d", index + 1, len(sources), spec["connector"], status, count)
+        logger.info("source %d/%d connector=%s status=%s records=%d cached=%s", index + 1, len(sources), spec["connector"], status, count, cached_records is not None)
     temporary_bundle = directory / "result.jsonl.gz.part"
     with gzip.open(temporary_bundle, "wt", encoding="utf-8") as out:
         expanded = records_total = 0
@@ -282,6 +290,9 @@ def deliver_bundle(job, bundle, lost):
 
 
 def cleanup_jobs(active=None):
+    if os.getenv('COLLECTOR_16688_CACHE', '') == 'true':
+        try:source_cache.cleanup(DATA)
+        except OSError:logger.warning('16688 cache cleanup unavailable')
     for old in (DATA / "jobs").glob("*"):
         marker = old / "delivered"
         age_marker=marker if marker.exists() else old / "manifest.json"

@@ -145,14 +145,17 @@ class PinnedHTTPSClient:
         return addresses
 
     def _connect(self, host: str, port: int) -> socket.socket:
+        from .egress import ProxyDestinationError, connect_tunnel, settings_for
+        proxy = settings_for(host)
         key = (host, port)
         candidates = self._pinned_addresses_for(host, port)
-        failures: list[OSError] = []
+        failures: list[OSError | ValueError] = []
         for address in candidates:
             timeout = min(self.request_timeout, self._remaining_seconds())
             try:
-                raw_socket = self.connector((address, port), timeout=timeout)
-            except OSError as exc:
+                raw_socket = (connect_tunnel(proxy, self.connector, address, port, host, self.deadline, timeout) if proxy else
+                              self.connector((address, port), timeout=timeout))
+            except (OSError, ProxyDestinationError) as exc:
                 failures.append(exc)
                 continue
             if address != candidates[0]:
@@ -167,9 +170,35 @@ class PinnedHTTPSClient:
         self, value: object, **kwargs,
     ) -> PinnedResponse:
         from .pacing import origin_budget
+        from .egress import ProxyConnectionError, rotate, settings_for
         host = urllib.parse.urlsplit(self.normalize_url(value)).hostname or ""
-        with origin_budget(host, timeout=self._remaining_seconds()) as received:
-            return self._request_direct(value, on_status=received, **kwargs)
+        proxy = settings_for(host)
+        if proxy and kwargs.get('extra_headers'):
+            raise ValueError('16688 egress accepts public requests without credential headers')
+        for attempt in range(3 if proxy else 1):
+            with origin_budget(host, timeout=self._remaining_seconds()) as received:
+                try:
+                    response = self._request_direct(value, skip_520_body=bool(proxy),
+                        on_status=lambda status: received(status, allow_failover=bool(proxy and status == 520)), **kwargs)
+                except ssl.SSLCertVerificationError:
+                    raise
+                except ProxyConnectionError:
+                    self._remaining_seconds()
+                    if not proxy:
+                        raise
+                    if rotate(proxy, self.deadline, allow_switch=attempt < 2):
+                        continue
+                    self._remaining_seconds()
+                    received(0)
+                    raise
+                if not proxy or response.status != 520:
+                    return response
+                if rotate(proxy, self.deadline, allow_switch=attempt < 2):
+                    continue
+                self._remaining_seconds()
+                received(520)
+                return response
+        raise RuntimeError('16688 egress retry budget exhausted')
 
     def _request_direct(
         self,
@@ -182,6 +211,7 @@ class PinnedHTTPSClient:
         extra_headers: dict[str, str] | None = None,
         on_chunk: Callable[[bytes], None] | None = None,
         on_status=None,
+        skip_520_body=False,
     ) -> PinnedResponse:
         for key, header_value in (extra_headers or {}).items():
             if key.casefold() not in {"authorization", "x-api-key", "anthropic-version", "x-goog-api-key"}:
@@ -201,7 +231,16 @@ class PinnedHTTPSClient:
         response: http.client.HTTPResponse | None = None
         try:
             raw_socket.settimeout(min(self.request_timeout, self._remaining_seconds()))
-            tls_socket = self.ssl_context.wrap_socket(raw_socket, server_hostname=host)
+            try:
+                tls_socket = self.ssl_context.wrap_socket(raw_socket, server_hostname=host)
+            except ssl.SSLCertVerificationError:
+                raise
+            except OSError:
+                self._remaining_seconds()
+                from .egress import ProxyConnectionError, settings_for
+                if settings_for(host):
+                    raise ProxyConnectionError('16688 proxy TLS transport is unavailable') from None
+                raise
             connect_latency_ms = max(0, round((time.monotonic() - connect_started) * 1000))
             target = urllib.parse.urlunsplit(("", "", parsed.path or "/", parsed.query, ""))
             host_header = f"[{host}]" if ":" in host else host
@@ -215,12 +254,23 @@ class PinnedHTTPSClient:
             if content_type:
                 headers.extend((f"Content-Type: {content_type}\r\n", f"Content-Length: {len(body)}\r\n"))
             headers.extend(f"{key}: {value}\r\n" for key, value in (extra_headers or {}).items())
-            tls_socket.sendall("".join(headers).encode("ascii") + b"\r\n" + body)
-            response = http.client.HTTPResponse(tls_socket)
-            response.begin()
+            from .deadline import socket_deadline
+            try:
+                with socket_deadline(lambda:tls_socket,self.deadline):
+                    tls_socket.sendall("".join(headers).encode("ascii") + b"\r\n" + body)
+                    response = http.client.HTTPResponse(tls_socket)
+                    response.begin()
+            except (OSError,http.client.HTTPException):
+                self._remaining_seconds()
+                from .egress import ProxyConnectionError,settings_for
+                if settings_for(host):raise ProxyConnectionError('16688 proxy disconnected before response') from None
+                raise
+            self._remaining_seconds()
             if on_status:
                 on_status(response.status)
             headers = {key.casefold(): header_value for key, header_value in response.getheaders()}
+            if skip_520_body and response.status == 520:
+                return PinnedResponse(520, headers, b'', connect_latency_ms)
             if 300 <= response.status < 400:
                 raise ValueError("source redirects are not followed")
             try:

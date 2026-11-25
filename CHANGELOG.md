@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.110] - 2026-11-26
+
+- 增加 Oracle 专用 16688 订阅代理出口，520/连接故障有限切换节点，保留 DNS 固定、TLS 校验和私网隔离。
+- 16688 成功商品数据每 6 小时刷新，缓存保留真实采集时间；新店铺和其他平台仍及时处理。
+- 代理服务无公网端口，随机认证凭据与订阅独立保存在私有目录；新增连接、限速、缓存和防火墙回归检查。
+
 ## [3.9.109] - 2026-11-25
 
 - Validate KMDian submissions against the complete platform API feed and finish onboarding only when the matching shop or product has public quotes. Preserve rejected, disabled and hidden sources.

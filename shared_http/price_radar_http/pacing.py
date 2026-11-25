@@ -36,7 +36,7 @@ def _persist(root, state):
 def origin_budget(host: str, timeout: float = 45):
     directory = os.getenv("COLLECTOR_RATE_DIR", "")
     if not directory or host.casefold() not in {"16688.com.cn", "www.16688.com.cn"}:
-        yield lambda status: None
+        yield lambda status, **kwargs: None
         return
     import fcntl
     root = Path(directory)
@@ -47,7 +47,7 @@ def origin_budget(host: str, timeout: float = 45):
         raise PacingStorageError("16688 local pacing storage unavailable") from exc
     # A fixed filename avoids arbitrary paths from upstream DNS names.
     with lock_file as lock:
-        deadline = time.monotonic() + min(3.0, timeout)
+        deadline = time.monotonic() + min(10.0, timeout)
         while True:
             try:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -68,18 +68,20 @@ def origin_budget(host: str, timeout: float = 45):
         now = time.time()
         if state.get("blocked_until", 0) > now:
             raise OriginCoolingDown("16688 cooling down; retry after 15 minutes")
-        delay = min(2.0, max(0.0, state.get("last_request", 0) + 2.0 - now))
+        interval = 5.0 if os.getenv('COLLECTOR_16688_PROXY_KEY_FILE') else 2.0
+        delay = min(interval, max(0.0, state.get("last_request", 0) + interval - now))
         if delay:
             if delay > deadline-time.monotonic():
                 raise OriginCoolingDown("16688 pacing deadline exceeded")
             time.sleep(delay)
         state["last_request"] = time.time()
         _persist(root, state)
-        def status_received(status):
+        def status_received(status, *, allow_failover=False):
             state['last_request'] = time.time()
-            if status in (403, 429, 520):
+            if status in (0, 403, 429, 520) and not (status == 520 and allow_failover):
                 state["blocked_until"] = time.time() + 15 * 60
                 _persist(root, state)
-                raise OriginCoolingDown(f"16688 response {status}; cooling down")
+                detail = f'response {status}' if status else 'proxy unavailable'
+                raise OriginCoolingDown(f"16688 {detail}; cooling down")
             _persist(root, state)
         yield status_received

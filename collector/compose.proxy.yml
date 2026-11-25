@@ -1,0 +1,61 @@
+# Optional 16688-only egress. No ports are published on the host.
+services:
+  collector:
+    environment:
+      COLLECTOR_16688_PROXY_KEY_FILE: /secrets/16688-proxy.key
+      COLLECTOR_16688_CACHE: "true"
+    volumes:
+      - ./secrets/16688-proxy.key:/secrets/16688-proxy.key:ro
+    depends_on:
+      egress-gateway: {condition: service_healthy}
+  detector:
+    environment:
+      COLLECTOR_16688_PROXY_KEY_FILE: /secrets/16688-proxy.key
+    volumes:
+      - ./secrets/16688-proxy.key:/secrets/16688-proxy.key:ro
+    depends_on:
+      egress-gateway: {condition: service_healthy}
+  egress-gateway:
+    image: pricememo-egress-gateway:${COLLECTOR_RELEASE:?release required}
+    restart: "no"
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    cpus: 0.5
+    network_mode: service:egress
+    depends_on: [egress]
+    healthcheck:
+      test: ["CMD", "python", "proxy_gateway.py", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - ./proxy/gateway.key:/secrets/gateway.key:ro
+      - ./proxy/state:/state
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
+  egress:
+    image: metacubex/mihomo:v1.19.34
+    restart: "no"
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 192m
+    cpus: 0.5
+    command: ["-d", "/var/lib/mihomo", "-f", "/config/config.yaml"]
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    volumes:
+      - ./proxy/config.yaml:/config/config.yaml:ro
+      - ./proxy/data:/var/lib/mihomo
+    networks:
+      collection:
+        ipv4_address: 172.30.93.10
+    logging:
+      driver: json-file
+      options: {max-size: "5m", max-file: "2"}
