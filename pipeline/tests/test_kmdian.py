@@ -45,12 +45,12 @@ def page(items, *, current=1, per_page=20, total=None):
 @pytest.fixture
 def api(monkeypatch):
     monkeypatch.setenv(kmdian.API_KEY_ENV, "test-app.test-secret")
-    state = SimpleNamespace(responses=[], calls=[], now=0.0)
+    state = SimpleNamespace(responses=[], calls=[], now=0.0, products={}, detail_override=None)
 
     def sleep(seconds):
         state.now += seconds
 
-    monkeypatch.setattr(kmdian, "time", SimpleNamespace(monotonic=lambda: state.now, sleep=sleep))
+    monkeypatch.setattr(kmdian, "time", SimpleNamespace(monotonic=lambda: state.now, time=lambda: state.now, sleep=sleep))
 
     class Client:
         normalize_url = staticmethod(PinnedHTTPSClient.normalize_url)
@@ -58,9 +58,16 @@ def api(monkeypatch):
         def __init__(self, **_kwargs):
             pass
 
-        def get(self, url, *, accept, headers):
+        def get(self, url, *, accept, headers=None):
             state.calls.append((url, accept, headers, state.now))
-            response = state.responses.pop(0)
+            if '/api/v1/products/' in url:
+                source = state.products[url.rsplit('/', 1)[-1]]
+                response = state.detail_override or {'code':0,'data':{'product':{'goods_no':source['goods_no'],'description':'<p>公开商品说明</p>'},'shop':{'shop_code':source['shop_code']}}}
+            else:
+                response = state.responses.pop(0)
+                if isinstance(response, dict):
+                    for item in response.get('data', {}).get('list', []):
+                        state.products[item.get('goods_no')] = item
             if isinstance(response, Exception):
                 raise response
             if isinstance(response, PinnedResponse):
@@ -84,14 +91,15 @@ def test_paginated_platform_feed_preserves_shop_identity_prices_inventory_and_sa
     assert {row["token"] for row in records} == {"kmdian-S825584", "kmdian-S2"}
     assert [row["listed_price"] for row in records] == [Decimal("27.50"), Decimal("0.01"), Decimal("0.00")]
     assert [row["product_status"] for row in records] == ["in_stock", "out_of_stock", "unknown"]
-    assert records[0]["raw_json"] == product()
+    assert records[0]["raw_json"] == {**product(), 'description':'<p>公开商品说明</p>', 'description_images':[]}
     assert records[0]["observed_at"].tzinfo is not None
     assert records[0]["observed_at"] <= records[1]["observed_at"]
     assert all(row["source_platform"] == "kmdian" and row["source_kind"] == "platform_api" for row in records)
     assert records[0]["shop_url"] == product()["shop_url"]
     assert records[0]["product_url"] == product()["product_url"]
-    assert [parse_qs(urlsplit(call[0]).query)["page"] for call in api.calls] == [["1"], ["2"], ["1"], ["2"]]
-    assert all(call[2] == {"X-Api-Key": "test-app.test-secret"} for call in api.calls)
+    assert [parse_qs(urlsplit(call[0]).query)["page"] for call in api.calls[:4]] == [["1"], ["2"], ["1"], ["2"]]
+    assert all(call[2] == {"X-Api-Key": "test-app.test-secret"} for call in api.calls[:4])
+    assert all(call[2] is None for call in api.calls[4:])
     assert api.calls[1][3] - api.calls[0][3] > 1.0
     assert "test-secret" not in str(records)
 
@@ -154,6 +162,71 @@ def test_empty_platform_catalog_is_valid(api):
     assert list(kmdian.load_records(kmdian.API_URL)) == []
 
 
+def test_detail_retains_text_images_and_excludes_untrusted_image_urls(api):
+    api.responses = [page([product()])]
+    api.detail_override = {'code':0,'data':{'product':{'goods_no':'KM07826776',
+        'description':'<p>说明</p><img src="https://img.kmdian.com/detail.jpg"><img src="https://[bad"><img src="javascript:alert(1)"><img src="https://img.kmdian.com.evil.test/x">',
+        'usage_note':'使用说明'},'shop':{'shop_code':'S825584'},'category_name':'AI 账号'}}
+    row = list(kmdian.load_records(kmdian.API_URL))[0]
+    assert row['raw_json']['description_images'] == ['https://img.kmdian.com/detail.jpg']
+    assert row['raw_json']['description'].endswith('使用说明')
+    assert row['category_name'] == 'AI 账号'
+    assert api.calls[-1][2] is None
+
+
+@pytest.mark.parametrize('override', [
+    PinnedResponse(503, {}, b'error'),
+    {'code':0,'data':{'product':{'goods_no':'OTHER'},'shop':{'shop_code':'S825584'}}},
+    {'code':0,'data':{'product':{'goods_no':'KM07826776'},'shop':{'shop_code':'OTHER'}}},
+])
+def test_detail_failure_or_wrong_identity_never_publishes_partial_catalog(api, override):
+    api.responses = [page([product()])]
+    api.detail_override = override
+    with pytest.raises((ValueError, SourceFetchError)):
+        list(kmdian.load_records(kmdian.API_URL))
+
+
+def test_detail_cache_resumes_bounded_work_and_refreshes_changed_items(api, monkeypatch, tmp_path):
+    monkeypatch.setenv('COLLECTOR_RESULTS_DIR', str(tmp_path))
+    monkeypatch.setattr(kmdian,'MAX_TASK_SECONDS',23)
+    api.responses=[page([product(),product('KM2')])]
+    with pytest.raises(SourceFetchError,match='budget reached'):
+        list(kmdian.load_records(kmdian.API_URL))
+    assert (tmp_path/'kmdian-details'/'KM07826776.json').is_file()
+    api.calls.clear();api.responses=[page([product(),product('KM2')])]
+    monkeypatch.setattr(kmdian,'MAX_TASK_SECONDS',100)
+    assert len(list(kmdian.load_records(kmdian.API_URL)))==2
+    assert [url.rsplit('/',1)[-1] for url,_,_,_ in api.calls if '/api/v1/products/' in url]==['KM2']
+    api.calls.clear();api.responses=[page([product(updated_at='2026-11-25T16:00:00+08:00')])]
+    list(kmdian.load_records(kmdian.API_URL))
+    assert len(api.calls)==2
+
+
+@pytest.mark.parametrize('value',[False,0,[],{}])
+def test_invalid_detail_text_is_not_coerced_to_empty(api, value):
+    api.responses=[page([product()])]
+    api.detail_override={'code':0,'data':{'product':{'goods_no':'KM07826776','description':value},'shop':{'shop_code':'S825584'}}}
+    with pytest.raises(ValueError,match='content is invalid'):list(kmdian.load_records(kmdian.API_URL))
+
+
+def test_html_encoded_credential_never_reaches_public_description_or_images(api):
+    api.responses=[page([product()])]
+    encoded=''.join('&#'+str(ord(c))+';' for c in 'test-app.test-secret')
+    api.detail_override={'code':0,'data':{'product':{'goods_no':'KM07826776',
+        'description':'<p>'+encoded+'</p><img src="https://img.kmdian.com/'+encoded+'">'},'shop':{'shop_code':'S825584'}}}
+    with pytest.raises(ValueError,match='credential'):list(kmdian.load_records(kmdian.API_URL))
+
+
+def test_removed_product_details_are_pruned_from_private_cache(api, monkeypatch, tmp_path):
+    monkeypatch.setenv('COLLECTOR_RESULTS_DIR',str(tmp_path))
+    api.responses=[page([product()])]
+    list(kmdian.load_records(kmdian.API_URL))
+    cached=tmp_path/'kmdian-details'/'KM07826776.json';assert cached.exists()
+    api.responses=[page([])]
+    assert list(kmdian.load_records(kmdian.API_URL))==[]
+    assert not cached.exists()
+
+
 def test_server_clamped_page_size_still_requires_a_confirming_pass(api):
     # The server may return fewer than the requested 20 items per page.
     pages = [
@@ -162,7 +235,7 @@ def test_server_clamped_page_size_still_requires_a_confirming_pass(api):
     ]
     api.responses = pages + pages
     assert len(list(kmdian.load_records(kmdian.API_URL))) == 2
-    assert len(api.calls) == 4
+    assert len(api.calls) == 6
 
 
 def test_equal_totals_with_changed_product_membership_abort(api):

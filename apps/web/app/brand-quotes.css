@@ -145,6 +145,8 @@ html[data-brand="aisi"] { --brand:#56633e;--brand-strong:#485632;--brand-soft:#e
 .quote-close { display:grid;place-items:center;min-width:40px;min-height:40px;border:1px solid var(--line);border-radius:50%;cursor:pointer; }
 .quote-dialog h3,.quote-dialog .quote-detail-section-title { margin:26px 0 14px;font-size:15px;font-weight:650; }
 .quote-detail-terms,.quote-description,.quote-detail-warning { font-size:13px;line-height:1.9;margin-top:14px;white-space:pre-wrap;overflow-wrap:anywhere; }
+.quote-description-images { display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:16px; }
+.quote-description-images img { display:block;max-width:100%;height:auto;border-radius:6px; }
 .quote-detail-warning { color:var(--warning); }
 .quote-detail-overview { margin-top:16px; }
 .quote-detail-overview.has-sponsor { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:start;gap:18px; }

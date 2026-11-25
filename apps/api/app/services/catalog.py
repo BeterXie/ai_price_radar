@@ -467,6 +467,16 @@ def _low_price_warning(price: Decimal | None, median_price: Decimal | None, curr
     return low_price_warning(price, median_price, currency)
 
 
+def _description_images(raw_json: dict) -> list[str]:
+    values = raw_json.get("description_images")
+    if not isinstance(values, list):
+        return []
+    # Only the platform's public image CDN is supported; never render raw HTML.
+    return list(dict.fromkeys(value for value in values if isinstance(value, str)
+        and value.startswith("https://img.kmdian.com/") and len(value) <= 2000
+        and public_https_url_or_empty(value)))[:12]
+
+
 def _offer_public(
     offer: Offer,
     *,
@@ -491,6 +501,7 @@ def _offer_public(
         original_name=offer.raw_product.original_name,
         original_category=_plain_text(offer.raw_product.original_category, 300),
         original_description=description if include_description else "",
+        description_images=_description_images(raw_json) if include_description else [],
         description_available=isinstance(raw_description, str) and bool(raw_description.strip()),
         goods_type=_plain_text(raw_json.get("goods_type"), 120),
         price=offer.price,
@@ -1615,7 +1626,7 @@ def get_offer_detail(db: Session, offer_id: int) -> OfferPublic | None:
     return _offer_public(offer, include_description=True, product=offer.product, median_price=median_price)
 
 
-def get_offer_description(db: Session, offer_id: int) -> str | None:
+def get_offer_description(db: Session, offer_id: int) -> dict | None:
     offer = db.scalar(
         _base_public_offer_query(db)
         .join(Product, Offer.product_id == Product.id)
@@ -1624,7 +1635,7 @@ def get_offer_description(db: Session, offer_id: int) -> str | None:
     if offer is None:
         return None
     raw_json = offer.raw_product.raw_json if isinstance(offer.raw_product.raw_json, dict) else {}
-    return _plain_text(raw_json.get("description"))
+    return {"original_description": _plain_text(raw_json.get("description")), "description_images": _description_images(raw_json)}
 
 
 def get_shop_detail(

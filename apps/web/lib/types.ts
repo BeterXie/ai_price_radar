@@ -60,6 +60,7 @@ export type Offer = {
   original_name: string;
   original_category: string;
   original_description: string;
+  description_images?: string[];
   description_available: boolean;
   goods_type: string;
   price: string | null;

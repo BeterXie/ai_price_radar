@@ -682,7 +682,7 @@ def offer_description(offer_id: int, db: Session = Depends(get_db)) -> OfferDesc
     description = get_offer_description(db, offer_id)
     if description is None:
         raise HTTPException(status_code=404, detail="offer not found")
-    return OfferDescriptionResponse(offer_id=offer_id, original_description=description)
+    return OfferDescriptionResponse(offer_id=offer_id, **description)
 
 
 @router.get("/shops", response_model=list[str])
@@ -1058,10 +1058,14 @@ def create_shop_request(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     detected_platform = "unknown"
     persisted_source_type = "unknown"
+    if submission.platform == "kmdian":
+        persisted_source_type = "kmdian"
     source_key = submission.source_key
     shop_url = submission.source_url
     token = submission.shop_token
     detection_message = "来源已提交，正在等待隔离检测器确认来源类型和公开契约。"
+    if persisted_source_type == "kmdian":
+        detection_message = "已识别卡密小店官方链接，等待平台 API 校验并自动同步商品。"
     db.add(
         UserActionLog(
             user_id=current_user.id,
@@ -1098,7 +1102,9 @@ def create_shop_request(
         Shop.is_visible.is_(True),
         (func.lower(Shop.token) == token.lower()) | (func.lower(Shop.source_url) == shop_url.lower())
     ))
-    if known_shop is not None:
+    # Platform existence alone does not establish that its quotes are public.
+    # Let the authoritative KMDian publisher resolve even repeat submissions.
+    if known_shop is not None and persisted_source_type != "kmdian":
         db.commit()
         return build_response("published", "already_known")
 
@@ -1110,6 +1116,10 @@ def create_shop_request(
     if existing is not None:
         db.commit()
         response_status = "already_known" if workflow_status(existing.status) == "published" else "already_pending"
+        if persisted_source_type == 'kmdian':
+            detected_platform = existing.detected_platform
+            if response_status == 'already_known':
+                detection_message = "该来源已由卡密小店平台 API 核实并收录，商品会自动同步。"
         return build_response(existing.status, response_status, request_id=existing.id)
 
     intake_values = {

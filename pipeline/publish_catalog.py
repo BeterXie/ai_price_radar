@@ -688,6 +688,10 @@ def _shop_has_product_url(db: Session, shop_token: str, url: str) -> bool:
     """True when ``url`` is a product page already imported for the given shop."""
     if not url or not inspect(db.connection()).has_table("raw_products"):
         return False
+    from app.services.source_platform import kmdian_identity
+    if (identity := kmdian_identity(url)) and '/item/' in identity.source_url:
+        return db.execute(text("SELECT 1 FROM raw_products rp JOIN shops s ON s.id=rp.shop_id WHERE s.token=:token AND s.platform='kmdian' AND rp.source_product_key=:key LIMIT 1"),
+            {'token':shop_token,'key':'kmdian:'+identity.source_url.rsplit('/',1)[-1]}).scalar_one_or_none() is not None
     return db.execute(text(
         "SELECT 1 FROM raw_products rp JOIN shops s ON s.id = rp.shop_id "
         "WHERE s.token = :token AND lower(rp.source_url) = lower(:url) LIMIT 1"
@@ -1064,6 +1068,8 @@ def _publish_prepared_sources(
                     ).values(snapshot_id=previous_snapshot_id))
             imports = [*skipped_sources, *newly_skipped]
             published_at = utcnow()
+            from kmdian_intake import lock_intakes as lock_kmdian_intakes, allowed_records, finish_intakes, remove_denied_offers
+            kmdian_intakes = lock_kmdian_intakes(db)
             all_price_changes: list[Any] = []
             for spec in sources:
                 source_price_changes: list[Any] = []
@@ -1078,7 +1084,7 @@ def _publish_prepared_sources(
                             snapshot_id=snapshot.id,
                             products=products,
                             collected_price_changes=source_price_changes,
-                            records=records,
+                            records=allowed_records(records, kmdian_intakes) if spec.connector == "kmdian" else records,
                         )
                 except SourceImportError as exc:
                     if not isinstance(exc.__cause__, (SourceUnavailableError, SourceFetchError)):
@@ -1108,6 +1114,8 @@ def _publish_prepared_sources(
                     )
                 imports.append(imported)
                 intake_finished_at = utcnow()
+                if spec.connector == "kmdian":
+                    finish_intakes(db, kmdian_intakes, imported, snapshot.id, intake_finished_at)
                 for intake_id in spec.intake_ids:
                     intake_status = "published" if imported.public_offer_count > 0 else "no_products"
                     updated = db.execute(text(
@@ -1142,6 +1150,7 @@ def _publish_prepared_sources(
                     )
             if sources and all(item.status != "imported" for item in imports):
                 raise SourceImportError("all catalog sources are unavailable; keeping the previous snapshot")
+            remove_denied_offers(db, kmdian_intakes, snapshot.id)
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0
             )

@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.109] - 2026-11-25
+
+- Validate KMDian submissions against the complete platform API feed and finish onboarding only when the matching shop or product has public quotes. Preserve rejected, disabled and hidden sources.
+- Fetch public product descriptions separately without the platform credential, verify product/shop identity, and render description text and approved CDN images in quote details.
+- Includes v29 intake type constraint migration; rehearse twice on PostgreSQL 16 before switching and complete a full collector publication after deployment.
+
 ## [3.9.108] - 2026-11-25
 
 - Add independently managed Gemini sponsor placements beside catalog filters and in product quote detail dialogs, including Gemini product pages.

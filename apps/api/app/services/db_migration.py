@@ -377,7 +377,7 @@ def _migrate_postgres(conn) -> None:
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'source_intakes') THEN
                 ALTER TABLE source_intakes DROP CONSTRAINT IF EXISTS ck_source_intakes_type;
                 ALTER TABLE source_intakes ADD CONSTRAINT ck_source_intakes_type
-                    CHECK (source_type::text = ANY (ARRAY['unknown', 'ldxp', 'merchant_json', 'dujiao_next', 'woocommerce', '16688', 'schema_org', 'acg_faka', 'other']));
+                    CHECK (source_type::text = ANY (ARRAY['unknown', 'ldxp', 'merchant_json', 'dujiao_next', 'woocommerce', '16688', 'kmdian', 'schema_org', 'acg_faka', 'other']));
             END IF;
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'source_candidates') THEN
                 ALTER TABLE source_candidates DROP CONSTRAINT IF EXISTS ck_source_candidates_platform;

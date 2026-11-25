@@ -314,7 +314,7 @@ def test_product_detail_uses_comparable_price_and_groups_duplicate_offers():
 
         grouped = get_group_offers(db, product.slug, "same-fingerprint")
         assert grouped is not None and len(grouped) == 2
-        assert get_offer_description(db, offer_ids[0]) == "账号密码交付，质保首登"
+        assert get_offer_description(db, offer_ids[0]) == {"original_description": "账号密码交付，质保首登", "description_images": []}
 
 
 def test_warranty_scope_filters_groups_and_expanded_offers():
