@@ -177,8 +177,8 @@ def test_sponsor_campaign_preview_order_and_independent_expiry(client, monkeypat
     assert client.get("/api/v1/ads", params={"placement": "claude_detail"}).json()["items"] == []
 
 
-@pytest.mark.parametrize("placement", ["openai_feed", "openai_detail"])
-def test_openai_sponsor_placements_preserve_coupon_and_referral(client, placement):
+@pytest.mark.parametrize("placement", ["openai_feed", "openai_detail", "gemini_feed", "gemini_detail"])
+def test_brand_sponsor_placements_preserve_coupon_and_referral(client, placement):
     link = "https://llmp.org/register?aff=8YFXND89MCPY&promo=PRICEMEMO"
     response = client.post("/api/v1/admin/ads", headers=ADMIN, json={
         "placement": placement, "title": "GPT / Codex · 优惠码 PRICEMEMO",
@@ -188,6 +188,9 @@ def test_openai_sponsor_placements_preserve_coupon_and_referral(client, placemen
     items = client.get("/api/v1/ads", params={"placement": placement}).json()["items"]
     assert [(item["placement"], item["link_url"]) for item in items] == [(placement, link)]
     assert client.get("/api/v1/ads", params={"placement": "claude_detail"}).json()["items"] == []
+    other_brand = "openai" if placement.startswith("gemini") else "gemini"
+    assert client.get("/api/v1/ads", params={"placement": f"{other_brand}_feed"}).json()["items"] == []
+    assert client.get("/api/v1/ads", params={"placement": f"{other_brand}_detail"}).json()["items"] == []
 
 
 def test_relay_station_admin_crud_and_public_list(client, test_db):

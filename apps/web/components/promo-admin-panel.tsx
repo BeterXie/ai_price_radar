@@ -27,13 +27,15 @@ import {
 
 export const AD_PLACEMENT_LABELS: Record<AdPlacement, { label: string; hint: string }> = {
   home_hero: { label: "首页 · 赞助伙伴", hint: "当前报价下方，支持多个赞助；排序值越小越靠前，首位为主赞助卡。图片请使用方形品牌 Logo。" },
-  catalog_top: { label: "报价目录 · 筛选区右侧", hint: "通用目录广告；Claude、OpenAI 优先展示各自专属广告。Sidrune 仅在 Claude 报价区展示。" },
-  product_offers: { label: "商品页 · 筛选区右侧", hint: "标准商品工作区的紧凑广告；Claude、OpenAI 优先使用各自专属广告。Sidrune 仅在 Claude 商品页展示。" },
+  catalog_top: { label: "报价目录 · 筛选区右侧", hint: "通用目录广告；Claude、OpenAI、Gemini 优先展示各自专属广告。Sidrune 仅在 Claude 报价区展示。" },
+  product_offers: { label: "商品页 · 筛选区右侧", hint: "标准商品工作区的紧凑广告；Claude、OpenAI、Gemini 优先使用各自专属广告。Sidrune 仅在 Claude 商品页展示。" },
   relay_hub: { label: "中转站专区 · 顶部", hint: "/relays 品牌导航下方的独立横幅；图片请使用方形品牌 Logo。" },
   claude_feed: { label: "Claude · 筛选区右侧", hint: "Claude 分类和商品页的紧凑卡片，手机端顺排。详情广告未配置时也用于商品弹窗。图片使用品牌 Logo。" },
   claude_detail: { label: "Claude · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 Claude 报价区展示。" },
   openai_feed: { label: "OpenAI · 筛选区右侧", hint: "OpenAI 分类和商品页的紧凑卡片，手机端顺排。详情广告未配置时也用于商品弹窗。" },
   openai_detail: { label: "OpenAI · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 OpenAI 报价区展示。" },
+  gemini_feed: { label: "Gemini · 筛选区右侧", hint: "Gemini 分类和商品页的紧凑卡片，手机端顺排。详情广告未配置时也用于商品弹窗。" },
+  gemini_detail: { label: "Gemini · 商品详情弹窗", hint: "商品标题下方、店铺报价上方的右侧卡片，手机端顺排。仅在 Gemini 报价区展示。" },
   shop_submit: { label: "申请收录 · 商户服务赞助", hint: "提交来源页的独立赞助卡片，桌面位于表单旁，手机位于表单下方。展示一位赞助商，支持排期和点击统计。" },
   sidebar: { label: "预留 · 侧栏", hint: "暂未接入页面，供后续版式使用。" },
 };

@@ -1,6 +1,6 @@
 {
   "name": "ai-price-radar-web",
-  "version": "3.9.107",
+  "version": "3.9.108",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",

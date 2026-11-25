@@ -18,8 +18,8 @@ function catalogSponsor(items: AdSlotPublic[], brand: string): AdSlotPublic | un
 
 /** Brand targeting is resolved on the server, including product detail routes. */
 export async function getContextualAds(brand: string, fallbackPlacement?: AdPlacement): Promise<ContextualAds> {
-  if (brand === "Claude" || brand === "OpenAI") {
-    const prefix = brand === "Claude" ? "claude" : "openai";
+  if (brand === "Claude" || brand === "OpenAI" || brand === "Gemini") {
+    const prefix = brand.toLowerCase();
     const [feed, detail, fallback] = await Promise.all([
       getAdSlots(`${prefix}_feed`, 1),
       getAdSlots(`${prefix}_detail`, 1),

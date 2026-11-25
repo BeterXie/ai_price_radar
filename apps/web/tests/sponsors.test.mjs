@@ -49,12 +49,15 @@ test("Sidrune homepage and relay campaigns keep their configured links", async (
   assert.match(relayHtml, /placement=relay_hub/);
 });
 
-test("contextual slots separate Claude and OpenAI targeting and preserve placement URLs", async (context) => {
+test("contextual slots separate Claude, OpenAI and Gemini and preserve placement URLs", async (context) => {
   const calls = [];
+  const referral = "https://llmp.org/register?aff=8YFXND89MCPY&promo=PRICEMEMO";
   context.mock.method(globalThis, "fetch", async (url) => {
     const placement = new URL(url).searchParams.get("placement");
     calls.push(placement);
-    return Response.json({ enabled: true, items: [slot(placement.endsWith("_feed") ? 4 : 5, placement)] });
+    const item = slot(placement.endsWith("_feed") ? 4 : 5, placement);
+    if (placement.startsWith("openai_") || placement.startsWith("gemini_")) item.link_url = referral;
+    return Response.json({ enabled: true, items: [item] });
   });
   for (const brand of ["", "Google", "ChatGPT"]) assert.deepEqual(await getContextualAds(brand), {});
   assert.equal(calls.length, 0);
@@ -68,6 +71,14 @@ test("contextual slots separate Claude and OpenAI targeting and preserve placeme
   assert.deepEqual(calls.sort(), ["openai_detail", "openai_feed"]);
   assert.equal(openai.detail.placement, "openai_detail");
   assert.notEqual(openai.feed.link_url, ads.feed.link_url);
+  calls.length = 0;
+  const gemini = await getContextualAds("Gemini", "catalog_top");
+  assert.deepEqual(calls.sort(), ["catalog_top", "gemini_detail", "gemini_feed"]);
+  assert.equal(gemini.toolbar.placement, "gemini_feed");
+  assert.equal(gemini.detail.placement, "gemini_detail");
+  assert.equal(gemini.feed.link_url, referral);
+  assert.equal(gemini.detail.link_url, referral);
+  assert.equal(openai.feed.link_url, referral);
   context.mock.method(globalThis, "fetch", async () => Response.json({ enabled: false, items: [] }));
   assert.deepEqual(await getContextualAds("OpenAI"), { feed: undefined, detail: undefined });
 });
