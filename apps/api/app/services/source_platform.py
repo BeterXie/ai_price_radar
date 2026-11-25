@@ -157,6 +157,8 @@ def normalize_public_https_url(value: object) -> str:
         port = parsed.port
     except ValueError as exc:
         raise ValueError("来源地址端口无效") from exc
+    if port == 0:
+        raise ValueError("来源地址端口无效")
     rendered_host = f"[{host}]" if ":" in host else host
     netloc = f"{rendered_host}:{port}" if port and port != 443 else rendered_host
     return urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
@@ -214,9 +216,31 @@ def _16688_detection(url: str) -> SourceDetection | None:
     return SourceDetection("16688", source_url, source_url, f"16688-goods-{goods_no}")
 
 
+def kmdian_identity(value: object) -> SourceDetection | None:
+    """Recognize official public URLs; actual inventory is verified by the API importer."""
+    try:
+        parsed = urllib.parse.urlsplit(normalize_public_https_url(value))
+    except ValueError:
+        return None
+    if parsed.hostname not in {"www.kmdian.com", "kmdian.com"} or parsed.port not in (None, 443):
+        return None
+    path = parsed.path.rstrip("/")
+    code = r"([A-Za-z0-9_-]{1,100})"
+    shop = re.fullmatch(r"/shop/" + code, path)
+    goods = re.fullmatch(r"/(?:item|goods)/" + code, path)
+    if not (shop or goods):
+        return None
+    identity = shop.group(1) if shop else goods.group(1)
+    kind = "shop" if shop else "item"
+    url = f"https://www.kmdian.com/{kind}/{identity}"
+    return SourceDetection("kmdian", url, url, f"kmdian-{identity}" if shop else "")
+
+
 def prepare_source_submission(value: object) -> SourceDetection:
     """Normalize a submission without DNS resolution or outbound network access."""
     normalized = normalize_public_https_url(value)
+    if platform := kmdian_identity(normalized):
+        return platform
     if ldxp := _ldxp_detection(normalized):
         return SourceDetection("unknown", ldxp.source_url, ldxp.source_key, ldxp.shop_token)
     if platform := _16688_detection(normalized):

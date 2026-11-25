@@ -63,6 +63,17 @@ def test_offer_link_returns_exact_sku_even_with_identical_titles(catalog):
     assert data["is_comparable"] is False
 
 
+def test_kmdian_description_text_and_safe_images_are_available_in_both_detail_routes(catalog):
+    db, client, offer = catalog
+    offer.raw_product.raw_json = {'description':'<p>卡密小店说明</p><script>bad()</script>',
+        'description_images':['https://img.kmdian.com/a.jpg','javascript:alert(1)','https://evil.test/x','https://img.kmdian.com/a.jpg']}
+    db.commit()
+    for suffix in ('','/description'):
+        data = client.get(f'/api/v1/offers/{offer.id}{suffix}').json()
+        assert data['original_description'] == '卡密小店说明'
+        assert data['description_images'] == ['https://img.kmdian.com/a.jpg']
+
+
 def test_offer_link_reads_new_price_and_stock_after_snapshot_refresh(catalog):
     db, client, offer = catalog
     previous = get_current_snapshot(db)

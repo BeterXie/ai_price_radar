@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import os
 import re
 import ssl
 import time
+import tempfile
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from html.parser import HTMLParser
+from html import unescape
+from urllib.parse import urlsplit, unquote
 
 from price_radar_http import PinnedHTTPSClient
 
@@ -29,6 +34,86 @@ RAW_FIELDS = frozenset({
     "shop_name", "shop_url", "shop_code", "goods_no", "title", "product_url",
     "price_cent", "stock", "sales_count", "cover", "updated_at",
 })
+logger = logging.getLogger(__name__)
+
+
+def _check_public_content(description: str, category: str, images: list[str], api_key: str) -> None:
+    # Import lazily: the isolated Oracle worker imports the connector registry
+    # but never runs this main-host, credentialed connector.
+    from app.services.catalog import _plain_text
+    values = [description, category, _plain_text(description, limit=200_001), _plain_text(category, limit=200_001), *images]
+    if any(api_key in value or api_key in unquote(unescape(value)) for value in values):
+        raise ValueError("kmdian detail contains the API credential")
+
+
+def _write_cache(path: Path, data: dict) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=path.parent,suffix='.tmp',delete=False) as out:
+            temporary = Path(out.name)
+            json.dump(data,out,ensure_ascii=False)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:temporary.unlink(missing_ok=True)
+
+
+class _DescriptionImages(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.images: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.casefold() != "img" or len(self.images) >= 12:
+            return
+        src = dict(attrs).get("src") or ""
+        if len(src) > 2000:
+            return
+        try:
+            parsed = urlsplit(src)
+        except ValueError:
+            return
+        if (len(src) <= 2000 and parsed.scheme == "https" and parsed.hostname == "img.kmdian.com"
+                and parsed.netloc == "img.kmdian.com" and src not in self.images):
+            self.images.append(src)
+
+
+def _enrich_detail(record: dict[str, Any], client: PinnedHTTPSClient, api_key: str) -> None:
+    goods_no = record["variant_key"]
+    try:
+        # Public storefront API: never forward the privileged platform key.
+        response = client.get(f"https://www.kmdian.com/api/v1/products/{goods_no}", accept="application/json")
+    except ssl.SSLCertVerificationError:
+        raise
+    except (OSError, http.client.HTTPException):
+        raise SourceFetchError("kmdian product detail request failed") from None
+    if response.status != 200:
+        raise SourceFetchError(f"kmdian product detail returned HTTP {response.status}")
+    try:
+        document = json.loads(response.body)
+        data = document["data"]
+        product, shop = data["product"], data["shop"]
+        if type(document.get("code")) is not int or document["code"] != 0:
+            raise ValueError("invalid response code")
+        if product["goods_no"] != goods_no or shop["shop_code"] != record["raw_json"]["shop_code"]:
+            raise ValueError("mismatched identity")
+        description = product.get("description")
+        usage = product.get("usage_note")
+        category = data.get("category_name")
+        description = "" if description is None else description
+        usage = "" if usage is None else usage
+        category = "" if category is None else category
+        if not all(isinstance(value, str) for value in (description, usage, category)):
+            raise ValueError("invalid content types")
+        if len(description) + len(usage) > 200_000 or api_key in description + usage + category:
+            raise ValueError("invalid public content")
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("kmdian product detail identity or public content is invalid") from None
+    description = description + ("\n" + usage if usage else "")
+    parser = _DescriptionImages()
+    parser.feed(description)
+    _check_public_content(description, category, parser.images, api_key)
+    record["raw_json"].update(description=description, description_images=parser.images)
+    record["category_name"] = category
 
 
 def _integer(value: Any, field: str, *, minimum: int = 0) -> int:
@@ -49,6 +134,10 @@ def _record(item: Any, *, api_key: str) -> dict[str, Any]:
     for field in ("shop_name", "title", "shop_url", "product_url"):
         if not isinstance(item.get(field), str) or not item[field].strip():
             raise ValueError(f"kmdian {field} is missing or invalid")
+    for field, kind, identifier in (("shop_url", "shop", item['shop_code']), ("product_url", "item", item['goods_no'])):
+        parsed = urlsplit(PinnedHTTPSClient.normalize_url(item[field]))
+        if parsed.netloc not in {'kmdian.com','www.kmdian.com'} or parsed.path != f'/{kind}/{identifier}' or parsed.query:
+            raise ValueError("kmdian public URL does not match platform identity")
     stock = None if item.get("stock") is None else _integer(item["stock"], "stock")
     price_cent = _integer(item.get("price_cent"), "price_cent")
     encoded_item = json.dumps(item, ensure_ascii=False, default=str)
@@ -134,6 +223,7 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
         user_agent="AI-Price-Radar-Importer/1",
     )
     next_request_at = time.monotonic()
+    deadline = next_request_at + MAX_TASK_SECONDS
 
     def read_pass() -> tuple[list[dict[str, Any]], int]:
         nonlocal next_request_at
@@ -181,12 +271,80 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     # read it twice and only permit stale-offer pruning when the complete
     # product identity set agrees across both passes.
     if first_pages == 1:
-        yield from first_pass
-        return
-    first_ids = {(row["token"], row["product_key"]) for row in first_pass}
-    del first_pass
-    second_pass, _second_pages = read_pass()
-    second_ids = {(row["token"], row["product_key"]) for row in second_pass}
-    if first_ids != second_ids:
-        raise ValueError("kmdian catalog changed during pagination; retry the complete import")
-    yield from second_pass
+        records = first_pass
+    else:
+        first_ids = {(row["token"], row["product_key"]) for row in first_pass}
+        del first_pass
+        records, _second_pages = read_pass()
+        second_ids = {(row["token"], row["product_key"]) for row in records}
+        if first_ids != second_ids:
+            raise ValueError("kmdian catalog changed during pagination; retry the complete import")
+    cache_root = os.getenv('KMDIAN_DETAIL_CACHE_DIR','').strip()
+    if not cache_root and os.getenv('COLLECTOR_RESULTS_DIR','').strip():
+        cache_root = str(Path(os.environ['COLLECTOR_RESULTS_DIR'])/'kmdian-details')
+    cache_dir = Path(cache_root) if cache_root else None
+    completed_at = 0.0
+    if cache_dir:
+        try:
+            cache_dir.mkdir(parents=True,exist_ok=True)
+            if not os.access(cache_dir,os.W_OK):raise PermissionError('cache is not writable')
+            marker = cache_dir/'completed'
+            if marker.is_file():
+                try:completed_at=float(marker.read_text())
+                except (ValueError,OSError):pass
+            active_files = {r['variant_key']+'.json' for r in records}
+            for old in cache_dir.glob('*.json'):
+                try:
+                    if old.name not in active_files or time.time()-old.stat().st_mtime > 7*24*3600:old.unlink()
+                except FileNotFoundError:pass
+        except OSError:
+            logger.warning('KMDian detail cache unavailable; collection continues within its task budget')
+            cache_dir = None
+    for index, record in enumerate(records):
+        # The existing private result volume lets a later job resume verified
+        # detail work when a large catalog reaches the bounded task deadline.
+        cache_file = cache_dir / (record['variant_key']+'.json') if cache_dir else None
+        signature = [record['variant_key'],record['raw_json']['shop_code'],record['raw_json'].get('updated_at')]
+        if cache_file:
+            try:
+                if not cache_file.is_file() or cache_file.stat().st_size > 1024*1024:
+                    raise ValueError('no usable cached detail')
+                cached = json.loads(cache_file.read_text(encoding='utf-8'))
+                raw = cached['raw_json']
+                if not isinstance(raw, dict):
+                    raise ValueError('invalid cached detail')
+                age = time.time()-cached['saved_at']
+                if (cached['identity']==signature and (age < 6*3600 or cached['saved_at'] > completed_at and age < 7*24*3600)
+                        and isinstance(raw.get('description'),str) and isinstance(raw.get('description_images'),list)
+                        and all(isinstance(item,str) for item in raw['description_images']) and isinstance(cached.get('category_name'),str)):
+                    _check_public_content(raw['description'], cached['category_name'], raw['description_images'], api_key)
+                    record['raw_json'].update({k:raw[k] for k in ('description','description_images')})
+                    record['category_name']=cached['category_name']
+                    yield record
+                    records[index] = None
+                    continue
+            except (OSError,ValueError,KeyError,TypeError):
+                pass
+        if time.monotonic() + 22 >= deadline:
+            raise SourceFetchError('kmdian detail budget reached' + ('; verified details retained for the next job' if cache_dir else '; configure a private KMDIAN_DETAIL_CACHE_DIR to resume'))
+        delay = next_request_at - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        next_request_at = time.monotonic() + REQUEST_INTERVAL_SECONDS
+        # Independent per-product bounds prevent detail traffic from exhausting
+        # the credentialed list client's cumulative byte/time budget.
+        detail_client = PinnedHTTPSClient(max_response_bytes=1024*1024,max_task_bytes=1024*1024,
+            max_task_seconds=20,request_timeout=20,user_agent='AI-Price-Radar-Importer/1')
+        _enrich_detail(record, detail_client, api_key)
+        if cache_file:
+            try:
+                _write_cache(cache_file,{'identity':signature,'saved_at':time.time(),'category_name':record['category_name'],
+                    'raw_json':{k:record['raw_json'][k] for k in ('description','description_images')}})
+            except OSError:
+                logger.warning('KMDian detail cache write failed; collection continues within its task budget')
+                cache_dir = None
+        yield record
+        records[index] = None
+    if cache_dir:
+        try:(cache_dir/'completed').write_text(str(time.time()))
+        except OSError:logger.warning('KMDian detail cache completion marker could not be written')

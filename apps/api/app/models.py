@@ -199,7 +199,7 @@ class SourceIntake(Base):
         UniqueConstraint("source_type", "source_key", name="uq_source_intakes_source"),
         CheckConstraint(
             "source_type IN ('unknown', 'ldxp', 'merchant_json', 'dujiao_next', "
-            "'woocommerce', '16688', 'schema_org', 'acg_faka', 'other')",
+            "'woocommerce', '16688', 'kmdian', 'schema_org', 'acg_faka', 'other')",
             name="ck_source_intakes_type",
         ),
         CheckConstraint(

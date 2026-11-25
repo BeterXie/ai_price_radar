@@ -255,11 +255,17 @@ fi
 # container; configuration enters via --env-file only.
 PUBLIC_DATA_DIR="$ROOT/apps/web/public/data"
 mkdir -p "$PUBLIC_DATA_DIR"
+mkdir -p "$ROOT/data/kmdian-details"
+if [[ "$(id -u)" -eq 0 ]]; then
+  chown 10001:10001 "$ROOT/data/kmdian-details"
+  chmod 0700 "$ROOT/data/kmdian-details"
+fi
 
 IMPORTER_MOUNTS=(
   -v "$ROOT/pipeline:/workspace/pipeline:ro"
   -v "$PUBLIC_DATA_DIR:/workspace/apps/web/public/data"
   -v "$PUBLISH_DB:/tmp/ldxp_publish.db:ro"
+  -v "$ROOT/data/kmdian-details:/data/kmdian-details"
 )
 if [[ -f "$MERCHANT_SOURCES" ]]; then
   IMPORTER_MOUNTS+=(-v "$MERCHANT_SOURCES:/workspace/data/crawler/merchant_sources.json:ro")
@@ -276,6 +282,7 @@ docker run --rm \
   --network ai-price-radar_default \
   --env-file "$ROOT/.env" \
   -e PUBLIC_DATA_DIR=/workspace/apps/web/public/data \
+  -e KMDIAN_DETAIL_CACHE_DIR=/data/kmdian-details \
   "${IMPORTER_MOUNTS[@]}" \
   -w /workspace/pipeline \
   ai-price-radar-importer \

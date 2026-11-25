@@ -38,6 +38,8 @@ export function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sp
   const dialog = useRef<HTMLDialogElement>(null);
   const [shops, setShops] = useState<Offer[] | null>(quote.group && quote.group.offer_count > 1 ? null : [quote.offer]);
   const [description, setDescription] = useState(quote.offer.original_description || "");
+  const [descriptionImages, setDescriptionImages] = useState(quote.offer.description_images || []);
+  const [descriptionLoaded, setDescriptionLoaded] = useState(Boolean(quote.offer.original_description));
   const [failed, setFailed] = useState(false);
   const [descriptionFailed, setDescriptionFailed] = useState(false);
   const [refreshed, setRefreshed] = useState(false);
@@ -54,6 +56,9 @@ export function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sp
     let active = true;
     setFailed(false);
     setDescriptionFailed(false);
+    setDescription(quote.offer.original_description || "");
+    setDescriptionImages(quote.offer.description_images || []);
+    setDescriptionLoaded(Boolean(quote.offer.original_description));
     setShops(null);
     if (quote.group && quote.group.offer_count > 1) {
       void fetchGroupShopOffers(quote.slug, quote.group.fingerprint, filterQuery, snapshotId)
@@ -63,17 +68,21 @@ export function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sp
     if (!quote.offer.original_description && quote.offer.description_available) {
       void fetch(`${apiBase}/api/v1/offers/${quote.offer.id}/description`)
         .then((response) => response.ok ? response.json() : Promise.reject(new Error("description")))
-        .then((result: { original_description: string }) => { if (active) setDescription(result.original_description); })
+        .then((result: { original_description: string; description_images?: string[] }) => {
+          if (active) { setDescription(result.original_description); setDescriptionImages(result.description_images || []); setDescriptionLoaded(true); }
+        })
         .catch(() => { if (active) setDescriptionFailed(true); });
     }
     return () => { active = false; };
   }, [quote, snapshotId, filterQuery, attempt, standalone]);
   const displayedShops = standalone ? [quote.offer] : shops;
   const displayedDescription = standalone ? quote.offer.original_description : description;
+  const displayedImages = (standalone ? quote.offer.description_images || [] : descriptionImages)
+    .filter((url) => url.startsWith("https://img.kmdian.com/"));
   let descriptionFallback = "来源未提供商品描述。";
   if (!standalone) {
     if (descriptionFailed) descriptionFallback = "原文暂时无法加载。";
-    else if (quote.offer.description_available) descriptionFallback = "正在读取原文…";
+    else if (quote.offer.description_available && !descriptionLoaded) descriptionFallback = "正在读取原文…";
   }
   const Subheading = standalone ? "h2" : "h3";
   const shopSection = <section aria-label="店铺报价">
@@ -83,7 +92,11 @@ export function QuoteDetails({ quote, view, snapshotId, filterQuery, onClose, sp
       {displayedShops ? displayedShops.length ? <ul className="quote-shop-list">{displayedShops.map((offer) => <li key={offer.id}><div className="quote-shop-summary"><Link prefetch={false} href={`/shops/${encodeURIComponent(offer.shop_token)}`}>{offer.shop_name}</Link><div className="quote-shop-meta"><span>{quoteInventory(offer)}</span><span>{offer.source_platform_label}</span><time dateTime={offer.observed_at} title={exactTime(offer.observed_at)} suppressHydrationWarning>{relativeTime(offer.observed_at)}更新</time></div></div><strong>{money(offer.price, offer.currency)}</strong><Visit offer={offer} /></li>)}</ul> : <p role="status">当前条件下没有店铺报价。</p> : <p role="status">正在读取店铺报价…</p>}
   </section>;
   const descriptionSection = <section aria-label="商品详情">
-      <Subheading className="quote-detail-section-title">商品原文</Subheading><p className="quote-description">{displayedDescription || descriptionFallback}</p>
+      <Subheading className="quote-detail-section-title">商品原文</Subheading>
+      {(displayedDescription || !displayedImages.length) && <p className="quote-description">{displayedDescription || descriptionFallback}</p>}
+      {displayedImages.length > 0 && <div className="quote-description-images">{displayedImages.map((url, index) =>
+        <a key={url} href={url} target="_blank" rel="nofollow noreferrer"><img src={url} alt={`商品详情图片 ${index + 1}`} loading="lazy" decoding="async" referrerPolicy="no-referrer" /></a>
+      )}</div>}
       {descriptionFailed && <button className="quote-more" onClick={() => setAttempt((value) => value + 1)}>重试原文</button>}
       {quote.offer.risk_flags.length > 0 && <p className="quote-detail-warning">商品说明提到：{quote.offer.risk_flags.join("、")}</p>}
   </section>;

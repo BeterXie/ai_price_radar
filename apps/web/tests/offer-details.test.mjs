@@ -70,3 +70,13 @@ test("out-of-stock offers keep their identity and show current availability", as
   assert.match(html, /缺货/);
   assert.match(html, /20\.00/);
 });
+test("product description images render safely on the standalone detail page", async (context) => {
+  context.mock.method(globalThis, "fetch", async (url) => new URL(url).pathname === "/api/v1/offers/73"
+    ? Response.json({ ...offer, original_description: "商品说明", description_images: ["https://img.kmdian.com/detail.jpg", "javascript:alert(1)", "https://evil.test/image.jpg"] })
+    : Response.json({ enabled: false, items: [] }));
+  const html = renderToStaticMarkup(await renderPage({ params: Promise.resolve({ offerId: "73" }) }));
+  assert.match(html, /https:\/\/img\.kmdian\.com\/detail\.jpg/);
+  assert.match(html, /referrerPolicy="no-referrer"|referrerpolicy="no-referrer"/);
+  assert.doesNotMatch(html, /javascript:alert/);
+  assert.doesNotMatch(html, /evil.test/);
+});

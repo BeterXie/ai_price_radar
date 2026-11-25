@@ -71,6 +71,66 @@ def _payload(token: str = "ABC123", **extra):
     }
 
 
+def test_kmdian_official_submission_waits_for_platform_feed_not_generic_detector(api_client):
+    client, engine = api_client
+    response = client.post('/api/v1/shop-requests',json=_payload(shop_url='https://kmdian.com/shop/JOJO?ref=site'))
+    assert response.status_code == 201, response.text
+    with Session(engine) as db:
+        row = db.get(SourceIntake,response.json()['request_id'])
+        assert row.source_type == 'kmdian' and row.status == 'submitted'
+        assert row.source_url == 'https://www.kmdian.com/shop/JOJO'
+        assert row.approved_at is None
+    claimed = client.post('/api/v1/internal/source-detections/claim',headers={'X-Detector-Worker-Key':'detector-test'},json={})
+    assert claimed.status_code == 200
+    assert claimed.json() == []
+
+
+def test_kmdian_submission_does_not_mistake_imported_or_other_platform_shop_for_public_quotes(api_client):
+    client, engine = api_client
+    with Session(engine) as db:
+        db.add(Shop(token='kmdian-JOJO',platform='ldxp',source_url='https://other.test/shop/JOJO',is_visible=True))
+        db.commit()
+    response=client.post('/api/v1/shop-requests',json=_payload(shop_url='https://www.kmdian.com/shop/JOJO'))
+    assert response.status_code==201 and response.json()['status']=='submitted'
+    assert response.json()['workflow_status']=='submitted'
+
+
+def test_admin_cannot_route_unrelated_url_to_kmdian_platform_import(api_client):
+    client,engine=api_client
+    with Session(engine) as db:
+        intake=SourceIntake(source_type='other',source_key='https://merchant.example/',source_url='https://merchant.example/',status='pending_review',contact_email='')
+        db.add(intake);db.commit();identity=intake.id
+    for action in ('approve','platform'):
+        result=client.post(f'/api/v1/admin/source-intakes/{identity}/{action}',headers={'X-Admin-Key':'admin-test'},json={'platform':'kmdian'})
+        assert result.status_code==422
+
+
+def test_kmdian_historical_duplicate_has_clear_conversion_conflict_and_can_retry(api_client):
+    client,engine=api_client
+    with Session(engine) as db:
+        for platform in ('kmdian','other'):
+            row=SourceIntake(source_type=platform,detected_platform='kmdian',source_key='https://www.kmdian.com/shop/S1',
+                source_url='https://www.kmdian.com/shop/S1',status='no_products',contact_email='',approved_at=datetime.now(timezone.utc))
+            db.add(row);db.flush()
+        identity=row.id;db.commit()
+    result=client.post(f'/api/v1/admin/source-intakes/{identity}/redetect',headers={'X-Admin-Key':'admin-test'})
+    assert result.status_code==409
+    result=client.post(f'/api/v1/admin/source-intakes/{identity}/retry',headers={'X-Admin-Key':'admin-test'})
+    assert result.status_code==409
+
+
+@pytest.mark.parametrize('status',['published','no_products','disabled'])
+def test_kmdian_repeat_submission_reuses_historical_canonical_identity(api_client,status):
+    client,engine=api_client
+    with Session(engine) as db:
+        row=SourceIntake(source_type='other',detected_platform='kmdian',source_key='https://kmdian.com/shop/JOJO',
+            source_url='https://kmdian.com/shop/JOJO',status=status,contact_email='')
+        db.add(row);db.commit();identity=row.id
+    result=client.post('/api/v1/shop-requests',json=_payload(shop_url='https://www.kmdian.com/shop/JOJO')).json()
+    assert result['request_id']==identity and result['detected_platform']=='kmdian'
+    assert '等待平台 API 校验' not in result['detection_message']
+
+
 def _detect(client: TestClient, intake_id: int, *, platform: str = "ldxp", source_url: str = "", source_key: str = ""):
     headers = {"X-Detector-Worker-Key": "detector-test"}
     claimed = client.post(

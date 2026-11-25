@@ -91,6 +91,7 @@ class OfferPublic(BaseModel):
     original_name: str
     original_category: str
     original_description: str = ""
+    description_images: list[str] = Field(default_factory=list)
     description_available: bool = False
     goods_type: str
     price: Decimal | None
@@ -238,6 +239,7 @@ class GroupOffersResponse(BaseModel):
 class OfferDescriptionResponse(BaseModel):
     offer_id: int
     original_description: str
+    description_images: list[str] = Field(default_factory=list)
 
 
 class ShopProduct(BaseModel):
@@ -381,11 +383,11 @@ class ReportOut(BaseModel):
 class ShopRequestCreate(BaseModel):
     source_type: Literal[
         "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
-        "woocommerce", "schema_org", "acg_faka", "other", "independent",
+        "woocommerce", "kmdian", "schema_org", "acg_faka", "other", "independent",
     ] = "auto"
     declared_platform: Literal[
         "auto", "ldxp", "dujiao_next", "merchant_json", "merchant_feed", "16688",
-        "woocommerce", "schema_org", "acg_faka", "other", "independent",
+        "woocommerce", "kmdian", "schema_org", "acg_faka", "other", "independent",
     ] | None = None
     shop_url: HttpUrl
     shop_name: str = Field(default="", max_length=120)
@@ -469,11 +471,11 @@ class SourceIntakeReject(BaseModel):
 
 
 class SourceIntakeUpdatePlatform(BaseModel):
-    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "acg_faka", "other"]
+    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "kmdian", "merchant_json", "schema_org", "acg_faka", "other"]
 
 
 class SourceIntakeApprove(BaseModel):
-    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "merchant_json", "schema_org", "acg_faka", "other"] | None = None
+    platform: Literal["ldxp", "dujiao_next", "woocommerce", "16688", "kmdian", "merchant_json", "schema_org", "acg_faka", "other"] | None = None
 
 
 

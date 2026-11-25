@@ -23,6 +23,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
   const [note, setNote] = useState("");
   const [state, setState] = useState<SubmitState>("idle");
   const [detectionMessage, setDetectionMessage] = useState("");
+  const [workflowStatus, setWorkflowStatus] = useState("");
   const [validationMessage, setValidationMessage] = useState("");
   const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
   const requestSequence = useRef(0);
@@ -93,6 +94,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
       setRelay((value) => ({ ...value, api_key: "" }));
       if (sequence !== requestSequence.current) return;
       setDetectionMessage(result.detection_message);
+      setWorkflowStatus(result.workflow_status);
       setState(result.status === "already_known" ? "known" : result.status === "already_pending" ? "pending" : "submitted");
     } catch {
       if (sequence === requestSequence.current) setState("error");
@@ -102,7 +104,10 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
   const complete = state === "submitted" || state === "pending" || state === "known";
   const feedback: Record<Exclude<SubmitState, "idle" | "sending">, string> = {
     submitted: sourceType === "relay" ? "中转站申请已收到，审核通过后在中转站专区展示并开始接口检测。" : `${detectionMessage ? `${detectionMessage} ` : ""}申请已收到。审核通过并成功读取商品后，符合收录范围的报价会显示在目录中。`,
-    pending: `${detectionMessage ? `${detectionMessage} ` : ""}这个来源已经在审核队列中，无需重复提交。`,
+    pending: ["rejected", "disabled", "needs_re_review"].includes(workflowStatus)
+      ? "该申请已停止自动处理，请查看原申请的审核结果或联系管理员，无需重复提交。"
+      : workflowStatus === "validation_failed" ? detectionMessage || "该来源暂未发布，请查看原申请的检测结果。"
+      : `${detectionMessage ? `${detectionMessage} ` : ""}这个来源已经在审核队列中，无需重复提交。`,
     known: `${detectionMessage ? `${detectionMessage} ` : ""}系统中已有这条来源记录，无需重复提交。`,
     limited: "提交过于频繁，请稍后再试。",
     invalid: validationMessage || (sourceType === "relay" ? "请核对站点名称、公开展示资料、公开 HTTPS 地址、Base URL、检测密钥及模型 ID。" : "请输入可公开访问的 HTTPS 地址。不能使用本地、内部或带账号密码的 URL。"),
@@ -130,7 +135,10 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
   }
 
   if (complete) {
-    const resultTitle = state === "known" ? "来源已经收录" : state === "pending" ? "来源正在审核" : "申请已记录";
+    const resultTitle = state === "known" ? "来源已经收录"
+      : state === "pending" && ["rejected", "disabled", "needs_re_review"].includes(workflowStatus) ? "申请已停止处理"
+      : state === "pending" && workflowStatus === "validation_failed" ? "来源暂未发布"
+      : state === "pending" ? "来源正在审核" : "申请已记录";
     return (
       <section className="shop-submit-form evidence-callout" role="status" data-vds-layer="evidence">
         <span className="grid size-11 place-items-center rounded-[9px] bg-[color:var(--success-soft)] text-[color:var(--success)]"><CheckCircle size={25} weight="fill" /></span>

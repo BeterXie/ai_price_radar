@@ -92,7 +92,7 @@ type Report = {
   created_at: string;
 };
 
-type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "woocommerce" | "16688" | "schema_org" | "acg_faka" | "other";
+type SourceType = "unknown" | "ldxp" | "dujiao_next" | "merchant_json" | "woocommerce" | "16688" | "kmdian" | "schema_org" | "acg_faka" | "other";
 
 type SourceIntake = {
   id: number;
@@ -853,6 +853,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
     unknown: "待识别来源",
     ldxp: "链动小铺",
     "16688": "16688",
+    kmdian: "卡密小店",
     dujiao_next: "Dujiao-Next",
     woocommerce: "WooCommerce",
     schema_org: "Schema.org 独立站",
@@ -1384,6 +1385,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                             <option value="ldxp">链动小铺 (ldxp)</option>
                             <option value="dujiao_next" disabled>独角数卡 (dujiao_next - 已暂停)</option>
                             <option value="16688">16688发卡 (16688)</option>
+                            <option value="kmdian">卡密小店 (平台 API)</option>
                             <option value="woocommerce">WooCommerce</option>
                             <option value="acg_faka">异次元/ACG-Faka (acg_faka)</option>
                             <option value="merchant_json">商家 JSON Feed</option>

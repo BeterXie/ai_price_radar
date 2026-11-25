@@ -688,6 +688,10 @@ def _shop_has_product_url(db: Session, shop_token: str, url: str) -> bool:
     """True when ``url`` is a product page already imported for the given shop."""
     if not url or not inspect(db.connection()).has_table("raw_products"):
         return False
+    from app.services.source_platform import kmdian_identity
+    if (identity := kmdian_identity(url)) and '/item/' in identity.source_url:
+        return db.execute(text("SELECT 1 FROM raw_products rp JOIN shops s ON s.id=rp.shop_id WHERE s.token=:token AND s.platform='kmdian' AND rp.source_product_key=:key LIMIT 1"),
+            {'token':shop_token,'key':'kmdian:'+identity.source_url.rsplit('/',1)[-1]}).scalar_one_or_none() is not None
     return db.execute(text(
         "SELECT 1 FROM raw_products rp JOIN shops s ON s.id = rp.shop_id "
         "WHERE s.token = :token AND lower(rp.source_url) = lower(:url) LIMIT 1"
@@ -727,6 +731,7 @@ def enqueue_published_intake_notifications(
     published_at: datetime,
     preferred_shop_token: str | None = None,
     new_shop_tokens: set[str] | None = None,
+    transition_snapshot_id: int | None = None,
 ) -> None:
     conn = db.connection()
     inspector = inspect(conn)
@@ -782,11 +787,17 @@ def enqueue_published_intake_notifications(
     )
 
     if intake_status == "published":
+        if transition_snapshot_id is None and db.execute(text(
+            "SELECT 1 FROM notification_outbox WHERE dedupe_key LIKE :onboarded OR dedupe_key LIKE :goods LIMIT 1"
+        ), {'onboarded':f'source-intake:{intake_id}:shop_intake.onboarded:snapshot-%',
+            'goods':f'source-intake:{intake_id}:shop_intake.goods_added:snapshot-%'}).scalar_one_or_none():
+            return
         if is_product_request:
             event_type = "shop_intake.goods_added"
         else:
             event_type = "shop_intake.onboarded"
         dedupe_key = f"source-intake:{intake_id}:{event_type}"
+        if transition_snapshot_id is not None:dedupe_key += f":snapshot-{transition_snapshot_id}"
         already = db.execute(text(
             "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"
         ), {"key": dedupe_key}).scalar_one_or_none()
@@ -824,6 +835,7 @@ def enqueue_published_intake_notifications(
     elif intake_status == "no_products":
         event_type = "shop_intake.no_products"
         dedupe_key = f"source-intake:{intake_id}:shop_intake.no_products"
+        if transition_snapshot_id is not None:dedupe_key += f":snapshot-{transition_snapshot_id}"
 
         already = db.execute(text(
             "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"
@@ -1064,6 +1076,8 @@ def _publish_prepared_sources(
                     ).values(snapshot_id=previous_snapshot_id))
             imports = [*skipped_sources, *newly_skipped]
             published_at = utcnow()
+            from kmdian_intake import lock_intakes as lock_kmdian_intakes, allowed_records, finish_intakes, remove_denied_offers
+            kmdian_intakes = lock_kmdian_intakes(db)
             all_price_changes: list[Any] = []
             for spec in sources:
                 source_price_changes: list[Any] = []
@@ -1078,7 +1092,7 @@ def _publish_prepared_sources(
                             snapshot_id=snapshot.id,
                             products=products,
                             collected_price_changes=source_price_changes,
-                            records=records,
+                            records=allowed_records(records, kmdian_intakes) if spec.connector == "kmdian" else records,
                         )
                 except SourceImportError as exc:
                     if not isinstance(exc.__cause__, (SourceUnavailableError, SourceFetchError)):
@@ -1108,6 +1122,8 @@ def _publish_prepared_sources(
                     )
                 imports.append(imported)
                 intake_finished_at = utcnow()
+                if spec.connector == "kmdian":
+                    finish_intakes(db, kmdian_intakes, imported, snapshot.id, intake_finished_at)
                 for intake_id in spec.intake_ids:
                     intake_status = "published" if imported.public_offer_count > 0 else "no_products"
                     updated = db.execute(text(
@@ -1142,6 +1158,7 @@ def _publish_prepared_sources(
                     )
             if sources and all(item.status != "imported" for item in imports):
                 raise SourceImportError("all catalog sources are unavailable; keeping the previous snapshot")
+            remove_denied_offers(db, kmdian_intakes, snapshot.id)
             snapshot.offer_count = int(
                 db.scalar(select(func.count(Offer.id)).where(Offer.snapshot_id == snapshot.id)) or 0
             )

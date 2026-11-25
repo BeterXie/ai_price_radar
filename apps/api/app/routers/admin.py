@@ -97,6 +97,7 @@ from ..schemas import (
 from ..security import require_admin
 from ..services.offer_classification import classify_offer
 from ..services import bot_ai_settings
+from ..services.source_platform import kmdian_identity
 from ..services.promo import AD_SLOTS_ENABLED_KEY, RELAY_HUB_ENABLED_KEY
 from ..services.catalog import get_current_snapshot
 from ..services.community_skills import (
@@ -670,6 +671,30 @@ def _locked_source_intake(db: Session, intake_id: int) -> SourceIntake | None:
     )
 
 
+def _check_kmdian_conversion(db: Session, intake: SourceIntake) -> None:
+    identity = kmdian_identity(intake.source_url)
+    if not identity:
+        raise HTTPException(status_code=422, detail="卡密小店必须使用官方店铺或商品链接")
+    matches = [intake]
+    for other in db.scalars(select(SourceIntake).where(SourceIntake.id != intake.id,SourceIntake.source_type == 'kmdian')):
+        other_identity = kmdian_identity(other.source_url)
+        if other_identity and other_identity.source_key == identity.source_key:
+            matches.append(other)
+    keeper = min(matches,key=lambda row:(row.source_type!='kmdian' or row.source_key!=identity.source_key,row.id))
+    if keeper.id != intake.id:
+        raise HTTPException(status_code=409, detail=f"已有卡密小店申请 #{keeper.id}，请通过该申请重试；此历史记录已保留")
+    intake.source_url = identity.source_url
+    intake.source_key = identity.source_key
+
+
+def _commit_intake(db: Session) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="来源身份与已有申请冲突，请刷新后查看已有申请") from exc
+
+
 @router.get("/source-intakes", response_model=list[SourceIntakeOut])
 def source_intakes(status: str | None = None, db: Session = Depends(get_db)) -> list[SourceIntakeOut]:
     stmt = select(SourceIntake).order_by(SourceIntake.created_at.desc())
@@ -690,6 +715,8 @@ def approve_source_intake(
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status == "pending_review":
         target_platform = payload.platform if payload else None
+        if (target_platform or intake.source_type) == 'kmdian':
+            _check_kmdian_conversion(db, intake)
         if target_platform:
             intake.source_type = target_platform
             intake.detected_platform = target_platform
@@ -714,7 +741,7 @@ def approve_source_intake(
         if intake.source_type == "ldxp":
             intake.status = "queued"
             next_step = "等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "kmdian", "schema_org", "acg_faka"}:
             intake.status = "approved"
             next_step = "等待下一次完整目录发布"
         elif intake.source_type == "other":
@@ -750,7 +777,7 @@ def approve_source_intake(
                 f"当前状态：{next_step}；商品成功进入完整快照后才会正式收录。"
             ),
         )
-        db.commit()
+        _commit_intake(db)
     elif intake.status not in {"approved", "queued", "validating", "validated", "published", "onboarded"}:
         raise HTTPException(status_code=409, detail=f"cannot approve intake in status {intake.status}")
     return _source_intake_response(db, intake)
@@ -768,6 +795,8 @@ def update_source_intake_platform(
     if intake.status not in {"pending_review", "validation_failed", "no_products"}:
         raise HTTPException(status_code=409, detail=f"cannot change platform in status {intake.status}")
     platform = payload.platform
+    if platform == 'kmdian':
+        _check_kmdian_conversion(db, intake)
     intake.source_type = platform
     intake.detected_platform = platform
     if platform == "ldxp" and (ldxp := _ldxp_detection(intake.source_url)):
@@ -777,7 +806,7 @@ def update_source_intake_platform(
         intake.source_url = p16688.source_url
         intake.source_key = p16688.source_key
     intake.decision_note = f"管理员修改平台类型为 {platform}"
-    db.commit()
+    _commit_intake(db)
     return _source_intake_response(db, intake)
 
 
@@ -791,13 +820,16 @@ def redetect_source_intake(
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status not in {"pending_review", "validation_failed", "no_products"}:
         raise HTTPException(status_code=409, detail=f"cannot redetect intake in status {intake.status}")
+    is_kmdian = kmdian_identity(intake.source_url) is not None
+    if is_kmdian:_check_kmdian_conversion(db, intake)
     intake.status = "submitted"
-    intake.source_type = "unknown"
+    intake.source_type = "kmdian" if is_kmdian else "unknown"
+    intake.detected_platform = "unknown"
     intake.lease_expires_at = None
     intake.attempt_count += 1
     intake.decision_note = "管理员触发重新识别平台"
     intake.failure_reason = ""
-    db.commit()
+    _commit_intake(db)
     return _source_intake_response(db, intake)
 
 
@@ -839,13 +871,18 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
     if intake is None:
         raise HTTPException(status_code=404, detail="source intake not found")
     if intake.status in {"no_products", "validation_failed"}:
-        if intake.source_type == "unknown":
+        if intake.detected_platform == 'kmdian' and kmdian_identity(intake.source_url):
+            _check_kmdian_conversion(db, intake)
+            intake.source_type = 'kmdian'
+            intake.status = 'approved' if intake.approved_at else 'pending_review'
+            decision_note = '已重新排队，等待卡密小店平台 API 同步'
+        elif intake.source_type == "unknown":
             intake.status = "submitted"
             decision_note = "已重新排队，等待安全检测"
         elif intake.source_type == "ldxp":
             intake.status = "queued"
             decision_note = "已重新排队，等待链动小铺 Worker 验证"
-        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "schema_org", "acg_faka"}:
+        elif intake.source_type in {"dujiao_next", "merchant_json", "woocommerce", "16688", "kmdian", "schema_org", "acg_faka"}:
             intake.status = "approved" if intake.approved_at is not None else "pending_review"
             decision_note = (
                 "已恢复，等待下一次完整目录发布"
@@ -857,7 +894,7 @@ def retry_source_intake(intake_id: int, db: Session = Depends(get_db)) -> Source
         intake.lease_expires_at = None
         intake.finished_at = None
         intake.decision_note = decision_note
-        db.commit()
+        _commit_intake(db)
     elif intake.status not in {
         "submitted",
         "pending_review",

@@ -26,6 +26,7 @@ backups/
 dogfood-output/
 seo/
 data/crawler/
+data/kmdian-details/
 data/support/
 apps/web/public/support/
 apps/web/public/data/

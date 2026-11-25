@@ -1,5 +1,16 @@
 # 生产快速部署
 
+v3.9.109 增加卡密小店自动收录及商品图文详情。切换 API 前用新 API 镜像只读挂载发布源码，执行
+`python scripts/migrate_kmdian_intakes_v29.py`，先在临时 PostgreSQL 16 连续执行两次。
+本次仅扩展 source_intakes 的平台约束，不修改现有数据。官方卡密小店申请直接等待主站完整平台 API 校验，
+不把平台 Key 交给通用 detector 或甲骨文 Worker；保留现有 COLLECTOR_RELEASE。
+私有详情缓存使用现有采集结果目录（collector 发布）或 `data/kmdian-details`（Compose/完整刷新脚本），
+后者须由 uid/gid 10001 所有、权限 0700。缓存按来源更新时间校验；已完成批次 6 小时刷新，
+未完成批次最多保留 7 天以便断点续跑，商品消失后清理。超预算保留进度，不发布半批结果。
+切换后使用新的 importer 完成一轮 Oracle 全量结果与主站卡密小店的联合发布，核验新申请状态和商品文字/图片。
+应用回滚前若已有 kmdian 类型申请，应在备份后将其 source_type 转为 other、保留 detected_platform 和审核状态，
+以便旧版本的平台约束能读取；不可恢复整库或重启数据采集以绕过发布门禁。
+
 v3.9.103 无数据库迁移，修复 16688 收录检测仍走主站的问题。按 COLLECTOR_DEPLOY.md 同时升级 API、两地 detector 并配置 scope；保持 LDXP 浏览器在主站，Oracle collector 与 detector 同时运行。完成目标申请的真实检测、入库和公开报价验收后恢复原定时器状态。
 
 独立采集版本 v3.9.93 包含 v28 `collector_jobs` 表迁移，切换 API 前使用新 API 镜像和只读源码挂载执行
