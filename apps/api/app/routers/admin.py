@@ -675,10 +675,14 @@ def _check_kmdian_conversion(db: Session, intake: SourceIntake) -> None:
     identity = kmdian_identity(intake.source_url)
     if not identity:
         raise HTTPException(status_code=422, detail="卡密小店必须使用官方店铺或商品链接")
+    matches = [intake]
     for other in db.scalars(select(SourceIntake).where(SourceIntake.id != intake.id,SourceIntake.source_type == 'kmdian')):
         other_identity = kmdian_identity(other.source_url)
         if other_identity and other_identity.source_key == identity.source_key:
-            raise HTTPException(status_code=409, detail=f"已有卡密小店申请 #{other.id}，请通过该申请重试；此历史记录已保留")
+            matches.append(other)
+    keeper = min(matches,key=lambda row:(row.source_type!='kmdian' or row.source_key!=identity.source_key,row.id))
+    if keeper.id != intake.id:
+        raise HTTPException(status_code=409, detail=f"已有卡密小店申请 #{keeper.id}，请通过该申请重试；此历史记录已保留")
     intake.source_url = identity.source_url
     intake.source_key = identity.source_key
 

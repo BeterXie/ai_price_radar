@@ -227,6 +227,13 @@ def test_final_visible_text_including_category_cannot_reveal_key(api, field, val
     with pytest.raises(ValueError,match='credential'):list(kmdian.load_records(kmdian.API_URL))
 
 
+def test_percent_encoded_key_in_image_url_is_not_public(api):
+    api.responses=[page([product()])]
+    api.detail_override={'code':0,'data':{'product':{'goods_no':'KM07826776',
+        'description':'<img src="https://img.kmdian.com/test-app.test-%73ecret">'},'shop':{'shop_code':'S825584'}}}
+    with pytest.raises(ValueError,match='credential'):list(kmdian.load_records(kmdian.API_URL))
+
+
 def test_unfinished_detail_cache_survives_normal_refresh_ttl(api, monkeypatch, tmp_path):
     monkeypatch.setenv('COLLECTOR_RESULTS_DIR',str(tmp_path))
     monkeypatch.setattr(kmdian,'MAX_TASK_SECONDS',23)

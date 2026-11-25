@@ -104,8 +104,9 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
   const complete = state === "submitted" || state === "pending" || state === "known";
   const feedback: Record<Exclude<SubmitState, "idle" | "sending">, string> = {
     submitted: sourceType === "relay" ? "中转站申请已收到，审核通过后在中转站专区展示并开始接口检测。" : `${detectionMessage ? `${detectionMessage} ` : ""}申请已收到。审核通过并成功读取商品后，符合收录范围的报价会显示在目录中。`,
-    pending: ["validation_failed", "rejected", "disabled", "needs_re_review"].includes(workflowStatus)
-      ? detectionMessage || "请查看原申请的审核结果，无需重复提交。"
+    pending: ["rejected", "disabled", "needs_re_review"].includes(workflowStatus)
+      ? "该申请已停止自动处理，请查看原申请的审核结果或联系管理员，无需重复提交。"
+      : workflowStatus === "validation_failed" ? detectionMessage || "该来源暂未发布，请查看原申请的检测结果。"
       : `${detectionMessage ? `${detectionMessage} ` : ""}这个来源已经在审核队列中，无需重复提交。`,
     known: `${detectionMessage ? `${detectionMessage} ` : ""}系统中已有这条来源记录，无需重复提交。`,
     limited: "提交过于频繁，请稍后再试。",

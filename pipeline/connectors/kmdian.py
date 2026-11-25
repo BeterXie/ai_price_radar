@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from html.parser import HTMLParser
 from html import unescape
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 
 from price_radar_http import PinnedHTTPSClient
 
@@ -42,7 +42,7 @@ def _check_public_content(description: str, category: str, images: list[str], ap
     # but never runs this main-host, credentialed connector.
     from app.services.catalog import _plain_text
     values = [description, category, _plain_text(description, limit=200_001), _plain_text(category, limit=200_001), *images]
-    if any(api_key in value or api_key in unescape(value) for value in values):
+    if any(api_key in value or api_key in unquote(unescape(value)) for value in values):
         raise ValueError("kmdian detail contains the API credential")
 
 

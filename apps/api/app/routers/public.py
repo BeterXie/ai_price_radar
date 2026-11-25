@@ -1114,12 +1114,14 @@ def create_shop_request(
         .where(SourceIntake.source_key == source_key)
         .order_by(SourceIntake.id.desc())
     )
-    if existing is None and persisted_source_type == 'kmdian':
+    if persisted_source_type == 'kmdian':
+        matches = []
         for candidate in db.scalars(select(SourceIntake).where(SourceIntake.source_url.like('https://%kmdian.com/%')).order_by(SourceIntake.id.desc())):
             canonical = kmdian_identity(candidate.source_url)
             if canonical and canonical.source_key == source_key:
-                existing = candidate
-                break
+                matches.append(candidate)
+        if matches:
+            existing = min(matches,key=lambda row:(row.status not in {'rejected','disabled','needs_re_review'},row.source_key!=source_key,row.id))
     if existing is not None:
         db.commit()
         response_status = "already_known" if workflow_status(existing.status) == "published" else "already_pending"

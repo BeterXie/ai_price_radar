@@ -787,6 +787,11 @@ def enqueue_published_intake_notifications(
     )
 
     if intake_status == "published":
+        if transition_snapshot_id is None and db.execute(text(
+            "SELECT 1 FROM notification_outbox WHERE dedupe_key LIKE :onboarded OR dedupe_key LIKE :goods LIMIT 1"
+        ), {'onboarded':f'source-intake:{intake_id}:shop_intake.onboarded:snapshot-%',
+            'goods':f'source-intake:{intake_id}:shop_intake.goods_added:snapshot-%'}).scalar_one_or_none():
+            return
         if is_product_request:
             event_type = "shop_intake.goods_added"
         else:

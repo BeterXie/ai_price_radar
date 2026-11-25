@@ -91,6 +91,11 @@ def test_repeat_and_removed_catalog_update_intake_without_duplicate_notification
     publish_sources(db,[SourceSpec('kmdian',kmdian.API_URL)])
     assert [r.status for r in db.query(SourceIntake)]==['published','published']
     messages=db.query(NotificationOutbox).count()
+    from publish_catalog import enqueue_published_intake_notifications
+    from common import utcnow
+    for intake in db.query(SourceIntake):
+        enqueue_published_intake_notifications(db,intake_id=intake.id,intake_status='published',product_count=1,published_at=utcnow())
+    assert db.query(NotificationOutbox).count()==messages
     publish_sources(db,[SourceSpec('kmdian',kmdian.API_URL)])
     assert db.query(NotificationOutbox).count()==messages
     monkeypatch.setitem(CONNECTORS,'kmdian',lambda _:iter([]))
