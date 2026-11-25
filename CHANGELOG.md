@@ -2,6 +2,11 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.108] - 2026-11-25
+
+- Add independently managed Gemini sponsor placements beside catalog filters and in product quote detail dialogs, including Gemini product pages.
+- Reuse existing sponsored cards, registration links and ad scheduling. No database migration.
+
 ## [3.9.107] - 2026-11-25
 
 - Keep QQ bots connected when private price notifications are paused, so queries and the resume command remain available; unbinding still removes the connection.
