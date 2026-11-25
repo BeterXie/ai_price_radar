@@ -21,3 +21,6 @@ data
 *.db
 *.sqlite
 *.sqlite3
+.collector-runtime/
+collector/proxy/
+collector/secrets/

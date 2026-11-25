@@ -39,3 +39,6 @@ postgres_data/
 ~$*
 private_*/
 .DS_Store
+.collector-runtime/
+collector/proxy/
+collector/secrets/

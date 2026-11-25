@@ -14,6 +14,7 @@ COPY pipeline/connectors ./connectors
 COPY pipeline/currencies.py pipeline/storefront_catalog.py ./
 COPY apps/api/app/services/collector_protocol.py ./
 COPY collector/worker.py ./collector_worker.py
+COPY collector/source_cache.py ./source_cache.py
 COPY config/collection-keywords.json ./
 USER collector
 CMD ["python", "collector_worker.py"]

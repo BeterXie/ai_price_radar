@@ -1,5 +1,9 @@
 # 生产快速部署
 
+v3.9.110 增加甲骨文专用 16688 订阅出口和六小时成功数据缓存；按
+[COLLECTOR_DEPLOY.md](COLLECTOR_DEPLOY.md) 的“16688 订阅出口与刷新间隔”
+叠加配置部署独立采集节点。代理只经有限 CONNECT 网关，其他来源保持原路径。
+
 v3.9.109 增加卡密小店自动收录及商品图文详情。切换 API 前用新 API 镜像只读挂载发布源码，执行
 `python scripts/migrate_kmdian_intakes_v29.py`，先在临时 PostgreSQL 16 连续执行两次。
 本次仅扩展 source_intakes 的平台约束，不修改现有数据。官方卡密小店申请直接等待主站完整平台 API 校验，
