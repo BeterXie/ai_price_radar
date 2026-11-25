@@ -230,4 +230,4 @@ jobs:
       - name: Validate brand Compose overlay
         run: BRAND_RELEASE_TAG=ci docker compose -f docker-compose.yml -f docker-compose.pricememo.yml -f docker-compose.brands.yml config -q
       - name: Build crawler image
-        run: docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile crawler build crawler
+        run: docker compose -f docker-compose.yml -f docker-compose.pricememo.yml --profile crawler build --build-arg PIP_INDEX_URL=https://pypi.org/simple crawler
