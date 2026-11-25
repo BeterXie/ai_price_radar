@@ -731,6 +731,7 @@ def enqueue_published_intake_notifications(
     published_at: datetime,
     preferred_shop_token: str | None = None,
     new_shop_tokens: set[str] | None = None,
+    transition_snapshot_id: int | None = None,
 ) -> None:
     conn = db.connection()
     inspector = inspect(conn)
@@ -791,6 +792,7 @@ def enqueue_published_intake_notifications(
         else:
             event_type = "shop_intake.onboarded"
         dedupe_key = f"source-intake:{intake_id}:{event_type}"
+        if transition_snapshot_id is not None:dedupe_key += f":snapshot-{transition_snapshot_id}"
         already = db.execute(text(
             "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"
         ), {"key": dedupe_key}).scalar_one_or_none()
@@ -828,6 +830,7 @@ def enqueue_published_intake_notifications(
     elif intake_status == "no_products":
         event_type = "shop_intake.no_products"
         dedupe_key = f"source-intake:{intake_id}:shop_intake.no_products"
+        if transition_snapshot_id is not None:dedupe_key += f":snapshot-{transition_snapshot_id}"
 
         already = db.execute(text(
             "SELECT 1 FROM notification_outbox WHERE dedupe_key = :key"

@@ -502,7 +502,7 @@ def _offer_public(
         original_category=_plain_text(offer.raw_product.original_category, 300),
         original_description=description if include_description else "",
         description_images=_description_images(raw_json) if include_description else [],
-        description_available=isinstance(raw_description, str) and bool(raw_description.strip()),
+        description_available=(isinstance(raw_description, str) and bool(raw_description.strip())) or bool(_description_images(raw_json)),
         goods_type=_plain_text(raw_json.get("goods_type"), 120),
         price=offer.price,
         market_price=_raw_decimal(raw_json.get("market_price")),

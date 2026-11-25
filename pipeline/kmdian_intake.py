@@ -1,6 +1,8 @@
 """Reconcile official KMDian submissions against a successfully imported platform feed."""
 from sqlalchemy import inspect, select, text, update, func, or_
 from common import Offer, RawProduct, Shop, Product
+from common import utcnow
+from types import SimpleNamespace
 from app.services.source_platform import kmdian_identity
 
 
@@ -27,10 +29,15 @@ def remove_denied_offers(db, intakes, snapshot_id):
     if not denied:return
     rows = db.execute(select(Offer.id, Shop.source_url, RawProduct.source_url.label('product_url'))
         .join(Shop, Shop.id==Offer.shop_id).join(RawProduct, RawProduct.id==Offer.raw_product_id)
-        .where(Offer.snapshot_id==snapshot_id, Shop.platform=='kmdian')).mappings()
-    ids = [r['id'] for r in rows if any((identity:=kmdian_identity(r[k])) and identity.source_url in denied
-                                      for k in ('source_url','product_url'))]
-    if ids:db.execute(update(Offer).where(Offer.id.in_(ids)).values(snapshot_id=None))
+        .where(Offer.snapshot_id==snapshot_id, Shop.platform=='kmdian')).mappings().all()
+    removed = [r for r in rows if any((identity:=kmdian_identity(r[k])) and identity.source_url in denied
+                                    for k in ('source_url','product_url'))]
+    if removed:
+        ids = {r['id'] for r in removed}
+        db.execute(update(Offer).where(Offer.id.in_(ids)).values(snapshot_id=None))
+        affected = {identity.source_url for r in removed for k in ('source_url','product_url') if (identity:=kmdian_identity(r[k]))}
+        related = [r for r in intakes if r['status']=='published' and kmdian_identity(r['source_url']).source_url in affected]
+        finish_intakes(db,related,SimpleNamespace(offer_ids={r['id'] for r in rows}-ids,new_shop_tokens=set()),snapshot_id,utcnow())
 
 
 def finish_intakes(db, intakes, imported, snapshot_id, now):
@@ -52,7 +59,7 @@ def finish_intakes(db, intakes, imported, snapshot_id, now):
             if intake['status'] == 'published':
                 db.execute(text("UPDATE source_intakes SET status='no_products',product_count=0,decision_note='平台完整目录中已无对应商品，等待后续同步',updated_at=:now,finished_at=:now WHERE id=:id"),
                            {'id':intake['id'],'now':now})
-                enqueue_published_intake_notifications(db,intake_id=intake['id'],intake_status='no_products',product_count=0,published_at=now)
+                enqueue_published_intake_notifications(db,intake_id=intake['id'],intake_status='no_products',product_count=0,published_at=now,transition_snapshot_id=snapshot_id)
             continue  # An absent entry cannot approve a new submission.
         tokens = {row['token'] for row in matches}
         if len(tokens) != 1:raise ValueError('KMDian intake identity is ambiguous')
@@ -74,4 +81,4 @@ def finish_intakes(db, intakes, imported, snapshot_id, now):
              'note':'卡密小店平台 API 已核实，商品已发布' if count else '平台 API 已核实，暂未有可公开分类的商品'})
         if intake['status'] != status:
             enqueue_published_intake_notifications(db,intake_id=intake['id'],intake_status=status,product_count=count,
-                published_at=now,preferred_shop_token=matches[0]['token'],new_shop_tokens=imported.new_shop_tokens)
+                published_at=now,preferred_shop_token=matches[0]['token'],new_shop_tokens=imported.new_shop_tokens,transition_snapshot_id=snapshot_id)

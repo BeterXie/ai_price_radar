@@ -113,6 +113,7 @@ from ..services.source_platform import (
     canonical_source_platform,
     get_disabled_source_platforms,
     prepare_source_submission,
+    kmdian_identity,
     public_https_url_or_empty,
     source_platform_group,
     source_platform_label,
@@ -1113,6 +1114,12 @@ def create_shop_request(
         .where(SourceIntake.source_key == source_key)
         .order_by(SourceIntake.id.desc())
     )
+    if existing is None and persisted_source_type == 'kmdian':
+        for candidate in db.scalars(select(SourceIntake).where(SourceIntake.source_url.like('https://%kmdian.com/%')).order_by(SourceIntake.id.desc())):
+            canonical = kmdian_identity(candidate.source_url)
+            if canonical and canonical.source_key == source_key:
+                existing = candidate
+                break
     if existing is not None:
         db.commit()
         response_status = "already_known" if workflow_status(existing.status) == "published" else "already_pending"
@@ -1120,6 +1127,10 @@ def create_shop_request(
             detected_platform = existing.detected_platform
             if response_status == 'already_known':
                 detection_message = "该来源已由卡密小店平台 API 核实并收录，商品会自动同步。"
+            elif existing.status == 'no_products':
+                detection_message = "平台 API 已核实该来源，目前没有可公开的商品报价，后续同步会自动复查。"
+            elif existing.status in {'rejected','disabled','needs_re_review'}:
+                detection_message = "该申请已停止自动收录，请在原申请中查看审核结果或联系管理员。"
         return build_response(existing.status, response_status, request_id=existing.id)
 
     intake_values = {

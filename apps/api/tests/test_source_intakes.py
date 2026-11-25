@@ -116,7 +116,19 @@ def test_kmdian_historical_duplicate_has_clear_conversion_conflict_and_can_retry
     result=client.post(f'/api/v1/admin/source-intakes/{identity}/redetect',headers={'X-Admin-Key':'admin-test'})
     assert result.status_code==409
     result=client.post(f'/api/v1/admin/source-intakes/{identity}/retry',headers={'X-Admin-Key':'admin-test'})
-    assert result.status_code==200 and result.json()['status']=='approved'
+    assert result.status_code==409
+
+
+@pytest.mark.parametrize('status',['published','no_products','disabled'])
+def test_kmdian_repeat_submission_reuses_historical_canonical_identity(api_client,status):
+    client,engine=api_client
+    with Session(engine) as db:
+        row=SourceIntake(source_type='other',detected_platform='kmdian',source_key='https://kmdian.com/shop/JOJO',
+            source_url='https://kmdian.com/shop/JOJO',status=status,contact_email='')
+        db.add(row);db.commit();identity=row.id
+    result=client.post('/api/v1/shop-requests',json=_payload(shop_url='https://www.kmdian.com/shop/JOJO')).json()
+    assert result['request_id']==identity and result['detected_platform']=='kmdian'
+    assert '等待平台 API 校验' not in result['detection_message']
 
 
 def _detect(client: TestClient, intake_id: int, *, platform: str = "ldxp", source_url: str = "", source_key: str = ""):

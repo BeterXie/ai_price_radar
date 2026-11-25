@@ -217,6 +217,28 @@ def test_html_encoded_credential_never_reaches_public_description_or_images(api)
     with pytest.raises(ValueError,match='credential'):list(kmdian.load_records(kmdian.API_URL))
 
 
+@pytest.mark.parametrize('field,value', [('description','test-app.<script>ignored</script>test-secret'),
+    ('category_name','test-app.test-&#115;ecret')])
+def test_final_visible_text_including_category_cannot_reveal_key(api, field, value):
+    api.responses=[page([product()])]
+    data={'product':{'goods_no':'KM07826776'},'shop':{'shop_code':'S825584'}}
+    (data if field=='category_name' else data['product'])[field]=value
+    api.detail_override={'code':0,'data':data}
+    with pytest.raises(ValueError,match='credential'):list(kmdian.load_records(kmdian.API_URL))
+
+
+def test_unfinished_detail_cache_survives_normal_refresh_ttl(api, monkeypatch, tmp_path):
+    monkeypatch.setenv('COLLECTOR_RESULTS_DIR',str(tmp_path))
+    monkeypatch.setattr(kmdian,'MAX_TASK_SECONDS',23)
+    api.responses=[page([product(),product('KM2')])]
+    with pytest.raises(SourceFetchError):list(kmdian.load_records(kmdian.API_URL))
+    api.now += 10*3600
+    api.calls.clear();api.responses=[page([product(),product('KM2')])]
+    monkeypatch.setattr(kmdian,'MAX_TASK_SECONDS',100)
+    assert len(list(kmdian.load_records(kmdian.API_URL)))==2
+    assert [url.rsplit('/',1)[-1] for url,_,_,_ in api.calls if '/api/v1/products/' in url]==['KM2']
+
+
 def test_removed_product_details_are_pruned_from_private_cache(api, monkeypatch, tmp_path):
     monkeypatch.setenv('COLLECTOR_RESULTS_DIR',str(tmp_path))
     api.responses=[page([product()])]

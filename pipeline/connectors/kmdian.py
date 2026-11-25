@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import os
 import re
 import ssl
 import time
+import tempfile
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -32,6 +34,27 @@ RAW_FIELDS = frozenset({
     "shop_name", "shop_url", "shop_code", "goods_no", "title", "product_url",
     "price_cent", "stock", "sales_count", "cover", "updated_at",
 })
+logger = logging.getLogger(__name__)
+
+
+def _check_public_content(description: str, category: str, images: list[str], api_key: str) -> None:
+    # Import lazily: the isolated Oracle worker imports the connector registry
+    # but never runs this main-host, credentialed connector.
+    from app.services.catalog import _plain_text
+    values = [description, category, _plain_text(description, limit=200_001), _plain_text(category, limit=200_001), *images]
+    if any(api_key in value or api_key in unescape(value) for value in values):
+        raise ValueError("kmdian detail contains the API credential")
+
+
+def _write_cache(path: Path, data: dict) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',dir=path.parent,suffix='.tmp',delete=False) as out:
+            temporary = Path(out.name)
+            json.dump(data,out,ensure_ascii=False)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:temporary.unlink(missing_ok=True)
 
 
 class _DescriptionImages(HTMLParser):
@@ -88,9 +111,7 @@ def _enrich_detail(record: dict[str, Any], client: PinnedHTTPSClient, api_key: s
     description = description + ("\n" + usage if usage else "")
     parser = _DescriptionImages()
     parser.feed(description)
-    decoded = unescape(description)
-    if any(api_key in value for value in (decoded, re.sub(r'<[^>]*>', '', decoded), *parser.images)):
-        raise ValueError("kmdian detail contains the API credential")
+    _check_public_content(description, category, parser.images, api_key)
     record["raw_json"].update(description=description, description_images=parser.images)
     record["category_name"] = category
 
@@ -249,8 +270,9 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     # The API exposes no snapshot/version token. For a multi-page response,
     # read it twice and only permit stale-offer pruning when the complete
     # product identity set agrees across both passes.
-    records = first_pass
-    if first_pages != 1:
+    if first_pages == 1:
+        records = first_pass
+    else:
         first_ids = {(row["token"], row["product_key"]) for row in first_pass}
         del first_pass
         records, _second_pages = read_pass()
@@ -261,26 +283,41 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
     if not cache_root and os.getenv('COLLECTOR_RESULTS_DIR','').strip():
         cache_root = str(Path(os.environ['COLLECTOR_RESULTS_DIR'])/'kmdian-details')
     cache_dir = Path(cache_root) if cache_root else None
+    completed_at = 0.0
     if cache_dir:
-        cache_dir.mkdir(parents=True,exist_ok=True)
-        active_files = {r['variant_key']+'.json' for r in records}
-        for old in cache_dir.glob('*.json'):
-            if old.name not in active_files or time.time()-old.stat().st_mtime > 6*3600:
-                old.unlink()
+        try:
+            cache_dir.mkdir(parents=True,exist_ok=True)
+            if not os.access(cache_dir,os.W_OK):raise PermissionError('cache is not writable')
+            marker = cache_dir/'completed'
+            if marker.is_file():
+                try:completed_at=float(marker.read_text())
+                except (ValueError,OSError):pass
+            active_files = {r['variant_key']+'.json' for r in records}
+            for old in cache_dir.glob('*.json'):
+                try:
+                    if old.name not in active_files or time.time()-old.stat().st_mtime > 7*24*3600:old.unlink()
+                except FileNotFoundError:pass
+        except OSError:
+            logger.warning('KMDian detail cache unavailable; collection continues within its task budget')
+            cache_dir = None
     for index, record in enumerate(records):
         # The existing private result volume lets a later job resume verified
         # detail work when a large catalog reaches the bounded task deadline.
         cache_file = cache_dir / (record['variant_key']+'.json') if cache_dir else None
         signature = [record['variant_key'],record['raw_json']['shop_code'],record['raw_json'].get('updated_at')]
-        if cache_file and cache_file.is_file() and cache_file.stat().st_size <= 1024*1024:
+        if cache_file:
             try:
+                if not cache_file.is_file() or cache_file.stat().st_size > 1024*1024:
+                    raise ValueError('no usable cached detail')
                 cached = json.loads(cache_file.read_text(encoding='utf-8'))
                 raw = cached['raw_json']
                 if not isinstance(raw, dict):
                     raise ValueError('invalid cached detail')
-                if (cached['identity']==signature and time.time()-cached['saved_at'] < 6*3600
+                age = time.time()-cached['saved_at']
+                if (cached['identity']==signature and (age < 6*3600 or cached['saved_at'] > completed_at and age < 7*24*3600)
                         and isinstance(raw.get('description'),str) and isinstance(raw.get('description_images'),list)
-                        and isinstance(cached.get('category_name'),str) and api_key not in json.dumps(cached)):
+                        and all(isinstance(item,str) for item in raw['description_images']) and isinstance(cached.get('category_name'),str)):
+                    _check_public_content(raw['description'], cached['category_name'], raw['description_images'], api_key)
                     record['raw_json'].update({k:raw[k] for k in ('description','description_images')})
                     record['category_name']=cached['category_name']
                     yield record
@@ -300,10 +337,14 @@ def load_records(source: str | Path) -> Iterable[dict[str, Any]]:
             max_task_seconds=20,request_timeout=20,user_agent='AI-Price-Radar-Importer/1')
         _enrich_detail(record, detail_client, api_key)
         if cache_file:
-            cache_file.parent.mkdir(parents=True,exist_ok=True)
-            temp = cache_file.with_suffix('.tmp')
-            temp.write_text(json.dumps({'identity':signature,'saved_at':time.time(),'category_name':record['category_name'],
-                'raw_json':{k:record['raw_json'][k] for k in ('description','description_images')}},ensure_ascii=False),encoding='utf-8')
-            temp.replace(cache_file)
+            try:
+                _write_cache(cache_file,{'identity':signature,'saved_at':time.time(),'category_name':record['category_name'],
+                    'raw_json':{k:record['raw_json'][k] for k in ('description','description_images')}})
+            except OSError:
+                logger.warning('KMDian detail cache write failed; collection continues within its task budget')
+                cache_dir = None
         yield record
         records[index] = None
+    if cache_dir:
+        try:(cache_dir/'completed').write_text(str(time.time()))
+        except OSError:logger.warning('KMDian detail cache completion marker could not be written')

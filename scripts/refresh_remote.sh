@@ -258,6 +258,7 @@ mkdir -p "$PUBLIC_DATA_DIR"
 mkdir -p "$ROOT/data/kmdian-details"
 if [[ "$(id -u)" -eq 0 ]]; then
   chown 10001:10001 "$ROOT/data/kmdian-details"
+  chmod 0700 "$ROOT/data/kmdian-details"
 fi
 
 IMPORTER_MOUNTS=(
