@@ -117,6 +117,7 @@ from ..services.source_platform import (
     public_https_url_or_empty,
     source_platform_group,
     source_platform_label,
+    public_source_platform_column,
     workflow_status,
 )
 
@@ -764,7 +765,7 @@ def meta(db: Session = Depends(get_db)) -> MetaResponse:
     source_platform_ids = {
         source_platform_group(value)
         for value in db.scalars(
-            select(Shop.platform)
+            select(public_source_platform_column(Shop.platform, Shop.source_url))
             .join(Offer, Offer.shop_id == Shop.id)
             .join(Product, Offer.product_id == Product.id)
             .where(*offer_conditions)

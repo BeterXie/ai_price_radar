@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Check, EyeSlash, Trash, X } from "@phosphor-icons/react";
 import { CANDIDATE_STATUS_LABELS, candidateQuery, candidateStatusLabel, funnelFromRuns, runStatusLabel } from "@/lib/source-discovery";
+import { publicSourcePlatform } from "@/lib/source-intake.mjs";
 
 type Run = {
   id: number;
@@ -50,6 +51,7 @@ type Candidate = {
 const PLATFORM_LABELS: Record<string, string> = {
   unknown: "未识别",
   ldxp: "链动小铺",
+  yunmao: "云猫寄售",
   dujiao_next: "Dujiao-Next（已暂停）",
   merchant_json: "商家 Feed",
   woocommerce: "WooCommerce",
@@ -255,7 +257,7 @@ export function SourceDiscoveryPanel({ apiBase, headers }: { apiBase: string; he
                 <div className="min-w-0">
                   <p className="break-all text-sm font-medium">{candidate.canonical_url}</p>
                   <p className="mono mt-1 text-xs text-black/40">
-                    #{candidate.id} · {PLATFORM_LABELS[candidate.detected_platform] || candidate.detected_platform} · {candidateStatusLabel(candidate.status)} · AI {candidate.ai_product_count}/{candidate.total_product_count} · 尝试 {candidate.attempt_count}
+                    #{candidate.id} · {PLATFORM_LABELS[publicSourcePlatform(candidate.detected_platform, candidate.detected_source_url || candidate.canonical_url)] || candidate.detected_platform} · {candidateStatusLabel(candidate.status)} · AI {candidate.ai_product_count}/{candidate.total_product_count} · 尝试 {candidate.attempt_count}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

@@ -493,6 +493,40 @@ def test_promote_is_idempotent_and_does_not_duplicate_intakes(client, engine):
         assert len(list(db.scalars(select(SourceIntake)))) == intake_count_before
 
 
+def test_admin_candidate_filters_separate_yunmao_from_ldxp(client, engine):
+    with Session(engine) as db:
+        for host, detected_url in (
+            ("pay.ldxp.cn", "https://pay.ldxp.cn/shop/shared"),
+            ("catfk.com", "https://catfk.com/shop/shared"),
+            ("catfk.com", ""),
+            ("catfk.com.example.com", "https://catfk.com.example.com/shop/shared"),
+        ):
+            url = f"https://{host}/shop/shared{'-pending' if not detected_url else ''}"
+            db.add(SourceCandidate(
+                discovered_url=url,
+                canonical_url=url,
+                candidate_key=url,
+                detected_platform="ldxp",
+                detected_source_url=detected_url,
+            ))
+        db.commit()
+
+    for platform, host in (("yunmao", "catfk.com"), ("ldxp", "pay.ldxp.cn")):
+        response = client.get(
+            "/api/v1/admin/source-candidates",
+            headers=ADMIN_HEADERS,
+            params={"detected_platform": platform},
+        )
+        assert response.status_code == 200
+        assert response.headers["X-Total-Count"] == "2"
+        urls = {row["canonical_url"] for row in response.json()}
+        assert f"https://{host}/shop/shared" in urls
+        if platform == "yunmao":
+            assert urls == {"https://catfk.com/shop/shared", "https://catfk.com/shop/shared-pending"}
+        else:
+            assert "https://catfk.com.example.com/shop/shared" in urls
+
+
 def test_admin_candidate_actions_and_filters(client):
     upsert(client, "https://admin-one.example.com", hint="dujiao_next", source="bing")
     upsert(client, "https://admin-one.example.com/other", hint="dujiao_next", source="github:owner/repo")

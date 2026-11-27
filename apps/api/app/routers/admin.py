@@ -120,6 +120,7 @@ from ..services.source_platform import (
     _16688_detection,
     _ldxp_detection,
     public_https_url_or_empty,
+    public_source_platform_column,
     workflow_status,
 )
 
@@ -1002,7 +1003,10 @@ def source_candidates(
     if status:
         conditions.append(SourceCandidate.status == status)
     if detected_platform:
-        conditions.append(SourceCandidate.detected_platform == detected_platform)
+        conditions.append(public_source_platform_column(
+            SourceCandidate.detected_platform,
+            func.coalesce(func.nullif(SourceCandidate.detected_source_url, ""), SourceCandidate.canonical_url),
+        ) == detected_platform)
     if discovered_by:
         if db.get_bind().dialect.name == "postgresql":
             from sqlalchemy.dialects.postgresql import JSONB

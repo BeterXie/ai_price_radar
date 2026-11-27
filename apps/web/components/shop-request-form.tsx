@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useRef, useState } from "react";
 import { CheckCircle, Storefront } from "@phosphor-icons/react";
-import { isValidPublicSourceUrl, SOURCE_INTAKE_COPY, SOURCE_INTAKE_OPTIONS, type IntakeSourceType } from "@/lib/source-intake.mjs";
+import { isValidPublicSourceUrl, shopRequestSourceType, SOURCE_INTAKE_COPY, SOURCE_INTAKE_OPTIONS, type IntakeSourceType } from "@/lib/source-intake.mjs";
 import { RelayProbeFields, type RelayProbeDraft } from "@/components/relay-probe-fields";
 import { RelayGroupFields, groupInputs, type RelayGroupDraft } from "@/components/relay-group-fields";
 import { RelayProfileFields, EMPTY_RELAY_PROFILE, relayProfileInputs, relayProfileError } from "@/components/relay-profile-fields";
@@ -61,7 +61,7 @@ export function ShopRequestForm({ initialSourceType = "ldxp" }: { initialSourceT
           ...relay, ...relayProfileInputs(profile), groups: groupInputs(groups), name: shopName.trim(), url: shopUrl.trim(),
           contact: contact.trim(), note: note.trim(), authorization_confirmed: true,
         } : {
-          source_type: sourceType === "kmdian" ? "independent" : sourceType,
+          source_type: shopRequestSourceType(sourceType),
           shop_url: shopUrl.trim(),
           shop_name: shopName.trim(),
           contact: contact.trim(),

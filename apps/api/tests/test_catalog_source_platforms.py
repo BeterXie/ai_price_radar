@@ -36,6 +36,61 @@ def _offer(db: Session, *, snapshot: CatalogSnapshot, product: Product, shop: Sh
     ))
 
 
+def test_yunmao_is_separate_from_ldxp_in_quotes_shops_and_filters():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        snapshot = CatalogSnapshot(source="test", published_at=datetime.now(timezone.utc))
+        product = Product(slug="muse-account", platform="MUSE", display_name="MUSE 账号")
+        official = Shop(token="SAME", name="Official", source_url="https://wzyp.cn/shop/SAME", platform="ldxp")
+        yunmao = Shop(token="catfk:SAME", name="Yunmao", source_url="https://catfk.com/shop/SAME", platform="ldxp")
+        db.add_all([snapshot, product, official, yunmao])
+        db.flush()
+        _offer(db, snapshot=snapshot, product=product, shop=official, key="official")
+        _offer(db, snapshot=snapshot, product=product, shop=yunmao, key="yunmao")
+        db.commit()
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        client = TestClient(app)
+        assert client.get("/api/v1/meta").json()["source_platforms"] == [
+            {"id": "ldxp", "label": "链动小铺"}, {"id": "yunmao", "label": "云猫寄售"},
+        ]
+        for source, token, label in [("ldxp", "SAME", "链动小铺"), ("yunmao", "catfk:SAME", "云猫寄售")]:
+            params = {"source_platform": source}
+            groups = client.get("/api/v1/catalog/groups", params=params)
+            assert groups.status_code == 200
+            assert groups.json()["offer_total"] == 1
+            representative = groups.json()["items"][0]["representative"]
+            assert representative["shop_token"] == token
+            assert representative["source_platform"] == source
+            assert representative["source_platform_label"] == label
+
+            offers_response = client.get("/api/v1/products/muse-account/offers", params=params)
+            assert offers_response.status_code == 200
+            offers = offers_response.json()
+            assert len(offers["items"]) == 1
+            assert offers["items"][0]["source_platform"] == source
+            detail = client.get("/api/v1/products/muse-account", params=params).json()
+            assert detail["offer_count"] == 1
+            assert detail["offer_groups"][0]["representative"]["source_platform"] == source
+
+            shops = client.get("/api/v1/shops/cards", params=params).json()
+            assert shops["total"] == 1
+            assert shops["items"][0]["token"] == token
+            assert shops["items"][0]["source_platform_label"] == label
+            shop = client.get(f"/api/v1/shops/{token}").json()
+            assert shop["platform"] == shop["source_platform"] == source
+            assert shop["source_platform_label"] == label
+        assert client.get("/api/v1/shops/cards", params={"source_platform": "independent"}).json()["total"] == 0
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
 def test_catalog_api_separates_brand_and_current_snapshot_source_platforms():
     engine = create_engine(
         "sqlite://",
