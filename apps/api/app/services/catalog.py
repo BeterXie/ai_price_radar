@@ -36,6 +36,8 @@ from .source_health import source_health
 from .source_platform import (
     get_disabled_source_platforms,
     public_https_url_or_empty,
+    public_source_platform,
+    public_source_platform_column,
     source_kind,
     source_kind_label,
     source_platform_filter_values,
@@ -394,7 +396,7 @@ def _apply_offer_filters(stmt, filters: OfferFilters, search_scope: str = ""):
     if filters.search:
         stmt = _apply_search(stmt, filters.search, search_scope)
     if filters.source_platform:
-        stmt = stmt.where(Shop.platform.in_(source_platform_filter_values(filters.source_platform)))
+        stmt = stmt.where(public_source_platform_column(Shop.platform, Shop.source_url).in_(source_platform_filter_values(filters.source_platform)))
     if filters.delivery_type == "account":
         stmt = stmt.where(Offer.delivery_type.in_(("finished_account", "semi_finished_account")))
     elif filters.delivery_type:
@@ -456,8 +458,7 @@ def _offer_sort_key(offer: Offer | Row):
         offer.currency != PRICE_CURRENCY,
         offer.currency,
         offer.price is None,
-        offer.price is not None and offer.price < MIN_TRUSTED_PRICE,
-        offer.price or Decimal("999999"),
+        offer.price if offer.price is not None else Decimal("0"),
         -offer.observed_at.timestamp(),
         offer.id,
     )
@@ -494,8 +495,8 @@ def _offer_public(
         product_name=product.display_name if product and product.is_visible else "",
         shop_token=offer.shop.token,
         shop_name=offer.shop.name or offer.shop.token,
-        source_platform=offer.shop.platform,
-        source_platform_label=source_platform_label(offer.shop.platform),
+        source_platform=public_source_platform(offer.shop.platform, offer.shop.source_url),
+        source_platform_label=source_platform_label(offer.shop.platform, offer.shop.source_url),
         source_kind=source_kind(offer.shop.platform),
         source_kind_label=source_kind_label(source_kind(offer.shop.platform)),
         original_name=offer.raw_product.original_name,
@@ -756,7 +757,7 @@ def _price_trend(
         OfferHistory.observed_at >= cutoff,
     ]
     if source_platform:
-        conditions.append(Shop.platform.in_(source_platform_filter_values(source_platform)))
+        conditions.append(public_source_platform_column(Shop.platform, Shop.source_url).in_(source_platform_filter_values(source_platform)))
     disabled_platforms = get_disabled_source_platforms()
     if disabled_platforms:
         conditions.append(Shop.platform.notin_(disabled_platforms))
@@ -872,17 +873,9 @@ def get_product_group_page(
         in_stock_prices = [
             offer.price
             for offer in in_stock
-            if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
-        ] or [
-            offer.price
-            for offer in in_stock
             if offer.currency == PRICE_CURRENCY and offer.price is not None
         ]
         all_prices = [
-            offer.price
-            for offer in group
-            if offer.currency == PRICE_CURRENCY and offer.price is not None and offer.price >= MIN_TRUSTED_PRICE
-        ] or [
             offer.price
             for offer in group
             if offer.currency == PRICE_CURRENCY and offer.price is not None
@@ -941,17 +934,12 @@ def get_catalog_group_page(
     comparable_rank = case((Offer.is_comparable.is_(True), 0), else_=1)
     currency_rank = case((Offer.currency == PRICE_CURRENCY, 0), else_=1)
     price_missing_rank = case((Offer.price.is_(None), 1), else_=0)
-    low_price_rank = case(
-        (and_(Offer.price.is_not(None), Offer.price < MIN_TRUSTED_PRICE), 1),
-        else_=0,
-    )
     representative_order = (
         stock_rank,
         comparable_rank,
         currency_rank,
         Offer.currency.asc(),
         price_missing_rank,
-        low_price_rank,
         Offer.price.asc(),
         Offer.observed_at.desc(),
         Offer.id.asc(),
@@ -972,7 +960,6 @@ def get_catalog_group_page(
         comparable_rank.label("comparable_rank"),
         currency_rank.label("currency_rank"),
         price_missing_rank.label("price_missing_rank"),
-        low_price_rank.label("low_price_rank"),
         func.row_number().over(
             partition_by=(Offer.product_id, fingerprint),
             order_by=representative_order,
@@ -986,8 +973,6 @@ def get_catalog_group_page(
     in_stock = ranked.c.stock_status == "in_stock"
     cny_price = and_(ranked.c.currency == PRICE_CURRENCY, ranked.c.price.is_not(None))
     in_stock_cny = and_(in_stock, cny_price)
-    trusted_price = and_(cny_price, ranked.c.price >= MIN_TRUSTED_PRICE)
-    in_stock_trusted = and_(in_stock, trusted_price)
     grouped = select(
         ranked.c.product_id,
         ranked.c.fingerprint,
@@ -997,22 +982,17 @@ def get_catalog_group_page(
         representative_value(ranked.c.currency_rank).label("representative_currency_rank"),
         representative_value(ranked.c.currency).label("representative_currency"),
         representative_value(ranked.c.price_missing_rank).label("representative_price_missing_rank"),
-        representative_value(ranked.c.low_price_rank).label("representative_low_price_rank"),
         representative_value(ranked.c.price).label("representative_price"),
         representative_value(ranked.c.observed_at).label("representative_observed_at"),
         func.count().label("offer_count"),
         func.count(func.distinct(ranked.c.shop_id)).label("shop_count"),
         func.sum(case((in_stock, 1), else_=0)).label("in_stock_count"),
         func.coalesce(
-            func.min(case((in_stock_trusted, ranked.c.price), else_=None)),
             func.min(case((in_stock_cny, ranked.c.price), else_=None)),
-            func.min(case((trusted_price, ranked.c.price), else_=None)),
             func.min(case((cny_price, ranked.c.price), else_=None)),
         ).label("lowest_price"),
         func.coalesce(
-            func.max(case((in_stock_trusted, ranked.c.price), else_=None)),
             func.max(case((in_stock_cny, ranked.c.price), else_=None)),
-            func.max(case((trusted_price, ranked.c.price), else_=None)),
             func.max(case((cny_price, ranked.c.price), else_=None)),
         ).label("highest_price"),
         func.sum(func.coalesce(ranked.c.click_count, 0)).label("click_count"),
@@ -1028,7 +1008,6 @@ def get_catalog_group_page(
             grouped.c.representative_currency_rank,
             grouped.c.representative_currency,
             grouped.c.representative_price_missing_rank,
-            grouped.c.representative_low_price_rank,
             grouped.c.representative_price,
             grouped.c.representative_observed_at.desc(),
             grouped.c.representative_id,
@@ -1727,9 +1706,9 @@ def get_shop_detail(
         token=shop.token,
         name=shop.name or shop.token,
         source_url=public_https_url_or_empty(shop.source_url),
-        platform=shop.platform,
-        source_platform=shop.platform,
-        source_platform_label=source_platform_label(shop.platform),
+        platform=public_source_platform(shop.platform, shop.source_url),
+        source_platform=public_source_platform(shop.platform, shop.source_url),
+        source_platform_label=source_platform_label(shop.platform, shop.source_url),
         source_kind=source_kind(shop.platform),
         source_kind_label=source_kind_label(source_kind(shop.platform)),
         status=shop.status,
@@ -1825,7 +1804,7 @@ def list_public_shops(
     base = base.where(Offer.snapshot_id == snapshot.id if snapshot is not None else false())
 
     if platform_filter:
-        base = base.where(Shop.platform.in_(source_platform_filter_values(platform_filter)))
+        base = base.where(public_source_platform_column(Shop.platform, Shop.source_url).in_(source_platform_filter_values(platform_filter)))
 
     if q:
         base = base.where(Shop.name.ilike(f"%{q}%"))
@@ -1873,8 +1852,8 @@ def list_public_shops(
             token=row.Shop.token,
             name=row.Shop.name,
             source_url=public_https_url_or_empty(row.Shop.source_url),
-            source_platform=canonical_source_platform(row.Shop.platform),
-            source_platform_label=source_platform_label(row.Shop.platform),
+            source_platform=public_source_platform(row.Shop.platform, row.Shop.source_url),
+            source_platform_label=source_platform_label(row.Shop.platform, row.Shop.source_url),
             offer_count=row.offer_count or 0,
             in_stock_count=int(row.in_stock_count or 0),
             product_count=row.product_count or 0,

@@ -30,6 +30,31 @@ def db(tmp_path: Path):
         session.close()
 
 
+def test_export_sorts_sub_yuan_quotes_and_preserves_yunmao_identity(db, tmp_path):
+    product = ensure_products(db)["chatgpt-plus"]
+    shop = Shop(token="catfk:SAME", name="Yunmao", source_url="https://catfk.com/shop/SAME", platform="ldxp")
+    snapshot = CatalogSnapshot(source="test", published_at=utcnow())
+    db.add_all([shop, snapshot])
+    db.flush()
+    for index, price in enumerate(["2.00", "0.50", "0.22", "0.00"]):
+        raw = RawProduct(shop_id=shop.id, source_product_key=str(index), original_name=f"ChatGPT account {index}")
+        db.add(raw)
+        db.flush()
+        db.add(Offer(
+            raw_product_id=raw.id, product_id=product.id, shop_id=shop.id,
+            price=Decimal(price), currency="CNY", stock_status="in_stock",
+            delivery_type="finished_account", is_comparable=True,
+            snapshot_id=snapshot.id, observed_at=utcnow(),
+        ))
+    db.commit()
+    export_public_snapshot(db, snapshot_id=snapshot.id, output_dir=tmp_path)
+    data = json.loads((tmp_path / "v1" / "snapshots" / f"{snapshot.id}.json").read_text(encoding="utf-8"))
+    exported = next(row for row in data["products"] if row["slug"] == product.slug)
+    for key in ("offers", "top_5_offers"):
+        assert [offer["price"] for offer in exported[key]] == [0.00, 0.22, 0.50, 2.00]
+        assert {offer["source_platform"] for offer in exported[key]} == {"yunmao"}
+
+
 @pytest.mark.parametrize("source_platform", ["ldxp", "dujiao_next"])
 def test_export_public_snapshot(db, tmp_path: Path, source_platform):
     products = ensure_products(db)

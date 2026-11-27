@@ -1,5 +1,6 @@
 export const SOURCE_INTAKE_OPTIONS = [
   { id: "ldxp", label: "链动小铺" },
+  { id: "yunmao", label: "云猫寄售" },
   { id: "16688", label: "16688" },
   { id: "kmdian", label: "卡密小店" },
   { id: "independent", label: "独立站点" },
@@ -7,6 +8,11 @@ export const SOURCE_INTAKE_OPTIONS = [
 ];
 
 export const SOURCE_INTAKE_COPY = {
+  yunmao: {
+    fieldLabel: "云猫寄售店铺地址",
+    placeholder: "https://catfk.com/shop/xxxxx",
+    hint: "填写云猫寄售的公开店铺链接，系统会核验并同步店铺商品。",
+  },
   ldxp: {
     fieldLabel: "公开店铺地址",
     placeholder: "https://pay.ldxp.cn/shop/xxxxx",
@@ -33,6 +39,16 @@ export const SOURCE_INTAKE_COPY = {
     hint: "填写公开官网；接口 Base URL 在下方单独填写。",
   },
 };
+
+export function publicSourcePlatform(sourceType, sourceUrl = "") {
+  return sourceType === "ldxp" && sourceUrl.trim().toLowerCase().startsWith("https://catfk.com/")
+    ? "yunmao" : sourceType;
+}
+
+export function shopRequestSourceType(sourceType) {
+  if (sourceType === "yunmao") return "ldxp";
+  return sourceType === "kmdian" ? "independent" : sourceType;
+}
 
 export function isValidPublicSourceUrl(value) {
   try {

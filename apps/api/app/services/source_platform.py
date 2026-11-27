@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 SOURCE_PLATFORM_LABELS = {
     "ldxp": "链动小铺",
+    "yunmao": "云猫寄售",
     "dujiao_next": "Dujiao-Next",
     "merchant_json": "商家 Feed",
     "woocommerce": "WooCommerce",
@@ -21,14 +22,16 @@ SOURCE_PLATFORM_LABELS = {
 
 SOURCE_PLATFORM_GROUP_LABELS = {
     "ldxp": "链动小铺",
+    "yunmao": "云猫寄售",
     "16688": "16688",
     "kmdian": "卡密小店",
     "independent": "独立站点",
 }
-INDEPENDENT_SOURCE_PLATFORMS = frozenset(SOURCE_PLATFORM_LABELS) - {"ldxp", "16688", "kmdian"}
+INDEPENDENT_SOURCE_PLATFORMS = frozenset(SOURCE_PLATFORM_LABELS) - {"ldxp", "yunmao", "16688", "kmdian"}
 
 SOURCE_KIND_BY_PLATFORM = {
     "ldxp": "public_page",
+    "yunmao": "public_page",
     "dujiao_next": "public_api",
     "merchant_json": "public_feed",
     "woocommerce": "public_api",
@@ -73,8 +76,31 @@ def canonical_source_platform(value: str) -> str:
     return PLATFORM_ALIASES.get(normalized, normalized)
 
 
-def source_platform_label(value: str) -> str:
+def public_source_platform(value: str, source_url: str = "") -> str:
+    """Resolve marketplace identity separately from its shared intake connector."""
     platform = canonical_source_platform(value)
+    normalized_url = str(source_url or "").strip().casefold()
+    if platform == "ldxp" and any(
+        normalized_url.startswith(f"https://{host}/") for host in LDXP_INDEPENDENT_HOSTS
+    ):
+        return "yunmao"
+    return platform
+
+
+def public_source_platform_column(platform_column, source_url_column):
+    from sqlalchemy import and_, case, func, or_
+
+    return case(
+        (and_(platform_column == "ldxp", or_(*(
+            func.lower(func.trim(source_url_column)).like(f"https://{host}/%")
+            for host in LDXP_INDEPENDENT_HOSTS
+        ))), "yunmao"),
+        else_=platform_column,
+    )
+
+
+def source_platform_label(value: str, source_url: str = "") -> str:
+    platform = public_source_platform(value, source_url)
     if platform == "independent":
         return SOURCE_PLATFORM_GROUP_LABELS[platform]
     return SOURCE_PLATFORM_LABELS.get(platform, SOURCE_PLATFORM_LABELS["other"])

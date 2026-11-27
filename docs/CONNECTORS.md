@@ -100,7 +100,7 @@ The Source Detector worker claims candidates with `FOR UPDATE SKIP LOCKED` lease
 
 ## LDXP-compatible independent host
 
-`https://catfk.com/shop/{token}` uses the existing LDXP intake and crawler workflow while retaining `catfk.com` for the shop, API and product URLs. Public API payloads use the original token. Internally the merchant identity is `catfk:{token}` and the intake key is case-folded; long tokens use `catfk:sha256:` plus the hash of the case-folded token. This keeps an independent shop separate from an official LDXP shop with the same upstream token. A recognized application still follows the configured intake approval and publication policy.
+`https://catfk.com/shop/{token}` is 云猫寄售, a separate marketplace from 链动小铺. Public catalog labels, platform filters and snapshot quotes identify it as `yunmao`. It uses the existing LDXP intake and crawler workflow while retaining `catfk.com` for the shop, API and product URLs. Public API payloads use the original token. Internally the merchant identity is `catfk:{token}` and the intake key is case-folded; long tokens use `catfk:sha256:` plus the hash of the case-folded token. This keeps a Yunmao shop separate from an official LDXP shop with the same upstream token. A recognized application still follows the configured intake approval and publication policy.
 
 ## Account plan names
 

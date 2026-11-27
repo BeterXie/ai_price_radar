@@ -23,6 +23,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { money, stockLabel } from "@/lib/format";
+import { publicSourcePlatform } from "@/lib/source-intake.mjs";
 import { SourceDiscoveryPanel } from "@/components/source-discovery-panel";
 import { SkillsAdminPanel } from "@/components/skills-admin-panel";
 import { CouponsAdminPanel } from "@/components/coupons-admin-panel";
@@ -1382,7 +1383,7 @@ export function AdminPanel({ previewState }: { previewState?: "error" }) {
                             onChange={(e) => updateIntakePlatform(intake.id, e.target.value)}
                             className="rounded-[6px] border hairline bg-[color:var(--panel)] px-2 py-0.5 text-xs text-[color:var(--ink)]"
                           >
-                            <option value="ldxp">链动小铺 (ldxp)</option>
+                            <option value="ldxp">{publicSourcePlatform("ldxp", intake.source_url) === "yunmao" ? "云猫寄售" : "链动小铺"}</option>
                             <option value="dujiao_next" disabled>独角数卡 (dujiao_next - 已暂停)</option>
                             <option value="16688">16688发卡 (16688)</option>
                             <option value="kmdian">卡密小店 (平台 API)</option>

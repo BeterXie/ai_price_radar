@@ -18,6 +18,7 @@ from common import CatalogSnapshot, Offer, Product, RawProduct, Shop, session_fo
 from app.services.catalog_vocabulary import (
     BRAND_GROUPS, account_access, normalize_search, product_search_aliases,
 )
+from app.services.source_platform import public_source_platform
 
 logger = logging.getLogger(__name__)
 
@@ -371,7 +372,7 @@ def _export_public_snapshot(
             currency = (offer.currency or "CNY").upper()
             observed = _as_utc(offer.observed_at) or published_dt
             return (is_stock, is_comp, currency != "CNY", currency, offer.price is None,
-                    price_val < 1, price_val, -observed.timestamp(), offer.id)
+                    price_val, -observed.timestamp(), offer.id)
 
         sorted_rows = sorted(rows, key=offer_sort_key)
         public_offers = []
@@ -383,7 +384,7 @@ def _export_public_snapshot(
                 "id": offer.id,
                 "shop_token": shop.token,
                 "shop_name": shop.name or shop.token,
-                "source_platform": shop.platform,
+                "source_platform": public_source_platform(shop.platform, shop.source_url),
                 "source_url": offer.source_url or raw.source_url or shop.source_url,
                 "original_name": raw.original_name,
                 "price": float(offer.price) if offer.price is not None else None,

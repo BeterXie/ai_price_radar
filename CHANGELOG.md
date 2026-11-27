@@ -2,6 +2,14 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.113] - 2026-11-27
+
+- Sort sub-yuan offers by their actual price across product and catalog groups instead of demoting every quote below CNY 1. Zero prices retain their numeric value, and missing prices stay last.
+- Include sub-yuan quotes in group price ranges so the representative, displayed minimum and expanded offers agree. Preserve low-price warnings and trusted-price statistics.
+- Apply the same price order to exported snapshot quotes and their top-five lists.
+- Identify catfk.com as 云猫寄售 (`yunmao`) in quotes, shop pages, source filters, snapshots, intake UI and discovery administration, separately from 链动小铺. Keep the proven shared intake/crawler connector and existing merchant identities.
+- Add regression coverage for MUSE, ChatGPT and mailbox products, stock states, duplicate offers, pagination and marketplace isolation. No database migration or collection changes; the updated snapshot exporter requires a full publication after deployment.
+
 ## [3.9.112] - 2026-11-26
 
 - Load Microsoft Clarity by default on ai.pricememo.cn and remove the Clarity consent popup. Google Analytics, when configured separately, keeps its own consent prompt.
