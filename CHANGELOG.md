@@ -2,6 +2,12 @@
 
 All notable changes to AI Price Memory are documented in this file.
 
+## [3.9.113] - 2026-11-27
+
+- Sort sub-yuan offers by their actual price across product and catalog groups instead of demoting every quote below CNY 1. Zero prices retain their numeric value, and missing prices stay last.
+- Include sub-yuan quotes in group price ranges so the representative, displayed minimum and expanded offers agree. Preserve low-price warnings and trusted-price statistics.
+- Add regression coverage for MUSE, ChatGPT and mailbox products, stock states, duplicate offers and pagination. No database migration or collection changes.
+
 ## [3.9.112] - 2026-11-26
 
 - Load Microsoft Clarity by default on ai.pricememo.cn and remove the Clarity consent popup. Google Analytics, when configured separately, keeps its own consent prompt.

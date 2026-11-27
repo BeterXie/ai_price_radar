@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -20,6 +21,7 @@ from app.services.catalog import (
     get_product_history,
     get_product_group_page,
     get_product_offer_page,
+    get_shop_detail,
     list_product_cards,
     list_public_shop_tokens,
 )
@@ -520,8 +522,10 @@ def test_trusted_price_excludes_extreme_comparable_outlier():
         assert detail.lowest_price == Decimal("15.00")
         assert detail.related_lowest_price == Decimal("0.01")
         assert detail.trusted_offer_count == 2
-        assert detail.offer_groups[0].lowest_price == Decimal("15.00")
-        assert detail.offer_groups[0].representative.price == Decimal("15.00")
+        assert detail.offer_groups[0].lowest_price == Decimal("0.01")
+        assert detail.offer_groups[0].representative.price == Decimal("0.01")
+        assert detail.offer_groups[0].representative.low_price_warning
+        assert detail.offer_groups[0].representative.is_trusted_price is False
 
 
 def test_catalog_aggregates_and_filters_do_not_mix_currencies():
@@ -601,6 +605,78 @@ def test_catalog_aggregates_and_filters_do_not_mix_currencies():
         usd_offers = get_group_offers(db, product.slug, "same-fingerprint", currency="USD")
         assert usd_offers is not None
         assert [(offer.currency, offer.price) for offer in usd_offers] == [("USD", Decimal("1.00"))]
+
+
+@pytest.mark.parametrize("slug,platform,name", [
+    ("muse-account", "MUSE", "MUSE 账号"),
+    ("chatgpt-plus", "OpenAI", "ChatGPT Plus"),
+    ("email-gmail", "邮箱", "Gmail 邮箱"),
+])
+@pytest.mark.parametrize("stock_status", ["in_stock", "out_of_stock"])
+def test_sub_yuan_prices_sort_consistently_across_public_pages(slug, platform, name, stock_status):
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        product = Product(slug=slug, platform=platform, display_name=name)
+        shop = Shop(token="price-order-shop", name="Price order shop", source_url="https://example.com/shop")
+        db.add_all([product, shop])
+        db.flush()
+        for index, (fingerprint, amount) in enumerate([
+            ("higher", "8.00"), ("shared", "2.00"), ("shared", "0.50"),
+            ("cheaper", "0.22"), ("free", "0.00"), ("missing", None),
+        ]):
+            raw = RawProduct(
+                shop_id=shop.id, source_product_key=str(index), original_name=f"{name} {index}",
+                first_seen_at=now, last_seen_at=now,
+            )
+            db.add(raw)
+            db.flush()
+            db.add(Offer(
+                raw_product_id=raw.id, product_id=product.id, shop_id=shop.id,
+                price=Decimal(amount) if amount is not None else None,
+                stock_status=stock_status, currency="CNY", delivery_type="finished_account",
+                is_comparable=True, item_fingerprint=fingerprint,
+                source_url=f"https://example.com/item/{index}", observed_at=now,
+            ))
+        _publish_offers(db)
+
+        expected_groups = [Decimal("0.00"), Decimal("0.22"), Decimal("0.50"), Decimal("8.00"), None]
+        expected_offers = [Decimal("0.00"), Decimal("0.22"), Decimal("0.50"), Decimal("2.00"), Decimal("8.00"), None]
+        detail = get_product_detail(db, slug)
+        assert detail is not None
+        assert [group.representative.price for group in detail.offer_groups] == expected_groups
+        shared = next(group for group in detail.offer_groups if group.fingerprint == "shared")
+        assert shared.lowest_price == Decimal("0.50")
+        assert shared.highest_price == Decimal("2.00")
+        assert shared.representative.low_price_warning
+        assert shared.representative.is_trusted_price is False
+
+        catalog, total, offer_total, *_ = get_catalog_group_page(
+            db, product_slug=slug, offset=0, limit=10, filters=OfferFilters(),
+        )
+        assert total == 5 and offer_total == 6
+        assert [group.representative.price for group in catalog] == expected_groups
+        assert [group.lowest_price for group in catalog] == expected_groups
+        assert catalog[2].highest_price == Decimal("2.00")
+        assert catalog[2].representative.low_price_warning
+
+        page, total, offer_total = get_product_group_page(
+            db, product.id, offset=2, limit=2, filters=OfferFilters(),
+        )
+        assert total == 5 and offer_total == 6
+        assert [group.representative.price for group in page] == expected_groups[2:4]
+        catalog_page, *_ = get_catalog_group_page(
+            db, product_slug=slug, offset=2, limit=2, filters=OfferFilters(),
+        )
+        assert [group.representative.price for group in catalog_page] == expected_groups[2:4]
+
+        expanded = get_group_offers(db, slug, "shared")
+        assert expanded is not None
+        assert [offer.price for offer in expanded] == [Decimal("0.50"), Decimal("2.00")]
+        shop_detail = get_shop_detail(db, shop.token)
+        assert shop_detail is not None
+        assert [offer.price for offer in shop_detail.offers] == expected_offers
 
 
 def test_in_stock_low_price_offers_sorted_at_front_before_higher_prices():
