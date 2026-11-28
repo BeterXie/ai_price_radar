@@ -74,7 +74,7 @@ def clock(monkeypatch):
 
 
 def add_intake(db, now, *, source_type="16688", **overrides):
-    url = "https://www.16688.com.cn/shop/S878919" if source_type == "16688" else "https://retry.example"
+    url = "https://www.16688.store/shop/S878919" if source_type == "16688" else "https://retry.example"
     values = dict(
         source_type=source_type, detected_platform=source_type, source_key=url,
         source_url=url, shop_name="Retry shop", contact_email="retry@example.invalid",
@@ -91,9 +91,9 @@ def goods(now, key="PLUS", title="ios正规plus年卡全程质保", *, platform=
     return dict(
         token="16688-S878919" if platform == "16688" else "retry-shop",
         shop_name="Retry shop",
-        shop_url="https://www.16688.com.cn/shop/S878919" if platform == "16688" else "https://retry.example",
+        shop_url="https://www.16688.store/shop/S878919" if platform == "16688" else "https://retry.example",
         source_platform=platform, product_key=key, product_name=title,
-        product_url=f"https://www.16688.com.cn/goods/{key}", listed_price="135",
+        product_url=f"https://www.16688.store/goods/{key}", listed_price="135",
         currency="CNY", stock_count=1, product_status="in_stock", collected_at=now.isoformat(),
     )
 

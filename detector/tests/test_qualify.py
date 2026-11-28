@@ -343,13 +343,13 @@ def test_dujiao_product_api_qualifies_ai_product():
 
 def test_16688_alias_qualifies_and_uses_canonical_shop_number():
     client = Fake16688Client()
-    result = qualify_candidate("https://www.16688.com.cn/shop/HARVEY", "16688", client=client)
+    result = qualify_candidate("https://www.16688.store/shop/HARVEY", "16688", client=client)
     assert result.status == "detected"
     assert result.detected_platform == "16688"
-    assert result.detected_source_key == result.detected_source_url == "https://www.16688.com.cn/shop/S343514"
+    assert result.detected_source_key == result.detected_source_url == "https://www.16688.store/shop/S343514"
     assert result.total_product_count == 2
     assert result.ai_product_count == 1
-    assert result.sample_products[0]["url"] == "https://www.16688.com.cn/goods/G1"
+    assert result.sample_products[0]["url"] == "https://www.16688.store/goods/G1"
     assert result.fingerprints == ["16688-public-api"]
     assert result.confidence_score == 88
     assert len(client.post_calls) == 3

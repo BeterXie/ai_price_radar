@@ -118,7 +118,7 @@ def bing_16688_queries(keywords: Sequence[str] = ()) -> list[str]:
         "VPS",
     ]
     return [
-        f'site:16688.com.cn/shop "{term}"'
+        f'site:16688.store/shop "{term}"'
         for term in high_value_terms
     ]
 

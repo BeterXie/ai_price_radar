@@ -38,8 +38,8 @@ def test_scheduler_deduplicates_active_catalog_but_allows_discovery(runtime):
 def test_partial_migration_omits_ldxp_from_oracle_manifest(runtime, monkeypatch):
     from app.models import SourceIntake
     db, _ = runtime
-    db.add(SourceIntake(source_type='16688', detected_platform='16688', source_key='https://www.16688.com.cn/shop/S1',
-        source_url='https://www.16688.com.cn/shop/S1',contact_email='',status='approved'))
+    db.add(SourceIntake(source_type='16688', detected_platform='16688', source_key='https://www.16688.store/shop/S1',
+        source_url='https://www.16688.store/shop/S1',contact_email='',status='approved'))
     db.commit()
     monkeypatch.setenv('COLLECTOR_LDXP_ENABLED', 'false')
     result = enqueue(db, 'scan', 'test')
@@ -54,14 +54,14 @@ def test_oracle_publication_preserves_newer_local_ldxp_prices(runtime, monkeypat
     db,directory=runtime
     write_job_bundle(db,directory,ldxp_record())
     publish_ready(db,directory,release='test')
-    db.add(SourceIntake(source_type='16688',detected_platform='16688',source_key='https://www.16688.com.cn/shop/S1',
-        source_url='https://www.16688.com.cn/shop/S1',contact_email='',status='approved'))
+    db.add(SourceIntake(source_type='16688',detected_platform='16688',source_key='https://www.16688.store/shop/S1',
+        source_url='https://www.16688.store/shop/S1',contact_email='',status='approved'))
     db.commit()
     monkeypatch.setenv('COLLECTOR_LDXP_ENABLED','false')
     job=db.get(CollectorJob,enqueue(db,'scan','test')['job_id'])
     job.status,job.result_file='collected',job.id+'-remote.gz'
-    row={**ldxp_record(),'token':'16688-S1','source_platform':'16688','shop_url':'https://www.16688.com.cn/shop/S1',
-        'product_url':'https://www.16688.com.cn/goods/G1','product_key':'16688:G1','listed_price':'60'}
+    row={**ldxp_record(),'token':'16688-S1','source_platform':'16688','shop_url':'https://www.16688.store/shop/S1',
+        'product_url':'https://www.16688.store/goods/G1','product_key':'16688:G1','listed_price':'60'}
     rows=[{'type':'header','schema':SCHEMA,'job_id':job.id},{'type':'source','index':0,**job.sources[0]},
           {'type':'record','record':row},{'type':'end','count':1,'status':'ok'},{'type':'complete','sources':1}]
     (directory/job.result_file).write_bytes(gzip.compress(('\n'.join(json.dumps(r) for r in rows)+'\n').encode()))

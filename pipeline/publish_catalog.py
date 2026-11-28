@@ -304,12 +304,12 @@ def approved_intake_sources(db: Session, *, now: datetime | None = None) -> list
     approved_shops = {
         row["source_url"] for row in rows
         if row["source_type"] == "16688"
-        and re.fullmatch(r"https://(?:www\.)?16688\.com\.cn/shop/[A-Za-z0-9._~-]+", row["source_url"])
+        and re.fullmatch(r"https://(?:www\.)?16688\.(?:store|com\.cn)/shop/[A-Za-z0-9._~-]+", row["source_url"])
     }
     goods_urls = {
         row["source_url"] for row in rows
         if row["source_type"] == "16688"
-        and re.fullmatch(r"https://(?:www\.)?16688\.com\.cn/goods/[A-Za-z0-9._~-]+", row["source_url"])
+        and re.fullmatch(r"https://(?:www\.)?16688\.(?:store|com\.cn)/goods/[A-Za-z0-9._~-]+", row["source_url"])
     }
     known_shops: dict[str, set[tuple[int, str, bool]]] = {}
     if approved_shops and goods_urls:

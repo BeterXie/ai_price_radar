@@ -58,11 +58,12 @@ def test_16688_only_skips_explicit_shop_unavailability(monkeypatch, status, body
 
     monkeypatch.setattr(platform_16688, "PinnedHTTPSClient", FakeClient)
     with pytest.raises(error_type) as failure:
-        list(get_connector("16688")("https://www.16688.com.cn/shop/S149240"))
+        list(get_connector("16688")("https://www.16688.store/shop/S149240"))
     assert type(failure.value) is error_type
 
 
-def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
+@pytest.mark.parametrize("host", ["www.16688.com.cn", "www.16688.store"])
+def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch, host):
     calls: list[tuple[str, dict[str, object]]] = []
 
     class FakeClient:
@@ -117,13 +118,13 @@ def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
             )
 
     monkeypatch.setattr(platform_16688, "PinnedHTTPSClient", FakeClient)
-    records = list(get_connector("16688")("https://www.16688.com.cn/shop/HARVEY"))
+    records = list(get_connector("16688")(f"https://{host}/shop/HARVEY"))
 
     assert [item["product_key"] for item in records] == ["16688:G1", "16688:G2", "16688:G3"]
     assert all(item["token"] == "16688-S343514" for item in records)
     assert all(item["shop_name"] == "Same Name" for item in records)
-    assert records[0]["shop_url"] == "https://www.16688.com.cn/shop/S343514"
-    assert records[0]["product_url"] == "https://www.16688.com.cn/goods/G1"
+    assert records[0]["shop_url"] == "https://www.16688.store/shop/S343514"
+    assert records[0]["product_url"] == "https://www.16688.store/goods/G1"
     assert records[0]["stock_count"] == 4
     assert records[0]["product_status"] == "in_stock"
     assert records[1]["stock_count"] == 0
@@ -132,31 +133,31 @@ def test_16688_connector_resolves_alias_and_keeps_shop_identity(monkeypatch):
     assert records[2]["product_status"] == "in_stock"
     assert calls == [
         (
-            "https://www.16688.com.cn/shopApi/shop/detail",
+            "https://www.16688.store/shopApi/shop/detail",
             {"shop_no": "HARVEY"},
         ),
         (
-            "https://www.16688.com.cn/shopApi/goods/list",
+            "https://www.16688.store/shopApi/goods/list",
             {"shop_no": "S343514", "sort": "default"},
         ),
     ]
 
     # Verify goods URL resolves to shop and loads records seamlessly
     calls.clear()
-    goods_records = list(get_connector("16688")("https://www.16688.com.cn/goods/G1"))
+    goods_records = list(get_connector("16688")(f"https://{host}/goods/G1"))
     assert len(goods_records) == 3
-    assert goods_records[0]["shop_url"] == "https://www.16688.com.cn/shop/S343514"
+    assert goods_records[0]["shop_url"] == "https://www.16688.store/shop/S343514"
     assert calls == [
         (
-            "https://www.16688.com.cn/shopApi/goods/detail",
+            "https://www.16688.store/shopApi/goods/detail",
             {"goods_no": "G1"},
         ),
         (
-            "https://www.16688.com.cn/shopApi/shop/detail",
+            "https://www.16688.store/shopApi/shop/detail",
             {"shop_no": "S343514"},
         ),
         (
-            "https://www.16688.com.cn/shopApi/goods/list",
+            "https://www.16688.store/shopApi/goods/list",
             {"shop_no": "S343514", "sort": "default"},
         ),
     ]

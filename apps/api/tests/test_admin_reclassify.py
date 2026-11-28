@@ -159,7 +159,7 @@ def test_reclassify_uses_16688_detail_fields():
             platform="OpenAI",
             display_name="ChatGPT Plus",
         )
-        shop = Shop(token="16688-S1", name="16688", source_url="https://www.16688.com.cn/shop/S1", platform="16688")
+        shop = Shop(token="16688-S1", name="16688", source_url="https://www.16688.store/shop/S1", platform="16688")
         db.add_all([product, shop])
         db.flush()
         raw = RawProduct(
@@ -199,7 +199,7 @@ def test_reclassify_does_not_restore_a_manually_hidden_16688_offer():
         shop = Shop(
             token="16688-S2",
             name="16688",
-            source_url="https://www.16688.com.cn/shop/S2",
+            source_url="https://www.16688.store/shop/S2",
             platform="16688",
         )
         db.add_all([product, shop])

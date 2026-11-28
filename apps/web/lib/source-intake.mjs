@@ -20,8 +20,8 @@ export const SOURCE_INTAKE_COPY = {
   },
   16688: {
     fieldLabel: "16688 店铺地址",
-    placeholder: "https://www.16688.com.cn/shop/HARVEY",
-    hint: "例如 https://www.16688.com.cn/shop/HARVEY；系统会读取公开店铺商品和真实店铺编号。",
+    placeholder: "https://www.16688.store/shop/HARVEY",
+    hint: "例如 https://www.16688.store/shop/HARVEY；系统会读取公开店铺商品和真实店铺编号。",
   },
   independent: {
     fieldLabel: "独立站或商品页地址",

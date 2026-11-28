@@ -248,7 +248,7 @@ def test_all_unavailable_sources_keep_previous_snapshot(monkeypatch, error_type)
 
         monkeypatch.setitem(CONNECTORS, "16688", unavailable)
         with pytest.raises(SourceImportError, match="all catalog sources are unavailable"):
-            publish_sources(db, [SourceSpec("16688", "https://www.16688.com.cn/shop/S1")])
+            publish_sources(db, [SourceSpec("16688", "https://www.16688.store/shop/S1")])
         assert db.query(CatalogSnapshot).count() == 1
         assert db.query(Offer).one().snapshot_id == previous.snapshot_id
         assert db.query(Shop).count() == 1
@@ -259,7 +259,7 @@ def test_all_unavailable_sources_keep_previous_snapshot(monkeypatch, error_type)
 @pytest.mark.parametrize("carry_forward", [False, True])
 @pytest.mark.parametrize(("connector", "platform", "source"), [
     ("16688", "16688", "https://WWW.16688.COM.CN:443/shop/S1/"),
-    ("16688", "16688", "https://www.16688.com.cn/goods/G1"),
+    ("16688", "16688", "https://www.16688.store/goods/G1"),
     ("acg-faka", "acg_faka", "https://b.example/"),
     ("acg-faka", "acg_faka", "https://B.EXAMPLE:443/"),
     ("schema-org", "schema_org", "https://B.EXAMPLE:443/sitemap.xml"),
@@ -276,7 +276,7 @@ def test_fetch_failure_retains_only_its_shop_without_refreshing_observations(
         first = record("b")
         first.update(source_platform=platform, observed_at=old_time)
         if connector == "16688":
-            first.update(shop_url="https://www.16688.com.cn/shop/S1", product_url="https://www.16688.com.cn/goods/G1")
+            first.update(shop_url="https://www.16688.store/shop/S1", product_url="https://www.16688.store/goods/G1")
         yield first
         second = dict(first, product_key="second", product_url="https://b.example/second")
         yield second
@@ -361,7 +361,7 @@ def test_certificate_verification_failure_keeps_previous_catalog(monkeypatch, co
             post_json = get
 
         module, source = {
-            "16688": (platform_16688, "https://www.16688.com.cn/shop/S1"),
+            "16688": (platform_16688, "https://www.16688.store/shop/S1"),
             "acg-faka": (acg_faka, "https://b.example/"),
             "schema-org": (schema_org, "https://b.example/"),
             "dujiao-next": (dujiao_next, "https://b.example/"),
@@ -740,14 +740,14 @@ def test_all_structured_intake_platforms_use_the_atomic_publish_path():
             "(2, 'schema_org', 'schema_org', 'https://structured.example', 'published'), "
             "(3, 'schema_org', 'other', 'https://mismatch.example', 'approved'), "
             "(4, 'woocommerce', 'woocommerce', 'https://disabled.example', 'disabled'), "
-            "(5, '16688', '16688', 'https://www.16688.com.cn/shop/S343514', 'approved')"
+            "(5, '16688', '16688', 'https://www.16688.store/shop/S343514', 'approved')"
         ))
         db.commit()
 
         assert approved_intake_sources(db) == [
             SourceSpec("woocommerce-store", "https://woo.example", (1,)),
             SourceSpec("schema-org", "https://structured.example", (2,)),
-            SourceSpec("16688", "https://www.16688.com.cn/shop/S343514", (5,)),
+            SourceSpec("16688", "https://www.16688.store/shop/S343514", (5,)),
         ]
     finally:
         db.close()
@@ -755,8 +755,8 @@ def test_all_structured_intake_platforms_use_the_atomic_publish_path():
 
 @pytest.mark.parametrize("shop_status", ["published", "disabled"])
 def test_removed_16688_goods_reuses_only_an_independently_approved_shop(monkeypatch, shop_status):
-    shop_url = "https://www.16688.com.cn/shop/S358780"
-    goods_url = "https://www.16688.com.cn/goods/G22076118"
+    shop_url = "https://www.16688.store/shop/S358780"
+    goods_url = "https://www.16688.store/goods/G22076118"
     calls = []
 
     def loader(source):
@@ -797,12 +797,12 @@ def test_removed_16688_goods_reuses_only_an_independently_approved_shop(monkeypa
 
 @pytest.mark.parametrize("second_shop_visible", [True, False])
 def test_ambiguous_16688_goods_does_not_ignore_unapproved_or_hidden_history(second_shop_visible):
-    goods_url = "https://www.16688.com.cn/goods/G22076118"
-    approved_shop_url = "https://www.16688.com.cn/shop/S358780"
+    goods_url = "https://www.16688.store/goods/G22076118"
+    approved_shop_url = "https://www.16688.store/shop/S358780"
     db = session_for("sqlite://")
     try:
         create_source_intakes(db)
-        for index, url in enumerate([approved_shop_url, "https://www.16688.com.cn/shop/OTHER"]):
+        for index, url in enumerate([approved_shop_url, "https://www.16688.store/shop/OTHER"]):
             shop = Shop(token=f"16688-history-{index}", source_url=url, platform="16688", is_visible=True if index == 0 else second_shop_visible)
             db.add(shop)
             db.flush()
@@ -1032,11 +1032,11 @@ def install_16688_shop_loader(
             yield {
                 "token": f"16688-{shop_no}",
                 "shop_name": shop_name,
-                "shop_url": f"https://www.16688.com.cn/shop/{shop_no}",
+                "shop_url": f"https://www.16688.store/shop/{shop_no}",
                 "source_platform": "16688",
                 "product_key": f"16688:G{i}",
                 "product_name": f"ChatGPT Plus 直充 {i}",
-                "product_url": f"https://www.16688.com.cn/goods/G{i}",
+                "product_url": f"https://www.16688.store/goods/G{i}",
                 "listed_price": "88.00",
                 "currency": "CNY",
                 "stock_count": 1,
@@ -1047,7 +1047,7 @@ def install_16688_shop_loader(
 
 
 def test_published_new_shop_intake_enqueues_onboarded_notification(monkeypatch: pytest.MonkeyPatch):
-    shop_url = "https://www.16688.com.cn/shop/S230844"
+    shop_url = "https://www.16688.store/shop/S230844"
     install_16688_shop_loader(monkeypatch, shop_no="S230844", shop_name="凌越穹顶")
     db = session_for("sqlite://")
     try:
@@ -1083,14 +1083,14 @@ def test_published_new_shop_intake_enqueues_onboarded_notification(monkeypatch: 
 
 def test_published_new_shop_submitted_via_goods_link_still_gets_onboarded(monkeypatch: pytest.MonkeyPatch):
     """A first-time shop applied through one goods page is new, not an existing shop."""
-    goods_url = "https://www.16688.com.cn/goods/G90000001"
+    goods_url = "https://www.16688.store/goods/G90000001"
     install_16688_shop_loader(monkeypatch, shop_no="S90000001", shop_name="新店直供")
     db = session_for("sqlite://")
     try:
         create_intake_tables(db)
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
-            "VALUES (48, '16688', '16688', :goods, :goods, 'www.16688.com.cn', 'new@example.com', 'approved')"
+            "VALUES (48, '16688', '16688', :goods, :goods, 'www.16688.store', 'new@example.com', 'approved')"
         ), {"goods": goods_url})
         db.commit()
 
@@ -1111,8 +1111,8 @@ def test_published_new_shop_submitted_via_goods_link_still_gets_onboarded(monkey
 def test_published_goods_intake_for_existing_shop_explains_auto_discovery(monkeypatch: pytest.MonkeyPatch):
     """A single goods page for an already-indexed shop must not claim a new onboarding."""
     # The submitted goods page is one this shop already carries.
-    goods_url = "https://www.16688.com.cn/goods/G1"
-    shop_url = "https://www.16688.com.cn/shop/S358780"
+    goods_url = "https://www.16688.store/goods/G1"
+    shop_url = "https://www.16688.store/shop/S358780"
     install_16688_shop_loader(monkeypatch, shop_no="S358780", shop_name="千羽ai批发")
     db = session_for("sqlite://")
     try:
@@ -1127,7 +1127,7 @@ def test_published_goods_intake_for_existing_shop_explains_auto_discovery(monkey
         # A later applicant submits one goods page of that same, already-indexed shop.
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
-            "VALUES (47, '16688', '16688', :goods, :goods, 'www.16688.com.cn', '2172382955@qq.com', 'approved')"
+            "VALUES (47, '16688', '16688', :goods, :goods, 'www.16688.store', '2172382955@qq.com', 'approved')"
         ), {"goods": goods_url})
         db.commit()
 
@@ -1172,7 +1172,7 @@ def test_published_intake_skips_notification_when_no_email(monkeypatch: pytest.M
         ))
         db.execute(text(
             "INSERT INTO source_intakes(id, source_type, detected_platform, source_url, source_key, shop_name, contact_email, status) "
-            "VALUES (42, '16688', '16688', 'https://www.16688.com.cn/shop/S269286', 'https://www.16688.com.cn/shop/S269286', 'www.16688.com.cn', '', 'approved')"
+            "VALUES (42, '16688', '16688', 'https://www.16688.store/shop/S269286', 'https://www.16688.store/shop/S269286', 'www.16688.store', '', 'approved')"
         ))
         db.commit()
 
@@ -1293,7 +1293,7 @@ def test_import_result_to_dict_json_serializable():
 
     res = ImportResult(
         connector="16688",
-        source="https://www.16688.com.cn/shop/S294441",
+        source="https://www.16688.store/shop/S294441",
         total=10,
         raw_record_count=10,
         classified_offer_count=8,

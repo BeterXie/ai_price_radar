@@ -69,7 +69,7 @@ def test_oracle_worker_claims_one_scoped_intake_and_defers_pacing_without_failur
     monkeypatch.setattr(worker,'DISCOVERY_WORKER_KEY','')
     def request(path,payload,**kwargs):
         calls.append((path,payload))
-        return [{'intake_id':805,'source_url':'https://www.16688.com.cn/shop/XIAOMO','attempt_count':2}]
+        return [{'intake_id':805,'source_url':'https://www.16688.store/shop/XIAOMO','attempt_count':2}]
     monkeypatch.setattr(worker,'_request',request)
     def busy(url):raise OriginCoolingDown('16688 pacing busy')
     monkeypatch.setattr(worker,'_probe_with_timeout',busy)
@@ -81,16 +81,16 @@ def test_wrong_scope_is_rejected_before_any_probe(monkeypatch):
     monkeypatch.setattr(worker,'DETECTOR_SCOPE','other')
     monkeypatch.setattr(worker,'WORKER_KEY','test')
     monkeypatch.setattr(worker,'DISCOVERY_WORKER_KEY','')
-    monkeypatch.setattr(worker,'_request',lambda *a,**kw:[{'intake_id':805,'source_url':'https://www.16688.com.cn/shop/XIAOMO'}])
+    monkeypatch.setattr(worker,'_request',lambda *a,**kw:[{'intake_id':805,'source_url':'https://www.16688.store/shop/XIAOMO'}])
     monkeypatch.setattr(worker,'_probe_with_timeout',lambda url:pytest.fail('main detector must not contact 16688'))
     assert worker.run_once()==0
 
 
 def test_scope_matches_idna_and_unsupported_port_routing():
     assert worker.is_16688('https://ｗｗｗ.１６６８８.com.cn/shop/XIAOMO')
-    assert worker.is_16688('https://www.16688.com.cn:443/shop/XIAOMO')
-    assert not worker.is_16688('https://www.16688.com.cn:8443/shop/XIAOMO')
-    assert not worker.is_16688('https://www.16688.com.cn.evil.example/shop/XIAOMO')
+    assert worker.is_16688('https://www.16688.store:443/shop/XIAOMO')
+    assert not worker.is_16688('https://www.16688.store:8443/shop/XIAOMO')
+    assert not worker.is_16688('https://www.16688.store.evil.example/shop/XIAOMO')
 
 
 def test_oracle_candidate_qualification_receives_full_network_budget(monkeypatch):
@@ -101,7 +101,7 @@ def test_oracle_candidate_qualification_receives_full_network_budget(monkeypatch
     def request(path,payload,**kwargs):
         if path.endswith('/claim'):
             assert payload['scope']=='16688' and payload['limit']==1
-            return [{'candidate_id':1,'canonical_url':'https://16688.com.cn/shop/S1','platform_hint':'unknown','attempt_count':1}]
+            return [{'candidate_id':1,'canonical_url':'https://16688.store/shop/S1','platform_hint':'unknown','attempt_count':1}]
         calls.append(payload)
         return {}
     monkeypatch.setattr(worker,'_request',request)

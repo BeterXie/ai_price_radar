@@ -49,12 +49,12 @@ def test_completed_sources_survive_failed_upload_and_are_not_refetched(worker, m
     from uuid import uuid4
     from collector_protocol import parse_bundle
     job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x',
-         'sources':[{'connector':'16688','source':'https://www.16688.com.cn/shop/S1','intake_ids':[]}]}
+         'sources':[{'connector':'16688','source':'https://www.16688.store/shop/S1','intake_ids':[]}]}
     calls=[]
     monkeypatch.setattr(worker,'scan',lambda *args:None)
     def load(source):
         calls.append(source)
-        yield {'token':'16688-S1','shop_url':source,'source_platform':'16688','product_name':'Team 5x','product_url':'https://www.16688.com.cn/goods/G1','product_key':'16688:G1'}
+        yield {'token':'16688-S1','shop_url':source,'source_platform':'16688','product_name':'Team 5x','product_url':'https://www.16688.store/goods/G1','product_key':'16688:G1'}
     monkeypatch.setattr(worker,'get_connector',lambda name:load)
     class Client:
         def __init__(self,**kwargs):pass
@@ -83,10 +83,10 @@ def test_completed_sources_survive_failed_upload_and_are_not_refetched(worker, m
 def test_failed_source_discards_partial_records(worker, monkeypatch):
     from uuid import uuid4
     import gzip
-    job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x','sources':[{'connector':'16688','source':'https://www.16688.com.cn/shop/S1'}]}
+    job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x','sources':[{'connector':'16688','source':'https://www.16688.store/shop/S1'}]}
     monkeypatch.setattr(worker,'scan',lambda *args:None)
     def broken(source):
-        yield {'token':'16688-S1','shop_url':source,'source_platform':'16688','product_name':'Team','product_url':'https://www.16688.com.cn/goods/G1','product_key':'16688:G1'}
+        yield {'token':'16688-S1','shop_url':source,'source_platform':'16688','product_name':'Team','product_url':'https://www.16688.store/goods/G1','product_key':'16688:G1'}
         raise OSError('timeout')
     monkeypatch.setattr(worker,'get_connector',lambda _:broken)
     class Response:
@@ -107,12 +107,12 @@ def test_failed_source_discards_partial_records(worker, monkeypatch):
 def test_capacity_failure_aborts_batch_instead_of_publishing_empty_source(worker, monkeypatch):
     from uuid import uuid4
     job = {'id': str(uuid4()), 'release': 'test', 'kind': 'scan', 'token': 'x',
-           'sources': [{'connector': '16688', 'source': 'https://www.16688.com.cn/shop/S1'}]}
+           'sources': [{'connector': '16688', 'source': 'https://www.16688.store/shop/S1'}]}
     monkeypatch.setattr(worker, 'scan', lambda *args: None)
     monkeypatch.setattr(worker, 'MAX_LINE', 64)
     monkeypatch.setattr(worker, 'get_connector', lambda _: lambda source: iter([{
         'token': '16688-S1', 'shop_url': source, 'source_platform': '16688',
-        'product_name': 'Team', 'product_url': 'https://www.16688.com.cn/goods/G1', 'product_key':'16688:G1'}]))
+        'product_name': 'Team', 'product_url': 'https://www.16688.store/goods/G1', 'product_key':'16688:G1'}]))
     with pytest.raises(worker.CollectionCapacityError):
         worker.collect(job, threading.Event())
     assert not (worker.DATA / 'jobs' / job['id'] / '0.status.json').exists()
@@ -131,12 +131,12 @@ def test_partial_discovery_does_not_skip_browser_discovery(worker, monkeypatch):
 def test_non_ldxp_batch_does_not_require_browser_scan(worker, monkeypatch):
     from uuid import uuid4
     job={'id':str(uuid4()),'release':'test','kind':'scan','token':'x',
-         'sources':[{'connector':'16688','source':'https://www.16688.com.cn/shop/S1','shop_token':'16688-S1'}]}
+         'sources':[{'connector':'16688','source':'https://www.16688.store/shop/S1','shop_token':'16688-S1'}]}
     called=[]
     monkeypatch.setattr(worker,'scan',lambda *args: called.append(True))
     def load(source):
         yield {'token':'16688-S1','shop_url':source,'source_platform':'16688','product_name':'Team',
-               'product_url':'https://www.16688.com.cn/goods/G1','product_key':'16688:G1'}
+               'product_url':'https://www.16688.store/goods/G1','product_key':'16688:G1'}
     monkeypatch.setattr(worker,'get_connector',lambda name:load)
     class Response:
         def raise_for_status(self):pass

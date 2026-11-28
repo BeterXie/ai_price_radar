@@ -13,8 +13,8 @@ COMMONCRAWL_INDEX_URL = "https://index.commoncrawl.org/collinfo.json"
 CDX_PATTERNS = {
     "ldxp": ("pay.ldxp.cn/shop/*",),
     "16688": (
-        "16688.com.cn/shop/*",
-        "www.16688.com.cn/shop/*",
+        "16688.store/shop/*",
+        "www.16688.store/shop/*",
     ),
 }
 

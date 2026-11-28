@@ -10,6 +10,7 @@ from typing import Any
 
 from currencies import normalize_currency
 from price_radar_http import PinnedHTTPSClient, PinnedResponse
+from price_radar_http.platform_16688 import HOSTS as PLATFORM_16688_HOSTS, canonical_url as canonical_16688_url
 
 from probe import probe_source, schema_service_products
 from sitemap import product_page_urls, sitemap_locations
@@ -35,7 +36,6 @@ MONEY_PATTERN = re.compile(r"[0-9]+")
 WOO_PAGE_SIZE = 50
 WOO_MAX_PRODUCTS = 2_000
 WOO_MAX_PAGES = 100
-PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 PLATFORM_16688_GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 PLATFORM_16688_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
@@ -275,6 +275,7 @@ def _woocommerce_qualify(origin: str, client: PinnedHTTPSClient) -> Qualificatio
 
 
 def _16688_qualify(source_url: str, client: PinnedHTTPSClient) -> QualificationResult:
+    source_url = canonical_16688_url(source_url)
     parsed = urllib.parse.urlsplit(source_url)
     host = (parsed.hostname or "").casefold()
     match = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))

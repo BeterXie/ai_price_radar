@@ -1,5 +1,15 @@
 # 生产快速部署
 
+v3.9.114 将 16688 官方域名切换为 www.16688.store，无表结构变化。按 COLLECTOR_DEPLOY.md
+同步更新主站 API、importer、crawler、两地 detector 和 Oracle collector；等待当前采集批次发布结束后，
+同步两端 COLLECTOR_RELEASE=3.9.114。暂停检测、发现及发布写入，备份后使用新 API 镜像只读挂载源码，
+先运行 `python scripts/migrate_16688_domain.py` 预览，再以 `--apply` 执行数据迁移。
+先在临时 PostgreSQL 连续执行两次并验证幂等；身份冲突必须停止，不能合并或删除审核记录来绕过检查。
+迁移只更新精确官方域名的 URL 与候选标识，保留店铺/商品 ID、价格、观察时间和审核状态。
+切换后验证新域名申请分流、真实店铺检测、全量联合发布以及 API/静态快照中不再有旧域名商品链接，
+再恢复原定时器。回滚时保留迁移后的数据，仅回退镜像会使旧采集器不支持新域名，
+应暂停 16688 采集并前向修复，不能恢复整库或把旧域名重新设为线上入口。
+
 v3.9.109 增加卡密小店自动收录及商品图文详情。切换 API 前用新 API 镜像只读挂载发布源码，执行
 `python scripts/migrate_kmdian_intakes_v29.py`，先在临时 PostgreSQL 16 连续执行两次。
 本次仅扩展 source_intakes 的平台约束，不修改现有数据。官方卡密小店申请直接等待主站完整平台 API 校验，

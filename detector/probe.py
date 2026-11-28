@@ -9,6 +9,7 @@ from html.parser import HTMLParser
 from typing import Any
 
 from price_radar_http import PinnedHTTPSClient, PinnedResponse as ProbeResponse
+from price_radar_http.platform_16688 import HOSTS as PLATFORM_16688_HOSTS, canonical_url as canonical_16688_url
 from sitemap import product_links, product_page_urls, sitemap_locations
 from storefront_catalog import is_storefront_catalog, normalize_storefront_catalog, storefront_name
 
@@ -21,7 +22,6 @@ CATFK_HOSTS = {"catfk.com"}
 LDXP_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 LDXP_ITEM_PATH = re.compile(r"/item/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 LDXP_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
-PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"/shop/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 PLATFORM_16688_GOODS_PATH = re.compile(r"/goods/([A-Za-z0-9._~-]+)", re.IGNORECASE)
 PLATFORM_16688_CODE = re.compile(r"[A-Za-z0-9._~-]{1,128}")
@@ -275,7 +275,7 @@ def probe_source(value: object, *, client: PinnedHTTPSClient | None = None) -> P
         max_task_seconds=MAX_TASK_SECONDS,
         user_agent="AI-Price-Radar-Detector/1",
     )
-    normalized = client.normalize_url(value)
+    normalized = canonical_16688_url(client.normalize_url(value))
     parsed = urllib.parse.urlsplit(normalized)
     host = parsed.hostname or ""
     match = LDXP_PATH.fullmatch(parsed.path.rstrip("/"))

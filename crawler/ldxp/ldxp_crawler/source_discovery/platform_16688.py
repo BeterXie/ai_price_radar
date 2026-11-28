@@ -8,12 +8,12 @@ from typing import Any
 
 import requests
 from price_radar_http.pacing import origin_budget
+from price_radar_http.platform_16688 import ORIGIN
 
 from .models import DiscoveredCandidate, DiscoveryAdapter, DiscoveryBudget
 from .normalize import normalize_candidate_url
 
 
-ORIGIN = "https://www.16688.com.cn"
 SOURCE_CATEGORY_TREE_PATH = "/index/SourceCategory/tree"
 SOURCE_GOODS_LIST_PATH = "/index/SourceGoods/list"
 GOODS_DETAIL_PATH = "/shopApi/goods/detail"
@@ -40,7 +40,7 @@ class Platform16688Adapter(DiscoveryAdapter):
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         response = None
         try:
-            with origin_budget("www.16688.com.cn") as received:
+            with origin_budget("www.16688.store") as received:
                 response = self.session.post(
                     f"{ORIGIN}{path}", json=payload, headers=PUBLIC_HEADERS,
                     timeout=self.timeout, allow_redirects=False, stream=True,

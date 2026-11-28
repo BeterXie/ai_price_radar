@@ -5,6 +5,7 @@ import math
 import os
 from pathlib import Path
 import time
+from .platform_16688 import HOSTS
 
 
 class OriginCoolingDown(Exception):
@@ -35,7 +36,7 @@ def _persist(root, state):
 @contextmanager
 def origin_budget(host: str, timeout: float = 45):
     directory = os.getenv("COLLECTOR_RATE_DIR", "")
-    if not directory or host.casefold() not in {"16688.com.cn", "www.16688.com.cn"}:
+    if not directory or host.casefold() not in HOSTS:
         yield lambda status: None
         return
     import fcntl

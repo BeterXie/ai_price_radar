@@ -9,7 +9,7 @@ test("source intake includes Kmdian and identifies independent stores automatica
   ]);
   assert.match(SOURCE_INTAKE_COPY.ldxp.placeholder, /pay\.ldxp\.cn\/shop/);
   assert.match(SOURCE_INTAKE_COPY.yunmao.placeholder, /catfk\.com\/shop/);
-  assert.match(SOURCE_INTAKE_COPY["16688"].placeholder, /16688\.com\.cn\/shop\/HARVEY/);
+  assert.match(SOURCE_INTAKE_COPY["16688"].placeholder, /16688\.store\/shop\/HARVEY/);
   assert.match(SOURCE_INTAKE_COPY.independent.hint, /自动识别 Dujiao-Next/);
   assert.match(SOURCE_INTAKE_COPY.independent.hint, /JSON Feed/);
   assert.match(SOURCE_INTAKE_COPY.relay.hint, /Base URL/);

@@ -1,4 +1,5 @@
 import hashlib
+import pytest
 
 from app.services.source_platform import _ldxp_detection, prepare_source_submission
 
@@ -50,11 +51,28 @@ def test_submission_normalizes_wzyp_identity():
     assert result.shop_token == "KFLA"
 
 
-def test_submission_scopes_16688_token():
-    result = prepare_source_submission("https://www.16688.com.cn/shop/HARVEY")
+@pytest.mark.parametrize("host", ["www.16688.com.cn", "www.16688.store", "16688.com.cn", "16688.store"])
+def test_submission_scopes_16688_token(host):
+    result = prepare_source_submission(f"https://{host}/shop/HARVEY")
     assert result.platform == "unknown"
-    assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/HARVEY"
+    assert result.source_url == result.source_key == "https://www.16688.store/shop/HARVEY"
     assert result.shop_token == "16688-HARVEY"
+
+
+@pytest.mark.parametrize("value", [
+    "https://www.16688.store.evil.example/shop/S1",
+    "https://www.16688.com.cn.evil.example/shop/S1",
+    "https://www.16688.store:8443/shop/S1",
+    "https://other.example/?next=https://www.16688.com.cn/shop/S1",
+])
+def test_16688_migration_does_not_trust_unrelated_hosts_or_ports(value):
+    from app.services.source_platform import _16688_detection
+    assert _16688_detection(value) is None
+
+
+def test_16688_public_legacy_links_use_new_domain():
+    from app.services.source_platform import public_https_url_or_empty
+    assert public_https_url_or_empty("https://www.16688.com.cn/goods/G1") == "https://www.16688.store/goods/G1"
 
 
 def test_submission_preserves_unverified_source_url():
