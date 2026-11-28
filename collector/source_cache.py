@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import time
 from urllib.parse import urlsplit
-from price_radar_http.platform_16688 import HOSTS
+from price_radar_http.platform_16688 import HOSTS, canonical_url
 from collector_protocol import MAX_LINE, MAX_EXPANDED, MAX_COMPRESSED, validate_collected_record
 
 REFRESH_SECONDS=6*3600
@@ -36,7 +36,8 @@ def load(root,spec):
             header=stream.readline(4097)
             if len(header)>4096:return None
             meta=json.loads(header)
-            if not isinstance(meta,dict) or meta.get('source')!=spec['source']:
+            if (not isinstance(meta,dict) or not isinstance(meta.get('source'),str)
+                    or canonical_url(meta['source'])!=canonical_url(spec['source'])):
                 return None
             if not 0<=time.time()-meta['collected_at']<REFRESH_SECONDS:return None
             rows=[]

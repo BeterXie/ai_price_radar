@@ -34,6 +34,27 @@ def test_cache_rejects_partial_and_cross_shop_data(tmp_path):
     assert source_cache.load(tmp_path,spec) is None
 
 
+def test_domain_move_reuses_only_fresh_verified_shop_cache(tmp_path, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(source_cache.time, 'time', lambda: now[0])
+    old = {'connector': '16688', 'source': 'https://www.16688.com.cn/shop/S1'}
+    new = {**old, 'source': 'https://www.16688.store/shop/S1'}
+    observed = datetime.now(timezone.utc).isoformat()
+    row = {'token': '16688-S1', 'shop_url': old['source'], 'source_platform': '16688',
+           'product_name': 'ChatGPT Plus', 'product_url': 'https://www.16688.com.cn/goods/G1',
+           'product_key': '16688:G1', 'observed_at': observed}
+    records = tmp_path / 'complete.jsonl'
+    records.write_text(json.dumps(row) + '\n')
+    source_cache.store(tmp_path, old, records, 1)
+    cached = source_cache.load(tmp_path, new)
+    assert cached[0]['shop_url'] == new['source']
+    assert cached[0]['product_url'] == 'https://www.16688.store/goods/G1'
+    assert cached[0]['observed_at'] == observed
+    assert source_cache.load(tmp_path, {**new, 'shop_token': '16688-S2'}) is None
+    now[0] += source_cache.REFRESH_SECONDS
+    assert source_cache.load(tmp_path, new) is None
+
+
 def test_cache_rejects_non_object_and_deep_metadata_and_separates_goods(tmp_path):
     shop={'connector':'16688','source':'https://www.16688.store/shop/S1'}
     goods={'connector':'16688','source':'https://www.16688.store/goods/S1'}
