@@ -7,7 +7,7 @@ import threading
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT/'pipeline'), str(ROOT/'apps/api/app/services'), str(ROOT/'shared_http')]
+sys.path[:0] = [str(ROOT/'pipeline'), str(ROOT/'apps/api/app/services'), str(ROOT/'shared_http'), str(ROOT/'collector')]
 
 
 @pytest.fixture
@@ -102,6 +102,34 @@ def test_failed_source_discards_partial_records(worker, monkeypatch):
     rows=[json.loads(line) for line in gzip.open(path,'rt')]
     assert not any(row['type']=='record' for row in rows)
     assert next(row for row in rows if row['type']=='end')['status']=='fetch_failed'
+
+
+def test_hourly_jobs_reuse_16688_without_refetching_or_retimestamping(worker, monkeypatch):
+    import gzip
+    import time
+    from datetime import datetime,timezone
+    from uuid import uuid4
+    now=[time.time()]
+    stamp=datetime.now(timezone.utc).isoformat()
+    monkeypatch.setenv('COLLECTOR_16688_CACHE','true')
+    monkeypatch.setattr(worker.source_cache.time,'time',lambda:now[0])
+    calls=[];observed=[]
+    source='https://www.16688.store/shop/S1'
+    def records(url):
+        calls.append(url)
+        yield {'token':'16688-S1','shop_url':url,'source_platform':'16688','product_name':'ChatGPT Plus',
+               'product_url':'https://www.16688.store/goods/G1','product_key':'16688:G1','observed_at':stamp}
+    def deliver(job,bundle,lost):
+        rows=[json.loads(line) for line in gzip.open(bundle,'rt')]
+        observed.append(next(row['record']['observed_at'] for row in rows if row['type']=='record'))
+    monkeypatch.setattr(worker,'get_connector',lambda _:records)
+    monkeypatch.setattr(worker,'deliver_bundle',deliver)
+    for elapsed in (0,3600,6*3600):
+        now[0]+=elapsed
+        worker.collect({'id':str(uuid4()),'release':'test','kind':'scan','token':'x',
+                        'sources':[{'connector':'16688','source':source}]},threading.Event())
+    assert len(calls)==2
+    assert observed==[stamp,stamp,stamp]
 
 
 def test_capacity_failure_aborts_batch_instead_of_publishing_empty_source(worker, monkeypatch):

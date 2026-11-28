@@ -1,6 +1,7 @@
 """Apply only the dedicated collection bridge's egress and host-access rules."""
 import subprocess
 import json
+import argparse
 
 BRIDGE = 'br-pm-collect'
 # OCI maps the public address outside the host: a public-IP hairpin does not
@@ -31,14 +32,23 @@ def apply(binary, chains, jumps):
         subprocess.run(args,input=content,universal_newlines=True,check=True)
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--enable-16688-proxy', action='store_true')
+    args = parser.parse_args(argv)
     network = json.loads(subprocess.check_output(['docker','network','inspect','pricememo_collection'], universal_newlines=True))[0]
     networks = network['IPAM']['Config']
     if network['Driver'] != 'bridge' or network['Options'].get('com.docker.network.bridge.name') != BRIDGE or network.get('EnableIPv6') or len(networks) != 1 or networks[0].get('Subnet') != '172.30.93.0/24' or networks[0].get('Gateway') != '172.30.93.1':
         raise RuntimeError('collector network does not match the isolated bridge policy')
+    proxy_access = [
+        '-s 172.30.93.10 -d 172.30.93.0/24 -p tcp --sport 7891 -m conntrack --ctstate ESTABLISHED -j ACCEPT',
+        '-d 172.30.93.10 -p tcp --dport 7891 -j ACCEPT',
+    ] if args.enable_16688_proxy else []
+    gateway = ['! -s 172.30.93.10 -d 172.30.93.1 -p tcp --dport 18081 -j ACCEPT'] if args.enable_16688_proxy else ['-d 172.30.93.1 -p tcp --dport 18081 -j ACCEPT']
+    proxy_egress = ['-s 172.30.93.10 -p tcp -j RETURN'] if args.enable_16688_proxy else []
     apply('iptables', {
-        'PMCOLLECT_INPUT':['-d 172.30.93.1 -p tcp --dport 18081 -j ACCEPT','-j REJECT'],
-        'PMCOLLECT_EGRESS':['-d 172.30.93.1 -p tcp --dport 18081 -j ACCEPT']+['-d '+cidr+' -j REJECT' for cidr in PRIVATE + HOST_ENDPOINTS]+[
+        'PMCOLLECT_INPUT':gateway+['-j REJECT'],
+        'PMCOLLECT_EGRESS':gateway+proxy_access+['-d '+cidr+' -j REJECT' for cidr in PRIVATE + HOST_ENDPOINTS]+proxy_egress+[
             '-p tcp -m multiport --dports 53,80,443 -j RETURN', '-p udp --dport 53 -j RETURN', '-j REJECT'],
     }, [('INPUT','PMCOLLECT_INPUT'),('DOCKER-USER','PMCOLLECT_EGRESS')])
     apply('ip6tables', {'PMCOLLECT6_DENY':['-j REJECT']}, [('INPUT','PMCOLLECT6_DENY'),('FORWARD','PMCOLLECT6_DENY')])
