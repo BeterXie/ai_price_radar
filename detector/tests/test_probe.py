@@ -47,14 +47,15 @@ def test_detector_recognizes_merchant_feed_from_entry_response():
     assert result.shop_name == "Feed Store"
 
 
-def test_detector_recognizes_16688_alias_and_normalizes_shop_number():
+@pytest.mark.parametrize("host", ["www.16688.com.cn", "www.16688.store"])
+def test_detector_recognizes_16688_alias_and_normalizes_shop_number(host):
     client = StubClient([
         response({"code": 1, "data": {"shop_no": "S343514", "name": "派大星（900多人群）"}}),
         response({"code": 1, "data": {"list": [{"goods_no": "G1"}, {"goods_no": "G2"}]}}),
     ])
-    result = probe_source("https://www.16688.com.cn/shop/HARVEY", client=client)
+    result = probe_source(f"https://{host}/shop/HARVEY", client=client)
     assert result.detected_platform == "16688"
-    assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/S343514"
+    assert result.source_url == result.source_key == "https://www.16688.store/shop/S343514"
     assert result.shop_name == "派大星（900多人群）"
     assert result.product_count == 2
 
@@ -65,9 +66,9 @@ def test_detector_recognizes_16688_goods_url_and_normalizes_to_shop_number():
         response({"code": 1, "data": {"shop_no": "S358780", "name": "千羽ai批发"}}),
         response({"code": 1, "data": {"list": [{"goods_no": "G22076118"}, {"goods_no": "G2"}]}}),
     ])
-    result = probe_source("https://www.16688.com.cn/goods/G22076118", client=client)
+    result = probe_source("https://www.16688.store/goods/G22076118", client=client)
     assert result.detected_platform == "16688"
-    assert result.source_url == result.source_key == "https://www.16688.com.cn/shop/S358780"
+    assert result.source_url == result.source_key == "https://www.16688.store/shop/S358780"
     assert result.shop_name == "千羽ai批发"
     assert result.product_count == 2
 

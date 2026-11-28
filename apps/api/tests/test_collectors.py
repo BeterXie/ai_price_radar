@@ -18,12 +18,12 @@ from app.routers import collectors
 from app.services.collector_protocol import SCHEMA, parse_bundle
 
 KEY = "collector-test-key-that-is-independent-123456"
-SOURCE = {"connector": "16688", "source": "https://www.16688.com.cn/shop/S1", "intake_ids": [], "shop_token": "16688-S1"}
+SOURCE = {"connector": "16688", "source": "https://www.16688.store/shop/S1", "intake_ids": [], "shop_token": "16688-S1"}
 
 
 def bundle(job_id, *, token="16688-S1", complete=True):
     record = {"token": token, "source_platform": "16688", "product_name": "ChatGPT Plus",
-              "product_url": "https://www.16688.com.cn/goods/G1", "shop_url": SOURCE["source"],
+              "product_url": "https://www.16688.store/goods/G1", "shop_url": SOURCE["source"],
               "observed_at": datetime.now(timezone.utc).isoformat(), "listed_price": "80", "product_key": "16688:G1"}
     rows = [{"type": "header", "schema": SCHEMA, "job_id": job_id}, {"type": "source", "index": 0, **SOURCE},
             {"type": "record", "record": record}, {"type": "end", "count": 1, "status": "ok"}]
@@ -124,9 +124,9 @@ def test_non_ascii_or_wrong_source_identity_is_rejected(runtime):
     assert client.post(f'/api/v1/internal/collectors/{identity}/heartbeat',headers={"X-Collector-Worker-Key":KEY},
         json={"token":"中"*48}).status_code==422
     from app.services.collector_protocol import validate_collected_record
-    source={"connector":"16688","source":"https://www.16688.com.cn/shop/S1"}
-    row={"token":"16688-S2","source_platform":"16688","shop_url":"https://www.16688.com.cn/shop/S2",
-         "product_name":"Plus","product_url":"https://www.16688.com.cn/goods/G1","observed_at":datetime.now(timezone.utc).isoformat()}
+    source={"connector":"16688","source":"https://www.16688.store/shop/S1"}
+    row={"token":"16688-S2","source_platform":"16688","shop_url":"https://www.16688.store/shop/S2",
+         "product_name":"Plus","product_url":"https://www.16688.store/goods/G1","observed_at":datetime.now(timezone.utc).isoformat()}
     with pytest.raises(ValueError,match='identity'):
         validate_collected_record(row,source)
 
@@ -155,9 +155,9 @@ def test_production_collector_key_must_not_equal_admin():
 
 
 @pytest.mark.parametrize('changes', [
-    {'shop_url': 'https://www.16688.com.cn/shop/S2'},
+    {'shop_url': 'https://www.16688.store/shop/S2'},
     {'product_url': 'https://other.example/goods/G1'},
-    {'product_url': 'https://www.16688.com.cn/shop/S2'},
+    {'product_url': 'https://www.16688.store/shop/S2'},
     {'product_key': 'x' * 301},
     {'stock_count': 2147483648},
     {'raw_json': {'untrusted_number': float('nan')}},
@@ -180,6 +180,20 @@ def test_deterministic_feed_identity_ignores_unrelated_origin_match():
            'product_url': 'https://shop.example/plus', 'product_name': 'Plus',
            'observed_at': datetime.now(timezone.utc).isoformat()}
     validate_collected_record(row, {'connector': 'merchant-json', 'source': source, 'shop_token': 'wrong-origin-match'})
+
+
+@pytest.mark.parametrize('legacy_record', [False, True])
+def test_16688_old_manifest_and_records_keep_verified_identity(legacy_record):
+    from app.services.collector_protocol import validate_collected_record
+    row = json.loads(gzip.decompress(bundle('test')).splitlines()[2])['record']
+    if legacy_record:
+        for field in ('shop_url', 'product_url'):
+            row[field] = row[field].replace('16688.store', '16688.com.cn')
+    spec = {**SOURCE, 'source': SOURCE['source'].replace('16688.store', '16688.com.cn')}
+    validate_collected_record(row, spec)
+    assert row['shop_url'] == 'https://www.16688.store/shop/S1'
+    assert row['product_url'] == 'https://www.16688.store/goods/G1'
+    assert row['token'] == '16688-S1'
 
 
 def test_browser_identity_accepts_existing_case_and_safe_http_display_links():

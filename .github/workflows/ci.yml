@@ -166,7 +166,9 @@ jobs:
       - run: pip install ./shared_http -r apps/api/requirements.txt -r pipeline/requirements-test.txt -r collector/requirements.txt
       - run: python -m pytest collector/tests -q
       - run: COLLECTOR_RELEASE=ci docker compose -f collector/compose.yml config -q
+      - run: COLLECTOR_RELEASE=ci docker compose -f collector/compose.yml -f collector/compose.proxy.yml config -q
       - run: docker build -t pricememo-collector:ci -f collector/Dockerfile .
+      - run: docker build -t pricememo-egress-gateway:ci -f collector/proxy.Dockerfile .
       - name: Verify isolated collector runtime
         run: >-
           docker run --rm --network none -e COLLECTOR_API_URL=http://127.0.0.1:18081

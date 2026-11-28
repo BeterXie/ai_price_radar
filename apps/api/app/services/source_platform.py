@@ -5,6 +5,7 @@ import ipaddress
 import re
 import urllib.parse
 from dataclasses import dataclass
+from price_radar_http.platform_16688 import HOSTS as PLATFORM_16688_HOSTS, canonical_url as canonical_16688_url
 
 
 SOURCE_PLATFORM_LABELS = {
@@ -66,7 +67,6 @@ def is_source_platform_disabled(value: str) -> bool:
 
 LDXP_HOSTS = {"pay.ldxp.cn", "www.ldxp.cn", "ldxp.cn", "wzyp.cn", "www.wzyp.cn"}
 LDXP_INDEPENDENT_HOSTS = {"catfk.com"}
-PLATFORM_16688_HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 PLATFORM_16688_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 PLATFORM_16688_GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 
@@ -187,7 +187,7 @@ def normalize_public_https_url(value: object) -> str:
         raise ValueError("来源地址端口无效")
     rendered_host = f"[{host}]" if ":" in host else host
     netloc = f"{rendered_host}:{port}" if port and port != 443 else rendered_host
-    return urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, ""))
+    return canonical_16688_url(urllib.parse.urlunsplit(("https", netloc, parsed.path or "/", parsed.query, "")))
 
 
 def public_https_url_or_empty(value: object) -> str:
@@ -221,7 +221,7 @@ def _ldxp_detection(url: str) -> SourceDetection | None:
 
 
 def _16688_detection(url: str) -> SourceDetection | None:
-    parsed = urllib.parse.urlsplit(url)
+    parsed = urllib.parse.urlsplit(canonical_16688_url(url))
     host = (parsed.hostname or "").casefold()
     match_shop = PLATFORM_16688_PATH.fullmatch(parsed.path.rstrip("/"))
     match_goods = PLATFORM_16688_GOODS_PATH.fullmatch(parsed.path.rstrip("/"))

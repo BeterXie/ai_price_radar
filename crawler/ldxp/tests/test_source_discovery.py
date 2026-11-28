@@ -147,7 +147,7 @@ def test_keywords_are_deduplicated_and_include_brand_and_chinese_terms():
     queries = bing_woocommerce_queries(("chatgpt",))
     assert '"ChatGPT Plus" "add to cart"' in queries
     assert '"chatgpt" "add to cart"' in queries
-    assert 'site:16688.com.cn/shop "ChatGPT"' in bing_16688_queries()
+    assert 'site:16688.store/shop "ChatGPT"' in bing_16688_queries()
 
 
 def test_bing_16688_queries_coverage():
@@ -174,14 +174,14 @@ def test_bing_16688_queries_coverage():
 
     # All queries must be scoped to the official 16688 shop domain
     for query in queries:
-        assert "site:16688.com.cn/shop" in query, (
+        assert "site:16688.store/shop" in query, (
             f"Query does not restrict to 16688 shop domain: {query!r}"
         )
 
 
 def test_16688_shop_urls_get_a_platform_hint():
-    assert platform_hint_for_candidate("https://www.16688.com.cn/shop/HARVEY") == "16688"
-    assert platform_hint_for_candidate("https://www.16688.com.cn/goods/G1") == "unknown"
+    assert platform_hint_for_candidate("https://www.16688.store/shop/HARVEY") == "16688"
+    assert platform_hint_for_candidate("https://www.16688.store/goods/G1") == "unknown"
 
 
 def test_seed_adapter_reads_file_and_skips_comments(tmp_path: Path):
@@ -234,7 +234,7 @@ def test_bing_adapter_bounds_pages_and_queries():
 def test_bing_adapter_discovers_16688_shop_pages_with_platform_hint():
     query = bing_16688_queries()[0]
     rss = b'''<?xml version="1.0"?><rss><channel>
-      <item><link>https://www.16688.com.cn/shop/HARVEY</link></item>
+      <item><link>https://www.16688.store/shop/HARVEY</link></item>
     </channel></rss>'''
 
     def handler(url: str, _kwargs: dict):
@@ -243,7 +243,7 @@ def test_bing_adapter_discovers_16688_shop_pages_with_platform_hint():
 
     adapter = BingAdapter(FakeSession(handler), timeout=3)
     results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(max_bing_pages=1, max_bing_count=10, request_interval_seconds=0)))
-    assert results[0].url == "https://www.16688.com.cn/shop/HARVEY"
+    assert results[0].url == "https://www.16688.store/shop/HARVEY"
     assert results[0].platform_hint == "16688"
 
 
@@ -320,12 +320,12 @@ def test_commoncrawl_adapter_uses_cdx_without_warc(tmp_path: Path):
 
 
 def test_commoncrawl_adapter_discovers_16688_shop_pages():
-    lines = json.dumps({"url": "https://www.16688.com.cn/shop/HARVEY"})
+    lines = json.dumps({"url": "https://www.16688.store/shop/HARVEY"})
 
     def handler(url: str, kwargs: dict):
         if url == "https://index.commoncrawl.org/collinfo.json":
             return FakeResponse(200, document=[{"id": "CC-MAIN-1", "cdx-api": "https://index.commoncrawl.org/CC-MAIN-1-index"}])
-        if dict(kwargs["params"])["url"] == "16688.com.cn/shop/*":
+        if dict(kwargs["params"])["url"] == "16688.store/shop/*":
             return FakeResponse(200, body=lines.encode("utf-8"))
         return FakeResponse(200, body=b"")
 
@@ -340,8 +340,8 @@ def test_commoncrawl_adapter_reserves_capacity_for_16688():
         json.dumps({"url": f"https://pay.ldxp.cn/shop/TOKEN{index}"})
         for index in range(3)
     ).encode("utf-8")
-    apex_16688 = json.dumps({"url": "https://16688.com.cn/shop/ALPHA"}).encode("utf-8")
-    www_16688 = json.dumps({"url": "https://www.16688.com.cn/shop/BRAVO"}).encode("utf-8")
+    apex_16688 = json.dumps({"url": "https://16688.store/shop/ALPHA"}).encode("utf-8")
+    www_16688 = json.dumps({"url": "https://www.16688.store/shop/BRAVO"}).encode("utf-8")
 
     def handler(url: str, kwargs: dict):
         if url == "https://index.commoncrawl.org/collinfo.json":
@@ -349,8 +349,8 @@ def test_commoncrawl_adapter_reserves_capacity_for_16688():
         pattern = dict(kwargs["params"])["url"]
         return FakeResponse(200, body={
             "pay.ldxp.cn/shop/*": ldxp_lines,
-            "16688.com.cn/shop/*": apex_16688,
-            "www.16688.com.cn/shop/*": www_16688,
+            "16688.store/shop/*": apex_16688,
+            "www.16688.store/shop/*": www_16688,
         }[pattern])
 
     adapter = CommonCrawlAdapter(FakeSession(handler), timeout=3)
@@ -359,8 +359,8 @@ def test_commoncrawl_adapter_reserves_capacity_for_16688():
     assert [item.url for item in results] == [
         "https://pay.ldxp.cn/shop/TOKEN0",
         "https://pay.ldxp.cn/shop/TOKEN1",
-        "https://16688.com.cn/shop/ALPHA",
-        "https://www.16688.com.cn/shop/BRAVO",
+        "https://www.16688.store/shop/ALPHA",
+        "https://www.16688.store/shop/BRAVO",
     ]
 
 
@@ -396,8 +396,8 @@ def test_16688_source_adapter_resolves_public_goods_to_official_shop_urls():
     results = list(adapter.discover(keywords=(), budget=DiscoveryBudget(request_interval_seconds=0)))
 
     assert [item.url for item in results] == [
-        "https://www.16688.com.cn/shop/S100",
-        "https://www.16688.com.cn/shop/S200",
+        "https://www.16688.store/shop/S100",
+        "https://www.16688.store/shop/S200",
     ]
     assert [item.discovered_by for item in results] == ["16688-source:G1", "16688-source:G2"]
     assert all(item.platform_hint == "16688" for item in results)
@@ -439,8 +439,8 @@ def test_16688_source_adapter_prioritizes_ai_and_scans_all_categories():
     ))
 
     assert [item.url for item in results] == [
-        "https://www.16688.com.cn/shop/S1",
-        "https://www.16688.com.cn/shop/S3",
+        "https://www.16688.store/shop/S1",
+        "https://www.16688.store/shop/S3",
     ]
     assert list_calls == [(1, 1), (2, 1), (3, 1)]
     assert detail_calls == ["G-AI", "G-TOOL"]

@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from price_radar_http import PinnedHTTPSClient
+from price_radar_http.platform_16688 import HOSTS, canonical_url as canonical_16688_url
 
 SCHEMA = "pricememo.collection.v1"
 MAX_COMPRESSED = 128 * 1024 * 1024
@@ -63,11 +64,12 @@ def validate_collected_record(record: dict, spec: dict) -> None:
     def display_url(value):
         # Browser-collected HTTP links are display data, never request targets.
         checked = 'https://' + value[7:] if connector == 'ldxp' and value.startswith('http://') else value
-        return PinnedHTTPSClient.normalize_url(checked)
+        normalized = PinnedHTTPSClient.normalize_url(checked)
+        return canonical_16688_url(normalized) if connector == '16688' else normalized
     shop_url = display_url(record["shop_url"])
     product = urlsplit(display_url(record["product_url"]))
     shop = urlsplit(shop_url)
-    source = urlsplit(PinnedHTTPSClient.normalize_url(spec["source"])) if connector != "ldxp" else None
+    source = urlsplit(display_url(spec["source"])) if connector != "ldxp" else None
     if connector not in {"ldxp", "merchant-json"} and shop.hostname != source.hostname:
         raise ValueError("collected shop origin mismatch")
     expected = spec.get("shop_token")
@@ -88,7 +90,7 @@ def validate_collected_record(record: dict, spec: dict) -> None:
     elif connector == "16688":
         if '#' in record['shop_url'] or '#' in record['product_url']:
             raise ValueError("16688 links must not contain fragments")
-        if source.hostname not in {"16688.com.cn", "www.16688.com.cn"}:
+        if source.hostname not in HOSTS:
             raise ValueError("invalid 16688 source origin")
         match = re.fullmatch(r"/shop/([A-Za-z0-9._~-]{1,128})/?", source.path)
         expected = expected or ("16688-" + match[1] if match else None)

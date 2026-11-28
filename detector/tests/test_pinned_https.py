@@ -168,7 +168,7 @@ def test_json_post_writes_utf8_body_and_matching_content_length():
         ssl_context=FakeTLSContext(),
     )
 
-    client.post_json("https://16688.com.cn/shopApi/shop/detail", {"shop_no": "派大星"})
+    client.post_json("https://16688.store/shopApi/shop/detail", {"shop_no": "派大星"})
 
     body = '{"shop_no":"派大星"}'.encode("utf-8")
     assert len(sent) == 1

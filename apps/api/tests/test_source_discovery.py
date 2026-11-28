@@ -89,7 +89,7 @@ def test_16688_candidate_claims_use_actual_origin_and_leave_ldxp_local(client, m
     oracle=client.post('/api/v1/internal/source-candidates/claim',headers=DISCOVERY_HEADERS,
         json={'limit':10,'lease_seconds':300,'scope':'16688'}).json()
     assert [row['candidate_id'] for row in oracle] == [remote]
-    assert oracle[0]['canonical_url'] == 'https://www.16688.com.cn/shop/XIAOMO'
+    assert oracle[0]['canonical_url'] == 'https://www.16688.store/shop/XIAOMO'
 
 
 def report(client, candidate_id, attempt_count, **overrides):
@@ -310,7 +310,7 @@ def test_dujiao_candidate_is_promoted_using_the_existing_approval_policy(client,
 
 
 def test_16688_candidate_promotes_to_pending_review_by_default(client, engine):
-    source_url = "https://www.16688.com.cn/shop/S343514"
+    source_url = "https://www.16688.store/shop/S343514"
     upsert(client, source_url, hint="16688")
     task = claim(client)[0]
     response = report(
@@ -322,7 +322,7 @@ def test_16688_candidate_promotes_to_pending_review_by_default(client, engine):
         detected_source_url=source_url,
         total_product_count=2,
         ai_product_count=1,
-        sample_products=[{"name": "ChatGPT Plus 月卡", "url": "https://www.16688.com.cn/goods/G1"}],
+        sample_products=[{"name": "ChatGPT Plus 月卡", "url": "https://www.16688.store/goods/G1"}],
         fingerprints=["16688-public-api"],
         confidence_score=88,
     )

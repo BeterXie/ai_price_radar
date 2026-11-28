@@ -13,7 +13,7 @@ from connectors.base import SourceFetchError
 from publish_catalog import SourceSpec, publish_sources
 
 
-SHOP_URL = "https://www.16688.com.cn/shop/S878919"
+SHOP_URL = "https://www.16688.store/shop/S878919"
 CATEGORY = {"goods_category_no": "C698563", "name": "G直充"}
 # Public titles/IDs captured from S878919; unrelated HTML is omitted.
 GOODS = [
@@ -75,7 +75,7 @@ def source_api(monkeypatch, tmp_path):
     return state
 
 
-@pytest.mark.parametrize("source", [SHOP_URL, "https://www.16688.com.cn/shop/ALIAS", "https://www.16688.com.cn/goods/G40240306"])
+@pytest.mark.parametrize("source", [SHOP_URL, "https://www.16688.store/shop/ALIAS", "https://www.16688.store/goods/G40240306"])
 def test_categories_are_joined_by_id_after_canonical_shop_resolution(source_api, source):
     records = list(platform_16688.load_records(source))
     assert len(records) == 4

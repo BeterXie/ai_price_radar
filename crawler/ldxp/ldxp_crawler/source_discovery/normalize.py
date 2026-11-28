@@ -5,10 +5,10 @@ import re
 import urllib.parse
 
 from price_radar_http import PinnedHTTPSClient
+from price_radar_http.platform_16688 import HOSTS as PLATFORM_16688_HOSTS, canonical_url as canonical_16688_url
 
 
 ORIGIN_KEY_PLATFORMS = frozenset({"dujiao_next", "woocommerce", "ldxp"})
-PLATFORM_16688_HOSTS = frozenset({"16688.com.cn", "www.16688.com.cn"})
 PLATFORM_16688_SHOP_PATH = re.compile(r"^/shop/[A-Za-z0-9._~-]+$", re.IGNORECASE)
 
 
@@ -23,7 +23,7 @@ def normalize_candidate_url(value: object) -> str:
         raw = urllib.parse.urlunsplit(("https", parsed.netloc, parsed.path, parsed.query, ""))
     elif parsed.scheme and parsed.scheme.casefold() != "https":
         raise ValueError("candidate URL must use HTTPS")
-    return PinnedHTTPSClient.normalize_url(raw)
+    return canonical_16688_url(PinnedHTTPSClient.normalize_url(raw))
 
 
 def normalize_origin(value: str) -> str:

@@ -164,9 +164,9 @@ def _detect(client: TestClient, intake_id: int, *, platform: str = "ldxp", sourc
 def test_16688_claims_are_reserved_for_oracle_without_trusting_declared_platform(api_client, monkeypatch):
     client, engine = api_client
     monkeypatch.setattr(get_settings(), 'detector_16688_on_oracle', True)
-    urls = ['https://www.16688.com.cn/shop/XIAOMO', 'https://16688.com.cn/goods/G1',
+    urls = ['https://www.16688.store/shop/XIAOMO', 'https://16688.store/goods/G1',
             'https://WWW.16688.COM.CN:443/shop/alias', 'https://ldxp.cn/shop/local',
-            'https://www.16688.com.cn.evil.example/shop/fake', 'https://shop.example/?next=https://www.16688.com.cn/shop/x']
+            'https://www.16688.store.evil.example/shop/fake', 'https://shop.example/?next=https://www.16688.store/shop/x']
     with Session(engine) as db:
         for index, url in enumerate(urls):
             db.add(SourceIntake(source_type='unknown', detected_platform='unknown', status='submitted',
@@ -254,7 +254,7 @@ def test_submission_preserves_schema_maximum_name_and_note_lengths(api_client):
     [
         ("woocommerce", "https://woocommerce.example/products/example"),
         ("schema_org", "https://schema-org.example/products/example"),
-        ("16688", "https://www.16688.com.cn/shop/S343514"),
+        ("16688", "https://www.16688.store/shop/S343514"),
     ],
 )
 def test_structured_platform_submission_can_be_detected_and_reviewed(api_client, platform, source_url):
@@ -367,7 +367,7 @@ def test_16688_submission_uses_platform_scoped_alias_token(api_client):
     client, _ = api_client
     response = client.post(
         "/api/v1/shop-requests",
-        json={**_payload(), "source_type": "16688", "shop_url": "https://www.16688.com.cn/shop/HARVEY"},
+        json={**_payload(), "source_type": "16688", "shop_url": "https://www.16688.store/shop/HARVEY"},
     )
     assert response.status_code == 201
     assert response.json()["shop_token"] == "16688-HARVEY"
@@ -375,10 +375,10 @@ def test_16688_submission_uses_platform_scoped_alias_token(api_client):
 
 def test_new_16688_goods_detection_persists_canonical_shop_before_approval(api_client):
     client, engine = api_client
-    response = client.post('/api/v1/shop-requests', json=_payload(shop_url='https://www.16688.com.cn/goods/G22076118'))
+    response = client.post('/api/v1/shop-requests', json=_payload(shop_url='https://www.16688.store/goods/G22076118'))
     assert response.status_code == 201
     identity = response.json()['request_id']
-    canonical = 'https://www.16688.com.cn/shop/S358780'
+    canonical = 'https://www.16688.store/shop/S358780'
     _detect(client, identity, platform='16688', source_url=canonical, source_key=canonical)
     with Session(engine) as db:
         intake = db.get(SourceIntake, identity)

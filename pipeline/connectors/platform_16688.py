@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from price_radar_http import PinnedHTTPSClient
+from price_radar_http.platform_16688 import HOSTS, canonical_url
 
 from .base import SourceFetchError, SourceUnavailableError, validate_record
 
 
 name = "16688"
-HOSTS = {"16688.com.cn", "www.16688.com.cn"}
 SHOP_PATH = re.compile(r"^/shop/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 GOODS_PATH = re.compile(r"^/goods/([A-Za-z0-9._~-]+)$", re.IGNORECASE)
 CODE_PATTERN = re.compile(r"[A-Za-z0-9._~-]{1,128}")
@@ -35,7 +35,7 @@ def _validate_store_url(value: str) -> tuple[urllib.parse.SplitResult, str | Non
     if not raw or raw != raw.strip() or CONTROL_CHARACTERS.search(raw) or "#" in raw:
         raise ValueError("16688 source must be a public shop or goods URL")
     try:
-        parsed = urllib.parse.urlsplit(PinnedHTTPSClient.normalize_url(raw))
+        parsed = urllib.parse.urlsplit(canonical_url(PinnedHTTPSClient.normalize_url(raw)))
     except (TypeError, ValueError) as exc:
         raise ValueError("16688 source must be a public HTTPS shop or goods URL") from exc
     host = (parsed.hostname or "").casefold()
